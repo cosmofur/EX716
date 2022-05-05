@@ -1,5 +1,6 @@
 # EX716
-An experimental 'toy' CPU emulator based on a 'fictional' 1970's micro computer concepts. Target is be able to experiment with Assembly/Machine Code without the 'compromises and overhead' of 'real' classic CPU's  
+An experimental 'toy' CPU emulator based on a 'fictional' 1970's micro computer concepts. Target is be able to experiment 
+with Assembly/Machine Code without the 'compromises and overhead' of 'real' classic CPU's  
 The EX716 has no 'practical' use in that it would be easily out performed by even the cheapest off the shelf modern
 micro controller. Yet I feel it has some value as a training tool and as an assembly language 'toy'
 
@@ -171,7 +172,7 @@ A Physical description of a non existent CPU:
                 ( The reason they are named CAST and POLL, rather than the more descriptive 'D-IN' and 'D-OUT' was in
                 the early draft of this project, they would be used as IO to a 'on chip' hardware network in the
                 application of multi-core version of the CPU. They names stuck, but the multi-core version is left as a
-                future project)
+                possible future project)
 
              Bit Rotate Commands, 1 byte optcode, No PRM affects just top of stack
 
@@ -266,71 +267,120 @@ In the common.mc are some extra Macros that make programming easier. All the fol
 worth some time reading through common.mc to see how they are implimented.
 
 @MC2M %1 %2  : Move Constant to Memory. Moves value of %1 to address [%2] Both can also be labels
+
 @MM2M %1 %2  : Move word stored at address [%1] to be stored at address [%2]
+
 @MMI2M %1 %2 : Move word stored at address THAT address [[%1]] points to address [%2]
+
 @MM2IM %1 %2 : Move word stored at address [%1] to be stored at address THAT address [[%2]] points to
+
 @JMPNZ %1    : Inverse logic of JMPZ
+
 @JNZ %1      : Slightly more readable than JMPNZ
+
 @JMPZI %1    : Jumps to an Indirect address [%1] if Z flag is set
+
 @JMPNZI %1   : Inverse of JMPZI for Indirect Jumps
+
 @JMPNC %1    : Inverse logic of JMPC
+
 @JMPNO %1    : Inverse logic of JMPO
+
 @JLT %1      : More 'readable' version of JMPN, if the last CMP A was < B
+
 @JLE %1      : JMP if last CMP A <= B
+
 @JGE %1      : JMP if last CMP A >= B
+
 @JGT %1      : JMP if last CMP A > B
+
 @CALL %1     : handles overhead of pushing return address to HW stack, then calling address %1
+
 @RET         : Handles the Return from CALL...make sure that the return address is still at top
 
 The following Macros are in commmon.mc and provide basic IO, but this is the emulator doing the
 'work' and it is left as an exercise to re-write them as 'native' code.
+
 @PRTLN %1    : %1 needs to be a quoted text string constant, print it with a Newline at the end.
+
 @PRT %1      : Like PRTLN but without the ending linefeed. Use it as part of formated output.
+
 @PRTI %1     : Print in unsigned decimal the value stored at address [%1] no spaces added.
+
 @PRTII %1    : Print in decimal the Indirect value stored at address [[%1]]
+
 @PRTIC %1    : Like PRTI but padded with a space before and after the number.
+
 @PRTS %1     : Print the null terminated ASCII string starting at address [%1:...] b0
+
 @PRTSGN %1   : Print the Signed decimal the value stored at address [%1] no spaces added.
+
 @PRTBIN %1   : Print the value at address [%1] as a 0/1 binary string.
+
 @PRTHEXI %1  : Print the 16b hex value at address [%1]
+
 @PRTNL       : Print just a linefeed
+
 @PRTSP       : Print Just a space.
+
 @PRTSTRI     : More verbose was to say PRTS
+
 @PRTREF %1   : Print the constant given, used for printing actual address of labels
+
 @READI %1    : Read 16b decimal number from keyboard, save to [%1]
+
 @END         : Tells the emulator to exit
+
 @TOP %1      : Copies rather than POP's top of HW stack to address [%1]
+
 @StackDump   : Emulator driven printout of the current stack state.
+
 @INCI %1     : Adds one to the value at given address [%1] WILL Affect logic flags
+
 @DECI %1     : Subtracts one to the value at given address [%1] WILL Affect logic flags
 
 The following are there to make some code more compact and 'readable'
+
 @ADDAB2C %1 %2 %3 : Adds [%1] to [%2] and saves result to [%3]
+
 @SUBAB2C %1 %2 %3 : Subtracts [%2] from [%1] and saves result to [%3]
 
 The following are logic tests that save logic tests results as True ( 1 ), or false ( 0 ), rather than
 'trusting' the ALU flags, in case you will need the results later.
+
 @ifAneB2C %1 %2 %3 : C if A != B
+
 @ifAeqB2C %1 %2 %3 : C if A == B
+
 @ifAltB2C %1 %2 %3 : C if A < B
+
 @ifAgtB2C %1 %2 %3 : C if A > B
+
 @ifAleB2C %1 %2 %3 : C if A <= B
+
 @ifAgeB2C %1 %2 %3 : C if A >= B
+
 Combined with these 'if' macros, the following 'JUMPS' are based on the result saved in 'C'
+
 @JifT %1 %2        : Jump to %2 if [%1] == true
+
 @JifF %1 %2        : Jump to %2 if [%1] == false
 
 The following Macro provides a way to do a simple for loop over a fixed range. This is a pretty high
 level function for such a simple macro language, but it does require that each FOR loop be given a
 unique name.
+
 @ForIfA2B %1 %2 %3 %4 : To use
+
                       [%1] where index of loop will be stored.
                       %2 is constant that is the low range of the loop.
                       %3 is constant that is the high range of the loop.
                       %4 is a REQUIRED unique name for this loop. It is just an identity symbol and
                       stores no value.
+
 @ForIfV2V %1 %2 %3 %4 : This is nearly the same as ForIFA2B but A and B are variables rather than
 constants.
+
                       [%1] where index of loop will be stored.
                       [%2] where value that is the low range of the loop.
                       [%3] where value that is the high range of the loop.
@@ -338,8 +388,10 @@ constants.
                       stores no value.
 
 Both types FOR loop macros require a terminating 'NextName' to mark the end of the loop
+
 @NextNamed %1 %2 : %1 needs to be the same %1 as the For macro, the %2 needs to be the same exact
                    symbol as used as %4 in the For macros.
+
 The For loops Can be nested but use unique '%4' labels
 
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
@@ -369,13 +421,13 @@ sub-directories in the current working directory ./lib/ and ./test/
 Optional Command Line Arguments:
 
 -c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There
-         is no runtime performance benefit to this 'compilation' bit the output will be just spaces and hex digits so it might
+         is no runtime performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might
          compress better and certainly would hide the program logic for 'security though obscurity' type distribution. Also
           object formated input files 'Might' load a bit faster, as the file loader has less to do.
 
 -d       Enable the raw debug mode. This is full debug output, including a detailed expansion of the read in source file
          Macros, a Hex Dump of memory and a step by step disassemble of the running code.
-
+         
 -g       Enter the interactive debugger. (See Bellow)
 
 -l       List the disassemble of the compiled code, useful to have on hand when about to debugging as it will identify
@@ -405,13 +457,26 @@ ps      Print Stack
             dumps the current HW stack, and also attempts to print the values that stack values might be pointing to if
             they happen to be pointers.
 
+n        Next Step 
+            Single step though the machine code, one step at a time. Does not know about or care about Macro's and will
+            step though the individual optcodes a macro may have expanded into.
+            
+s        Step (over)
+             Attempts to continue forward until the next source code line. Unfortinityly as the CALL RET are macros and not
+             elementry optcodes, it can't be used to skip over sub-routeens but will treate several commands on the same source
+             code line, as one step. Makes it easier to step though macros.
 
+hexdump start stop
+             Print a hexdump for a range of memory. 
+             
+d start stop Dis
+            Dissaseembles a range of memory. Will attmpt to map lables and filename line numbers as comments for refrence.
+            
+l line      List Src
+            Will attempt to dissassemble the part of the program that approimates the given line number.
 
-
-
-
-
-
+c  (count)  Continue
+            Run the programe for current location, util eithr end of program, breakpoint or given an optional (count) that many steps of operation.
 
 
 
