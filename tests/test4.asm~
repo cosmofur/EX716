@@ -1,0 +1,49 @@
+I common.mc
+:Loop
+@PRTLN "Subtraction Tests:"
+@PRT "A:"
+@PRTI AVAL
+@PRTSP
+@PRT " B:"
+@PRTI BVAL
+@PRT " = "
+@PRTI CVAL
+@PRTNL
+@MC2M 0 CMDCODE
+@PRTLN "100:Change A. 101: Change B: 102: Quit,  103: Calc "
+@PROMPT "CMD> " CMDCODE
+@PUSHI CMDCODE
+@CMP 100
+@JZ ChangeA
+@CMP 101
+@JZ ChangeB
+@CMP 102
+@JZ Quit
+@POPNULL
+@PUSHI AVAL
+@PUSHI BVAL
+@DEBUGTOGGLE
+@SUBS
+@DEBUGTOGGLE
+@POPI CVAL
+@JMP Loop
+:ChangeA
+@POPNULL
+@PROMPT "New A:" AVAL
+@JMP Loop
+:ChangeB
+@POPNULL
+@PROMPT "New B:" BVAL
+@JMP Loop
+:Quit
+@END
+
+
+:CMDCODE
+0
+:AVAL
+0
+:BVAL
+0
+:CVAL
+0
