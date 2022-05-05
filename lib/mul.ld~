@@ -1,0 +1,95 @@
+# Input: Stack RET, N, M
+# Output: ANS, CNT
+# Requites common
+$$JMP $MULINIT
+G MUL
+:MUL
+$$POPI $RETURN
+$$POPI $M
+$$POPI $N
+@MC2M 0 $ANS
+@MC2M 0 $NEGFLAG
+# Test for Negative Numbers
+$$PUSH 0
+$$CMPI $M
+$$POPI $UNUSED
+$$JMPN $MNOTNEG
+# Invert NEGFLAG
+$$PUSHI $NEGFLAG
+$$INV $NEGFLAG
+$$POPI $NEGFLAG
+# Now Invert M (for 2's comp)
+$$PUSHI $M
+$$INV $M
+$$ADD 1
+$$POPI $M
+:MNOTNEG
+# Replete for N
+$$PUSH 0
+$$CMPI $N
+$$POPI $UNUSED
+$$JMPN $NNOTNEG
+$$PUSHI $NEGFLAG
+$$INV $NEGFLAG
+$$POPI $NEGFLAG
+$$PUSHI $N
+$$INV $N
+$$ADD 1
+$$POPI $N
+:NNOTNEG
+# While M != 0
+:WHILE1
+  $$PUSH 0
+  $$CMPI $M
+  $$POPI $UNUSED
+  $$JMPZ $ENDWHILE
+# if m & 1 ; then m >> 1
+  $$PUSHI $M
+  $$AND 1
+  $$CMPI $ONEMASK
+  $$POPI $UNUSED
+  @JMPNZ $ENDIF1
+     # ANS = ANS + N
+     $$PUSHI $ANS
+     $$ADDI $N
+     $$POPI $ANS
+:ENDIF1
+  # N = N << 1
+  $$PUSHI $N
+  $$RTL
+  $$POPI $N
+  # M = M / 2
+  $$PUSHI $M
+  $$RTR
+  $$POPI $M
+$$JMP $WHILE1
+:ENDWHILE   # Convert to Negative if NEGFLAG is set
+$$PUSH 0
+$$CMPI $NEGFLAG
+$$POPI $UNUSED
+$$JMPZ $NOTNEG
+$$PUSHI $ANS
+$$INV $ANS
+$$ADD 1
+$$POPI $ANS
+:NOTNEG
+$$PUSHI $ANS
+$$PUSHI $RETURN
+@RET
+:RETURN
+0
+:N
+0
+:M
+0
+:ANS
+0
+:NEGFLAG
+0
+:ONEMASK
+1
+:UNUSED
+0
+b0
+b0
+:MULINIT
