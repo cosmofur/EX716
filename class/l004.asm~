@@ -1,0 +1,12 @@
+I common.mc
+# Showing how the macros can combined on one line.
+@PRT "one:" @PRTI One @PRT " Two:" @PRTI Two @PRT " Three:" @PRTI Three @PRTNL
+@END
+:One 1
+:Two 2
+:Three 3
+
+
+
+
+

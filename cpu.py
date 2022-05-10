@@ -170,7 +170,6 @@ class microcpu:
         self.mb[address] = self.lowbyte(value)
         self.mb[address+1] = self.highbyte(value)
 
-    @lru_cache(maxsize=None)    
     def getwordat(self, address):
         a = 0
         if address >= MAXMEMSP:
@@ -294,8 +293,8 @@ class microcpu:
         self.flags = ZF+(NF<<1)+(CF<<2)+(OF<<3)
 
     def optCMP(self, address):
-        R1 = self.fetchAcum(0)
-        R2 = address
+        R1 = address
+        R2 = self.fetchAcum(0)
         A1 = R1 - R2
         self.SetFlags(A1)
 
@@ -306,8 +305,8 @@ class microcpu:
         self.SetFlags(A1)
 
     def optCMPI(self, address):
-        R1 = self.fetchAcum(0)
-        R2 = self.getwordat(address)
+        R1 = self.getwordat(address)
+        R2 = self.fetchAcum(0)
         A1 = R1 - R2
         self.SetFlags(A1)
 
@@ -364,10 +363,12 @@ class microcpu:
         self.StoreAcum(0,A1)
 
     def optSUBI(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("025 Invalid Address: %d, optSUBI" % (address))
-        newaddress = self.getwordat(address)
-        self.optSUB(newaddress)
+        R1 = self.twos_comp(address)
+        R2 = self.twos_compFrom(self.fetchAcum(0))
+        A1 = R1 - R2
+        self.SetFlags(A1)
+        self.mb[0xff] -= 1
+        self.StoreAcum(0,A1)
 
     def optSUBII(self, address):
         if address >= MAXMEMSP:
