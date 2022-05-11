@@ -363,11 +363,10 @@ class microcpu:
         self.StoreAcum(0,A1)
 
     def optSUBI(self, address):
-        R1 = self.twos_comp(address)
-        R2 = self.twos_compFrom(self.fetchAcum(0))
-        A1 = R1 - R2
+        R1 = self.twos_compFrom(self.getwordat(address),16)
+        R2 = self.twos_compFrom(self.fetchAcum(0),16)
+        A1 = (R1 - R2) & 0xffff
         self.SetFlags(A1)
-        self.mb[0xff] -= 1
         self.StoreAcum(0,A1)
 
     def optSUBII(self, address):
