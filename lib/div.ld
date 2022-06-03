@@ -1,108 +1,92 @@
 # Input: Stack RET, Divident, Divisor
 # Requires common.mc
-$$JMP $DIVINIT
+! DEFINEDDIV
+M DEFINEDDIV 0
+@JMP DIVINIT
 G DIV
 :DIV
-$$POPI $RETURN
-$$POPI $Numor
-$$POPI $Dsor
-@MC2M 0 $NEGFLAG
+@POPI RETURN
+@POPI Denominator
+@POPI Numerator        # Is also known as Dividend
+# Test for divide by zero
+@PUSH 0 @CMPI Denominator @POPNULL
+@JMPZ DivideByZero
+# Test for sign
+@MC2M 0 NEGFLAG
 # Test for Negative Numbers and set NEGFLAG if just one is negative. 
-$$PUSH 0
-$$CMPI $Numor
-$$POPI $UNUSED
-$$JMPN $NOTNEG1
-# Invert NegFlag
-$$PUSHI $NEGFLAG
-$$INV $NEGFLAG
-$$POPI $NEGFLAG
-# Do Abs(Numor)
-$$PUSHI $Numor
-$$INV $Numor
-$$ADD 1
-$$POPI $Numor
+@PUSH 0 @CMPI Numerator @POPNULL
+@JMPN ISNEG1
+@JMP NOTNEG1
+:ISNEG1
+# Invert Negflag
+   @PUSHI NEGFLAG @INV @POPI NEGFLAG
+   # Do Abs(Numerator)
+   @PUSHI Numerator @INV @ADD 1 @POPI Numerator
 :NOTNEG1
-# Now for Dsor
-$$PUSH 0
-$$CMPI $Dsor
-$$POPI $UNUSED
-$$JMPN $NOTNEG2
+# Now for Denominator
+@PUSH 0 @CMPI Denominator @POPNULL
+@JMPN ISNEG2
+@JMP NOTNEG2
+:ISNEG2
 # Invert NegFlag
-$$PUSHI $NEGFLAG
-$$INV $NEGFLAG
-$$POPI $NEGFLAG
-# Do Abs(Dsor)
-$$PUSHI $Dsor
-$$INV $Dsor
-$$ADD 1
-$$POPI $Dsor
+   @PUSHI NEGFLAG @INV @POPI NEGFLAG
+   # Do Abs(Denominator)
+   @PUSHI Denominator @INV @ADD 1 @POPI Denominator
 :NOTNEG2
-@MC2M 0 $Result
-# First we need to 'align' Numor and Dsor
-@MM2M $Dsor $TDsor
-# While Dsor < $Numor : Dsor = Dsor << 1
-$$PUSHI $Dsor
-:ALIGNLOOP
-$$CMPI $Numor
-$$RTL
-$$JMPN $ALIGNLOOP
-:ENDALIGN
-$$POPI $Dsor
-# Do Until Loop while  Dsor >= Tsor
-:DOLOOP1
-# Result << 1
-  $$PUSHI $Result
-  $$RTL
-  $$POPI $Result
-# If Numor >= $Dsor
-  $$PUSHI $Numor
-  $$CMPI $Dsor
-  $$POPI $UNUSED
-  $$JMPN $NOTIF
-   # Numor = Numor - Dsor
-     $$PUSHI $Numor
-     $$SUBI $Dsor
-     $$POPI $Numor
-     $$PUSHI $Result
-     $$OR 1
-     $$POPI $Result
-:NOTIF
-  $$PUSHI $Dsor
-  $$RTR
-  $$POPI $Dsor
-# Until ( Dsor >= TDsor)   
-  $$PUSHI $Dsor
-  $$CMPI $TDsor
-  $$POPI $UNUSED
-  @JGE $DOLOOP1
-# End of until Loop, Result has answer Numor has remainder
-$$PUSHI $Numor
-$$PUSH 0
-$$CMPI $NEGFLAG
-$$POPI $UNUSED
-$$JMPZ $NOTNEG
-$$PUSHI $Result
-$$INV $Result
-$$ADD 1
-$$POPI $Result
-:NOTNEG
-$$PUSHI $Result
-$$PUSHI $RETURN
+@MC2M 0 QVal
+@MC2M 0 Remainder
+@MC2M 0x8000 ReverseBit
+@MC2M 16 Index
+:MainLoop
+@PUSHI Index @CMP 0 @POPNULL
+@JMPZ ExitMainLoop
+    @PUSHI Remainder @RTL @POPI Remainder    # R = R << 1
+    @PUSHI Numerator @ANDI ReverseBit        # Set True if Ith bit is on.
+    @CMP 0 @POPNULL         # If Ith bit is off.
+    @JMPZ BitNotSet
+    #Here Bit is set
+      @PUSH 1
+      @ORI Remainder         # ~ R(0) = N(Index) (IF BitNotSet R(ReverIdx) remains 0)
+      @POPI Remainder
+    :BitNotSet
+    @PUSHI Denominator      # if R >= D
+    @CMPI Remainder         # logic is based on B - A. So Nflag set if A > B bit not set if R >= D
+    @POPNULL
+    @JMPN SkipQSet
+       @PUSHI Denominator @SUBI Remainder @POPI Remainder  # R = R - D
+       # We need to modify just the Ith bit of Qval to be a 1
+       @PUSH 0xFFFF
+       @ANDI ReverseBit          # QVal(indexbit) = 1
+       @ADDI QVal
+       @POPI QVal
+    :SkipQSet
+    @PUSHI ReverseBit @RTR @POPI ReverseBit   # ReverseBit >> 1
+    @DECI Index
+    @JMP MainLoop
+:ExitMainLoop
+@PUSHI NEGFLAG
+@CMP 0
+@POPNULL
+@JMPZ NotNeg
+   @PUSHI QVal
+   @COMP2
+   @POPI QVal
+:NotNeg
+@PUSHI Remainder
+@PUSHI QVal
+@PUSHI RETURN
 @RET
-b0
-b0
-:RETURN
-0
-:Numor
-0
-:Dsor
-0
-:TDsor
-0
-:NEGFLAG
-0
-:Result
-0
-:UNUSED
-0
+:DivideByZero
+@PRTLN "Divide By Zero"
+@PUSHI RETURN
+@RET
+:RETURN 0
+:Numerator 0
+:Denominator 0
+:NEGFLAG 0
+:ReverseBit 0
+:Index 0
+:QVal 0
+:Remainder 0
 :DIVINIT
+ENDBLOCK

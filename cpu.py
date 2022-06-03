@@ -96,7 +96,7 @@ class microcpu:
         return val & (2 ** bits - 1)
 
     def twos_compFrom(self,val,bits):
-        return val
+#        return val
         if (val & (1 << (bits - 1))) != 0:    # Sign bit set
             val = val - ( 2 ** bits)
         return val
@@ -111,7 +111,7 @@ class microcpu:
 
     def raiseerror(self, idcode):
         global GPC, RunMode
-        print("Error Number:", idcode)
+        print("Error Number: %s \n\tat PC:%04x" % (idcode,int(CPU.pc)))
         valid = int(idcode[0:3])
         if RunMode:
             print("At OpCount: %s" % ( self.FindWhatLine(GPC)))
@@ -234,6 +234,11 @@ class microcpu:
             self.mb[sp+1] = self.memspace[newaddress]
         self.mb[0xff] += 1
 
+    def optPUSHS(self, address):
+        # Since we are storing the result in the same stack spot as the address was, no need for overflow checks
+        newaddress = self.fetchAcum(0)
+        self.StoreAcum(0,self.getwordat(newaddress))
+        
     def optPOPNULL(self, address):
         if (address > MAXMEMSP):
             self.raiseerror("010 Invalid Address: %d, optPOPI" % (address))
@@ -274,15 +279,23 @@ class microcpu:
             self.raiseerror("014 Stack underflow, optPOPII")
         self.optPOPI(address)
 
+    def optPOPS(self, notused):
+        if self.mb[0xff] < 2:
+            raiseerror("051 Stack underflow, OptPOPS")
+        newaddress = self.fetchAcum(0)
+        A1 = self.fetchAcum(1)
+        self.putwordat(newaddress,A1)
+        self.mb[0xff] -= 2
+
     def SetFlags(self, A1):
         OF = 0
         ZF = 0
         NF = 0
         CF = 0
-        if ( A1 & 0xFFFF) == 0:
+        B1 = abs(A1) & 0xffff
+        if (B1 & 0xFFFF) == 0:
             ZF = 1
-        if ((A1 & 0x8000) != 0):
-#        or (A1 < 0):
+        if ((A1 & 0xffff) & 0x8000 != 0):            
             NF = 1
         if ((A1 & 0x10000) != 0):
             CF = 1
@@ -292,23 +305,23 @@ class microcpu:
             OF = 1
         self.flags = ZF+(NF<<1)+(CF<<2)+(OF<<3)
 
-    def optCMP(self, address):
-        R1 = address
+    def optCMP(self, asvalue):
+        R1 = asvalue
         R2 = self.fetchAcum(0)
         A1 = R1 - R2
-        self.SetFlags(A1)
+        self.SetFlags(A1 & 0xffff)
 
     def optCMPS(self, address):
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R1 - R2
-        self.SetFlags(A1)
+        self.SetFlags(A1 & 0xffff)
 
     def optCMPI(self, address):
         R1 = self.getwordat(address)
-        R2 = self.fetchAcum(0)
+        R2 = self.fetchAcum(0)        
         A1 = R1 - R2
-        self.SetFlags(A1)
+        self.SetFlags(A1 & 0xffff)
 
 
     def optCMPII(self, address):
@@ -347,11 +360,13 @@ class microcpu:
         self.optADDI(newaddress)
 
     def optSUB(self, invalue):
-        R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        R2 = self.twos_compFrom(invalue,16)
+#       R1 = self.twos_compFrom(self.fetchAcum(0),16)
+#       R2 = self.twos_compFrom(invalue,16)
+        R1 = self.fetchAcum(0)
+        R2 = invalue
         A1 = R1 - R2
         self.SetFlags(A1)
-#        A1 = A1 & 0xffff
+        #        A1 = A1 & 0xffff
         self.StoreAcum(0,A1)
 
     def optSUBS(self, invalue):
@@ -529,7 +544,7 @@ class microcpu:
         if cmd == 6:
             v = self.memspace[address]
             if ( v<31):
-                print("%c"%v)
+                 print("%c"%v)
             else:
                 sys.stdout.write(chr(v))
         if cmd == 11:
@@ -583,7 +598,7 @@ class microcpu:
             v=self.fetchAcum(0) + (self.fetchAcum(1) << 16)
             sys.stdout.write("%d" % v)
         if cmd == 99:
-            sys.stdout.write("\nEND of Code\n")
+            sys.stdout.write("\nEND of Code:(%d Opts)" % GlobalOptCnt )
             sys.exit(address)
         if cmd == 100:
             Debug = not(Debug)
@@ -971,6 +986,7 @@ def DissAsm(start, length, CPU):
             rstring += "SD:(%d)" % CPU.mb[0xff]
                 
             print("%s %s %s" % (OUTLINE,FLAGSTAT, rstring))
+    return i
 
 def getkeyfromval(val,my_dict):
     result = []
@@ -1395,16 +1411,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         highaddress = address
                     if len(key) > 0:
                         address = DecodeStr(key, address, CPU, GlobeLabels, LocalID, LORGFLAG, False)
-#        for store in FBYTELIST:
-#            if len(store) > 0:
-#                key = store[0]
-#                vaddress = store[1]
-#                if key in FileLabels.keys():
-#                    StoreMem[int(vaddress)] = Str2Byte(int(FileLabels[key]) & 0xff)
-#                else:
-#                    CPU.raiseerror("041 B Symbol %s used but never defined." % ( key ))
-#            else:
-#               CPU.raiseerror("042 Symbol %s not in expected format" % ( store))
         for store in FWORDLIST:
             key = store[0]
             vaddress = store[1]
@@ -1430,6 +1436,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
 def debugger():
     global InDebugger,LineAddrList,watchwords
     breakpoints = []
+    startrange = 0
+    stoprange = 0
     redoword = "Null"
     InDebugger = True
     while True:
@@ -1453,11 +1461,15 @@ def debugger():
                     varval = FileLabels[thisword]
                 else:
                     print("[%s] is not found in dictionary" % thisword)
-                    posible = [ val for key, val in FileLabels.items() if thisword in key]
-                    print("%d Possible matches: "% len(posible),posible)
-                    cmdword="Null"
-                    thisword=""
-                    continue
+                    tempdic=[i for i in FileLabels if thisword in i ]
+                    if len(tempdic) == 1:
+                        print("Partial Label Match. Using %s "% tempdic)
+                        varval=FileLabels[tempdic[0]]
+                    else:
+                        print("%d Possible matches: "% len(tempdic), tempdic)
+                        cmdword="Null"
+                        thisword=""
+                        continue
                 if varval == thisword:
                     # Not modified, means not defined.
                     print("ERR %s was not found in dictionary:" % thisword)
@@ -1480,21 +1492,28 @@ def debugger():
             continue
         if cmdword == "d":
             if argcnt > 0:
-                startrange=arglist[0]
+                startrange=int(arglist[0])
                 stoprange=startrange+3
                 if argcnt > 1:
-                    stoprange=arglist[1]
+                    stoprange=int(arglist[1])
                 print("DissAsm: %s - %s" % (startrange,stoprange))
-                DissAsm(arglist[0],stoprange - startrange,CPU)
+                stoprange = DissAsm(arglist[0],stoprange - startrange,CPU)
             else:
-                DissAsm(CPU.pc, 1, CPU)
+                if stoprange != 0:
+                    startrange = stoprange
+                    stoprange = stoprange + 24
+                else:
+                    startrange=CPU.pc
+                    stoprange=1
+                stoprange = DissAsm(startrange, stoprange - startrange, CPU)
+
             continue
         if cmdword == "ps":
             if (CPU.mb[0xff] == 0 ):
                 print("Empty Stack")
                 continue
             print("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
-            for i in range(0,CPU.mb[0xff]*2,2):
+            for i in range(0,min(CPU.mb[0xff]*2,64),2):
                 v = CPU.mb[i] + (CPU.mb[i+1] << 8)
                 SInfo = "%04x:" % v
                 if ( v > 0 and v < (len(CPU.memspace)-2)):
@@ -1507,11 +1526,11 @@ def debugger():
         if cmdword == "p":
             if argcnt > 0:
                 if argcnt == 1:
-                    startv=arglist[0]
+                    startv=int(arglist[0])
                     stopv=startv + 1
                 else:
-                    startv=arglist[0]
-                    stopv=arglist[1] + 1
+                    startv=int(arglist[0])
+                    stopv=int(arglist[1]) + 1
                     if stopv < startv:
                         stopv = startv + stopv + 1
                 for v in range(startv,stopv):
@@ -1529,7 +1548,7 @@ def debugger():
                     mvalue = Str2Byte(iad)
                     CPU.memspace[maddr] = mvalue
                     maddr += 1
-                DissAsm(arglist[0],1,CPU)
+                DissAsm(int(arglist[0]),1,CPU)
             else:
                 print("ERR: Need to specify address an values to insert")
             continue
@@ -1537,17 +1556,18 @@ def debugger():
             startaddr=0
             stopaddr=30
             if argcnt > 0:
-                v=arglist[0]
+                v=int(arglist[0])
                 startaddr = 0
                 for i in LineAddrList:
                     if i[1] >= v:
                         if len(i) > 1:
                             if i[2] == ActiveFile:
-                                startaddr = i[0]
+                                startaddr = i[0]                                
                                 break
+                            startaddr = i[0]                            
                 stopaddr=startaddr + 30
                 if argcnt > 1:
-                    v=arglist[1]
+                    v=int(arglist[1])
                     for i in LineAddrList:
                         if i[1] >= v:
                             if len(i) > 1:
@@ -1562,11 +1582,11 @@ def debugger():
         if cmdword == "hex":
             if argcnt > 0:
                 if argcnt == 1:
-                    startv=arglist[0]
+                    startv=int(arglist[0])
                     stopv=startv + 16
                 else:
-                    startv=arglist[0]
-                    stopv=arglist[1] + 1
+                    startv=int(arglist[0])
+                    stopv=int(arglist[1]) + 1
                     if stopv < startv:
                         stopv = startv + stopv + 1
                 hexdump(startv,stopv,CPU)
@@ -1599,6 +1619,8 @@ def debugger():
                 steplimit = arglist[0]
                 if argcnt > 1:
                     maxsteps = arglist[1]
+                else:
+                    maxsteps = 1
             while CPU.pc != steplimit and maxsteps > 0:
                 if CPU.pc in breakpoints:
                     print("Break Point %04x" % CPU.pc)
@@ -1660,7 +1682,6 @@ if __name__ == '__main__':
 
     CPUCNT = 0
     ListOut = False
-    multistep = 100000
     breakafter = []
     CPU.pc = 0
     watchwords = []
@@ -1670,7 +1691,6 @@ if __name__ == '__main__':
     files = []
     OptCodeFlag = False
     UseDebugger = False
-    multistep = -1
     for i, arg in enumerate(sys.argv[1:]):
         if skipone:
             skipone = False
@@ -1698,8 +1718,6 @@ if __name__ == '__main__':
                 Remote = not(Remote)
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter+=(arg)
-            elif arg == "-m":
-                multistep=arg
             else:
                 files.append(arg)
     Entry = 0
@@ -1746,27 +1764,4 @@ if __name__ == '__main__':
         debugger()
     else:
         while True:
-            if multistep == 0:
-                break
-            else:
-                if multistep > 0:
-                    multistep -= 1
-                if CPU.pc in breakafter:
-                    DissAsm(CPU.pc,6,CPU)
-                    hexdump(CPU.pc,CPU.pc + 16, CPU)
-                    CPU.rdumpt()
-                if len(watchwords) > 0 and Debug:
-                    for ww in watchwords:
-                        if hasattr(ww,'__len__'):
-                            nm = CPU.getwordat(FileLabels['ww'])
-                        else:
-                            nv = CPU.getwordat(ww)
-                        sys.stdout.write("W:%04x[%04x(%s)] " % ( ww,nv,nv))
-                    print("")
-                if len(watchbytes) > 0 and Debug:
-                    for wb in watchwords:
-                        nv = CPU.memspace[wb]
-                        sys.stdout.write("B:%04x[%02x(%s)] " % ( ww,nv,nv))
-                    print("")
-                CPU.evalpc()
-#w 0x136 0x137 0x138 0x139 0x13a 0x13b 0x13c 0x13d 0x13e 0x13f 0x140 0x141
+            CPU.evalpc()

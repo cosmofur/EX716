@@ -20,7 +20,8 @@ M Fmemchr @PUSH %1 @PUSHI %2 @PUSH %3 @CALL memchr
 G memcmp
 M FmemcmpV @PUSH %1 @PUSH %2 @PUSH %3 @CALL memcmp
 M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
-
+G itos
+G stoi
 #
 #
 
@@ -259,6 +260,119 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
        @PUSH 0
        @PUSHI mcmp_return1
        @RET
+
+#
+# stoi string to integer.
+# On Stack STRPTR.
+#
+:stoi
+@POPI siReturn1 @POPI siStrPtr @PUSHI siStrPtr
+@CALL strlen @POPI siLength       # Set siLength to length of string.
+@MC2M 0 siResult @MC2M 1 siMulti  # Zero out result and set initial multiplier to 1
+:siMainLoop
+# While siLength != 0
+  @PUSHI siLength @CMP 0 @JMPZ siEndLoop
+  # Note we did not POPNULL after pushing siLength so it is still there.
+  @ADDI siStrPtr    # Add in siStrPtr so TOS is pointer to an siLength index of string.
+  @POPS             #  @StrPtr[siLength]
+  @SUB 0x30         # ASCII code to number subtract 0x30
+  @PUSHI siMulti    # Multiply by index^10 
+  @CALL MUL  
+  @ADDI siResult @PUSHI siResult   # Result = str[index]*siMulti + Result
+  @PUSH 10 @PUSH siMulti @CALL MUL # siMulti = siMulti*10
+  @POPI siMulti
+  @DECI siLength
+@JMP siMainLoop
+:siEndLoop
+@POPNULL
+@PUSHI siResult
+@PUSHI siReturn1
+@RET
+:siReturn1 0
+:siResult 0
+:siMulti 0
+:siLength 0
+:siStrPtr 0
+
+# Now integer to string
+# On stack, StrPtr, InValue, Base
+# Push params StrPtr (of at least 6 characters length to support "65535" b0
+# Then the integer value
+:itos
+@POPI isReturn1
+@POPI isBase
+@POPI isInvalue
+@POPI isStrPtr
+# Fill workBuff with spaces for now
+@MC2M 0x3000 isWorkBuff   # We preload first digit as zero, as this lets us skip the zero test later.
+@MC2M 0x0 isWorkBuff+2    # We haven't used this too often but this sort of simple math is allowed
+@MC2M 0x0 isWorkBuff+4    # But only for lables and there can't be a space around the '+' (or '-')
+#
+@MM2M isInvalue isWorkVal
+# Handle Negatives
+@MC2M 0 isNegFlag
+@PUSH 0 @CMPI isWorkVal @POPNULL
+@JGE isNotNeg        # JGE means last cmp was NOT 'N' and NOT 'Z'
+  # Is negative
+  @MC2M 1 isNegFlag
+  @PUSHI isWorkVal @COMP2 @POPI isWorkVal   # isWorkVal=abs(isWorkVal)
+:isNotNeg
+@MC2M isWorkBuff isRevIndex      # We'll first go left to right, so index starts at zero. We'll reverse it later.
+# While WorkVal > 0
+:isMainLoop
+@PUSHI isWorkVal
+@CMP 0 @POPNULL
+@JMPZ EndWhileLoop
+  @PUSHI isWorkVal
+  @PUSHI isBase
+  @CALL DIV    # Value / 10 get both result and remainder
+  @POPI isWorkVal   # isWorkVal=INT(isWorkVal/base)
+  @AND 0x0f         # We only handle cases were bases are <=16  
+  @ADD 0x30         # TOS is digit value so add 0x30 to turn it ASCII
+  @CMP 0x39         # Now worry about Hex which means jump to Letters is val > 9
+  @JGT isNotHex     # Only hex numbers could be over 0x39 so map them to A-F
+     @ADD  0x7      # "A" is 0x41 so add  to turn 0x3A to 0x41
+  :isNotHex
+  @POPII isRevIndex  # Saves ASCII
+  @INCI isRevIndex
+  @JMP isMainLoop
+:EndWhileLoop
+# At this point isWorkBuff will have in reverse order the ASCII number. Max of 5 digits.
+#
+# Check if Sign flag was set.
+@PUSH 0 @CMPI isNegFlag @POPNULL
+@JMPZ isGoReverseDigits
+# Else add Neg flag
+  @PUSH 0x2d   # 2d == "-" Insert it as first character of return string
+  @POPII isStrPtr
+  @INCI isStrPtr
+:isGoReverseDigits
+@DECI isRevIndex    # RevIndex will be once past the end of string so pull it back
+:isReverseLoop
+# While isRevIndex > isWorkBuff
+  @PUSHI isRevIndex
+  @CMP isWorkBuff      # note WorkBuff is a lable location, not a variable
+  @POPNULL
+  @JGT isExitReverseLoop
+  @PUSHII isRevIndex
+  @POPII isStrPtr
+  @PUSH 0
+  @POPII isRevIndex     # After copying we zero out the character so in next loop only the 'lower' byte will count
+  @INCI isStrPtr
+  @DECI isRevIndex
+  @JMP isReverseLoop
+:isExitReverseLoop
+  @PUSHI isReturn1
+  @RET
+:isReturn1 0
+:isBase 0
+:isInvalue 0
+:isStrPtr 0
+:isWorkBuff 0 0 0 0 0 0 0 0
+:isNegFlag 0
+:isWorkVal 0
+:isRevIndex 0
+
 :ls_index1 0
 :ls_strptr 0
 :ls_CVal1 0
@@ -285,7 +399,7 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 :mcmp_str1 0
 :mcmp_str2 0
 :mcmp_index1
-:SkipStrLib
-
 
 ENDBLOCK
+:SkipStrLib
+
