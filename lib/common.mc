@@ -14,47 +14,49 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =DUP 2
 =PUSHI 3
 =PUSHII 4
-=POPNULL 5
-=SWP 6
-=POPI 7
-=POPII 8
-=CMP 9
-=CMPS 10
-=CMPI 11
-=CMPII 12
-=ADD 13
-=ADDS 14
-=ADDI 15
-=ADDII 16
-=SUB 17
-=SUBS 18
-=SUBI 19
-=SUBII 20
-=OR 21
-=ORS 22
-=ORI 23
-=ORII 24
-=AND 25
-=ANDS 26
-=ANDI 27
-=ANDII 28
-=JMPZ 29
-=JMPN 30
-=JMPC 31
-=JMPO 32
-=JMP 33
-=JMPI 34
-=CAST 35
-=POLL 36
-=RRTC 37
-=RLTC 38
-=RTR 39
-=RTL 40
-=INV 41
-=COMP2 42
-=FCLR 43
-=FSAV 44
-=FLOD 45
+=PUSHS 5
+=POPNULL 6
+=SWP 7
+=POPI 8
+=POPII 9
+=POPS 10
+=CMP 11
+=CMPS 12
+=CMPI 13
+=CMPII 14
+=ADD 15
+=ADDS 16
+=ADDI 17
+=ADDII 18
+=SUB 19
+=SUBS 20
+=SUBI 21
+=SUBII 22
+=OR 23
+=ORS 24
+=ORI 25
+=ORII 26
+=AND 27
+=ANDS 28
+=ANDI 29
+=ANDII 30
+=JMPZ 31
+=JMPN 32
+=JMPC 33
+=JMPO 34
+=JMP 35
+=JMPI 36
+=CAST 37
+=POLL 38
+=RRTC 39
+=RLTC 40
+=RTR 41
+=RTL 42
+=INV 43
+=COMP2 44
+=FCLR 45
+=FSAV 46
+=FLOD 47
 
 # Cast and Poll Codes
 =CastPrintStrI 1
@@ -79,10 +81,12 @@ M PUSH b$PUSH %1
 M DUP b$DUP
 M PUSHI b$PUSHI %1
 M PUSHII b$PUSHII %1
+M PUSHS b$PUSHS
 M POPNULL b$POPNULL
 M SWP b$SWP
 M POPI b$POPI %1
 M POPII b$POPII %1
+M POPS b$POPS
 M CMP b$CMP %1
 M CMPS b$CMPS
 M CMPI b$CMPI %1
@@ -116,7 +120,7 @@ M RLTC b$RLTC
 M RTR b$RTR
 M RTL b$RTL
 M INV b$INV
-M COMP2 b$COMP2 %1
+M COMP2 b$COMP2
 M FCLR b$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
 M FSAV b$FSAV
 M FLOD b$FLOD
@@ -153,6 +157,8 @@ M PRTHEXII $$PUSH CastPrintHexII $$CAST %1 @POPNULL
 M PRTIC @PRT " " $$PUSH CastPrintIntI $$CAST %1 @POPNULL @PRT " "
 # Print string starting at address
 M PRTS $$PUSH CastPrintStrI @CAST %1 @POPNULL
+# Print string starting at the address that is stored AT the given pointer.
+M PRTSI $$PUSHI %1 $$POPI %0ptr $$PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
 # Print value Pointer is pointing at.
 M PRTII $$JMP $%0Jump1 :%0V1 0 :%0Jump1 $$PUSHII %1 $$POPI $%0V1 @PRTTOP @POPNULL
 # Print value with sign '-' if negative
@@ -205,7 +211,7 @@ M JifF @PUSH 0 @CMPI %1 @POPNULL @JNZ %0Skip @JMP %2 :%0Skip
 M ForIfA2B \
    @PUSH %2 @POPI %1 \
    @MC2M %3 %4_stop \
-   @PUSH %1 \
+   @PUSHI %1 \
    @CMPI %4_stop \
    @POPNULL \
    @JMPZ %4_exit \
