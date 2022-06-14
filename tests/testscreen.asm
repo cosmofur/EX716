@@ -1,14 +1,28 @@
 I common.mc
-L mul.ld
-L string.asm
-L screen.asm
+L screen2.asm
+@CALL WinInit
 @CALL WinClear
-@PUSH 5
-@PUSH 10
-@PUSH HelloWorld
+@PUSH 10 @PUSH 5     # Spot is down 5 lines, and over 10 characters
+@PUSH String
 @CALL WinWrite
-@PRT "Text Written"
-#@CALL WinRefresh
-@END
-:HelloWorld "Hello World" b0
+@CALL WinRefresh
+@PUSH 10 @PUSH 6
+@PUSH String
+@CALL WinWrite
+@CALL WinRefresh
+@PUSH 10 @PUSH 7
+@PUSH String
+@CALL WinWrite
+@CALL WinRefresh
+@PUSH 10 @PUSH 8
+@PUSH String
+@CALL WinWrite
+@CALL WinRefresh
+@PUSH 10 @PUSH 5
+@PUSH String2
+@CALL WinWrite
+@CALL WinRefresh
 
+@END
+:String "Hello World" b0
+:String2 "GoodBye Now" b0

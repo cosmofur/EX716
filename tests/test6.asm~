@@ -1,0 +1,8 @@
+I common.mc
+=newval oldval+100
+@PRT "Start:"
+@PRTREF newval
+@PRT " - "
+@PRTI oldval
+@END
+:oldval 0

@@ -125,62 +125,63 @@ M FCLR b$FCLR                  # the F group is for clearing, saving, and loadin
 M FSAV b$FSAV
 M FLOD b$FLOD
 
-M MC2M $$PUSH %1 $$POPI %2
-M MM2M $$PUSHI %1 $$POPI %2
-M MMI2M $$PUSHII %1 $$POPI %2
-M MM2IM $$PUSHI %1 $$POPII %2
-M JMPNZ $$JMPZ $%01 $$JMP %1 :%01        # A != B
-M JMPNZI $$JMPZ $%01 $$JMPI %1 :%0
-M JMPZI @JMPNZ $%01 $$JMPI %1 :%0
-M JMPNC $$JMPC $%0SKIP $$JMP %1 :%0SKIP  # No Carry
-M JMPNO $$JMPO $%01 $$JMP %1 :%01        # No Overflow
-M JLT $$JMPN %1                          # A < B
-M JLE $$JMPN %1 $$JMPZ %1                # A <= B
-M JGE $$JMPZ %1 $$JMPN $%01 $$JMP %1 :%01   # A >= B
-M JGT $$JMPZ $%01 $$JMPN $%01 $$JMP %1 :%01 # A > B
-M CALL $$PUSH $%01 $$JMP %1 :%01
-M RET $$POPI $%0D $$JMPI $%0D :%0D 0
-M JNZ $$JMPZ $%0J $$JMP %1 :%0J
-M JZ $$JMPZ %1                           # Just an abbriviation as its really commonly used.
+M MC2M @PUSH %1 @POPI %2
+M MM2M @PUSHI %1 @POPI %2
+M MMI2M @PUSHII %1 @POPI %2
+M MM2IM @PUSHI %1 @POPII %2
+M JMPNZ @JMPZ $%01 @JMP %1 :%01        # A != B
+M JMPNZI @JMPZ $%01 @JMPI %1 :%0
+M JMPZI @JMPNZ $%01 @JMPI %1 :%0
+M JMPNC @JMPC $%0SKIP @JMP %1 :%0SKIP  # No Carry
+M JMPNO @JMPO $%01 @JMP %1 :%01        # No Overflow
+M JLT @JMPN %1                          # A < B
+M JLE @JMPN %1 @JMPZ %1                # A <= B
+M JGE @JMPZ %1 @JMPN $%01 @JMP %1 :%01   # A >= B
+M JGT @JMPZ $%01 @JMPN $%01 @JMP %1 :%01 # A > B
+M CALL @PUSH $%01 @JMP %1 :%01
+M RET @POPI $%0D @JMPI $%0D :%0D 0
+M JNZ @JMPZ $%0J @JMP %1 :%0J
+M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-M PRTLN $$JMP $%01 :%0M %1 b0 :%0NL 10 b0 :%01 $$PUSH CastPrintStrI $$CAST $%0M $$CAST $%0NL @POPNULL
+M PRTLN @JMP $%01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0M @CAST $%0NL @POPNULL
 # Print simple test message with no variables no linefeed
 M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
 # Print value of variable
-M PRTI $$PUSH CastPrintIntI $$CAST %1 @POPNULL
+M PRTI @PUSH CastPrintIntI @CAST %1 @POPNULL
 # Print value of variable in Hex
-M PRTHEXI $$PUSH CastPrintHexI $$CAST %1 @POPNULL
+M PRTHEXI @PUSH CastPrintHexI @CAST %1 @POPNULL
 # Print value Pointer is pointing at in Hex
-M PRTHEXII $$PUSH CastPrintHexII $$CAST %1 @POPNULL
+M PRTHEXII @PUSH CastPrintHexII @CAST %1 @POPNULL
 # Print value of variable but surrounded with spaces for readability
-M PRTIC @PRT " " $$PUSH CastPrintIntI $$CAST %1 @POPNULL @PRT " "
+M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 # Print string starting at address
-M PRTS $$PUSH CastPrintStrI @CAST %1 @POPNULL
+M PRTS @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print string starting at the address that is stored AT the given pointer.
-M PRTSI $$PUSHI %1 $$POPI %0ptr $$PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+M PRTSI @PUSHI %1 @POPI %0ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
 # Print value Pointer is pointing at.
-M PRTII $$JMP $%0Jump1 :%0V1 0 :%0Jump1 $$PUSHII %1 $$POPI $%0V1 @PRTTOP @POPNULL
+M PRTII @PUSHII %1 @POPI %0Store \
+        @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
 # Print value with sign '-' if negative
-M PRTSGN $$PUSH CastPrintSignI $$CAST %1 @POPNULL
+M PRTSGN @PUSH CastPrintSignI @CAST %1 @POPNULL
 # Print value in binary
-M PRTBIN $$PUSH CastPrintBinI $$CAST %1 @POPNULL
+M PRTBIN @PUSH CastPrintBinI @CAST %1 @POPNULL
 # Print Line feed
-M PRTNL $$JMP $%01 :%0NL 10 b0 :%01 $$PUSH CastPrintStrI $$CAST $%0NL @POPNULL
+M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0NL @POPNULL
 # Print a space by itself
-M PRTSP $$JMP $%01J :%0M " " b0 :%01J $$PUSH CastPrintStrI $$CAST $%0M @POPNULL
+M PRTSP @JMP $%01J :%0M " " b0 :%01J @PUSH CastPrintStrI @CAST $%0M @POPNULL
 # Print string start at address
-M PRTSTRI $$PUSH CastPrintStrI $$CAST %1 @POPNULL
+M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print immediate value (usefull to print value of pointer)
-M PRTREF $$PUSH CastPrintInt $$CAST %1 @POPNULL
+M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
 M PRTTOP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PUSHI %0M1 @PRTI %0M1
 # Read an Integer from keyboard
-M READI $$PUSH PollReadIntI $$POLL %1 @POPNULL
+M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
 M PROMPT @PRT %1 @READI %2
 # End Program
-M END $$PUSH 99 $$CAST 0
+M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack
 M TOP @DUP @POPI %1
 # Print a debug dump of the stack
@@ -188,12 +189,21 @@ M StackDump @JMP %0J :%0J @PUSH 102 @CAST 0 @POPNULL
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
-M DECI @PUSHI %1 @SUB 1 @POPI %1
+M DECI @PUSH 1 @SUBI %1 @POPI %1
+# Adds two to variable
+M INC2I @PUSHI %1 @ADD 2 @POPI %1
+# Subtracts one from variable
+M DEC2I @PUSH 2 @SUBI %1 @POPI %1
 
 # The Following are some convient macros to simplify some of the most common logic and jump functions
 # Math Group,   3 params A, B and C all are simple memeory addresses or lables.
+# Unlike nor 'SUB' the notion of B From A makes more sense here.
 M ADDAB2C @PUSHI %1 @ADDI %2 @POPI %3
-M SUBAB2C @PUSHI %1 @SUBI %2 @POPI %3
+M SUBAB2C @PUSH %2 @SUBI %1 @POPI %3
+# Math Group 3 Params A # and C to add/sub constant # to A and save to C
+M ADDAV2C @PUSHI %1 @ADD %2 @POPI %3
+M SUBAV2C @PUSH %2 @SUBI %1 @POPI %3
+
 # Logical IF's results compair A and B and save T(1)/F(0) to C
 # This is for simplicity and cases where the result matters mutlitple times or later then when the CMP was done.
 M ifAneB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JMPZ %0Skip @PUSH 1 @POPI %3 :%0Skip
@@ -236,7 +246,20 @@ M NextNamed \
    @JMP %2Loop1 \
    :%2_test 0 \
    :%2_stop 0 \
-   :%2_exit 
+   :%2_exit
+# A variable of NextNamed will be NextStep which adds a 'step' value for
+# cases where incremnting by 1 is not sufficent.
+# User it "NextStep IndexVar StepValue LoopName"
+M NextStep \
+  @PUSHI %1 \
+  @ADD %2 \
+  @CMPI %3_stop \  
+  @POPI %1 \
+  @JMPZ %3_exit \
+  @JMP %3Loop1 \
+  :%3_test 0 \
+  :%3_stop 0 \
+  :%3_exit  
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
 

@@ -114,11 +114,11 @@ class microcpu:
         print("Error Number: %s \n\tat PC:%04x" % (idcode,int(CPU.pc)))
         valid = int(idcode[0:3])
         if RunMode:
-            print("At OpCount: %s" % ( self.FindWhatLine(GPC)))
+            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
         if not InDebugger:
             sys.exit(valid)
         else:
-            print("At OpCount: %s" % ( self.FindWhatLine(GPC)))
+            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
             debugger()
 
     def loadat(self, location, values):
@@ -362,8 +362,8 @@ class microcpu:
     def optSUB(self, invalue):
 #       R1 = self.twos_compFrom(self.fetchAcum(0),16)
 #       R2 = self.twos_compFrom(invalue,16)
-        R1 = self.fetchAcum(0)
-        R2 = invalue
+        R2 = self.fetchAcum(0)
+        R1 = invalue
         A1 = R1 - R2
         self.SetFlags(A1)
         #        A1 = A1 & 0xffff
@@ -812,6 +812,8 @@ def GetQuoted(inline):
                 outputtext += ord(32)
             elif c == '0':
                 outputtext += '\0'
+            elif c == 'b':
+                outputtext += '\b'
             else:
                 outputtext += c
             inescape = False
@@ -1261,7 +1263,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     print("%04x: M-%s> %s : %s" % (address, GlobalLineNum, line, MacroLine[:16]))
 
             if SkipBlock:
-                print("in Skip block: %s" % (line))
                 if line != "ENDBLOCK":
                     line = ""
                     continue
@@ -1290,7 +1291,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if macname in MacroData:
                         MacroLine = MacroData[macname] + " ENDMACENDMAC " + MacroLine
                         if  cpos < len(line):
-                            varcnt = 0
+                            varcnt = 0                            
                             for i in range(MacroPCount[macname]):
                                 (key,size) = nextword(line[cpos:])
                                 varcnt += 1
@@ -1308,7 +1309,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         line = ""
                     else:
                         print("Missing: ", macname)
-                        print("All Macros",MacroData)
                         CPU.raiseerror("044  Macro %s is not defined" % (macname))
 
                 elif line[0] == ":":
@@ -1325,9 +1325,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     (key,size) = nextword(line[1:])
                     line = line[size+1:]
                     (value,size) = nextword(line)
-                    if (not(value[0:1].isdecimal())):
+                    if (not(value[0:len(value)].isdecimal())):
                         value = DecodeStr(value, address, CPU, GlobeLabels, LocalID, LORGFLAG, True)
-#                        value = FileLabels[IsLocalVar(value[1:], GlobeLabels, LocalID, LORGFLAG)]
                     FileLabels.update({IsLocalVar(key, GlobeLabels, LocalID, LORGFLAG): value})
                     line = line[size+1:]
                     continue
@@ -1615,6 +1614,7 @@ def debugger():
         if cmdword == "c":
             steplimit = -1
             maxsteps = 1000
+            minsteps = 1
             if argcnt > 0:
                 steplimit = arglist[0]
                 if argcnt > 1:
@@ -1622,11 +1622,12 @@ def debugger():
                 else:
                     maxsteps = 1
             while CPU.pc != steplimit and maxsteps > 0:
-                if CPU.pc in breakpoints:
+                if CPU.pc in breakpoints and minsteps != 1:
                     print("Break Point %04x" % CPU.pc)
                     DissAsm(CPU.pc, 1, CPU)
                     break
                 CPU.evalpc()
+                minsteps = 0
             continue
         if cmdword == "r":
             CPU.pc = 0

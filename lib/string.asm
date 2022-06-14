@@ -1,5 +1,7 @@
 # String Functions
 ! STRING_DONE
+L mul.ld
+L div.ld
 M STRING_DONE 1
 # In the function comments, %R meens this value is used by refrence (ptr) and %V means pass by value.
 
@@ -147,7 +149,9 @@ G stoi
 	@CALL strlen
 	@PUSHI scat_str1_in
 	@ADDS  # Add length to start pos of str1 to get indert point.
-	@SUB 1
+	@PUSH 1
+	@SWP   # Normal SUB is B-A, so swap it around
+	@SUBS
 	@POPI scat_index1
 :strcat_loop1
 	@PUSHII scat_index2
@@ -275,7 +279,9 @@ G stoi
   # Note we did not POPNULL after pushing siLength so it is still there.
   @ADDI siStrPtr    # Add in siStrPtr so TOS is pointer to an siLength index of string.
   @POPS             #  @StrPtr[siLength]
-  @SUB 0x30         # ASCII code to number subtract 0x30
+  @PUSH 0x30        
+  @SWP              # Normal SUB is B-A so swap order
+  @SUBS             # ASCII code to number subtract 0x30
   @PUSHI siMulti    # Multiply by index^10 
   @CALL MUL  
   @ADDI siResult @PUSHI siResult   # Result = str[index]*siMulti + Result

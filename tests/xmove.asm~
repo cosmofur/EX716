@@ -1,0 +1,16 @@
+I common.mc
+L screen2.asm
+
+@CALL WinInit
+@CALL WinClear
+@MC2M 0 KeyIn
+M READC @PUSH PollReadCharI @POLL %1 @POPNULL
+:MainLoop
+  @READC KeyIn
+  @PUSHI KeyIn
+  @PRTI KeyIn
+  @CMP 0x001b
+  @JMPZ Exitloop
+  @JMP MainLoop
+:ExitLoop
+@END

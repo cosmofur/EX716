@@ -1,29 +1,18 @@
 I common.mc
-L lmath.asm
-@PRT "Start of Math: A:"
-@PRTHEXI APTR_HIGH
-@PRTHEXI APTR
-@PRT " B:"
-@PRTHEXI BPTR_HIGH
-@PRTHEXI BPTR
-@PRT " "
-@PUSH APTR
-@PUSH CPTR
-@CALL RTL32
-@PRTHEXI CPTR_HIGH
-@PRTHEXI CPTR_LOW
+L mul.ld
+L div.ld
+L string.asm
+@MC2M 1000 NumVal
+@MC2M 2 Base
+@PUSH StrPtr
+@PUSHI NumVal
+@PUSHI Base
+@CALL itos
+@PRT "Result: "
+@PRTS StrPtr
 @PRTNL
 @END
-:APTR
-0x0082
-:APTR_HIGH
-0x8000
-:BPTR
-0x0002
-:BPTR_HIGH
-0x0000
-:CPTR
-:CPTR_LOW
-0
-:CPTR_HIGH
-0
+:NumVal 0
+:Base 0
+:StrPtr 0 0 0 0 0 0 0 0
+

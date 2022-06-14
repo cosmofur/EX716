@@ -1,0 +1,17 @@
+You need the EX716 package from github, as well as a recent version of python3
+
+First make sure you have the basic Python packages installed using your OS's package manager, such as apt or yum.
+If you run into an issue where a python script fails to run due to a missing package, just take note of the
+missing modules name and install it with the package manager. 
+
+It maybe simplist to install a python 'venv' this will allow you to experiement and not affect the default OS version of python.
+
+From a command prompt:
+
+python3 -m venv ex716-working
+source ex716-working/bin/activate
+(If using Windows CMD mode rather than some flavor of Linux, you could try ex716-working\Scripts\activate.bat)
+
+the install with PIP the following modules
+
+python3 -m pip install numpy rpdb readchar 

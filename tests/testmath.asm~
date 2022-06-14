@@ -1,0 +1,14 @@
+I common.mc
+L div.ld
+@PUSH 12
+@PUSH 4
+@CALL DIV
+@PRTTOP
+@POPNULL
+@PRTSP
+@PRTTOP
+@PRTNL
+@END
+
+
+

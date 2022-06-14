@@ -23,9 +23,9 @@ A Physical description of a non existent CPU:
 
            External hardware  ports would include 48-64 pin package.
                     24 bit data bus (could be serialized or split into 3 read cycles of 8 bits) as the most common
-                    'instruction read' is a 8b optcode followed by 16b paramater. Normal memory reads would use 16b
+                    'instruction read' is a 8b opcode followed by 16b parameter. Normal memory reads would use 16b
                     16 bit address bus.
-                    A possible external page register could be tied to an IO chanel to provide some sort of larger memory.
+                    A possible external page register could be tied to an IO channel to provide some sort of larger memory.
                     read/write/ready Flags: To support external memory
                     Data/Memory Flag: To support specialized Data CAST POLL instructions
                     Chip Disable Flag: To support DMA hardware.
@@ -44,7 +44,7 @@ A Physical description of a non existent CPU:
               Instructions that do not have an explicit destination for its results will default to
               saving the result in the Accumulator which is also the top of HW stack.
 
-              The Majority of the instructions are an 8 bit optcode (OPT) followed by a 16 bit
+              The Majority of the instructions are an 8 bit opcode (OPT) followed by a 16 bit
               parameter.(PRM) (For efficiency a read cycle that reads 24 bits as the Instruction Load
               state makes sense)
 
@@ -61,10 +61,13 @@ A Physical description of a non existent CPU:
                         that is the Address where the value is stored or written to.  Require 2 additional read/write
                         cycles to fetch or put value.
 
-                        Stack: The top two numbers on the stack will both be used as
-                        values and for OPTs that return a numeric result, they will both be replaced by a single
-                        number. PRM is not read or used.  If determined early enough could skip the PRM
-                        read, otherwise takes same number of cycles are Direct.
+                        Stack: The top two numbers on the stack will
+                        both be used as values and for OPTs that
+                        return a numeric result, they will normally
+                        both be replaced by a single number. PRM is
+                        not read or used.  If determined early enough
+                        could skip the PRM read, otherwise takes same
+                        number of cycles as Direct.
 
               Instruction 'Groups' Most instructions are in groups where the names of otherwise
               identical functions will vary based on the Addressing Mode it is being used with.
@@ -83,14 +86,15 @@ A Physical description of a non existent CPU:
               Groups:
 
               PUSH
-                PUSH, PUSHI, PUSHII (No 'S' version)
+                PUSH, PUSHI, PUSHII, PUSHS
 
-                Saves Value to top of HW stack.
+                Saves Value to top of  HW stack. 
 
               POP
-                POPI, POPII (No 'S' or Direct versions)
+                POPI, POPII, POPS
 
-                Removes top of HW stack and stores it at target address
+                Removes top of HW stack and stores it at target address (POPS uses top of stack
+                as address and second item on stack as value to be POP'ed both are removed from stack) 
 
               CMP
                 CMP, CMPI, CMPII, CMPS
@@ -195,7 +199,7 @@ A Physical description of a non existent CPU:
              
                              Invert then adds one to bits of top of stack, also known as the 2's compliment. When
                 2' compliment is applied to a number, negative numbers have a natural format that
-                works positive numbers without additional hardware logic required.
+                works with positive numbers without additional hardware logic required.
 
 
 The 'Macro Assembler'.
@@ -221,7 +225,7 @@ The main logic loop of the assembler is:
                 Numeric data, in decimal, octal, hex or binary formats.
                 Quoted text is saved as bytes with some support for common \'s codes like \n for newline.
 
-                Big part of the word is handled by the 'One Letter' codes, which are.
+                Big part of the work is handled by the 'One Letter' codes, which are.
 
                     '.' number    :  Sets the active address to number, also sets start address. You can have multiple
                                      '.' entries in a soruce file to mark off diffrent blocks of memory. If you use any
@@ -232,8 +236,8 @@ The main logic loop of the assembler is:
                     ':' Label     :  Unlike others assemblers labels are identified with a proceeding ":"
                     '@' Macro     :  Executes Macro, %1-%9 (max) are the arguments, %0 is unique ID
                    '=' Label Val :  Assigns a fixed 16b numeric value to a label.
-                                     Lables and Macros do not share dictionary space, so you can a Label and Macro with
-                                     the same names, but mean diffrent things.
+                                     Lables and Macros do not share dictionary space, so you
+                                     can reuse a Label and Macro with the same names, but mean diffrent things.
                     'P' Print line:  Print rest of line for logging or debugging, at assembly time.
                     '!' Macro     :  The 'only' conditional logic for the Macro system, if the named
                                      Macro is already defined, then skip forward until ENDBLOCK, meant
@@ -245,7 +249,7 @@ The main logic loop of the assembler is:
                                      variables for each instance of the Macro called.
                     'G' Label        Defines a Label as Global, All the callable addresses defined
                                      inside a library file, need to be declared with 'G'
-                    Number           16 bit number, set to current inserting address.
+                    Number           16 bit number, save to current working address.
                     0xNumber         Hex number
                     0oNumber         Octal number
                     0bNumber         Binary (01) number
@@ -259,8 +263,8 @@ The main logic loop of the assembler is:
 
                     "text"           Ascii text will be copied to memory as bytes, you have to add a "b0" to terminate.
 
-And that's it! All the opcodes along with basic common quality of life macros, are defined in the Include file named common.mc combined with
- CPU.json
+And that's it! All the opcodes along with basic common quality of life macros, are defined in
+ the Include file named common.mc combined with  CPU.json
 
 In the common.mc are some extra Macros that make programming easier. All the following are simple Macros and it maybe
 worth some time reading through common.mc to see how they are implimented.
@@ -317,8 +321,8 @@ The following are logic tests that save logic tests results as True ( 1 ), or fa
 @ifAleB2C %1 %2 %3 : C if A <= B
 @ifAgeB2C %1 %2 %3 : C if A >= B
 Combined with these 'if' macros, the following 'JUMPS' are based on the result saved in 'C'
-@JifT %1 %2        : Jump to %2 if [%1] == true
-@JifF %1 %2        : Jump to %2 if [%1] == false
+@JifT %1 %2        : Jump to %2 if [%1] == 1(true)
+@JifF %1 %2        : Jump to %2 if [%1] == 0(false)
 
 The following Macro provides a way to do a simple for loop over a fixed range. This is a pretty high
 level function for such a simple macro language, but it does require that each FOR loop be given a
@@ -343,8 +347,7 @@ Both types FOR loop macros require a terminating 'NextName' to mark the end of t
 The For loops Can be nested but use unique '%4' labels
 
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
-is executed. The output of the debug,
-Output of debug listed is in format
+is executed. The output of the debug, Output of debug listed is in format
 
 For PRM type commands:
 Hex Address  OptCode  PRM[PRM]->[[PRM]]   Flags SP:Stack Depth
@@ -369,7 +372,7 @@ sub-directories in the current working directory ./lib/ and ./test/
 Optional Command Line Arguments:
 
 -c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There
-         is no runtime performance benefit to this 'compilation' bit the output will be just spaces and hex digits so it might
+         is no runtime performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might
          compress better and certainly would hide the program logic for 'security though obscurity' type distribution. Also
           object formated input files 'Might' load a bit faster, as the file loader has less to do.
 
@@ -490,7 +493,7 @@ there are many cases where 16 bit numbers are not sufficent. So here is an examp
 together.
 I common.mc
 @PRTLN "Try to add 32bit numbers"
-@MC2M 0xff00 LowPartA           # The Assembler has no built in way to enter 32 bit decimal numbers
+@MC2M 0xff00 LowPartA           # The Asseembler's natural numbers are 16b but 2 hex words are alike
 @MC2M 0 HighPartA               # So we use two 16 bit numbers, a high word, and a low word
 @MC2M 0x99 LowPartB             # Here we are going to use a loop to add together from
 @MC2M 0 HighPartB               # 0x0000ff00 + 0x00000099 to 0x0000ff00 + 0x0000FD

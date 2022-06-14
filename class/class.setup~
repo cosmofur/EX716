@@ -1,0 +1,1000 @@
+  206  ls -l
+  207  rm *.o
+  208  ls
+  209  rm *\~
+  210  ls
+  211  cpu.py test1.asm
+  212  cpu.py test2.asm 
+  213  ls -l
+  214  cpu.py test3.asm 
+  215  cat test3.asm 
+  216  cat testm.asm 
+  217  cpu.py testm.asm 
+  218  cpu.py tests.asm 
+  219  cpu.py test2.asm 
+  220  cpu.py test1.asm 
+  221  emacs test1.asm 
+  222  cpu.py test4.asm
+  223  cpu.py testm.asm
+  224  cpu.py testm.asm -g
+  225  cpu.py testm.asm -d -l
+  226  cpu.py testm.asm -g
+  227  cpu.py testm.asm
+  228  cpu.py testm.asm -g
+  229  cpu.py testm.asm
+  230  cpu.py testm.asm -w 0x13 0x11
+  231  cpu.py testm.asm -w 0x13 -w 0x11
+  232  ls
+  233  cd src
+  234  cd cpu/
+  235  ls
+  236  emacs cpu.py
+  237  fg
+  238  cd test/
+  239  cpu.py 
+  240  cpu.py ../lib/common.mc -g
+  241  python3 -m pdb ../cpu.py ../lib/common.mc
+  242  python3 -m pdb ../cpu.py ../lib/common.mc -g
+  243  python3 -m pdb testm.asm -g
+  244  python3 -m pdb ../cpu.py testm.asm -g
+  245  python3 -m pdb ../cpu.py testm.asm
+  246  python3  ../cpu.py testm.asm
+  247  python3  ../cpu.py testm.asm -g
+  248  python3 -m pdb ../cpu.py testm.asm -g
+  249  python3 -m pdb ../cpu.py testm.asm
+  250  python3 -m pdb ../cpu.py testm.asm -g
+  251  python3 -m pdb ../cpu.py testm.asm
+  252  python3 -m pdb ../cpu.py testm.asm -g
+  253  python3 -m pdb ../cpu.py testm.asm -d
+  254  python3 -m pdb ../cpu.py testm.asm -g
+  255  python3 -m pdb ../cpu.py testm.asm
+  256  python3 -m pdb ../cpu.py testm.asm -d
+  257  python3 -m pdb ../cpu.py testm.asm
+  258  python3 -m pdb ../cpu.py testm.asm -d
+  259  apt list --upgradeable
+  260  sudo apt upgrade
+  261  sudo service ssh start
+  262  cpy testscreen.asm
+  263  cpu testscreen.asm
+  264  cpu.py testscreen.asm
+  265  grep BGCo testscreen.asm ../lib/*asm
+  266  grep -n BGCo testscreen.asm ../lib/*asm
+  267  cpu.py testscreen.asm
+  268  cpu.py testscreen.asm -d
+  269  cpu.py testscreen.asm
+  270  python3 -m pdb cpu.py testscreen.asm
+  271  python3 -m pdb ../cpu.py testscreen.asm
+  272  python3 -m pdb cpu.py testscreen.asm
+  273  c
+  274  python3 -m pdb ../cpu.py testscreen.asm
+  275  python3 -m pdb ../cpu.py testscreen.asm -d
+  276  grep PRTSTRI *
+  277  grep PRTSTRI ../lib/*
+  278  grep PRTSTRI ../lib/* -n
+  279  python3 -m pdb ../cpu.py testscreen.asm -d
+  280  cpu.py testscreen.asm 
+  281  python3 -m pdb ../cpu.py testscreen.asm -d
+  282  cpu.py testscreen.asm -g
+  283  cpu.py testscreen.asm
+  284  cpu.py testscreen.asm -d
+  285  003b	PUSH	0001 FL:____ SD:(1)
+  286  cpu.py testscreen.asm
+  287  echo "om"
+  288  cpu.py testscreen.asm -d
+  289  cpu testscreen.asm
+  290  cpu.py testscreen.asm
+  291  echo "[om"
+  292  echo "om"
+  293  echo "[0m"
+  294  ls
+  295  cd ..
+  296  cd test/
+  297  cpu.py testscreen.asm -d
+  298  cpu.py testscreen.asm
+  299  cpu.py testscreen.asm -d
+  300  cpu.py testscreen.asm
+  301  cpu.py testscreen.asm -d
+  302  cpu.py testscreen.asm
+  303  cpu.py testscreen.asm -g
+  304  cpu.py testscreen.asm
+  305  cpu.py testcurs.asm
+  306  cpu.py testcurs.asm 
+  307  cd src
+  308  cd cpu/
+  309  ls
+  310  cd test/
+  311  ls
+  312  cat testscreen.asm
+  313  cpu.py testscreen.asm
+  314  cpu.py testscreen.asm -g
+  315  emacs testscreen.asm
+  316  cpu.py testscreen.asm -g
+  317  cpu.py testscreen.asm -g > foo
+  318  fg
+  319  ls ../lib/string.asm
+  320  fg
+  321  cpu.py testscreen.asm -g
+  322  fg
+  323  grep - '--' ../lib/*
+  324  grep - '--1' ../lib/*
+  325  grep - '\-\-1' ../lib/*
+  326  fg
+  327  cpu.py testscreen.asm -g
+  328  cpu.py testscreen.asm -d
+  329  fg
+  330  cpu.py testscreen.asm -d
+  331  cpu.py testscreen.asm -g
+  332  grep StrPrt sc*
+  333  grep StrPrt  *
+  334  grep StrPtr  *
+  335  cd ../lib/
+  336  grep StrPtr  *
+  337  fg
+  338  cpu.py testscreen.asm -g
+  339  cd ../test/
+  340  cpu.py testscreen.asm -g
+  341  fg
+  342  cpu.py testscreen.asm -g
+  343  fg
+  344  cpu.py testscreen.asm -g
+  345  fg
+  346  cpu.py testscreen.asm -g
+  347  fg
+  348  cpu.py testscreen.asm 
+  349  fg
+  350  cpu.py testscreen.asm 
+  351  fg
+  352  cpu.py testscreen.asm
+  353  echo "m"
+  354  echo "[0m"
+  355  ls
+  356  vi
+  357  cd src
+  358  cd cpu/
+  359  ls
+  360  rm CPU.json~ CPU.json.o
+  361  ls
+  362  emacs lib/CPU.json 
+  363  grep raiseerror cpu.py
+  364  grep raiseerror cpu.py | awk -F( '{print $2}'
+  365  grep raiseerror cpu.py | awk -F\( '{print $2}'
+  366  grep raiseerror cpu.py | awk -F\( '{print $2}' | sort -n
+  367  fg
+  368  cd test/
+  369  cpu.py testscreen.asm
+  370  fg
+  371  ls
+  372  cpu.py testscreen.asm
+  373  cpu.py testscreen.asm > foo
+  374  cat foo
+  375  vi foo
+  376  fg
+  377  cpu.py testscreen.asm 
+  378  fg
+  379  cpu.py testscreen.asm 
+  380  fg
+  381  cpu.py testscreen.asm 
+  382  cpu.py testscreen.asm  > foo
+  383  fg
+  384  cpu.py testscreen.asm  -g
+  385  fg
+  386  cpu.py testscreen.asm
+  387  fg
+  388  cpu.py testscreen.asm
+  389  fg
+  390  cpu.py testscreen.asm
+  391  cpu.py testscreen.asm -d
+  392  fg
+  393  cpu.py testscreen.asm -d
+  394  cpu.py testscreen.asm
+  395  cpu.py testscreen.asm -d
+  396  fg
+  397  cpu.py testscreen.asm
+  398  clear
+  399  fg
+  400  cpu.py testscreen.asm
+  401  clear
+  402  cpu.py testscreen.asm -d
+  403  fg
+  404  cpu.py testscreen.asm
+  405  echo "[0m"
+  406  clear
+  407  ls
+  408  fg
+  409  cpu.py testscreen.asm
+  410  echo "[0m"
+  411  fg
+  412  cpu.py testscreen.asm
+  413  echo "[0m"
+  414  fg
+  415  cpu.py testscreen.asm
+  416  echo "[0m"
+  417  fg
+  418  cpu.py testscreen.asm
+  419  fg
+  420  cpu.py testscreen.asm
+  421  fg
+  422  cpu.py testscreen.asm
+  423  fg
+  424  cpu.py testscreen.asm
+  425  echo "[0m"
+  426  fg
+  427  cpu.py testscreen.asm > foo
+  428  vi foo
+  429  fg
+  430  cpu.py testscreen.asm 
+  431  cpu.py testscreen.asm -d
+  432  fg
+  433  cpu.py testscreen.asm -d
+  434  cpu.py testscreen.asm
+  435  cd ..
+  436  cd lib
+  437  ls
+  438  fg
+  439  echo "[P"
+  440  echo "[19s"
+  441  echo "[19s" | cat -
+  442  echo "[19s" | cat 
+  443  echo "[1;9s" 
+  444  echo "[1;9P" 
+  445  echo "[19P" 
+  446  echo "[1;9P" 
+  447  echo "[1;1P" 
+  448  echo "[1;1s" 
+  449  echo "[11s" 
+  450  echo "[11st" 
+  451  echo "[11n" 
+  452  echo "[1n" 
+  453  echo "[2n" 
+  454  echo "[n" 
+  455  echo "[?n" 
+  456  echo "[?11n" 
+  457  echo "?11n" 
+  458  echo "[?1n" 
+  459  echo "[?2n" 
+  460  echo "[?3n" 
+  461  echo "[?4n" 
+  462  echo "[?5n" 
+  463  echo "[?6n" 
+  464  echo "[?7n" 
+  465  echo "[?11n" 
+  466  echo "[?12n" 
+  467  echo "[?13n" 
+  468  echo "[?14n" 
+  469  echo "[?15n" 
+  470  echo "[?16n" 
+  471  echo "[?17n" 
+  472  echo "[?18n" 
+  473  echo "[?" 
+  474  cat > foo
+  475  vi foo
+  476  bash foo
+  477  vi foo
+  478  bash foo
+  479  vi foo
+  480  bash foo
+  481  vi foo
+  482  bash foo
+  483  fg
+  484  ls -la
+  485  vi foo
+  486  bash foo
+  487  vi foo
+  488  bash foo
+  489  vi foo
+  490  bash foo
+  491  echo "[18;t" 
+  492  ;44;154t
+  493  echo "[18;t" 
+  494  ;35;113t
+  495  echo "[s[999;999H[6n[u"
+  496  ;113R
+  497  fg
+  498  cd cpu/
+  499  cd test/
+  500  ls
+  501  cpu.py testscreen.asm
+  502  cpu.py testscreen.asm -d
+  503  fg
+  504  emacs ../cpu.py
+  505  cpu.py testcurs.asm -g
+  506  cd ../test/
+  507  cpu.py testscreen.asm -g
+  508  cpu.py testcurs.asm -g
+  509  cpu.py testscreen.asm
+  510  cpu.py testscreen.asm -g
+  511  python3 -m pdb cpu.py testscreen.asm -g
+  512  python3 -m pdb ../cpu.py testscreen.asm -g
+  513  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  514  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  515  > /home/backs1/src/cpu/cpu.py(4)<module>()
+  516  -> import numpy as np
+  517  (Pdb) q
+  518  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  519  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  520  > /home/backs1/src/cpu/cpu.py(4)<module>()
+  521  -> import numpy as np
+  522  (Pdb) q
+  523  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ (Pdb) q
+  524  history
+  525  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  526  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  527  > /home/backs1/src/cpu/cpu.py(4)<module>()
+  528  -> import numpy as np
+  529  (Pdb) q
+  530  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  531  python3 -m pdb ../cpu.py testscreen.asm -g
+  532  python3 -m pdb ../cpu.py testscreen.asm
+  533  c
+  534  python3 -m pdb ../cpu.py testscreen.asm
+  535  python3 -m pdb ../cpu.py testscreen.asm -g
+  536  python3 -m pdb ../cpu.py testscreen.asm -d
+  537  python3 -m pdb ../cpu.py testscreen.asm -g
+  538  [0m
+  539  echo [0m
+  540  ls
+  541  backs1@DESKTOP-VBO0LHG:~/src/cpu/test$ 
+  542  python3 -m pdb ../cpu.py testscreen.asm -g
+  543  cpu.py testscreen.asm
+  544  cd test/
+  545  ls
+  546  cpu.py testscreen.asm
+  547  echo "m"
+  548  echo "[0m"
+  549  clear
+  550  cpu.py testscreen.asm
+  551  cd src
+  552  cd cpu/
+  553  ls
+  554  cd test/
+  555  cpu.py testscreen.asm
+  556  stty sand
+  557  echo "[0m"
+  558  emas ../cpu.py
+  559  emacs ../cpu.py
+  560  service ssh start
+  561  sudo service ssh start
+  562  cpu.py testscreen.asm -g
+  563  cpu.py testscreen.asm -g 
+  564  cpu.py testspeed1.asm
+  565  cpu.py testspeed1.asm -g
+  566  lsr
+  567  4
+  568  cpu.py testspeed1.asm
+  569  cpu.py testspeed1.asm -g
+  570  cpu.py testspeed1.asm
+  571  time cpu.py testspeed1.asm
+  572  perf stat -r 5 cpu.py testspeed1.asm
+  573  sudo yum install perf
+  574  sudo apt install perf
+  575  sudo apt list hyperfine
+  576  chmod 755 timetest.sh 
+  577  ./timetest.sh 'cpu.py testspeed1.asm'
+  578  cpu.py testspeed1.asm
+  579  cpu.py testspeed1.asm -g
+  580  cpu.py testspeed1.asm 
+  581  ./timetest.sh cpu.py testspeed1.asm
+  582  ls ../lib/mul.ld
+  583  ./timetest.sh cpu.py testspeed1.asm
+  584  cpu.py testspeed1.asm
+  585  cpu.py testspeed1.asm -d
+  586  ./timetest.sh  cpu.py testspeed1.asm
+  587  ls
+  588  python3 -m cprofile ../cpu.py test.asm
+  589  python3 -m cProfile ../cpu.py test.asm
+  590  python3 -m cProfile ../cpu.py testspeed1.asm
+  591  service ssh start
+  592  sudo service ssh start
+  593  cd src
+  594  cd cpu
+  595  ps
+  596  cd
+  597  cd src
+  598  cd cpu/
+  599  emacs cpu.py test/testscreen.asm
+  600  fg
+  601  cpu.py l002.asm -l
+  602  cpu.py l002.asm -l -c -
+  603  cpu.py l002.asm -l -c 
+  604  cpu.py l002.asm -c
+  605  python3 -m pdb ../cpu.py l002.asm -c
+  606  cpu.py l002.asm -c
+  607  cat l002.asm 
+  608  ls -l
+  609  cat l002.a.o
+  610  cpu.py l002.asm -c
+  611  cat l002.a.o 
+  612  cpu.py l002.asm -c
+  613  cat l002.a.o
+  614  cpu.py l002.asm -c
+  615  cat l002.a.o
+  616  cpu.py l002.asm -c
+  617  cat l002.a.o
+  618  cpu.py l002.asm -c
+  619  cat l002.a.o
+  620  cpu.py l002.asm -c
+  621  cat l002.a.o
+  622  cpu.py l002.asm -c
+  623  cat l002.a.o
+  624  python3 -m pdp ../cpu.py l002.asm -c
+  625  python3 -m pdb ../cpu.py l002.asm -c
+  626  fg
+  627  python3 -m pdp ../cpu.py l002.asm -c
+  628  c
+  629  python3 -m pdb ../cpu.py l002.asm -c
+  630  cat l002.a.o 
+  631  cpu.py l002.asm -c
+  632  cat l002.a.o 
+  633  cpu.py l002.asm -c
+  634  cat l002.a.o 
+  635  cpu.py l002.asm -c
+  636  cat l002.a.o 
+  637  cpu.py l003.asm -c
+  638  cat l003.a.o 
+  639  cpu.py l003.asm -c
+  640  cat l003.a.o 
+  641  cpu.py l003.asm -c
+  642  cat l003.a.o 
+  643  cpu.py l004.asm -c
+  644  cpu.py l004.asm -d -c
+  645  python -m pdb ../cpu.py l004.asm -d -c -g
+  646  python3 -m pdb ../cpu.py l004.asm -d -c -g
+  647  ../cpu.py l004.asm -c -g
+  648  cat l004.a.o
+  649  ../cpu.py l004.asm -c 
+  650  cat l004.a.o
+  651  python3 -m pdb ../cpu.py l004.asm -c -g
+  652  cat l004.a.o
+  653  python3 -m pdb ../cpu.py l004.asm -c -g
+  654  python3 -m pdb ../cpu.py l004.asm 
+  655  cpu.py l004.asm -c -d
+  656  cpu.py l004.asm -c
+  657  cpu.py l004.a.o
+  658  cpu.py l004.asm
+  659  cpu.py l004.asm -c
+  660  cpu.py l004.a.o
+  661  ls
+  662  cat l004.a.o
+  663  cpy.py l004.a.o
+  664  cpu.py l004.a.o
+  665  cpu.py l004.a.o -d
+  666  cpu.py l004.asm -c
+  667  cpu.py l004.a.o
+  668  cat l004.a.o
+  669  ls -l
+  670  wc l004.asm l004.a.o
+  671  cd cpu.o/
+  672  cd 
+  673  cd src/cpu/
+  674  s
+  675  ls
+  676  cd test/
+  677  cpu.py testscreen.asm 
+  678  emacs testspeed1.asm
+  679  sudo apt install pypy3
+  680  pypy3 ../cpu.py testspeed1.asm
+  681  pypy3 -mpip install numpy
+  682  pypy3 ../cpu.py testspeed1.asm
+  683  pypy3 -mpip install rpdb
+  684  pypy3 ../cpu.py testspeed1.asm
+  685  pypy3 -mpip install readchar
+  686  pypy3 ../cpu.py testspeed1.asm
+  687  time pypy3 ../cpu.py testspeed1.asm
+  688  time python3 ../cpu.py testspeed1.asm
+  689  fg
+  690  ls
+  691  ls -lr
+  692  ls -ltr
+  693  mv perf.txt /mnt/c/Temp/
+  694  fg
+  695  ls
+  696  emacs 
+  697  cpu.py testspeed1.asm
+  698  fg
+  699  cpu.py testspeed1.asm
+  700  fg
+  701  cpu.py testspeed1.asm
+  702  time cpu.py testspeed1.asm
+  703  time pypy3 ../cpu.py testspeed1.asm
+  704  fg
+  705  time cpu.py testspeed1.asm
+  706  fg
+  707  python3 -m cProfile ../cpu.py testspeed1.asm  2>&1 | tee foo
+  708  vi foo
+  709  cat foo | sort -n -f 2 | more
+  710  cat foo | sort -n -k 2 | more
+  711  time cpu.py testspeed1.asm
+  712  python3 -m cProfile ../cpu.py testspeed1.asm  2>&1 | tee foo
+  713  cat foo | sort -n -k 2 | more
+  714  cat foo | sort -rn -k 2 | more
+  715  cat foo | sort -rn -k 2 | head
+  716  cat foo | sort -rn -k 2 | head -20
+  717  cat foo | sort -rn -k 3 | head -20
+  718  cat foo | sort -rn -k 3 
+  719  cat foo | sort -rn -k 3 | more
+  720  cat foo | sort -rn -k 1 | more
+  721  fg
+  722  time cpu.py testspeed1.asm
+  723  fg
+  724  time cpu.py testspeed1.asm
+  725  python3 -m cProfile ../cpu.py testspeed1.asm  2>&1 | tee foo
+  726  cat foo | sort -rn -k 2 | head -20
+  727  cd ..
+  728  mkdir class
+  729  cd class/
+  730  emacs l001.asm
+  731  fg
+  732  ls
+  733  cd ..
+  734  ls
+  735  cd ,
+  736  cd ..
+  737  ls
+  738  cp -r cpu cpu.o
+  739  ls
+  740  cd cpu
+  741  ls
+  742  pwd
+  743  ls *.txt
+  744  more design.txt
+  745  cd .
+  746  cd ..
+  747  ls
+  748  git clone https://github.com/cosmofur/EX716.git
+  749  cd EX716/
+  750  ls
+  751  mkdir src
+  752  rmdir src
+  753  mkdir lib
+  754  mkdir tests
+  755  mkdir class
+  756  cp ~/src/cpu/cpu.py .
+  757  cp ~/src/cpu/lib/* lib
+  758  cp ~/src/cpu/test/* tests/
+  759  ls
+  760  cd tests/
+  761  ls
+  762  cd ..
+  763  git checkout -b first
+  764  git add -r 
+  765  git add *
+  766  git status
+  767  git commint -m "First commit"
+  768  git commit -m "First commit"
+  769  git config --global user.email "cosmofur@yahoo.com"
+  770  git com
+  771  git config --global user.name "Cosmo Furr"
+  772  git commit -m "First commit"
+  773  git push
+  774  git push -set-upstrem origin first
+  775  git push --set-upstrem origin first
+  776  git push --set-upstream origin first
+  777  cd
+  778  cd .git
+  779  vi gitinfo
+  780  cd src/
+  781  ls
+  782  cd EX716/
+  783  git push --set-upstream origin first
+  784  cpu.py -g l006.asm
+  785  cpu.py l006.asm
+  786  cpu.py l007.asm
+  787  cpu.py l006.asm -g
+  788  cpu.py l007.asm -g
+  789  cpu.py l007.asm 
+  790  cpu.py l007.asm
+  791  python -m pdb ../cpu.py l007.asm -g
+  792  python3 -m pdb ../cpu.py l007.asm -g
+  793  python3 ../cpu.py l006.asm
+  794  python3 -m pdb ../cpu.py l007.asm -g
+  795  ls
+  796  cd src
+  797  ls
+  798  cd EX716/
+  799  git checkout -b sdb-Working0522A
+  800  ls
+  801  cd class/
+  802  ls
+  803  cd ..
+  804  ls -lR
+  805  cd class/
+  806  cp ../../cpu/class/* .
+  807  ls
+  808  emacs *asm
+  809  yum install ispell
+  810  sudo apt install ispell
+  811  fg
+  812  sudo apt install hunspell
+  813  local
+  814  vi ~/.emacs
+  815  emacs l00*
+  816  fg
+  817  service ssh start
+  818  sudo service ssh start
+  819  cpu.py l008.asm
+  820  cpu.py l008.asm -d
+  821  cpu.py l008.asm
+  822  cpu.py l009
+  823  cpu.py l009.asm
+  824  cpu.py l009.asm -g
+  825  cpu.py l009.asm
+  826  ls -l
+  827  cat gitinfo 
+  828  cd cpu.o/
+  829  ls
+  830  cd ..
+  831  ls
+  832  cd src
+  833  ls
+  834  cd EX716/
+  835  ls
+  836  git add -r .
+  837  git add .
+  838  git status
+  839  vi .gitignore
+  840  git status
+  841  git commit -m "Update for class files"
+  842  git erase class/l002.a.o class/l001.asm~ class/l002.asm~ class/l003.asm~ class/l004.a.o class/l004.asm~ class/l005.asm~ class/l006.asm~ class/l007.asm~
+  843  git rm class/l002.a.o class/l001.asm~ class/l002.asm~ class/l003.asm~ class/l004.a.o class/l004.asm~ class/l005.asm~ class/l006.asm~ class/l007.asm~
+  844  ls
+  845  git status
+  846  mv .gitignore .gitignore
+  847  cd .git/
+  848  ls
+  849  mv ../.gitignore .
+  850  cd ..
+  851  git status
+  852  cd class/
+  853  ls
+  854  cpu.py l001.asm
+  855  cpu.py l002.asm
+  856  cpu.py l002.asm -c
+  857  cat l002.a.o
+  858  cpu.py l003.asm
+  859  cpu.py l004.asm
+  860  cpu.py l005.asm
+  861  cpu.py l006.asm
+  862  cpu.py l007.asm
+  863  which cpu.py
+  864  ls
+  865  cd ..
+  866  ls
+  867  cd ..
+  868  mv cpu cpu.old
+  869  cd
+  870  vi .bashrc
+  871  pwd
+  872  ls
+  873  cd ..
+  874  ls
+  875  cd 
+  876  cd src
+  877  ls
+  878  cd EX716/
+  879  . ~/.bashr
+  880  . ~/.bashrc
+  881  cd class/
+  882  ls
+  883  cd ..
+  884  git add cpu.py 
+  885  ls
+  886  cd tests/
+  887  cpu.py l007
+  888  cd ../class/
+  889  cpu.py l007.asm 
+  890  ls
+  891  cd ..
+  892  cd lib/
+  893  ls
+  894  cd
+  895  vi .bashrc
+  896  . .bashrc
+  897  cd src/EX716/
+  898  ls
+  899  cd class/
+  900  ls
+  901  cpu.py l007.asm 
+  902  ls ../tests/
+  903  ../tests/timetest.sh cpu.py l007.asm 
+  904  ```
+  905  `
+  906  clear
+  907  ls
+  908  fg
+  909  emacs l008.asm
+  910  df
+  911  fg
+  912  cd ..
+  913  git add .
+  914  git add -r a
+  915  git status
+  916  cd class/
+  917  git add l00*asm
+  918  ls
+  919  cd ..
+  920  git status
+  921  git commit -m "Updateded Classes"
+  922  git push
+  923  git push --set-upstream origin sdb-Working0522A
+  924  cd class/
+  925  ../tests/timetest.sh ../cpu.py l008.asm
+  926  ../tests/timetest.sh ../cpu.py l009.asm
+  927  emacs l009.asm
+  928  fg
+  929  emacs l009.asm
+  930  ../tests/timetest.sh ../cpu.py l009.asm
+  931  fg
+  932  ../tests/timetest.sh ../cpu.py l009.asm
+  933  ../tests/timetest.sh ../cpu.py l009.asm > foo
+  934  cat foo
+  935  cd ..
+  936  ls
+  937  cd lib/
+  938  ls
+  939  emacs screen.asm
+  940  ls
+  941  fg
+  942  ls
+  943  fg
+  944  service start ssh
+  945  sudo service start ssh
+  946  sudo service ssh start
+  947  cd ../tests/
+  948  ls
+  949  cpu.py testscreen.asm
+  950  cpu.py testscreen.asm -d
+  951  cpu.py testscreen.asm -d -l
+  952  cpu.py testscreen.asm
+  953  cpu.py testscreen.asm -g
+  954  cpu.py testmath.asm 
+  955  cpu.py testmath.asm  -g
+  956  cpu.py testscreen.asm
+  957  cpu.py testscreen.asm -g
+  958  cpu.py testscreen.asm
+  959  cpu.py  testscreen.asm -l
+  960  cpu.py  testscreen.asm -g
+  961  cpu.py  testscreen.asm -g -d
+  962  cpu.py  testscreen.asm
+  963  cpu.py  testscreen.asm -g
+  964  cpu.py  testscreen.asm
+  965  cpu.py  testscreen.asm -g
+  966  pcpu.py  testscreen.asm -g
+  967  python3 -m pdb ../cpu.py  testscreen.asm -g
+  968  python3 -m pdb ../cpu.py  testscreen.asm -l 
+  969  python3 -m pdb ../cpu.py  testscreen.asm -g
+  970  cpu.py  testscreen.asm -d
+  971  cpu.py  testscreen.asm 
+  972  python3 -m pdb ../cpu.py  testscreen.asm 
+  973  cpu.py  testscreen.asm 
+  974  cpu.py  testscreen.asm -g
+  975  cpu.py  testscreen.asm
+  976  cpu.py  testscreen.asm -g
+  977  cpu.py  testscreen.asm
+  978  cpu.py  testscreen.asm -g
+  979  cpu.py  testscreen.asm
+  980  shell gamelife.asm
+  981  cpu.py gamelife.asm
+  982  cpu.py  gamelife.asm
+  983  cpu.py  gamelife.asm -l > gamelife.o
+  984  cpu.py  gamelife.asm -g
+  985  cpu.py  gamelife.asm -l > gamelife.o
+  986  cpu.py  gamelife.asm -g
+  987  cpu.py  gamelife.asm -l > gamelife.o
+  988  cpu.py  gamelife.asm
+  989  cpu.py  gamelife.asm -g
+  990  cpu.py gamelife.asm -l > gamelife.o
+  991  cpu.py gamelife.asm
+  992  cpu.py  gamelife.asm -g
+  993  cpu.py gamelife.asm
+  994  cpu.py gamelife.asm -g
+  995  cpu.py gamelife.asm
+  996  cpu.py gamelife.asm -g
+  997  cpu.py gamelife.asm -l > gamelife.o
+  998  cpu.py gamelife.asm -b 
+  999  cpu.py gamelife.asm -g
+ 1000  cpu.py test2.asm -g
+ 1001  cpu.py test2.asm -d
+ 1002  cpu.py test2.asm 
+ 1003  cpu.py test2.asm -d
+ 1004  cpu.py test2.asm -g
+ 1005  python3 -m pdb ../cpu.py test2.asm -g
+ 1006  d
+ 1007  python3 -m pdb ../cpu.py test2.asm -d
+ 1008  fg
+ 1009  python3 -m pdb ../cpu.py test2.asm -d
+ 1010  python3 -m pdb ../cpu.py test2.asm
+ 1011  python3 -m pdb ../cpu.py gamelife.asm
+ 1012  fg
+ 1013  python3 -m pdb ../cpu.py gamelife.asm
+ 1014  python3 -m pdb ../cpu.py gamelife.asm -l > gamelife.o
+ 1015  python3 ../cpu.py gamelife.asm -l > gamelife.o
+ 1016  python3 ../cpu.py gamelife.asm
+ 1017  cpu.py gamelife.asm -d 
+ 1018  cpu.py test2.asm -g
+ 1019  fg
+ 1020  cpu.py gamelife.asm 
+ 1021  cpu.py gamelife.asm
+ 1022  fg
+ 1023  cpu.py gamelife.asm
+ 1024  cpu.py gamelife.asm -g
+ 1025  cpu.py gamelife.asm
+ 1026  cpu.py gamelife.asm -g
+ 1027  cpu.py gamelife.asm
+ 1028  cpu.py gamelife.asm -g
+ 1029  At OpCount: 125
+ 1030  cpu.py gamelife.asm -g
+ 1031  cpu.py gamelife.asm
+ 1032  cd src/
+ 1033  ls
+ 1034  cd EX716/
+ 1035  ls
+ 1036  cd lib/
+ 1037  ls
+ 1038  emacs screen2.asm
+ 1039  cd ../tests/
+ 1040  ls
+ 1041  cpu.py testscreen.asm
+ 1042  fg
+ 1043  cpu.py testscreen.asm
+ 1044  echo "[0r"
+ 1045  echo "[1r"
+ 1046  fg
+ 1047  cpu.py testscreen.asm
+ 1048  fg
+ 1049  cpu.py testscreen.asm
+ 1050  clear
+ 1051  fg
+ 1052  cpu.py testscreen.asm
+ 1053  fg
+ 1054  grep 'o' gamelife.asm
+ 1055  grep 'o' gamelife.asm | grep -v "^#"
+ 1056  clear
+ 1057  grep 'o' gamelife.asm | grep -v "^#"
+ 1058  cat gamelife.asm | sed 's/#.*//g'
+ 1059  cat gamelife.asm | sed 's/#.*//g' | grep o
+ 1060  fg
+ 1061  cpu.py gamelife.asm
+ 1062  fg
+ 1063  cpu.py gamelife.asm
+ 1064  q
+ 1065  fg
+ 1066  cpu.py gamelife.asm
+ 1067  fg
+ 1068  cpu.py gamelife.asm
+ 1069  fg
+ 1070  cpu.py gamelife.asm
+ 1071  q
+ 1072  fg
+ 1073  cpu.py gamelife.asm
+ 1074  fg
+ 1075  cpu.py gamelife.asm -d > foo
+ 1076  fg
+ 1077  cpu.py gamelife.asm -d > foo
+ 1078  fg
+ 1079  cpu.py gamelife.asm -d | tee foo
+ 1080  fg
+ 1081  cpu.py gamelife.asm | tee foo
+ 1082  fg
+ 1083  cpu.py gamelife.asm | tee foo
+ 1084  fg
+ 1085  grep gamelife foo
+ 1086  fg
+ 1087  cpu.py gamelife.asm | grep F.gamelife | tee foo
+ 1088  cpu.py -d gamelife.asm | grep F.gamelife | tee foo
+ 1089  fg
+ 1090  g
+ 1091  fg
+ 1092  cpu.py gamelife.
+ 1093  cpu.py gamelife.asm
+ 1094  fg
+ 1095  cpu.py gamelife.asm
+ 1096  ls
+ 1097  cp gamelife.asm oldgamelife.asm
+ 1098  fg
+ 1099  emacs gamelife.asm
+ 1100  cpu.py gamelife.asm
+ 1101  fg
+ 1102  cpu.py gamelife.asm
+ 1103  fg
+ 1104  cpu.py gamelife.asm
+ 1105  ls
+ 1106  fg
+ 1107  cpu.py gamelife.asm
+ 1108  cpu.py gamelife.asm -l > foo
+ 1109  fg
+ 1110  cpu.py gamelife.asm
+ 1111  fg
+ 1112  cpu.py gamelife.asm
+ 1113  fg
+ 1114  cpu.py  gamelife.asm
+ 1115  cpu.py  gamelife.asm -g
+ 1116  cpu.py  gamelife.asm
+ 1117  cpu.py  gamelife.asm -g
+ 1118  cpu.py gamelife.asm -g
+ 1119  cpu.py gamelife.asm 
+ 1120  cpu.py gamelife.asm -g
+ 1121  cpu.py gamelife.asm
+ 1122  cpu.py gamelife.asm -g
+ 1123  sudo service start ssh
+ 1124  sudo service ssh start
+ 1125  cd src
+ 1126  ls
+ 1127  cd EX716/
+ 1128  ls
+ 1129  emacs cpu.py README.md 
+ 1130  sudo apt update
+ 1131  sudo apt upgrade
+ 1132  sudo service ssh start
+ 1133  cpu gamelife.asm -g
+ 1134  c
+ 1135  cpu.py gamelife.asm -g
+ 1136  python3 -m pdb ../cpu.py gamelife.asm -g
+ 1137  p
+ 1138  python3 -m pdb ../cpu.py gamelife.asm -g
+ 1139  sudo service start ssh
+ 1140  sudo service ssh start
+ 1141  ls
+ 1142  cd src/
+ 1143  ls
+ 1144  cd EX716/
+ 1145  s
+ 1146  ls
+ 1147  CCCccc
+ 1148  CCCC
+ 1149  sudo service start ssh
+ 1150  sudo service ssh start
+ 1151  ls
+ 1152  cd src
+ 1153  ls
+ 1154  cd E
+ 1155  cd EX716/
+ 1156  ls
+ 1157  emacs cpu.py lib/div.ld tests/testmath.asm
+ 1158  fg
+ 1159  ls
+ 1160  git status
+ 1161  emacs README.md 
+ 1162  ls
+ 1163  fg
+ 1164  ls
+ 1165  cd tests/
+ 1166  ls
+ 1167  fg
+ 1168  emacs testmath.asm
+ 1169  apt list
+ 1170  apt list | grep -i python
+ 1171  python3 --version
+ 1172  apt list | grep -i cython
+ 1173  apt install cythong3
+ 1174  apt install cython3
+ 1175  sudo apt install cython3
+ 1176  cd ..
+ 1177  cython3 cpu.py 
+ 1178  vi setup.py
+ 1179  vi setup.py 
+ 1180  cp cpu.py cpu.pyx
+ 1181  python3 setup.py build_ext --inplace
+ 1182  vi setup.py 
+ 1183  python3 setup.py build_ext --inplace
+ 1184  vi setup.py 
+ 1185  python3 setup.py build_ext --inplace
+ 1186  vi setup.py 
+ 1187  python3 setup.py build_ext --inplace
+ 1188  vi setup.py 
+ 1189  python3 setup.py build_ext --inplace
+ 1190  vi setup.py 
+ 1191  python3 setup.py build_ext --inplace
+ 1192  vi setup.py 
+ 1193  python3 setup.py build_ext --inplace
+ 1194  fg
+ 1195  emacs cpu.py
+ 1196  g
+ 1197  fg
+ 1198  ls
+ 1199  cd class/
+ 1200  ls
+ 1201  python3 -m venv ex716-working
+ 1202  sudo apt install python3.8-venv
+ 1203  python3 -m venv ex716-working
+ 1204  fg
+ 1205  history > class.setup
