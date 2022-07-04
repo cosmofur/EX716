@@ -7,9 +7,9 @@ L div.ld
     @CALL DIV
     @POPI Result
     @POPI Remainder
-#    @PRTSGN TopVal @PRT " / " @PRTSGN BotVal @PRT " = "
-#    @PRTSGN Result    @PRT " With "    @PRTSGN Remainder
-#    @PRTLN " Left over"
+    @PRTSGN TopVal @PRT " / " @PRTSGN BotVal @PRT " = "
+    @PRTSGN Result    @PRT " With "    @PRTSGN Remainder
+    @PRTLN " Left over"
 @NextNamed BotVal Inner1
 @NextNamed TopVal Outer1
 @END

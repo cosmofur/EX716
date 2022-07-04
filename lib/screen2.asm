@@ -3,6 +3,8 @@ L mul.ld
 L div.ld
 ! SCREEN_DONE
 M SCREEN_DONE 1
+M INC2I @PUSHI %1 @ADD 2 @POPI %1
+M DEC2I@PUSHI %1 @SUB 2 @POPI %1
 @JMP ENDSCREEN
 :WinWidth 80
 :WinHeight 24
@@ -11,9 +13,9 @@ M SCREEN_DONE 1
 :ActivePage 0
 :FixedZero 0
 :CSICODE
- "<ESC>["b0
-#b$27 "[" b0
-G WinInit G WinClear G WinRefresh G WinWrite G strlen
+# "<ESC>["b0
+b$27 "[" b0
+G CSICODE G WinInit G WinClear G WinRefresh G WinWrite G strlen G WinCursor
 
 :WinInit
 # There no other paramters so we already have the Return Address where we need it.
@@ -49,6 +51,52 @@ G WinInit G WinClear G WinRefresh G WinWrite G strlen
 :WCDstIndex1 0
 
 :WinRefresh
+@PUSHI ActivePage
+@CMP 0
+@POPNULL
+@JMPZ WR0ActZero
+# Active is 1, so use WinPage2 as src
+  @MM2M WinPage2 WRSrcPage
+  @MM2M WinPage1 WRDstPage
+  @MM2M WinPage2 WREndPageMark
+  @JMP WR0SkipElse1
+:WR0ActZero
+# Active is 0, so use WinPage1 as src
+  @MM2M WinPage1 WRSrcPage
+  @MM2M WinPage2 WRDstPage
+  @MM2M WinPage1 WREndPageMark
+:WR0SkipElse1
+@MC2M 0 WRWidth
+@MC2M 0 WRHeight
+@PRTS WR0TOS
+@PRTSI WRSrcPage
+:WR0MainLoop
+  @PUSHII WRSrcPage
+  @POPII WRDstPage
+  @INC2I WRSrcPage
+  @INC2I WRDstPage
+  @INC2I WRWidth   # We are copying in word blocks not bytes
+  @PUSHI WRWidth
+  @CMPI WinWidth @POPNULL
+  @JLE WR0SetNextLine    # On chance it is odd number
+  @JMP WR0MainLoop
+:WR0SetNextLine
+#@PRTS WRSrcPage
+@INCI WRHeight
+@PUSHI WinHeight
+@ADD 1
+@CMPI WRHeight @POPNULL
+@JMPZ WR0ExitWrite
+@MC2M 0 WRWidth
+@JMP WR0MainLoop
+:WR0ExitWrite
+@PRTS WR0TOS
+@RET
+:WR0TOS
+b$27 "[0;0H" b0
+:WR0YSTR "      "
+:WR0XSTR "      "
+:WinRefreshSlow
 # There no other paramters so we already have the Return Address where we need it.
 @PUSHI ActivePage
 @CMP 0
@@ -199,6 +247,19 @@ G WinInit G WinClear G WinRefresh G WinWrite G strlen
 :WRCpIndex 0
 #
 #
+# WinCursor moves the active cursor to a location
+#
+:WinCursor
+@POPI WCReturnAddr
+@POPI WCYLoc
+@POPI WCXLoc
+@PRS CSICODE @PRTI WCYLoc @PRT ";" @PRTI WCXLoc @PRT "H"
+@PUSH WCReturnAddr
+@RET
+:WCXLoc 0
+:WCYLoc 0
+:WCReturnAddr
+
 #
 # WinWrite takes three paramters
 # Pushed in order, WinX, WinY, StringPtr

@@ -1,0 +1,49 @@
+Dec,Name,Hex,Length,Description
+  0,"NOP",0x0,1,No Operation
+  1,"PUSH",0x1,3,Push Immediate value to stack.
+  2,"DUP",0x2,1,Push to stack copy of top value. If any.
+  3,"PUSHI",0x3,3,Push Indirect value to stack word_memory[immediate]
+  4,"PUSHII",0x4,3,Push Double Indirect value to stack word_memory[[immediate]]
+  5,"PUSHS",0x5,1,Replaces TOS (Top of Stack) value with word_memory[TOS]; If any.
+  6,"POPNULL",0x6,1,Drops TOS value without saving it.
+  7,"SWP",0x7,1,Swap TOS with SFT (Second From TOP) values; if any.
+  8,"POPI",0x8,3,POP Indirect value from TOS to word_memory[immediate]
+  9,"POPII",0x9,3,POP Double Indirect value from TOS to word_memory[[immediate]]
+ 10,"POPS",0xa,1,POP to address to word_memory[TOS]; value at SFT. Both POPed; if any.
+ 11,"CMP",0xb,3,Does eqiv as from TOS minus Immediate value; sets flags but discards result.
+ 12,"CMPS",0xc,1,Does eqiv as from TOS minus SFT; sets flags but discards result.
+ 13,"CMPI",0xd,3,Does eqiv as from TOS minus word_memory[immediate]; sets flags but discards result.
+ 14,"CMPII",0xe,3,Does eqiv as from TOS minus word_memory[[immediate]]; sets flags but discards result.
+ 15,"ADD",0xf,3,Adds TOS and immediate; replaces current TOS
+ 16,"ADDS",0x10,1,Adds TOS and SFT values; replaces current SFT (old TOS popnulled)
+ 17,"ADDI",0x11,3,Adds TOS and word_memory[immediate]; replaces current TOS
+ 18,"ADDII",0x12,3,Adds TOS and word_memory[[immediate]]; replaces current TOS
+ 19,"SUB",0x13,3,Subtracts immediate FROM TOS (TOS - Immediate); replaces current TOS
+ 20,"SUBS",0x14,1,Subtracts SFT FROM TOS; POPs TOS and replaces current SFT (old TOS popnulled)
+ 21,"SUBI",0x15,3,Subtracts word_memory[immediate] FROM TOS; replaces TOS with result.
+ 22,"SUBII",0x16,3,Subtracts word_memory[[immediate]] FROM TOS; replaces TOS with result.
+ 23,"OR",0x17,3,Binary 16bit OR of TOS with immediate value; replaces TOS with result.
+ 24,"ORS",0x18,1,Binary 16bit OR of TOS and SFT; replaces SFT (old TOS popnulled)
+ 25,"ORI",0x19,3,Binary 16bit OR of TOS and word_memory[immediate]; replaces TOS with result.
+ 26,"ORII",0x1a,3,Binary 16bit OR of TOS and word_memory[[immediate]]; replaces TOS with result.
+ 27,"AND",0x1b,3,Binary 16bit AND of TOS with immediate value; replaces TOS with result.
+ 28,"ANDS",0x1c,1,Binary 16bit AND of TOS and SFT; replaces SFT (old TOS popnulled)
+ 29,"ANDI",0x1d,3,Binary 16bit AND of TOS and word_memory[immediate]; replaces TOS with result.
+ 30,"ANDII",0x1e,3,Binary 16bit AND of TOS and word_memory[[immediate]]; replaces TOS with result.
+ 31,"JMPZ",0x1f,3,Jump to immediate address if Z flag set
+ 32,"JMPN",0x20,3,Jump to immediate address if N flag set
+ 33,"JMPC",0x21,3,Jump to immediate address if C flag set
+ 34,"JMPO",0x22,3,Jump to immediate address if O flag set
+ 35,"JMP",0x23,3,Jump to immediate address
+ 36,"JMPI",0x24,3,Jump to address at word_memory[immediate]
+ 37,"CAST",0x25,3,IO Out Function; TOS and immediate value are made available to driver.
+ 38,"POLL",0x26,3,IO In Function;  TOS and immediate value are made available to driver.
+ 39,"RRTC",0x27,1,Rotate Right TOS 'Through Carry Flag' Carry is src and dst of low and high bits.
+ 40,"RLTC",0x28,1,Rotate Left TOS 'Through Carry Flag' Carry is src and dst of high and low bits.
+ 41,"RTR",0x29,1,Rotate Right TOS; Carry Flag is set by value of old high bit.
+ 42,"RTL",0x2a,1,Rotate Left TOS; Carry Flag is set by value of old low bit.
+ 43,"INV",0x2b,1,Invert all the bits of TOS
+ 44,"COMP2",0x2c,1,Inverts and Adds one to TOS (Two's complement)
+ 45,"FCLR",0x2d,1,Clears all Logic Flags (Z,N,C,O)
+ 46,"FSAV",0x2e,1,Pushes to Stack as an encodded number state of Logic Flags
+ 47,"FLOD",0x2f,1,Restores from Stack state of Logic Flags from previous FSAV (Has to be at TOS)

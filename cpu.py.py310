@@ -8,21 +8,7 @@ import os
 import re as re
 import json
 import rpdb
-#import readchar
-from pathlib import Path
-path_root = Path(__file__).parents[2]
-sys.path.append(str(path_root))
-#print(sys.path)
-
-from lightkeyread import _Getch
-
-import select
-import tty
-import termios
-
-getch = _Getch()
-
-
+import readchar
 import signal
 from functools import lru_cache
 
@@ -86,9 +72,106 @@ class microcpu:
 
     def switcher(self,optcall,argument):
         default = "Invalid call"
-#        if Debug:
-#            print("Trying to run opt%s %04x" % (OPTDICT[str(optcall)][1],argument))
-        return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)
+        match optcall:
+            case 0:
+                return self.optNOP(argument)
+            case 1:
+                return self.optPUSH(argument)
+            case 2:
+                return self.optDUP(argument)
+            case 3:
+                return self.optPUSHI(argument)
+            case 4:
+                return self.optPUSHII(argument)
+            case 5:
+                return self.optPUSHS(argument)
+            case 6:
+                return self.optPOPNULL(argument)
+            case 7:
+                return self.optSWP(argument)
+            case 8:
+                return self.optPOPI(argument)
+            case 9:
+                return self.optPOPII(argument)
+            case 10:
+                return self.optPOPS(argument)
+            case 11:
+                return self.optCMP(argument)
+            case 12:
+                return self.optCMPS(argument)
+            case 13:
+                return self.optCMPI(argument)
+            case 14:
+                return self.optCMPII(argument)
+            case 15:
+                return self.optADD(argument)
+            case 16:
+                return self.optADDS(argument)
+            case 17:
+                return self.optADDI(argument)
+            case 18:
+                return self.optADDII(argument)
+            case 19:
+                return self.optSUB(argument)
+            case 20:
+                return self.optSUBS(argument)
+            case 21:
+                return self.optSUBI(argument)
+            case 22:
+                return self.optSUBII(argument)
+            case 23:
+                return self.optOR(argument)
+            case 24:
+                return self.optORS(argument)
+            case 25:
+                return self.optORI(argument)
+            case 26:
+                return self.optORII(argument)
+            case 27:
+                return self.optAND(argument)
+            case 28:
+                return self.optANDS(argument)
+            case 29:
+                return self.optANDI(argument)
+            case 30:
+                return self.optANDII(argument)
+            case 31:
+                return self.optJMPZ(argument)
+            case 32:
+                return self.optJMPN(argument)
+            case 33:
+                return self.optJMPC(argument)
+            case 34:
+                return self.optJMPO(argument)
+            case 35:
+                return self.optJMP(argument)
+            case 36:
+                return self.optJMPI(argument)
+            case 37:
+                return self.optCAST(argument)
+            case 38:
+                return self.optPOLL(argument)
+            case 39:
+                return self.optRRTC(argument)
+            case 40:
+                return self.optRLTC(argument)
+            case 41:
+                return self.optRTR(argument)
+            case 42:
+                return self.optRTL(argument)
+            case 43:
+                return self.optINV(argument)
+            case 44:
+                return self.optCOMP2(argument)
+            case 45:
+                return self.optFCLR(argument)
+            case 46:
+                return self.optFSAV(argument)
+            case 47:
+                return self.optFLOD(argument)
+            case _:
+                print("ERR xxx OptCode Not recognized: %s" % (optcall))
+        return
 
     def __init__(self, origin, memspace):
         self.pc = origin
@@ -295,7 +378,7 @@ class microcpu:
 
     def optPOPS(self, notused):
         if self.mb[0xff] < 2:
-            self.raiseerror("051 Stack underflow, OptPOPS")
+            raiseerror("051 Stack underflow, OptPOPS")
         newaddress = self.fetchAcum(0)
         A1 = self.fetchAcum(1)
         self.putwordat(newaddress,A1)
@@ -591,7 +674,7 @@ class microcpu:
             try:
                 DeviceFile = open(DeviceHandle,"r+b")
             except IOError:
-                self.raiseerror("048 Error tying to open Random Device: %s" % DeviceHandle)
+                raiseerror("048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == 21:
             DeviceFile.seek(address*256,0)
         if cmd == 22:
@@ -599,7 +682,7 @@ class microcpu:
                 block = self.memspace[address:address+256]
                 DeviceFile.write(bytes(block))
             else:
-                self.raiseerror("049 Attempted to write block larger than memory to storage")
+                raiseerror("049 Attempted to write block larger than memory to storage")
         if cmd == 23:
             if DeviceHandle != None:
                 DeviceFile.close()
@@ -661,13 +744,7 @@ class microcpu:
                         self.raiseerror("047 Insufficent space for Message Address at %d, optPOLL" % (i))
         if cmd == 3:
             # Address must be at least 4 bytes for special code strings.
-            c = getch()
-            if not(c):
-                c=""            
-#            c = keyboard.read_key()
-#            c = raw_input("")
-#            c = readchar.readkey()
- 
+            c = readchar.readkey()
             if len(c) == 1:
                 self.putwordat(address,ord(c))
             elif len(c) == 2:
@@ -1567,69 +1644,14 @@ def debugger():
                 print("ERR: Need to specify what to print")
                 continue
         if cmdword == "m":
-            if argcnt >= 1:
+            if argcnt >= 2:
                 maddr = arglist[0]
-                if argcnt >= 2:
-                    for iad in arglist[1:]:                    
-                        mvalue = Str2Byte(iad)
-                        CPU.memspace[maddr] = mvalue & 0xff
-                        mval = mvap >> 8      
-                        CPU.memspace[maddr + 1] = mvalue & 0xff
-                        maddr += 2
-                    DissAsm(int(arglist[0]),1,CPU)
-                else:
-                    # Start sub-command mode
-                    cmdline="NONE"
-                    sys.stdout.write("Key: ")
-                    sys.stdout.write("### is decimal 0-9 ")
-                    sys.stdout.write("Prepend 0x, 0o or 0b for hex, octal or binary format\n")
-                    sys.stdout.write("By default 16 bit integer, prepend $$ for 8 bit bytes or $$$ for 32 bit words\n")
-                    sys.stdout.write("8 bit ascii codes can be entered using double quotes\n")
-                    sys.stdout.write("Use '.' on line byself to exit back to main mode.\n\n")
-
-                    while cmdline != ".":
-                        sys.stdout.write("%04x: " % maddr)
-                        sys.stdout.flush()
-                        cmdline = sys.stdin.readline(256)
-                        cmdline = removecomments(cmdline).strip()
-                        if len(cmdline) > 0:
-                           if cmdline != ".":
-                               if (cmdline[0:1] == '"'):
-                                   (quotesize, quotetext) = GetQuoted(cmdline)
-                                   for iii in range(0,len(quotetext)):
-                                       CPU.memspace[maddr] = ord(quotetext[iii]) & 0xff
-                                       maddr += 1
-                                   cmdline = ""
-                                   continue
-                               if len(cmdline) == 1 and cmdline[0:1] >= "0" and cmdline[0:1] <= "9":
-                                   newval = int(cmdline)
-                                   CPU.memspace[maddr] = newval & 0xff # Single digit number must be b10
-                                   maddr += 1
-                                   CPU.memspace[maddr] = 0   # high byte has to be zero
-                                   maddr += 1
-                               else:
-                                   startnum = 0
-                                   expectsize = 2
-                                   if cmdline[0:3] == "$$$":
-                                       expectsize = 4
-                                       startnum = 3
-                                   elif cmdline[0:2] == "$$":
-                                       expectsize = 1
-                                       startnum = 2
-                                   elif cmdline[0:1] == "$":
-                                       startnum = 1
-                                   try:
-                                      if expectsize != 4:
-                                         newval = Str2Word(cmdline[startnum:])
-                                      else:
-                                         newval = int(cmdline[startnum:])
-                                      for iii in range(0,expectsize):
-                                         CPU.memspace[maddr] = newval & 0xff
-                                         newval = newval >> 8
-                                         maddr += 1
-                                   except:
-                                       print("Input %s not valid" % cmdline)
-                    continue
+                for iad in arglist[1:]:                    
+                    mvalue = Str2Byte(iad)
+                    CPU.memspace[maddr] = mvalue
+                    maddr += 1
+                DissAsm(int(arglist[0]),1,CPU)
+            else:
                 print("ERR: Need to specify address an values to insert")
             continue
         if cmdword == "l":
@@ -1753,7 +1775,7 @@ def debugger():
             print("q - quit debugger           h  - this test")
             print("b - break points            cb - clear breakpoints")
             print("hex-Print hexdump $1[-$2]   l  - DissAsm based on src code lines")
-            print("w - watch $1                m  - modify address starting wiht $1")
+            print("w - watch $1                m  - modify address $1 with value $2")
             continue
 
 if __name__ == '__main__':

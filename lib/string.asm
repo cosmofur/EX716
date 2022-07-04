@@ -335,7 +335,7 @@ G stoi
   @POPI isWorkVal   # isWorkVal=INT(isWorkVal/base)
   @AND 0x0f         # We only handle cases were bases are <=16  
   @ADD 0x30         # TOS is digit value so add 0x30 to turn it ASCII
-  @CMP 0x39         # Now worry about Hex which means jump to Letters is val > 9
+  @CMP 0x40         # Now worry about Hex which means jump to Letters is val > 9
   @JGT isNotHex     # Only hex numbers could be over 0x39 so map them to A-F
      @ADD  0x7      # "A" is 0x41 so add  to turn 0x3A to 0x41
   :isNotHex

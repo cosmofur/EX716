@@ -21,7 +21,7 @@ Bval            # Likewise, this will but 2 at address 2 and 0 at address 3
 #               A basic concept here is number like one is really a 16bit number which is two bytes long
 #               The 'lower numbered' byte holds the lower valued part of the, and the higher part is in the
 #               higher byte.
-#               In enlist we read our numbers from 'Right to Left' while all other text
+#               In english we read our numbers from 'Right to Left' while all other text
 #               is read 'Left to Right' You may not even be aware of this, because we train our minds to
 #               do the mental math of figuring out which digit in a number is 'highest' and what value it
 #               has before trying to say it's name out loud.
@@ -100,3 +100,23 @@ M GoodBye @PRT "Good Bye " @PRT %1 @END
 # pass too many or too few parameters to a Macro.
 # Another parameter to test is the %0 parameter. Try it multiple times to see if it changes
 #
+# Lets see why %0 works the way it does, and how we may wish to use it.
+#
+# %0 is dynamic numeric value, that is unique to each call of a macro.
+# So every time you call a Macro, %0 will have a diffrent value
+#
+# Example:
+M Always101 \
+   @JMP SKIP%0 \
+     :STORE%0 0 \
+   :SKIP%0 \
+     @MC2M 101 STORE%0
+#
+# What worth noticing here, is that the %0 is used to make the Lables SKIP%0 and STORE%0 have unique values
+# So the macro can use the local storage named 'STORE%0' but it also has to 'jump' over that storage. To make
+# the macro easier to read, it is split across over several lines, using the back-slash '\' to show the
+# macro continues onto the next line. Every time this Macro is called, STORE%0 will represent a new and
+# diffrent lable.
+
+
+

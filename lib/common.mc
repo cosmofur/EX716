@@ -180,6 +180,10 @@ M PRTTOP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PUSHI %0M1 @PRTI %0M1
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
 M PROMPT @PRT %1 @READI %2
+# Read a String from Keyboard
+M READS @PUSH PollReadStrI @POLL %1 @POPNULL
+# Read a unechoed character from keyboard
+M READC @PUSH PollReadCharI @POLL %1 @POPNULL
 # End Program
 M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack

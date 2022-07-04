@@ -19,8 +19,8 @@ I common.mc
 #
 # So lets start with some examples
 #
-# This simple PUSH saves the ADDRESS VarOne to the stack. Not that
-#value Stored at VarOne
+# This simple PUSH saves the ADDRESS VarOne to the stack. NOT the
+# VALUE Stored at VarOne
 @PUSH VarOne
 #
 # Use this Alternative version, PUSHI, to copy a value rather than an

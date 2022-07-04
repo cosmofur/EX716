@@ -33,7 +33,7 @@ I common.mc
 @JMPO T1NotExpected       # 321 - 15 does not require any sort of 'borrow' so no overflow should happen.
 @JMP  T1AltB              # So we know that A is less than B.
 :T1NotExpected
-@PRTLN "Do not expect to see this."
+@PRTLN "Do not expect to see this. 01"
 @JMP TestT2
 :T1AltB
 @PRTI SmallVal
@@ -49,7 +49,7 @@ I common.mc
 @JMPN T2AgtB              # 15 - 321  IS Negative, so we expect to do this JMP
 @JMPO T2NotExpected       # 321 - 15 does not require any sort of 'borrow' so no overflow should happen.
 :T2NotExpected
-@PRTLN "Do not expect to see this."
+@PRTLN "Do not expect to see this. 02"
 @JMP TestT3
 :T2AgtB
 @PRTI Medval
@@ -65,7 +65,7 @@ I common.mc
 @JMPN T3NotExpected
 @JMPO T3NotExpected
 :T3NotExpected
-@PRTLN "Do not expect to see this."
+@PRTLN "Do not expect to see this. 03"
 @JMP TestT4
 :T3AeqB
 @PRTI Medval
@@ -90,7 +90,7 @@ I common.mc
 @JMPN T4NotExpected
 @JMPO T4TooLarge
 :T4NotExpected
-@PRTLN "Do not expect to see this."
+@PRTLN "Do not expect to see this. 04"
 @JMP TestT5
 :T4TooLarge
 @PRTI Large
@@ -112,10 +112,10 @@ I common.mc
 @PRTNL
 @POPNULL
 @JMPZ T5NotExpected
-@JMPN T5NotExpected
 @JMPO T5Borrow
+@JMPN T5NotExpected
 :T5NotExpected
-@PRTLN "Do not expect to see this."
+@PRTLN "Do not expect to see this. 05"
 @JMP LastLine
 :T5Borrow
 @PRTI Large
