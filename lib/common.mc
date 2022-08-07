@@ -240,6 +240,28 @@ M ForIfV2V \
   @POPNULL \
   @JMPZ %4_exit \
   :%4Loop1
+# This is a mixed version with a constant as the first entry and a variable as the second
+# For 1:IndexName 2:StartConstant 3:Stop_Variable 4:Named_next
+M ForIfA2V \
+  @PUSH %2 @POPI %1 \
+  @MM2M %3 %4_stop \
+  @PUSHI %1 \
+  @CMPI %4_stop \
+  @POPNULL \
+  @JMPZ %4_exit \
+  :%4Loop1
+# This is a mixed version with a variable as the first entry and a constant as the second
+# For 1:IndexName 2:StartConstant 3:Stop_Variable 4:Named_next
+M ForIfV2A \
+  @PUSHI %2 @POPI %1 \
+  @MC2M %3 %4_stop \
+  @PUSHI %1 \
+  @CMPI %4_stop \
+  @POPNULL \
+  @JMPZ %4_exit \
+  :%4Loop1  
+  
+
 # Matching Next command for pass same values as above for 1:IndexName and 2:Named_next
 M NextNamed \
    @INCI %1 \
@@ -266,7 +288,6 @@ M NextStep \
   :%3_exit  
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
-
 
 ENDBLOCK
 @JMP CODE__BEGIN__

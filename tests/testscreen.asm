@@ -6,9 +6,13 @@ L screen2.asm
 @PUSH 1 @PUSH 1 
 @PUSH TopBar
 @CALL WinWrite
-@CALL WinRefresh
 @MC2M 40 CURX
 @MC2M 12 CURY
+@PUSHI CURX @PUSHI CURY @PUSH STRVAL
+@CALL WinWrite
+@CALL WinRefresh
+@END
+	
 :TopLoop
   @PUSH STRVAL   @PUSHI CURX   @PUSH 10   @CALL itos  # CURX to String
   @PUSH 1 @PUSH 2 @PUSH STRVAL  @CALL WinWrite        # Write at 1,2
@@ -80,7 +84,7 @@ L screen2.asm
 
 
 :TopBar "0----5----1----5----2----5----3----5----4----5----5----5----6----5----7----5" b0
-:STRVAL "        "
+:STRVAL "Start Test" b0
 :COUNT1 0
 :COUNT2 0
 :CHRIN 0

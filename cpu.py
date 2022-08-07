@@ -124,7 +124,7 @@ class microcpu:
         return i[1]
 
     def raiseerror(self, idcode):
-        global GPC, RunMode
+        global GPC, RunMode,FileLabels
         print("Error Number: %s \n\tat PC:%04x" % (idcode,int(CPU.pc)))
         valid = int(idcode[0:3])
         if RunMode:
@@ -133,7 +133,7 @@ class microcpu:
             sys.exit(valid)
         else:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
-            debugger()
+            debugger(FileLabels)
 
     def loadat(self, location, values):
         i = location
@@ -1037,7 +1037,9 @@ def getkeyfromval(val,my_dict):
 def hexdump(startaddr,endaddr,CPU):
     print("Range is %04x to %04x" % ( startaddr, endaddr))
     i = startaddr
-    print("       0  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F")
+    header="0  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F"
+    header=header[(startaddr % 16)*3:][0:47]
+    print("       %s" % header)
     while i < endaddr:
         Fstring = "%04x: " % int(i)
         sys.stdout.write(Fstring)
@@ -1046,7 +1048,7 @@ def hexdump(startaddr,endaddr,CPU):
         sys.stdout.write("   ")
         for j in range(i,i+16 if (i + 16 <= len(CPU.memspace)) else len(CPU.memspace)):
             c = CPU.memspace[j]
-            if c >= ord('A') and c<= ord('z'):
+            if (c >= ord('A') and c<= ord('z')) or ( c >= ord('0') and c <= ord('9')):
                 sys.stdout.write("%c" % c)
             else:
                 sys.stdout.write("_")
@@ -1102,7 +1104,7 @@ def ReplaceMacVars(line,MacroVars,varcntstack,varbaseSP):
 
 
 def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT):
-    global FileLables, FWORDLIST, FBYTELIST
+    global FileLabels, FWORDLIST, FBYTELIST
     # pass in string that is either a number, or a label, with possible modifiers
     # possible results
     #    instr is a label.
@@ -1458,303 +1460,305 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
         highaddress = address
     return highaddress
 
-def debugger():
-    global InDebugger,LineAddrList,watchwords
-    breakpoints = []
-    startrange = 0
-    stoprange = 0
-    redoword = "Null"
-    InDebugger = True
-    while True:
-        sys.stdout.write("%04x> " % CPU.pc)
-        sys.stdout.flush()
-        cmdline = sys.stdin.readline(256)
-        cmdline = removecomments(cmdline).strip()
-        (cmdword,size)=nextword(cmdline)
-        cmdline = cmdline[size:]
-        stepnumber = 1
-        doexec = False
-        arglist = []
-        argcnt = 0
-        (thisword,size) = nextword(cmdline)
-        cmdline = cmdline[size:]
-        varval = 0
-        while thisword != "":
-            # check to see if argument is a label
-            if thisword[0] >= "A" and (thisword[0] <= "z" and thisword[0] != "b"):
-                if thisword in FileLabels:
-                    varval = FileLabels[thisword]
-                else:
-                    print("[%s] is not found in dictionary" % thisword)
-                    tempdic=[i for i in FileLabels if thisword in i ]
-                    if len(tempdic) == 1:
-                        print("Partial Label Match. Using %s "% tempdic)
-                        varval=FileLabels[tempdic[0]]
-                    else:
-                        print("%d Possible matches: "% len(tempdic), tempdic)
-                        cmdword="Null"
-                        thisword=""
-                        continue
-                if varval == thisword:
-                    # Not modified, means not defined.
-                    print("ERR %s was not found in dictionary:" % thisword)
-                    cmdword = "Null"
-                else:
-                    thisword = varval
+def debugger(FileLabels):
+   global InDebugger,LineAddrList,watchwords
+   breakpoints = []
+   startrange = 0
+   stoprange = 0
+   redoword = "Null"
+   InDebugger = True
+   while True:
+      sys.stdout.write("%04x> " % CPU.pc)
+      sys.stdout.flush()
+      cmdline = sys.stdin.readline(256)
+      cmdline = removecomments(cmdline).strip()
+      if cmdline != "": 
+         (cmdword,size)=nextword(cmdline)
+      cmdline = cmdline[size:]
+      stepnumber = 1
+      doexec = False
+      arglist = []
+      argcnt = 0
+      (thisword,size) = nextword(cmdline)
+      cmdline = cmdline[size:]
+      varval = 0
+      while thisword != "":
+          # check to see if argument is a label
+         if thisword[0] >= "A" and (thisword[0] <= "z" and thisword[0] != "b"):
+            if thisword in FileLabels:
+               varval = FileLabels[thisword]
             else:
-                thisword = Str2Word(thisword) # Convert to 16 bit number allow 0x formats
+               print("[%s] is not found in dictionary" % thisword)
+               thisword = ""
+               continue
+            tempdic=[i for i in FileLabels if thisword in i ]
+            if len(tempdic) == 1:
+               print("Label Match. Using %s "% tempdic)
+               varval=FileLabels[tempdic[0]]
+               arglist.append(varval)
+               argcnt +=1
+            else:
+               print("%d Possible matches: "% len(tempdic), tempdic)
+               cmdword="Null"
+               thisword=""
+               continue
+            if varval == thisword:
+               # Not modified, means not defined.
+               print("ERR %s was not found in dictionary:" % thisword)
+               cmdword = "Null"
+               continue
+         else:
+            thisword = Str2Word(thisword) # Convert to 16 bit number allow 0x formats
             arglist.append(thisword)
             argcnt += 1
-            (thisword,size) = nextword(cmdline)
-            cmdline = cmdline[size:]
-        # at this point cmdword == a possible comand and arglist is a group of 16b numbers if any given.
-        if cmdword == "":
-            # Just redo what ever was done last time.
-            cmdword = redoword
-        redoword = cmdword
-        if cmdword == "Null":
-            # Do nothing
-            continue
-        if cmdword == "d":
-            if argcnt > 0:
-                startrange=int(arglist[0])
-                stoprange=startrange+3
-                if argcnt > 1:
-                    stoprange=int(arglist[1])
-                print("DissAsm: %s - %s" % (startrange,stoprange))
-                stoprange = DissAsm(arglist[0],stoprange - startrange,CPU)
+         (thisword,size) = nextword(cmdline)
+         cmdline = cmdline[size:]
+# at this point cmdword == a possible comand and arglist is a group of 16b numbers if any given.
+      if cmdword == "Null":
+         # Do nothing
+         continue
+      if cmdword == "d":
+         if argcnt > 0:
+            startrange=int(arglist[0])
+            stoprange=3
+         if argcnt > 1:
+            stoprange=startrange - int(arglist[1])
+            stoprange = DissAsm(arglist[0],stoprange,CPU)
+         if argcnt == 0:
+            if stoprange != 0:
+               startrange = stoprange
             else:
-                if stoprange != 0:
-                    startrange = stoprange
-                    stoprange = stoprange + 24
-                else:
-                    startrange=CPU.pc
-                    stoprange=1
-                stoprange = DissAsm(startrange, stoprange - startrange, CPU)
-
+               startrange=CPU.pc
+            stoprange=20
+         stoprange = DissAsm(startrange, stoprange, CPU)
+         continue
+      if cmdword == "ps":
+         if (CPU.mb[0xff] == 0 ):
+            print("Empty Stack")
             continue
-        if cmdword == "ps":
-            if (CPU.mb[0xff] == 0 ):
-                print("Empty Stack")
-                continue
-            print("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
-            for i in range(0,min(CPU.mb[0xff]*2,64),2):
-                v = CPU.mb[i] + (CPU.mb[i+1] << 8)
-                SInfo = "%04x:" % v
-                if ( v > 0 and v < (len(CPU.memspace)-2)):
-                    SInfo = SInfo+"[%0x]" % CPU.getwordat(v)
-                    SInfo = SInfo+"[[%0x]]" % CPU.getwordat(CPU.getwordat(v))
-                else:
-                    SInfo = SInfo + "[*]"
-                print(SInfo)
-            continue
-        if cmdword == "p":
-            if argcnt > 0:
-                if argcnt == 1:
-                    startv=int(arglist[0])
-                    stopv=startv + 1
-                else:
-                    startv=int(arglist[0])
-                    stopv=int(arglist[1]) + 1
-                    if stopv < startv:
-                        stopv = startv + stopv + 1
-                for v in range(startv,stopv):
-                    SInfo = "%04x:" % v
-                    SInfo = SInfo+"[%02x]" % CPU.getwordat(v)
-                    SInfo = SInfo+"[[%02x]]" % CPU.getwordat(CPU.getwordat(v))
-                    print(SInfo)
+         print("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
+         for i in range(0,min(CPU.mb[0xff]*2,64),2):
+            v = CPU.mb[i] + (CPU.mb[i+1] << 8)
+            SInfo = "%04x:" % v
+            if ( v > 0 and v < (len(CPU.memspace)-2)):
+               SInfo = SInfo+"[%0x]" % CPU.getwordat(v)
+               SInfo = SInfo+"[[%0x]]" % CPU.getwordat(CPU.getwordat(v))
             else:
-                print("ERR: Need to specify what to print")
-                continue
-        if cmdword == "m":
-            if argcnt >= 1:
-                maddr = arglist[0]
-                if argcnt >= 2:
-                    for iad in arglist[1:]:                    
-                        mvalue = Str2Byte(iad)
-                        CPU.memspace[maddr] = mvalue & 0xff
-                        mval = mvap >> 8      
-                        CPU.memspace[maddr + 1] = mvalue & 0xff
-                        maddr += 2
-                    DissAsm(int(arglist[0]),1,CPU)
-                else:
-                    # Start sub-command mode
-                    cmdline="NONE"
-                    sys.stdout.write("Key: ")
-                    sys.stdout.write("### is decimal 0-9 ")
-                    sys.stdout.write("Prepend 0x, 0o or 0b for hex, octal or binary format\n")
-                    sys.stdout.write("By default 16 bit integer, prepend $$ for 8 bit bytes or $$$ for 32 bit words\n")
-                    sys.stdout.write("8 bit ascii codes can be entered using double quotes\n")
-                    sys.stdout.write("Use '.' on line byself to exit back to main mode.\n\n")
-
-                    while cmdline != ".":
-                        sys.stdout.write("%04x: " % maddr)
-                        sys.stdout.flush()
-                        cmdline = sys.stdin.readline(256)
-                        cmdline = removecomments(cmdline).strip()
-                        if len(cmdline) > 0:
-                           if cmdline != ".":
-                               if (cmdline[0:1] == '"'):
-                                   (quotesize, quotetext) = GetQuoted(cmdline)
-                                   for iii in range(0,len(quotetext)):
-                                       CPU.memspace[maddr] = ord(quotetext[iii]) & 0xff
-                                       maddr += 1
-                                   cmdline = ""
-                                   continue
-                               if len(cmdline) == 1 and cmdline[0:1] >= "0" and cmdline[0:1] <= "9":
-                                   newval = int(cmdline)
-                                   CPU.memspace[maddr] = newval & 0xff # Single digit number must be b10
-                                   maddr += 1
-                                   CPU.memspace[maddr] = 0   # high byte has to be zero
-                                   maddr += 1
-                               else:
-                                   startnum = 0
-                                   expectsize = 2
-                                   if cmdline[0:3] == "$$$":
-                                       expectsize = 4
-                                       startnum = 3
-                                   elif cmdline[0:2] == "$$":
-                                       expectsize = 1
-                                       startnum = 2
-                                   elif cmdline[0:1] == "$":
-                                       startnum = 1
-                                   try:
-                                      if expectsize != 4:
-                                         newval = Str2Word(cmdline[startnum:])
-                                      else:
-                                         newval = int(cmdline[startnum:])
-                                      for iii in range(0,expectsize):
-                                         CPU.memspace[maddr] = newval & 0xff
-                                         newval = newval >> 8
-                                         maddr += 1
-                                   except:
-                                       print("Input %s not valid" % cmdline)
-                    continue
-                print("ERR: Need to specify address an values to insert")
+               SInfo = SInfo + "[*]"
+            print(SInfo)
             continue
-        if cmdword == "l":
-            startaddr=0
-            stopaddr=30
-            if argcnt > 0:
-                v=int(arglist[0])
-                startaddr = 0
-                for i in LineAddrList:
-                    if i[1] >= v:
-                        if len(i) > 1:
-                            if i[2] == ActiveFile:
-                                startaddr = i[0]                                
-                                break
-                            startaddr = i[0]                            
-                stopaddr=startaddr + 30
-                if argcnt > 1:
-                    v=int(arglist[1])
-                    for i in LineAddrList:
-                        if i[1] >= v:
-                            if len(i) > 1:
-                                if i[2] == ActiveFile:
-                                    stopaddr = i[0]
-                                    break
-            if stopaddr < startaddr:
-                stopaddr = startaddr + abs(stopaddr)
-            print("Dissasembly from src lines %s to %s" %(startaddr,stopaddr))
-            DissAsm(startaddr,stopaddr - startaddr,CPU)
-            continue
-        if cmdword == "hex":
-            if argcnt > 0:
-                if argcnt == 1:
-                    startv=int(arglist[0])
-                    stopv=startv + 16
-                else:
-                    startv=int(arglist[0])
-                    stopv=int(arglist[1]) + 1
-                    if stopv < startv:
-                        stopv = startv + stopv + 1
-                hexdump(startv,stopv,CPU)
+      if cmdword == "p":
+         if argcnt > 0:
+            if argcnt == 1:
+               startv=int(arglist[0])
+               stopv=startv + 1
             else:
-                print("ERR: Need to specify what to print")
-                continue
-        if cmdword == "n":
-            stepcnt = 1
-            if argcnt > 0:
-                stepcnt = arglist[0]
-            for i in range(stepcnt):
-                CPU.evalpc()
-                DissAsm(CPU.pc, 1, CPU)
-                if CPU.pc in breakpoints:
-                    print("Break Point %04x" % CPU.pc)
-                    break
+               startv=int(arglist[0])
+               stopv=int(arglist[1]) + 1
+            if stopv < startv:
+               stopv = startv + stopv + 1
+            for v in range(startv,stopv):
+               SInfo = "%04x:" % v
+               SInfo = SInfo+"[%02x]" % CPU.getwordat(v)
+               SInfo = SInfo+"[[%02x]]" % CPU.getwordat(CPU.getwordat(v))
+               print(SInfo)
+         else:
+            print("ERR: Need to specify what to print")
             continue
-        if cmdword == "s":
-            curaddr=CPU.FindWhatLine(CPU.pc)
-            while True:
-                print("Stepping Over %d" % curaddr)
-                CPU.evalpc()
-                if CPU.FindWhatLine(CPU.pc) != curaddr:
-                    break
+      if cmdword == "m":
+         if argcnt >= 1:
+            maddr = arglist[0]
+            if argcnt >= 2:
+               # This is case where 'm' command was followed by an address and
+               # a series of 1 or more word integers on same line.
+               for iad in arglist[1:]:
+                  mvalue = Str2Byte(iad)
+                  CPU.memspace[maddr] = mvalue & 0xff
+                  mval = mvap >> 8      
+                  CPU.memspace[maddr + 1] = mvalue & 0xff
+                  maddr += 2
+                  DissAsm(int(arglist[0]),1,CPU)
+            else:
+               # Start sub-command mode
+               cmdline="NONE"
+               sys.stdout.write("Key: ")
+               sys.stdout.write("### is decimal 0-9 ")
+               sys.stdout.write("Prepend 0x, 0o or 0b for hex, octal or binary format\n")
+               sys.stdout.write("By default 16 bit integer, prepend $$ for 8 bit bytes or $$$ for 32 bit words\n")
+               sys.stdout.write("8 bit ascii codes can be entered using double quotes\n")
+               sys.stdout.write("Use '.' on line byself to exit back to main mode.\n\n")
+               while True:
+                  sys.stdout.write("%04x[b%02x,b%02x]: " % (maddr,CPU.memspace[maddr],CPU.memspace[(maddr+1) &0xffff]))
+                  sys.stdout.flush()
+                  cmdline = sys.stdin.readline(256)
+                  cmdline = removecomments(cmdline).strip()
+                  if len(cmdline) > 0:
+                     if cmdline == "":
+                        # empty command means just move forward one byte
+                        maddr += 1
+                        continue
+                     if cmdline != ".":
+                        if (cmdline[0:1] == '"'):
+                           (quotesize, quotetext) = GetQuoted(cmdline)
+                           for iii in range(0,len(quotetext)):
+                              CPU.memspace[maddr] = ord(quotetext[iii]) & 0xff
+                              maddr += 1
+                              cmdline = ""
+                           continue
+                        if len(cmdline) == 1 and cmdline[0:1] >= "0" and cmdline[0:1] <= "9":
+                           newval = int(cmdline)
+                           CPU.memspace[maddr] = newval & 0xff # Single digit number must be b10
+                           maddr += 1
+                           CPU.memspace[maddr] = 0   # high byte has to be zero
+                           maddr += 1
+                        else:
+                           startnum = 0
+                           expectsize = 2
+                           if cmdline[0:3] == "$$$":
+                              expectsize = 4
+                              startnum = 3
+                        if cmdline[0:2] == "$$":
+                           expectsize = 1
+                           startnum = 2
+                        elif cmdline[0:1] == "$":
+                           startnum = 1
+                        try:
+                           if expectsize != 4:
+                              if ( cmdline[startnum:] in FileLabels.keys()):
+                                 newval = Str2Word(FileLabels[cmdline[startnum:]])
+                              else:
+                                 newval = Str2Word(cmdline[startnum:])
+                           else:
+                              newval = int(cmdline[startnum:])
+                           for iii in range(0,expectsize):
+                              CPU.memspace[maddr] = newval & 0xff
+                              newval = newval >> 8
+                              maddr += 1
+                        except:
+                           print("Input %s not valid" % cmdline)
+                        continue
+                     else:
+                        cmdline=""
+                        print("End Modify")
+                        break
+      if cmdword == "l":
+         startaddr=0
+         stopaddr=30
+         if argcnt > 0:
+            v=int(arglist[0])
+            startaddr = 0
+            for i in LineAddrList:
+               if i[1] >= v:
+                  if len(i) > 1:
+                     if i[2] == ActiveFile:
+                        startaddr = i[0]                                
+                        break
+            startaddr = i[0]                            
+            stopaddr=startaddr + 30
+            if argcnt > 1:
+               v=int(arglist[1])
+               for i in LineAddrList:
+                  if i[1] >= v:
+                     if len(i) > 1:
+                        if i[2] == ActiveFile:
+                           stopaddr = i[0]
+                           break
+         if stopaddr < startaddr:
+            stopaddr = startaddr + abs(stopaddr)
+         print("Dissasembly from src lines %s to %s" %(startaddr,stopaddr))
+         DissAsm(startaddr,stopaddr - startaddr,CPU)
+         continue
+      if cmdword == "hex":
+         if argcnt > 0:
+            if argcnt == 1:
+               startv=int(arglist[0])
+               stopv=startv + 16
+            else:
+               startv=int(arglist[0])
+               stopv=int(arglist[1]) + 1
+               if stopv < startv:
+                  stopv = startv + stopv + 1
+            hexdump(startv,stopv,CPU)
+         else:
+            print("ERR: Need to specify what to print")
+            continue
+      if cmdword == "n":
+         stepcnt = 1
+         if argcnt > 0:
+            stepcnt = arglist[0]
+         for i in range(stepcnt):
+            CPU.evalpc()
+            DissAsm(CPU.pc, 1, CPU)
+            if CPU.pc in breakpoints:
+               print("Break Point %04x" % CPU.pc)
+               break
+         continue
+      if cmdword == "s":
+         curaddr=CPU.FindWhatLine(CPU.pc)
+         while True:
+            print("Stepping Over %d" % curaddr)
+            CPU.evalpc()
+            if CPU.FindWhatLine(CPU.pc) != curaddr:
+               break
             DissAsm(CPU.pc,1,CPU)
-        if cmdword == "c":
-            steplimit = -1
-            maxsteps = 1000
-            minsteps = 1
-            if argcnt > 0:
-                steplimit = arglist[0]
-                if argcnt > 1:
-                    maxsteps = arglist[1]
-                else:
-                    maxsteps = 1
-            while CPU.pc != steplimit and maxsteps > 0:
-                if CPU.pc in breakpoints and minsteps != 1:
-                    print("Break Point %04x" % CPU.pc)
-                    DissAsm(CPU.pc, 1, CPU)
-                    break
-                CPU.evalpc()
-                minsteps = 0
+      if cmdword == "c":
+         DissAsm(CPU.pc, 1, CPU)
+         AtLeastOne = 1
+         while CPU.pc <= 0xffff:
+            if CPU.pc in breakpoints and AtLeastOne != 1:
+               print("Break Point %04x" % CPU.pc)
+               DissAsm(CPU.pc, 1, CPU)               
+               break
+            AtLeastOne = 0
+            CPU.evalpc()
+      if cmdword == "r":
+         CPU.pc = 0
+         CPU.mb[0xff] = 0
+         print("PC set to 0")
+         continue
+      if cmdword == "g":
+         if argcnt < 1:
+            print("Need to provide an address to go to.")
+            cmdword="Null"
             continue
-        if cmdword == "r":
-            CPU.pc = 0
-            CPU.mb[0xff] = 0
-            print("PC set to 0")
-            continue
-        if cmdword == "g":
-            if argcnt < 1:
-                print("Need to provide an address to go to.")
-                cmdword="Null"
-                continue
-            CPU.pc = arglist[0]
-            print("PC set to %04x" % arglist[0])
-            continue
-        if cmdword == "b":
-            if argcnt < 1:
-                print("Break Points:")
-                for ii in breakpoints:
-                    print("%04x" % ii)
+         CPU.pc = arglist[0]
+         print("PC set to %04x" % arglist[0])
+         continue
+      if cmdword == "b":
+         if argcnt < 1:
+            if len(breakpoints) == 0:
+               print("No break points set")
             else:
-                for ii in arglist:
-                    breakpoints.append(ii)
-            continue
-        if cmdword == "cb":
-            print("Clearing Breakpoints")
-            breakpoints=[]
-            continue
-        if cmdword == "w":
-            if argcnt < 1:
-                print(watchwords)
-            else:
-                for ii in arglist:
-                    watchwords.append(Str2Word(ii))
-        if cmdword == "q":
-            print("End Debugging.")
-            sys.exit(0)
-        if cmdword == "h":
-            print("Debug Mode Commands")
-            print("d - DissAsm $1 $2           ps - Print HW Stacl")
-            print("p - print values $1         n  - Do one step")
-            print("c - continue [ $1 steps ]   r  - reset PC set to 0")
-            print("q - quit debugger           h  - this test")
-            print("b - break points            cb - clear breakpoints")
-            print("hex-Print hexdump $1[-$2]   l  - DissAsm based on src code lines")
-            print("w - watch $1                m  - modify address starting wiht $1")
-            continue
+               print("Break Points:")
+               for ii in breakpoints:
+                  print("%04x" % ii)
+         else:
+            for ii in arglist:
+               breakpoints.append(ii)
+         continue
+      if cmdword == "cb":
+         print("Clearing Breakpoints")
+         breakpoints=[]
+         continue
+      if cmdword == "w":
+         if argcnt < 1:
+            print(watchwords)
+         else:
+            for ii in arglist:
+               watchwords.append(Str2Word(ii))
+      if cmdword == "q":
+         print("End Debugging.")
+         sys.exit(0)
+      if cmdword == "h":
+         print("Debug Mode Commands")
+         print("d - DissAsm $1 $2           ps - Print HW Stacl")
+         print("p - print values $1         n  - Do one step")
+         print("c - continue [ $1 steps ]   r  - reset PC set to 0")
+         print("q - quit debugger           h  - this test")
+         print("b - break points            cb - clear breakpoints")
+         print("hex-Print hexdump $1[-$2]   l  - DissAsm based on src code lines")
+         print("w - watch $1                m  - modify address starting wiht $1")
+      continue
 
 if __name__ == '__main__':
 
@@ -1843,7 +1847,7 @@ if __name__ == '__main__':
         print("-------0---%04x------" % (maxusedmem))
         DissAsm(0,maxusedmem,CPU)
     elif UseDebugger:
-        debugger()
+        debugger(FileLabels)
     else:
         while True:
             CPU.evalpc()

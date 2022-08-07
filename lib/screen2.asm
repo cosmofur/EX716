@@ -12,15 +12,50 @@ M DEC2I@PUSHI %1 @SUB 2 @POPI %1
 :WinPage2 0xF000
 :ActivePage 0
 :FixedZero 0
+G CSICODE G WinInit G WinClear G WinRefresh G WinWrite G strlen G WinCursor
+
 :CSICODE
 # "<ESC>["b0
 b$27 "[" b0
-G CSICODE G WinInit G WinClear G WinRefresh G WinWrite G strlen G WinCursor
+
 
 :WinInit
 # There no other paramters so we already have the Return Address where we need it.
+@PRTLN "-----INITILIZING....<Hit Enter>"
 @MC2M 0 ActivePage
+@PRTS CSICODE @PRT "s"
+@PRTS CSICODE @PRT "999;999H"
+@PRTS CSICODE @PRT "6n"
+@PRTS CSICODE @PRT "u"
+@READS TermInfoBuffer
+@MC2M TermInfoBuffer TIBIndex
+# At this point TermInfoBuffer should be "[[HH;WWR"
+# Search for ';'
+@PUSH 0x3b @PUSH TermInfoBuffer @CALL strfndc
+:DebugSpot01
+@POPI TIBIndex
+@PUSHII TIBIndex
+@AND 0xff00       #Turn ';' into a null
+@POPII TIBIndex
+@PUSH TermInfoBuffer+1     # Start string where '[' was
+@CALL stoi
+@POPI WinHeight
+# Search for 'R'
+@INCI TIBIndex	   # Skip past the previously inserted null
+@PUSH 0x52 @PUSHI TIBIndex @CALL strfndc
+@PUSHI TIBIndex   # Save the old Index or start of second number spot
+@ADD 1
+@SWP
+@POPI TIBIndex
+@PUSHII TIBIndex
+@AND 0xff00      # Turn 'R' into a null
+@POPII TIBIndex
+# the old index should be at TOS
+@CALL stoi
+@POPI WinWidth
 @RET
+:TermInfoBuffer "                                                      " b0
+:TIBIndex 0
 
 :WinClear
 # There no other paramters so we already have the Return Address where we need it.
@@ -51,47 +86,66 @@ G CSICODE G WinInit G WinClear G WinRefresh G WinWrite G strlen G WinCursor
 :WCDstIndex1 0
 
 :WinRefresh
-@PUSHI ActivePage
-@CMP 0
-@POPNULL
-@JMPZ WR0ActZero
-# Active is 1, so use WinPage2 as src
-  @MM2M WinPage2 WRSrcPage
-  @MM2M WinPage1 WRDstPage
-  @MM2M WinPage2 WREndPageMark
-  @JMP WR0SkipElse1
-:WR0ActZero
-# Active is 0, so use WinPage1 as src
-  @MM2M WinPage1 WRSrcPage
-  @MM2M WinPage2 WRDstPage
-  @MM2M WinPage1 WREndPageMark
-:WR0SkipElse1
-@MC2M 0 WRWidth
-@MC2M 0 WRHeight
-@PRTS WR0TOS
-@PRTSI WRSrcPage
-:WR0MainLoop
-  @PUSHII WRSrcPage
-  @POPII WRDstPage
-  @INC2I WRSrcPage
-  @INC2I WRDstPage
-  @INC2I WRWidth   # We are copying in word blocks not bytes
-  @PUSHI WRWidth
-  @CMPI WinWidth @POPNULL
-  @JLE WR0SetNextLine    # On chance it is odd number
-  @JMP WR0MainLoop
-:WR0SetNextLine
-#@PRTS WRSrcPage
-@INCI WRHeight
-@PUSHI WinHeight
-@ADD 1
-@CMPI WRHeight @POPNULL
-@JMPZ WR0ExitWrite
-@MC2M 0 WRWidth
-@JMP WR0MainLoop
-:WR0ExitWrite
-@PRTS WR0TOS
+# At this time we aren't using the ActivePage as a flag. It's always 0 for now.
+@MM2M WinPage1 WRSrcPage
+@MM2M WinPage2 WRDstPage
+@MC2M 0 WRDiffBlock
+@ForIfA2V WRYcur 0 WinHeight ForLinesLoop
+ @ForIfA2V WRXcur 0 WinWidth ForColsLoop
+   @PUSHII WRSrcPage
+   @PUSHII WRDstPage
+   @PUSH 1 @CMPI WRDiffBlock @POPNULL
+   @JMPZ WRInDiffBlock         # Our logic is diffrent if we are inside or outside a diff block
+     # Currently expecting a match, react if we don't get one.     
+     @CMPS @POPNULL @POPNULL
+     @JMPZ WRAsExpectMatch
+       # Was in a match block, and found a diffrence.
+       @PUSHI WRXcur  @PUSHI WRYcur  # Save for future WinWrite x,y location
+       @PUSHI WRSrcPage              # Save the spot where the changed string begins.
+       @MC2M 1 WRDiffBlock           # change mode to 'expecting' diffrences.
+     :WRAsExpectMatch
+     @INC2I WRSrcPage
+     @INC2I WRDstPage
+     @JMP WRPastOtherLogic
+   :WRInDiffBlock
+     # We land here when ever the stings were expected to not match.
+     @CMPS @POPNULL @POPNULL
+     @JMPZ WRNotExpectedMatch
+        # here if we continue to seeing diffrences in the strings.
+	@PUSHII WRSrcPage
+	@POPII WRDstPage      # Since they are diffrent copy src to dst
+        @INC2I WRSrcPage
+        @INC2I WRDstPage	
+	@JMP WRPastOtherLogic
+     :WRNotExpectedMatch
+        # We end here if we had been in a diffrence block, but now found where they re-join matching
+	# WRSrcPage should now point to the first new 'same' word. Temporarly change it to a zero
+	# On the stack should already be X,Y,PTR where PTR is where the src string started to differ.
+	@PUSH 0
+	@POPII WRSrcPage
+	@CALL WinWrite        # This write should print the 'diff' text only where they belong.
+	@PUSHII WRDstPage
+	@POPII WRSrcPage
+	@MC2M 0 WRDiffBlock   # Set the diff block now back to 'expect to be same'
+        @INC2I WRSrcPage
+	@INC2I WRDstPage
+   :WRPastOtherLogic
+ @NextStep WRXcur 2 ForColsLoop
+@NextStep WRYcur 1 ForLinesLoop
+#
+# If we drop here and WRDiffBlock is still '1' then that means the end of SRC string was diffrent from DST
+# and we never ran back into a 'match' so just print what's one the stack.
+@PUSH 1 @CMPI WRDiffBlock @POPNULL
+@JNZ WRCleanExit
+  @CALL WinWrite
+  @MC2M 0 WRDiffBlock
+:WRCleanExit
 @RET
+:WRDiffBlock 0
+:WRYcur 0
+:WRXcur 0
+
+
 :WR0TOS
 b$27 "[0;0H" b0
 :WR0YSTR "      "
@@ -253,7 +307,7 @@ b$27 "[0;0H" b0
 @POPI WCReturnAddr
 @POPI WCYLoc
 @POPI WCXLoc
-@PRS CSICODE @PRTI WCYLoc @PRT ";" @PRTI WCXLoc @PRT "H"
+@PRTS CSICODE @PRTI WCYLoc @PRT ";" @PRTI WCXLoc @PRT "H"
 @PUSH WCReturnAddr
 @RET
 :WCXLoc 0
@@ -269,22 +323,12 @@ b$27 "[0;0H" b0
 @POPI WWStrPtr
 @POPI WWYLoc
 @POPI WWXLoc
-# Lets find the 'active' page.
-@PUSHI ActivePage
-@CMP 0
-@POPNULL
-@JMPZ WWActZero
-   @MM2M WinPage2 WWSrcPage
-   @MM2M WinPage1 WWDstPage
-   @MM2M WinPage2 WWEndPageMark
-   @JMP WWSkipElse1
-:WWActZero
-   @MM2M WinPage1 WWSrcPage
-   @MM2M WinPage2 WWDstPage
-   @MM2M WinPage1 WWEndPageMark
-:WWSkipElse1
-@PUSH 2000       # Still need to change this to a calculated length sometime.
-@ADDI WWEndPageMark 
+@MM2M WinPage1 WWSrcPage
+@MM2M WinPage2 WWDstPage
+@PUSHI WinHeight
+@PUSHI WinWidth
+@CALL MUL
+@ADDI WWSrcPage
 @POPI WWEndPageMark
 # Now we need to 'calculate' the offset (in both src and dest) where Y*Width+X will be
 @PUSHI WWYLoc
