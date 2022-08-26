@@ -202,20 +202,20 @@ M DEC2I @PUSH 2 @SUBI %1 @POPI %1
 # The Following are some convient macros to simplify some of the most common logic and jump functions
 # Math Group,   3 params A, B and C all are simple memeory addresses or lables.
 # Unlike nor 'SUB' the notion of B From A makes more sense here.
-M ADDAB2C @PUSHI %1 @ADDI %2 @POPI %3
-M SUBAB2C @PUSH %2 @SUBI %1 @POPI %3
+M ADDVBVV @PUSHI %1 @ADDI %2 @POPI %3
+M SUBVV2V @PUSH %2 @SUBI %1 @POPI %3
 # Math Group 3 Params A # and C to add/sub constant # to A and save to C
-M ADDAV2C @PUSHI %1 @ADD %2 @POPI %3
+M ADDVA2C @PUSHI %1 @ADD %2 @POPI %3
 M SUBAV2C @PUSH %2 @SUBI %1 @POPI %3
 
 # Logical IF's results compair A and B and save T(1)/F(0) to C
 # This is for simplicity and cases where the result matters mutlitple times or later then when the CMP was done.
-M ifAneB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JMPZ %0Skip @PUSH 1 @POPI %3 :%0Skip
-M ifAeqB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JNZ %0Skip @PUSH 1 @POPI %3 :%0Skip
-M ifAltB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JGE %0Skip @PUSH 1  @POPI %3 :%0Skip
-M ifAgtB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JLE %0Skip @PUSH 1  @POPI %3 :%0Skip
-M ifAleB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JGT %0Skip @PUSH 1  @POPI %3 :%0Skip
-M ifAgeB2C @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JLT %0Skip @PUSH 1  @POPI %3 :%0Skip
+M ifVneV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JMPZ %0Skip @PUSH 1 @POPI %3 :%0Skip
+M ifVeqV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JNZ %0Skip @PUSH 1 @POPI %3 :%0Skip
+M ifVltV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JGE %0Skip @PUSH 1  @POPI %3 :%0Skip
+M ifVgtV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JLE %0Skip @PUSH 1  @POPI %3 :%0Skip
+M ifVleV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JGT %0Skip @PUSH 1  @POPI %3 :%0Skip
+M ifVgeV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JLT %0Skip @PUSH 1  @POPI %3 :%0Skip
 # Jumps based not on current flags but T or F values in location.	
 M JifT @PUSH 0 @CMPI %1 @POPNULL @JMPZ %0Skip @JMP %2 :%0Skip
 M JifF @PUSH 0 @CMPI %1 @POPNULL @JNZ %0Skip @JMP %2 :%0Skip

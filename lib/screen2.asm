@@ -6,13 +6,15 @@ M SCREEN_DONE 1
 M INC2I @PUSHI %1 @ADD 2 @POPI %1
 M DEC2I@PUSHI %1 @SUB 2 @POPI %1
 @JMP ENDSCREEN
+G CSICODE G WinInit G WinClear G WinRefresh
+G WinWrite G strlen G WinCursor G WinWidth G WinHeight
+	
 :WinWidth 80
 :WinHeight 24
 :WinPage1 0xE000
 :WinPage2 0xF000
 :ActivePage 0
 :FixedZero 0
-G CSICODE G WinInit G WinClear G WinRefresh G WinWrite G strlen G WinCursor
 
 :CSICODE
 # "<ESC>["b0
@@ -37,14 +39,15 @@ b$27 "[" b0
 @PUSHII TIBIndex
 @AND 0xff00       #Turn ';' into a null
 @POPII TIBIndex
-@PUSH TermInfoBuffer+1     # Start string where '[' was
+@PUSH TermInfoBuffer     # Start string where '[' was
+@ADD 1                   # Move one over.	
 @CALL stoi
 @POPI WinHeight
 # Search for 'R'
 @INCI TIBIndex	   # Skip past the previously inserted null
 @PUSH 0x52 @PUSHI TIBIndex @CALL strfndc
 @PUSHI TIBIndex   # Save the old Index or start of second number spot
-@ADD 1
+#@ADD 1
 @SWP
 @POPI TIBIndex
 @PUSHII TIBIndex
@@ -100,7 +103,7 @@ b$27 "[" b0
      @CMPS @POPNULL @POPNULL
      @JMPZ WRAsExpectMatch
        # Was in a match block, and found a diffrence.
-       @PUSHI WRXcur  @PUSHI WRYcur  # Save for future WinWrite x,y location
+       @PUSHI WRXcur  @PUSHI WRYcur  # Save for future ScreenWrite x,y location
        @PUSHI WRSrcPage              # Save the spot where the changed string begins.
        @MC2M 1 WRDiffBlock           # change mode to 'expecting' diffrences.
      :WRAsExpectMatch
@@ -123,7 +126,7 @@ b$27 "[" b0
 	# On the stack should already be X,Y,PTR where PTR is where the src string started to differ.
 	@PUSH 0
 	@POPII WRSrcPage
-	@CALL WinWrite        # This write should print the 'diff' text only where they belong.
+	@CALL ScreenWrite        # This write should print the 'diff' text only where they belong.	
 	@PUSHII WRDstPage
 	@POPII WRSrcPage
 	@MC2M 0 WRDiffBlock   # Set the diff block now back to 'expect to be same'
@@ -137,7 +140,7 @@ b$27 "[" b0
 # and we never ran back into a 'match' so just print what's one the stack.
 @PUSH 1 @CMPI WRDiffBlock @POPNULL
 @JNZ WRCleanExit
-  @CALL WinWrite
+  @CALL ScreenWrite
   @MC2M 0 WRDiffBlock
 :WRCleanExit
 @RET
@@ -308,11 +311,11 @@ b$27 "[0;0H" b0
 @POPI WCYLoc
 @POPI WCXLoc
 @PRTS CSICODE @PRTI WCYLoc @PRT ";" @PRTI WCXLoc @PRT "H"
-@PUSH WCReturnAddr
+@PUSHI WCReturnAddr
 @RET
 :WCXLoc 0
 :WCYLoc 0
-:WCReturnAddr
+:WCReturnAddr 0
 
 #
 # WinWrite takes three paramters
@@ -380,6 +383,21 @@ b$27 "[0;0H" b0
 :WWEndSpot 0
 :WWStartSpot 0
 :WWCpIndex 0
+#
+#
+# ScreenWrite utility script that will move the cursor to X,Y location then Print Text string
+:ScreenWrite
+@POPI SWReturnAddr
+@POPI SWStrPtr
+@CALL WinCursor
+@PRTSI SWStrPtr
+@PUSHI SWReturnAddr
+@RET
+:SWReturnAddr 0
+:SWStrPtr 0
+
+
+
 
   
 

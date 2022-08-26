@@ -3,15 +3,16 @@ L string.asm
 L screen2.asm
 @CALL WinInit
 @CALL WinClear
-@PUSH 1 @PUSH 1 
+@PUSH 0 @PUSH 1
 @PUSH TopBar
 @CALL WinWrite
 @MC2M 40 CURX
 @MC2M 12 CURY
-@PUSHI CURX @PUSHI CURY @PUSH STRVAL
+@PUSHI CURX @PUSHI CURY @PUSH STRVAL	
 @CALL WinWrite
 @CALL WinRefresh
-@END
+@PUSH STRVAL
+
 	
 :TopLoop
   @PUSH STRVAL   @PUSHI CURX   @PUSH 10   @CALL itos  # CURX to String
@@ -30,6 +31,9 @@ L screen2.asm
     @INCI CURX
     @CALL CheckRange
   :NotRight
+  @CMP b12 b0	# Ctrl L
+  @JNZ NotCtrlL
+    @CALL 
   @CMP "h" b0
   @JNZ NotLeft
     @DECI CURX
@@ -82,7 +86,7 @@ L screen2.asm
 @RET
 
 
-
+:TestStr "Test" b0
 :TopBar "0----5----1----5----2----5----3----5----4----5----5----5----6----5----7----5" b0
 :STRVAL "Start Test" b0
 :COUNT1 0

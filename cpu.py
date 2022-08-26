@@ -1,6 +1,5 @@
 #!/usr/bin/python3
-# For debugging most usefull breakpoints are: 1306 (before fileload) and 622 (after DissAsm if Debug set in main loop)
-#
+
 import numpy as np
 import itertools
 import sys
@@ -8,19 +7,17 @@ import os
 import re as re
 import json
 import rpdb
-#import readchar
+import atexit
+import readline
+import readchar
 from pathlib import Path
 path_root = Path(__file__).parents[2]
 sys.path.append(str(path_root))
-#print(sys.path)
 
-from lightkeyread import _Getch
 
 import select
 import tty
 import termios
-
-getch = _Getch()
 
 
 import signal
@@ -32,6 +29,7 @@ FileLabels = {}
 FWORDLIST = []
 FBYTELIST = []
 MacroData = {}
+breakpoints = []
 MacroPCount = {}
 GlobalLineNum = 0
 GlobalOptCnt = 0
@@ -57,7 +55,8 @@ LineAddrList = [[0,0],[0,0]]
 CPUPATH = os.getenv('CPUPATH')
 JSONFNAME="CPU.json"
 if CPUPATH is None:
-   CPUPATH = "/home/backs1/src/cpu/lib/:.:/home/backs1/src/cpu"
+#   CPUPATH = "/home/backs1/src/cpu/lib/:.:/home/backs1/src/cpu"
+    CPUPATH = ".:../lib/:./lib/"
 for testpath in CPUPATH.split(":"):
     if os.path.exists(testpath + "/" + JSONFNAME):
         JSONFNAME=testpath + "/" + JSONFNAME
@@ -637,7 +636,7 @@ class microcpu:
         cmd = self.fetchAcum(0)
         if cmd == 1:
             sys.stdout.flush()
-            rawdata = sys.stdin.readline(256)
+            rawdata = stdin.readline(256)
             justnum = "0"
             for c in rawdata:
                 if ( c >= '0' and c <= '9') or ( c == '-' ):
@@ -661,7 +660,7 @@ class microcpu:
                         self.raiseerror("047 Insufficent space for Message Address at %d, optPOLL" % (i))
         if cmd == 3:
             # Address must be at least 4 bytes for special code strings.
-            c = getch()
+            c = readchar.readkey()
             if not(c):
                 c=""            
 #            c = keyboard.read_key()
@@ -1014,25 +1013,30 @@ def DissAsm(start, length, CPU):
     return i
 
 def getkeyfromval(val,my_dict):
-    result = []
-    nresult = ""
-    matchlimit = 1
-    for key,value in sorted(list(my_dict.items()),reverse = True):
-        if val == value:
+   result = []
+   prefered = []
+   nresult = ""
+   matchlimit = 0
+   if val == 0:
+       return ""       # Zero is specal case. It almost never a usefull linenumber
+   for key,value in sorted(list(my_dict.items()),reverse = True):
+      if val == value:
+         if "F." in key:
+            if matchlimit == 0:
+               result =  [str(key)] + result
+               matchlimit = 1
+         else:
             result.append(key)
-#            if not("__" in key) and not("L." in key):
-            if not("__" in key):
-                nresult = key
-                #    result = re.sub("___*","",result)
-    if nresult != "":
-        if len(result) > 2:
-            return nresult[:60]+" "+result[1]
-        else:
-            return nresult[:60]
-    elif len(result) > 0:
-        return result[0]
-    else:
-        return ""
+   for fld in result:
+      if len(fld) != 0:
+         nresult += fld + " "
+   prefered = [ word for word in nresult.split(' ') if word ]
+   i = 0
+   nresult = ""
+   while i < len(prefered) and i < 2:
+      nresult += prefered[i] + " "
+      i += 1
+   return nresult
 
 def hexdump(startaddr,endaddr,CPU):
     print("Range is %04x to %04x" % ( startaddr, endaddr))
@@ -1176,8 +1180,6 @@ def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT
             # This is case where the lable has not yet been defined, we will save it in FWORDLIST for 2nd pass.
             Result = 0
             newkey = IsLocalVar(working[starti:stopi], GlobeLabels, LocalID, LORGFLAG)
-            if ( working[starti:stopi] == "PRTS" ):
-                print("Break here at line %s" % working)
             FWORDLIST.append([newkey, curaddress, modval])
             # Lables that are not yet defined HAVE to be 16b
             ByteFlag = False
@@ -1441,15 +1443,16 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
         for store in FWORDLIST:
             key = store[0]
             vaddress = store[1]
-            if key in FileLabels.keys():
+            if key in FileLabels.keys():                
                 v = Str2Word(FileLabels[key])
                 if (len(store) > 2) :
-                    v = v + Str2Word(store[2])
+                   if store[2] != 0:
+                       v = v + Str2Word(store[2])
+                       # This extra bit logic handles the case of lables+## math.
                 StoreMem[int(vaddress)] = CPU.lowbyte(v)
                 StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:
                 print(key," is missing ", store)
-#                CPU.raiseerror("043 W Symbol %s used but never defined." % ( key ))
     if Debug:
         i = 0
         print("Pre-Run Memory Dump:")
@@ -1461,8 +1464,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     return highaddress
 
 def debugger(FileLabels):
-   global InDebugger,LineAddrList,watchwords
-   breakpoints = []
+   global InDebugger,LineAddrList,watchwords, breakpoints
    startrange = 0
    stoprange = 0
    redoword = "Null"
@@ -1470,7 +1472,8 @@ def debugger(FileLabels):
    while True:
       sys.stdout.write("%04x> " % CPU.pc)
       sys.stdout.flush()
-      cmdline = sys.stdin.readline(256)
+#      cmdline = sys.stdin.readline(256)
+      cmdline = input()
       cmdline = removecomments(cmdline).strip()
       if cmdline != "": 
          (cmdword,size)=nextword(cmdline)
@@ -1590,7 +1593,8 @@ def debugger(FileLabels):
                while True:
                   sys.stdout.write("%04x[b%02x,b%02x]: " % (maddr,CPU.memspace[maddr],CPU.memspace[(maddr+1) &0xffff]))
                   sys.stdout.flush()
-                  cmdline = sys.stdin.readline(256)
+#                  cmdline = sys.stdin.readline(256)
+                  cmdline = input()
                   cmdline = removecomments(cmdline).strip()
                   if len(cmdline) > 0:
                      if cmdline == "":
@@ -1777,6 +1781,16 @@ if __name__ == '__main__':
     files = []
     OptCodeFlag = False
     UseDebugger = False
+    
+    histfile = os.path.join(os.path.expanduser("~"), ".cpu_history")
+    try:
+       readline.read_history_file(histfile)
+       # default history len is -1 (infinite), which may grow unruly
+       readline.set_history_length(1000)
+    except FileNotFoundError:
+       pass
+
+    atexit.register(readline.write_history_file, histfile)
     for i, arg in enumerate(sys.argv[1:]):
         if skipone:
             skipone = False
