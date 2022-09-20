@@ -10,6 +10,9 @@ import rpdb
 import atexit
 import readline
 import readchar
+import cProfile, pstats, io
+from pstats import SortKey
+
 from pathlib import Path
 path_root = Path(__file__).parents[2]
 sys.path.append(str(path_root))
@@ -23,7 +26,8 @@ import termios
 import signal
 from functools import lru_cache
 
-
+pr = cProfile.Profile()
+pr.enable()
 StoreMem = np.zeros(0xffff, dtype=np.uint8)
 FileLabels = {}
 FWORDLIST = []
@@ -102,6 +106,9 @@ class microcpu:
         self.simtime = False
         self.clocksec = 1000
 
+    def insertbyte(self,location,value):
+        self.memspace[location] = value
+
     def twos_compToo(self,val,bits):
         # Convert an 'anysize' signed interget into 2comp bits size integer
         if val < 0:
@@ -124,11 +131,20 @@ class microcpu:
 
     def raiseerror(self, idcode):
         global GPC, RunMode,FileLabels
+        fd = sys.stdin.fileno()
+        new = termios.tcgetattr(fd)
+        new[3] = new[3] | termios.ECHO          # lflags
+        try:
+            termios.tcsetattr(fd, termios.TCSADRAIN, new)
+        except:
+            print("TTY Error: On No Echo")
+        
         print("Error Number: %s \n\tat PC:%04x" % (idcode,int(CPU.pc)))
         valid = int(idcode[0:3])
         if RunMode:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
         if not InDebugger:
+
             sys.exit(valid)
         else:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
@@ -137,7 +153,6 @@ class microcpu:
     def loadat(self, location, values):
         i = location
         for val in values:
-#            self.memspace[i] = self.twos_compToo(val,8)
             self.memspace[i] = val
             i += 1
 
@@ -196,8 +211,8 @@ class microcpu:
         address = int(address)
         if address > MAXMEMSP:
             self.raiseerror("004 Invalid Address: %d, putwordat" % (address))
-        self.memspace[address] = self.lowbyte(value)
-        self.memspace[address + 1] = self.highbyte(value)
+        self.insertbyte(address, self.lowbyte(value))
+        self.insertbyte(address + 1, self.highbyte(value))
 
     def optNOP(self, count):
         return
@@ -278,9 +293,9 @@ class microcpu:
         sp *= 2
         if sp > (0xff/2 - 2):
             self.raiseerror("012 MB Stack overflow, optPOPI")
-        self.memspace[address] = self.mb[sp]
+        self.insertbyte(address, self.mb[sp])
         if (address+1 <= MAXMEMSP):
-            self.memspace[address+1] = self.mb[sp+1]
+            self.insertbyte(address+1, self.mb[sp+1])
         self.mb[0xff] -= 1
 
     def optPOPII(self, firstaddress):
@@ -631,12 +646,14 @@ class microcpu:
         # 1         Read in just digts or '-' for signed integer. Store at address
         # 2         Read line of text, linefeed replaced by null
         # 3         Read keybord character saved it as 16 bit value at address, no echo. Some See list for 'special' keys
+        # 4         Set TTY no-echo
+        # 5         Set TTY ech
         if address >= (MAXMEMSP-11):
             self.raiseerror("046 Insufficent space for Message Address at %d, optPOLL" % (address))
         cmd = self.fetchAcum(0)
         if cmd == 1:
             sys.stdout.flush()
-            rawdata = stdin.readline(256)
+            rawdata = sys.stdin.readline(256)
             justnum = "0"
             for c in rawdata:
                 if ( c >= '0' and c <= '9') or ( c == '-' ):
@@ -675,7 +692,23 @@ class microcpu:
             elif len(c) == 3:
                 self.putwordat(address,(ord(c[1])) << 8 + (ord(c[1])))
                 self.putwordat(address+2,(ord(c[2]))) # This will create a 3 char string null terminated
-
+        if cmd == 4:
+            fd = sys.stdin.fileno()
+            new = termios.tcgetattr(fd)
+            new[3] = new[3] & ~termios.ECHO          # lflags
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, new)
+            except:
+                print("TTY Error: On No Echo")
+        if cmd == 5:
+            fd = sys.stdin.fileno()
+            new = termios.tcgetattr(fd)
+            new[3] = new[3] | termios.ECHO          # lflags
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, new)
+            except:
+                print("TTY Error: On Echo")
+            
     def optRRTC(self, unused):
         # RRTC mean Rotate Right Through Carry
         # Means after rotation current CF becomes high bit, and previous low bit saves to CF
@@ -1137,6 +1170,8 @@ def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT
         stopi=len(instr)
         if working[stopi - 1] == '"':
             stopi -= 1
+        if starti < 100 and CPU.pc != 0:
+            print("DEBUG: mem add %s at pc %s\n" % (starti,CPU.pc))
         for c in working[starti:stopi]:
             StoreMem[int(curaddress)] = ord(c)
             curaddress += 1
@@ -1187,6 +1222,8 @@ def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT
     if JUSTRESULT:
         # This is for cases were the assembler is not to save it into memory.
         return Result
+    if curaddress < 100 and CPU.pc != 0:
+            print("DEBUG: mem add %s at pc %s\n" % (curaddress ,CPU.pc))  
     if ByteFlag:
         StoreMem[curaddress] = (Result & 0xff)
         curaddress += 1
@@ -1449,6 +1486,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                    if store[2] != 0:
                        v = v + Str2Word(store[2])
                        # This extra bit logic handles the case of lables+## math.
+                if int(vaddress) < 100 and CPU.pc != 0:
+                    print("DEBUG: mem add %s at pc %s\n" % (vaddress ,CPU.pc))
                 StoreMem[int(vaddress)] = CPU.lowbyte(v)
                 StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:
@@ -1464,11 +1503,13 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     return highaddress
 
 def debugger(FileLabels):
-   global InDebugger,LineAddrList,watchwords, breakpoints
+   global InDebugger,LineAddrList,watchwords, breakpoints, GlobalOptCnt
    startrange = 0
    stoprange = 0
    redoword = "Null"
    InDebugger = True
+   size=0
+   cmdword = ""
    while True:
       sys.stdout.write("%04x> " % CPU.pc)
       sys.stdout.flush()
@@ -1501,9 +1542,18 @@ def debugger(FileLabels):
                arglist.append(varval)
                argcnt +=1
             else:
-               print("%d Possible matches: "% len(tempdic), tempdic)
-               cmdword="Null"
-               thisword=""
+               varval = None
+               for pi in tempdic:
+                   if pi == thisword:
+                       varval=FileLabels[pi]
+                       arglist.append(varval)
+                       argcnt += 1
+                       thisword = ""
+               if varval == None:
+               # Drop here is no exact matchs
+                   print("%d Possible matches: "% len(tempdic), tempdic)
+                   cmdword="Null"
+                   thisword=""
                continue
             if varval == thisword:
                # Not modified, means not defined.
@@ -1691,6 +1741,7 @@ def debugger(FileLabels):
          if argcnt > 0:
             stepcnt = arglist[0]
          for i in range(stepcnt):
+            GlobalOptCnt += 1
             CPU.evalpc()
             DissAsm(CPU.pc, 1, CPU)
             if CPU.pc in breakpoints:
@@ -1701,6 +1752,7 @@ def debugger(FileLabels):
          curaddr=CPU.FindWhatLine(CPU.pc)
          while True:
             print("Stepping Over %d" % curaddr)
+            GlobalOptCnt += 1
             CPU.evalpc()
             if CPU.FindWhatLine(CPU.pc) != curaddr:
                break
@@ -1714,12 +1766,19 @@ def debugger(FileLabels):
                DissAsm(CPU.pc, 1, CPU)               
                break
             AtLeastOne = 0
+            GlobalOptCnt += 1
             CPU.evalpc()
       if cmdword == "r":
-         CPU.pc = 0
-         CPU.mb[0xff] = 0
-         print("PC set to 0")
-         continue
+          if argcnt < 1:
+              CPU.pc = 0
+              CPU.mb[0xff] = 0
+              print("PC set to 0")
+          else:
+              CPU.pc = arglist[0]
+              print("PC set to %04x" % arglist[0])
+          CPU.flags = 0
+          CPU.mb[0xff] = 0
+          continue
       if cmdword == "g":
          if argcnt < 1:
             print("Need to provide an address to go to.")
@@ -1822,8 +1881,10 @@ if __name__ == '__main__':
                 files.append(arg)
     Entry = 0
     maxusedmem = 0
+    print("# Assembly Start")
     for curfile in files:
         maxusedmem = loadfile(curfile, maxusedmem, CPU, GLOBALFLAG,0)
+    GlobalOptCnt = 0            
     if len(files) == 0:
         # if no files given then drop to debugger for machine lang tests.
         UseDebugger = True        
@@ -1853,6 +1914,7 @@ if __name__ == '__main__':
 
     i = 0
     SP = -1
+    print("# Assembly Done.")
     RunMode = True
     CPU.pc = Entry
     if Debug:
@@ -1864,4 +1926,11 @@ if __name__ == '__main__':
         debugger(FileLabels)
     else:
         while True:
+            GlobalOptCnt += 1
             CPU.evalpc()
+pr.disable()
+s = io.StringIO()
+sortby = SortKey.CUMULATIVE
+ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+ps.print_stats()
+print(s.getvalue())
