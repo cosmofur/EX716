@@ -41,6 +41,8 @@ Entry = 0
 DeviceHandle = None
 DeviceFile = 0
 ActiveFile = ""
+EchoFlag = False
+
 
 GLOBALFLAG = 1
 LOCALFLAG = 2
@@ -601,16 +603,16 @@ class microcpu:
             sys.stdout.write("%04x" % v)
         if cmd == 20:
             if DeviceHandle == None:
-                DeviceHandle = "DISK%2d.disk" & address
+                DeviceHandle = "DISK%02d.disk" % address
             try:
                 DeviceFile = open(DeviceHandle,"r+b")
             except IOError:
                 self.raiseerror("048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == 21:
-            DeviceFile.seek(address*256,0)
+            DeviceFile.seek(address*0xff,0)
         if cmd == 22:
-            if address <  MAXMEMSP-255:
-                block = self.memspace[address:address+256]
+            if address <  MAXMEMSP-0xff:
+                block = self.memspace[address:address+0xff]
                 DeviceFile.write(bytes(block))
             else:
                 self.raiseerror("049 Attempted to write block larger than memory to storage")
@@ -633,7 +635,7 @@ class microcpu:
         if cmd == 102:
             sys.stdout.write("\nStack ( %d):" % (self.mb[0xff]))
             for i in range(self.mb[0xff]):
-                val = self.mb[i*2]+(256*self.mb[i*2+1])
+                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
                 sys.stdout.write(" %04x" % (val))
             print("")
         sys.stdout.flush()
@@ -648,6 +650,8 @@ class microcpu:
         # 3         Read keybord character saved it as 16 bit value at address, no echo. Some See list for 'special' keys
         # 4         Set TTY no-echo
         # 5         Set TTY ech
+        # 22        Requires Disk Device already initilized. Reads 256 Byte block from address
+        # 
         if address >= (MAXMEMSP-11):
             self.raiseerror("046 Insufficent space for Message Address at %d, optPOLL" % (address))
         cmd = self.fetchAcum(0)
@@ -696,6 +700,7 @@ class microcpu:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
             new[3] = new[3] & ~termios.ECHO          # lflags
+            EchoFlag = True            
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
@@ -704,10 +709,21 @@ class microcpu:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
             new[3] = new[3] | termios.ECHO          # lflags
+            EchoFlag = False
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
                 print("TTY Error: On Echo")
+        if cmd == 22:
+            if DeviceHandle != None:
+                if address < MAXMEMSP-0xff:
+                    block = DeviceFile.read(256)
+                    tidx=address
+                    for i in block:
+                        self.memspace[tidx] = int(i) & 0xff
+                        tidx += 1
+                else:
+                    self.raiseerror("053 Attempted to read block with insuffient memory")
             
     def optRRTC(self, unused):
         # RRTC mean Rotate Right Through Carry
@@ -781,6 +797,7 @@ class microcpu:
         GPC = pc
         optcode = self.memspace[pc]
         if not(optcode in OPTLIST):
+            print(OPTLIST)
             self.raiseerror("038 Optcode %s at Addr %04xis invalid:" % (optcode, pc))
         if Debug:
             print("###   ",end="")
@@ -933,6 +950,11 @@ def Str32Word(instr):
             result = ord(instr[1:2])
             if (len(instr)>3):
                 result = result + (ord(instr[2:3]) << 8)
+        elif instr[0:1] != "b" and ( instr[0:1].upper() >= "A" and instr[0:1].upper() <= "Z" ):
+            if instr in FileLabels:
+                result = FileLabels[instr]
+            else:
+                CPU.raiseerror("054 Use of fixed value as lable before defined.")
         else:
             valid=True
             for i in instr:
@@ -1513,8 +1535,22 @@ def debugger(FileLabels):
    while True:
       sys.stdout.write("%04x> " % CPU.pc)
       sys.stdout.flush()
+      fd = sys.stdin.fileno()
+      new = termios.tcgetattr(fd)
+      new[3] = new[3] | termios.ECHO          # lflags      
+      if EchoFlag:
+          try:
+              termios.tcsetattr(fd, termios.TCSADRAIN, new)
+          except:
+              print("TTY Error: On No Echo")              
 #      cmdline = sys.stdin.readline(256)
       cmdline = input()
+      if EchoFlag:
+          new[3] = new[3] & ~termios.ECHO
+          try:
+              termios.tcsetattr(fd, termios.TCSADRAIN, new)
+          except:
+              print("TTY Error: On Echo On")      
       cmdline = removecomments(cmdline).strip()
       if cmdline != "": 
          (cmdword,size)=nextword(cmdline)
@@ -1839,6 +1875,7 @@ if __name__ == '__main__':
     prpcmd = 0
     files = []
     OptCodeFlag = False
+    BinaryOutFlag = False
     UseDebugger = False
     
     histfile = os.path.join(os.path.expanduser("~"), ".cpu_history")
@@ -1867,6 +1904,8 @@ if __name__ == '__main__':
                 UseDebugger = True
             elif arg == "-c":
                 OptCodeFlag = True
+            elif arg == "-O":
+                BinaryOutFlag = True
             elif arg == "-w":
                 skipone = True
                 prpcmd = 1
@@ -1910,6 +1949,23 @@ if __name__ == '__main__':
                 f.write("# %04x - %04x\n" % (i-0xf,i))
             i += 1
         f.write("\n")
+    if BinaryOutFlag:
+        newfile = files[0][:-2]+".bin"
+        f = open(newfile,"wb")
+        limiter = len(CPU.memspace)
+        for i in range(len(CPU.memspace)-1, 1, -1):
+            if CPU.memspace[i] != 0:
+                break
+            limiter -= 1
+        filler = 0x100 - (limiter % 0x100)
+        print("Writeing Binary Output from %s with spacer of %s" % (limiter,filler))
+        for i in range(0,limiter):
+            cval=((CPU.memspace[i]) & 0xff )
+            f.write(''.join(chr(cval)).encode('charmap'))
+        for i in range(0,filler):
+            f.write('\0'.encode('charmap'))
+        f.close()
+        
 
 
     i = 0

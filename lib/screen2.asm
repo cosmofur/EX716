@@ -1,6 +1,7 @@
 L string.asm
 L mul.ld
 L div.ld
+L io.asm
 ! SCREEN_DONE
 M SCREEN_DONE 1
 M INC2I @PUSHI %1 @ADD 2 @POPI %1
@@ -28,9 +29,13 @@ b$27 "[" b0
 @PRTS CSICODE @PRT "s"
 @PRTS CSICODE @PRT "999;999H"
 @PRTS CSICODE @PRT "6n"
-@PRTS CSICODE @PRT "u"
+#@PUSH TermInfoBuffer	
+#@PUSH "R" b0     # 'R'
+#@PUSH 20      # We limit possible results to 20 bytes
+#@CALL StrReadToChar
 @READS TermInfoBuffer
 @MC2M TermInfoBuffer TIBIndex
+@PRTS CSICODE @PRT "u"
 # At this point TermInfoBuffer should be "[[HH;WWR"
 # Search for ';'
 @PUSH 0x3b @PUSH TermInfoBuffer @CALL strfndc
@@ -56,6 +61,15 @@ b$27 "[" b0
 # the old index should be at TOS
 @CALL stoi
 @POPI WinWidth
+# We need to make sure values are not too big. Our limit is 80x50
+@PUSHI WinWidth @CMP 80 @POPNULL
+@JLE NotTooWide
+   @MC2M 80 WinWidth
+:NotTooWide
+@PUSHI WinHeight @CMP 50 @POPNULL
+@JLE NotTooTall
+  @MC2M 50 WinHeight
+:NotTooTall
 @RET
 :TermInfoBuffer "                                                      " b0
 :TIBIndex 0
@@ -113,6 +127,7 @@ b$27 "[" b0
    :WRInDiffBlock
      # We land here when ever the stings were expected to not match.
      @CMPS @POPNULL @POPNULL
+#     $$12 @POPNULL @POPNULL
      @JMPZ WRNotExpectedMatch
         # here if we continue to seeing diffrences in the strings.
 	@PUSHII WRSrcPage

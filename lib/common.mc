@@ -72,6 +72,8 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollReadIntI 1
 =PollReadStrI 2
 =PollReadCharI 3
+=PollSetNoEcho 4
+=PollSetEcho 5
 
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
@@ -184,6 +186,10 @@ M PROMPT @PRT %1 @READI %2
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
+# Turn Keyboard echo off
+M TTYNOECHO @PUSH PollSetNoEcho @POLL %1 @POPNULL
+# Turn KeyBoard echo on
+M TTYECHO @PUSH PollSetEcho @POLL %1 @POPNULL
 # End Program
 M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack

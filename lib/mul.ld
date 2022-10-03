@@ -1,6 +1,8 @@
 # Input: Stack RET, N, MM
 # Output: ANS, CNT
 # Requites common
+! MUL_SEEN
+M MUL_SEEN 1
 @JMP MULINIT
 G MUL
 :MUL
@@ -93,3 +95,4 @@ G MUL
 b0
 b0
 :MULINIT
+ENDBLOCK
