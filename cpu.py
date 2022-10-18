@@ -145,8 +145,8 @@ class microcpu:
         valid = int(idcode[0:3])
         if RunMode:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
+        new[3]
         if not InDebugger:
-
             sys.exit(valid)
         else:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC),GPC))
@@ -539,8 +539,6 @@ class microcpu:
         # if 32 it will print the 32 bit integer value stored AT location of address
         # if 33 if will print the 32 bit integer value combining top two 16b words on HW stack
 
-
-
         if address >= (MAXMEMSP-11):
             self.raiseerror("037 Insufficent space for Message Address at %d, optCAST" % (address))
         cmd = self.fetchAcum(0)
@@ -603,13 +601,15 @@ class microcpu:
             sys.stdout.write("%04x" % v)
         if cmd == 20:
             if DeviceHandle == None:
-                DeviceHandle = "DISK%02d.disk" % address
+                DeviceHandle = "DISK%02d.disk" % self.getwordat(address)a
             try:
                 DeviceFile = open(DeviceHandle,"r+b")
             except IOError:
                 self.raiseerror("048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == 21:
-            DeviceFile.seek(address*0xff,0)
+            saddr = self.getwordat(address)*0x100
+            sys.stdout.write("Moving File to block %d" % saddr)
+            DeviceFile.seek(saddr,0)
         if cmd == 22:
             if address <  MAXMEMSP-0xff:
                 block = self.memspace[address:address+0xff]
@@ -641,7 +641,7 @@ class microcpu:
         sys.stdout.flush()
 
     def optPOLL(self, address):
-        global Debug
+        global Debug, EchoFlag
         # POLL is the Input funciton
         # Acum holds the funciton and parm holds either value or address
         # Acum,            Action
@@ -650,7 +650,7 @@ class microcpu:
         # 3         Read keybord character saved it as 16 bit value at address, no echo. Some See list for 'special' keys
         # 4         Set TTY no-echo
         # 5         Set TTY ech
-        # 22        Requires Disk Device already initilized. Reads 256 Byte block from address
+        # 22        Requires Disk Device already initilized. Reads 256 Byte block from [address]
         # 
         if address >= (MAXMEMSP-11):
             self.raiseerror("046 Insufficent space for Message Address at %d, optPOLL" % (address))
@@ -718,7 +718,8 @@ class microcpu:
             if DeviceHandle != None:
                 if address < MAXMEMSP-0xff:
                     block = DeviceFile.read(256)
-                    tidx=address
+                    tidx=self.getwordat(address)
+                    sys.stdout.write(" Reading Block to address %d %d\n" % (address,tidx))
                     for i in block:
                         self.memspace[tidx] = int(i) & 0xff
                         tidx += 1
@@ -1525,7 +1526,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     return highaddress
 
 def debugger(FileLabels):
-   global InDebugger,LineAddrList,watchwords, breakpoints, GlobalOptCnt
+   global InDebugger,LineAddrList,watchwords, breakpoints, GlobalOptCnt, EchoFlag
    startrange = 0
    stoprange = 0
    redoword = "Null"
@@ -1534,23 +1535,24 @@ def debugger(FileLabels):
    cmdword = ""
    while True:
       sys.stdout.write("%04x> " % CPU.pc)
-      sys.stdout.flush()
       fd = sys.stdin.fileno()
-      new = termios.tcgetattr(fd)
-      new[3] = new[3] | termios.ECHO          # lflags      
       if EchoFlag:
-          try:
-              termios.tcsetattr(fd, termios.TCSADRAIN, new)
-          except:
-              print("TTY Error: On No Echo")              
+            fd = sys.stdin.fileno()
+            new = termios.tcgetattr(fd)
+            new[3] = new[3] | termios.ECHO          # lflags
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, new)
+            except:
+                sys.stdout.write("TTY Error: On No Echo")
 #      cmdline = sys.stdin.readline(256)
+      sys.stdout.flush()
       cmdline = input()
       if EchoFlag:
           new[3] = new[3] & ~termios.ECHO
           try:
               termios.tcsetattr(fd, termios.TCSADRAIN, new)
           except:
-              print("TTY Error: On Echo On")      
+              print("TTY Error: On Echo On")
       cmdline = removecomments(cmdline).strip()
       if cmdline != "": 
          (cmdword,size)=nextword(cmdline)

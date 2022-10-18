@@ -1,0 +1,38 @@
+Our Disk File System is Very Basic and resembles some of the very early 1970's disk OS's
+Some Very elementry concepts are borrowed from Unix like OS's but this is Far Far Far from a Unix like system
+It is not going to even try to be one.
+
+Disk loading is done by a short program, a boot loader, that started as address 00
+   Boot loader
+      Disk is seen as a sequential series of 256 byte blocks, Each block can be addressed by a 16bit index.
+      (Max of 16MB disk)
+      Block 0 is the Disk ID and if the Disk is Bootable, the first two characters must be 'BO'
+      Boot loading does following
+      	   Reads block 0, stored at address 0x80
+	           Structure is:
+		   0-1: "BO"
+		   2-0xe: Comment, Disk ID String ("BOOT Ver 1.0--")
+		   0xf: null(0)
+		   0x10-0x11: Number of blocks to load
+		   0x12-0x13: First address to load
+		   0x14-0x15: Entry Point to execute
+		   0x16-0x17: If Zero, will prompt user for numerical value as a startup paramater
+		   0x80-0xff: An optional string that will print printed on screen. (Null Terminated)
+		   
+		   
+The First program should act as a stub with sufficent code to load and read the first inode and use that to find
+the init program.
+
+Right After the first two blocks used for stub loading, the next 8K storage (32x256b blocks) is the Disk's BitMask
+
+The BitMask uses 1's to indicate FREE and 0's to indicate in use. (So formating of disk must fill this block with
+1's, except for 0 and 1 of first word for the first reserve blocks.) Data format is little endin, so bit 0 of word 0
+is for block 0, and bit 4 of word 1, is for block 20. etc etc. We are using 1's to indicate 'free' as it take a few
+fewer instrucitons to test for possitive masks than negative masks when looking for a free spot in the mask.
+
+
+
+
+
+
+
