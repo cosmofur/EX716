@@ -69,11 +69,20 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
+=CastPrint32Int 19
+=CastSelectDisk 20
+=CastSeekDisk 21
+=CastWriteBlock 22
+=CastSyncDisk 23
+=CastPrint32I 32
+=CastPrint32S 33
 =PollReadIntI 1
 =PollReadStrI 2
 =PollReadCharI 3
 =PollSetNoEcho 4
 =PollSetEcho 5
+=PollReadBlock 22
+
 
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
@@ -178,6 +187,8 @@ M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
 M PRTTOP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PUSHI %0M1 @PRTI %0M1
+# Print 32bit number starting at address
+M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
@@ -204,6 +215,16 @@ M DECI @PUSH 1 @SUBI %1 @POPI %1
 M INC2I @PUSHI %1 @ADD 2 @POPI %1
 # Subtracts one from variable
 M DEC2I @PUSH 2 @SUBI %1 @POPI %1
+
+# Disk IO Group
+M DISKSELI @PUSH CastSelectDisk @CAST %1 @POPNULL
+M DISKSEL @MC2M %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
+M DISKSEEKI @PUSH CastSeekDisk @CAST %1 @POPNULL
+M DISKSEEK @MC2M %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
+# No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
+M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
+M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
+M DISKREAD @PUSH PollReadBlock @CAST %1 @POPNULL
 
 # The Following are some convient macros to simplify some of the most common logic and jump functions
 # Math Group,   3 params A, B and C all are simple memeory addresses or lables.

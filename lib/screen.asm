@@ -8,9 +8,8 @@ G ScrInit G ScrClear G ScrMove G ScrWidth G ScrHeight G CSICODE
 :ScrWidth 80
 :ScrHeight 24
 :CSICODE
-# "<ESC>[" b0
-b$27 "[" b0
-
+"<ESC>[" b0
+# b$27 "[" b0
 :ScrInit
 # There no other paramters so we already have the Return Address where we need it.
 @PRTLN "-----INITILIZING....<Hit Enter>"
@@ -52,7 +51,8 @@ b$27 "[" b0
   @MC2M 50 ScrHeight
 :NotTooTall
 @RET
-:TermInfoBuffer "                                                      " b0
+# We put an initial 24x80 responce code for a reasonable default if screen size fails to report properly
+:TermInfoBuffer "[24;80R                                                  " b0
 :TIBIndex 0
 #
 # 

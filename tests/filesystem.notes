@@ -1,12 +1,54 @@
+The File system is made up of several interrelated data structures.
+
+Unlike real 1970's disk, we are not going to concern ourselves with heads, tracks, sectors and blocks.
+Rather we will treat the disk as a randomably addressable space of 256 byte blocks, with each block having
+a 16 bit address, for a total of 16MB of storage. (This may sound tiny, but in the 1970's this would have
+been a luxury for a home pc)
+
+1: Bitmap, a block of disk space which every bit corresponds on a block of the disk. For 16MB disk we need a total of 32 256b blocks to map the entire disk. As we reserve the first 3 blocks for OS boot and system data/variables, the first Bitmap block is block 3.
+2: Inode structure. At this level each 'filename' is just a 16b number and points to an Inode. The Inode structure stores basic information about the file, such as length and number of hard links. But most importantly it stores a list of blocks that make up the file.
+3: Filenames are just a simple data file which maps text filenames to inode numbers. the OS will keep track of a conception Al structure called the 'root' inode, which will point to a formatted data file that will store the filenames and other extended data. In presentation this will be called the '.' file and some of the filenames store in it, could be poiting at other inode files which act as directories. It a function of the command interpiter and the fileio system to combine these into the concept of a hyiarchials filesystem.
+
+
+------
+Inode Structure
+ID: int16
+LINK_COUNT: int16 (Zero means inode is free and not assigned)
+PERMISSION: int16 bit map of permissions. Read Right to Left, lowest to highest rwxISDX
+            if I (0x4) set, then is parent to additional inodes rather than file.
+	    if S (0x8) set, Special file for soft links, space for index used for additional data
+	    if D (0x16) set, Device file, space for index used for additional data
+	    if X (0x32) set, this is an extended inode list. Another INode points here for overflow.
+CREATETIME: int32 (Time format for future library)
+INDEXCNT: int16, how many block ranges are used in this inode. If zero then mark as Free or deleted.
+1..INDEXCNT {NODE,SIZE).. : Points to 1 to SIZE disk nodes as this part of full file.
+      If NODE == 0 then SIZE is int16 pointer to another inode (X type) for overflow.
+Max Size without overflow is 60
+
+
+----------------
+bitmap structures
+Main bitmap is just that 32 blocks of storage where each active bit means a block is in use.
+To help reduce the fragmention of the disk, in Block 2 a 32 byte structure will keep track of
+32 cursors that will a
+
+
+
+
+
+
+
+old notes follow:
+
 Our Disk File System is Very Basic and resembles some of the very early 1970's disk OS's
-Some Very elementry concepts are borrowed from Unix like OS's but this is Far Far Far from a Unix like system
+Some Very elementary concepts are borrowed from Unix like OS's but this is Far Far Far from a Unix like system
 It is not going to even try to be one.
 
 Disk loading is done by a short program, a boot loader, that started as address 00
    Boot loader
       Disk is seen as a sequential series of 256 byte blocks, Each block can be addressed by a 16bit index.
       (Max of 16MB disk)
-      Block 0 is the Disk ID and if the Disk is Bootable, the first two characters must be 'BO'
+      Block 0 is the Disk ID and if the Disk is Boot-able, the first two characters must be 'BO'
       Boot loading does following
       	   Reads block 0, stored at address 0x80
 	           Structure is:

@@ -26,14 +26,13 @@ import termios
 import signal
 from functools import lru_cache
 
-pr = cProfile.Profile()
-pr.enable()
 StoreMem = np.zeros(0xffff, dtype=np.uint8)
 FileLabels = {}
 FWORDLIST = []
 FBYTELIST = []
 MacroData = {}
 breakpoints = []
+tempbreakpoints = []
 MacroPCount = {}
 GlobalLineNum = 0
 GlobalOptCnt = 0
@@ -49,10 +48,9 @@ LOCALFLAG = 2
 watchwords = []
 MAXMEMSP=0xffff
 MAXHWSTACK=0xff - 2
-
 Debug = False
+
 InDebugger=False
-Remote = False
 RunMode = False
 GPC = 0
 LineAddrList = [[0,0],[0,0]]
@@ -84,6 +82,24 @@ def shandler(signum, frame):
     debugger()
 signal.signal(signal.SIGINT, shandler)
 
+def validatestr(instr,typecode):
+    alpha="0123456789xo"
+    if typecode == 16:
+        alpha="0123456789abcdefABCDEF-+x"
+    elif typecode == 2:
+        alpha="01+-xb"
+    elif typecode == 8:
+        alpha="01234567+-xo"
+    newstr=""
+    for cc in instr:
+        if not( cc in alpha ):
+            print("String %s is not valid for base %d" % (instr,typecode))
+        else:
+            newstr += cc
+    return(int(newstr,typecode))
+    
+    
+
 
 class microcpu:
 
@@ -113,6 +129,7 @@ class microcpu:
 
     def twos_compToo(self,val,bits):
         # Convert an 'anysize' signed interget into 2comp bits size integer
+        return val
         if val < 0:
             val = (1 << bits) + val               # If < 0, append signbit
         return val & (2 ** bits - 1)
@@ -368,8 +385,10 @@ class microcpu:
         self.StoreAcum(0,A1)
 
     def optADDS(self, invalue):
-        R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        R2 = self.twos_compFrom(self.fetchAcum(1),16)
+#        R1 = self.twos_compFrom(self.fetchAcum(0),16)
+#        R2 = self.twos_compFrom(self.fetchAcum(1),16)
+        R1 = self.fetchAcum(0)
+        R2 = self.fetchAcum(1)
         A1 = R1 + R2
         self.SetFlags(A1)
         self.mb[0xff] -= 1
@@ -531,6 +550,9 @@ class microcpu:
         # 11 is like 1, but using indirect address [address]
         # 12 is like 2, but using indirect address [address]
         # 16 is like 6, but will priunt lower byte of value at [address]
+        # 17 print 16b hex value at address
+        # 18 print 16b hex value at [address]
+        # 19 print 32bit int stored at 4 bytes starting at address
         # Disk Hardware Codes: A very primitive 'random IO Block' device, no filesystem, just addresses of 256 byte blocks.
         # 20 is selects Random Access storage device (disk) address is the ID of the device (disk 0 , disk 1 etc)
         # 21 is 'seek' identifies the record in the current disk.
@@ -599,9 +621,13 @@ class microcpu:
         if cmd == 18:
             v = self.getwordat(self.getwordat(address))
             sys.stdout.write("%04x" % v)
+        if cmd == 19:
+            v = self.getwordat(address)
+            v = v + (self.getwordat(address+2) << 16)
+            sys.stdout.write("%s" % v)
         if cmd == 20:
             if DeviceHandle == None:
-                DeviceHandle = "DISK%02d.disk" % self.getwordat(address)a
+                DeviceHandle = "DISK%02d.disk" % self.getwordat(address)
             try:
                 DeviceFile = open(DeviceHandle,"r+b")
             except IOError:
@@ -941,12 +967,12 @@ def Str32Word(instr):
         # Must be decimal as 0x0 is the smallest by length non decimal
         result = int(instr)
     else:
-        if instr[0:2] == "0x":
-            result = int(instr,16)
+        if instr[0:2] == "0x":            
+            result = validatestr(instr,16)
         elif instr[0:2] == "0b":
-            result = int(instr,2)
+            result = validatestr(instr,2)
         elif instr[0:2] == "0o":
-            result = int(instr,8)
+            result = validatestr(instr,8)
         elif instr[0:1] == '"':
             result = ord(instr[1:2])
             if (len(instr)>3):
@@ -963,7 +989,7 @@ def Str32Word(instr):
                     valid=False
                     break
             if valid:
-                result = int(instr)
+                result = validatestr(instr,10)
             else:
                 result = 0
                 CPU.raiseerror("050 String %s is not a valid decimal value" % instr)
@@ -1493,7 +1519,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     continue
                 else:
                     LineAddrList.append([address, GlobalLineNum,filename])
-                    LineAddrList.sort(key = lambda x: x[1])
+#                    LineAddrList.sort(key = lambda x: x[1])
                     (key,size) = nextword(line)
                     line = line[size:]
                     if address > highaddress:
@@ -1526,7 +1552,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     return highaddress
 
 def debugger(FileLabels):
-   global InDebugger,LineAddrList,watchwords, breakpoints, GlobalOptCnt, EchoFlag
+   global InDebugger,LineAddrList,watchwords, breakpoints, tempbreakpoints, GlobalOptCnt, EchoFlag
    startrange = 0
    stoprange = 0
    redoword = "Null"
@@ -1544,6 +1570,8 @@ def debugger(FileLabels):
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
                 sys.stdout.write("TTY Error: On No Echo")
+      else:
+          sys.stdout.write(">>")
 #      cmdline = sys.stdin.readline(256)
       sys.stdout.flush()
       cmdline = input()
@@ -1782,26 +1810,31 @@ def debugger(FileLabels):
             GlobalOptCnt += 1
             CPU.evalpc()
             DissAsm(CPU.pc, 1, CPU)
-            if CPU.pc in breakpoints:
+            if CPU.pc in breakpoints or CPU.pc in tempbreakpoints:
                print("Break Point %04x" % CPU.pc)
+               if CPU.pc in tempbreakpoints:
+                   tempbreakpoints.remove(CPU.pc)
                break
          continue
       if cmdword == "s":
-         curaddr=CPU.FindWhatLine(CPU.pc)
-         while True:
-            print("Stepping Over %d" % curaddr)
-            GlobalOptCnt += 1
-            CPU.evalpc()
-            if CPU.FindWhatLine(CPU.pc) != curaddr:
-               break
-            DissAsm(CPU.pc,1,CPU)
+          TestFlag=False
+          for ii in SymToValMap:
+              if CPU.memspace[CPU.pc] == ii[0]:
+                  TestFlag = True
+          if TestFlag:
+              CurInstSize=SymToValMap[CPU.memspace[CPU.pc]][2]
+              tempbreakpoints.append(CPU.pc + CurInstSize)
+              print("Setting Temporary Break Point at %04x" % (CPU.pc + CurInstSize))
+              cmdword = "c" # This only works because cmdword == "c" is bellow this 'if block'
+          else:
+              print("PC Not resting on valid Opt Code. Can not single step.")
       if cmdword == "c":
          DissAsm(CPU.pc, 1, CPU)
          AtLeastOne = 1
          while CPU.pc <= 0xffff:
-            if CPU.pc in breakpoints and AtLeastOne != 1:
+            if (CPU.pc in breakpoints or CPU.pc in tempbreakpoints) and AtLeastOne != 1:
                print("Break Point %04x" % CPU.pc)
-               DissAsm(CPU.pc, 1, CPU)               
+               DissAsm(CPU.pc, 1, CPU)
                break
             AtLeastOne = 0
             GlobalOptCnt += 1
@@ -1825,6 +1858,13 @@ def debugger(FileLabels):
          CPU.pc = arglist[0]
          print("PC set to %04x" % arglist[0])
          continue
+      if cmdword == "tb":
+          if argcnt < 1:
+            cmdword="b"
+          else:
+            for ii in arglist:
+                tempbreakpoints.append(ii)
+            continue
       if cmdword == "b":
          if argcnt < 1:
             if len(breakpoints) == 0:
@@ -1833,10 +1873,14 @@ def debugger(FileLabels):
                print("Break Points:")
                for ii in breakpoints:
                   print("%04x" % ii)
+            if len(tempbreakpoints) != 0:
+                for ii in tempbreakpoints:
+                    print("Temp Break:%04x" % ii)
          else:
             for ii in arglist:
                breakpoints.append(ii)
          continue
+          
       if cmdword == "cb":
          print("Clearing Breakpoints")
          breakpoints=[]
@@ -1849,6 +1893,13 @@ def debugger(FileLabels):
                watchwords.append(Str2Word(ii))
       if cmdword == "q":
          print("End Debugging.")
+         fd = sys.stdin.fileno()
+         new = termios.tcgetattr(fd)
+         new[3] = new[3] | termios.ECHO          # lflags
+         try:
+             termios.tcsetattr(fd, termios.TCSADRAIN, new)
+         except:
+             print("TTY Error: On No Echo")
          sys.exit(0)
       if cmdword == "h":
          print("Debug Mode Commands")
@@ -1861,11 +1912,15 @@ def debugger(FileLabels):
          print("w - watch $1                m  - modify address starting wiht $1")
       continue
 
-if __name__ == '__main__':
 
-
+def main():
+    global Debug, CPU
+    
     DEFMEMSIZE = 0xffff+2
+    Remote = False
+    Debug = False
     CPU = microcpu(0, DEFMEMSIZE)
+
 
     CPUCNT = 0
     ListOut = False
@@ -1986,9 +2041,15 @@ if __name__ == '__main__':
         while True:
             GlobalOptCnt += 1
             CPU.evalpc()
-pr.disable()
-s = io.StringIO()
-sortby = SortKey.CUMULATIVE
-ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-ps.print_stats()
-print(s.getvalue())
+
+if __name__ == '__main__':
+    main()
+    fd = sys.stdin.fileno()
+    new = termios.tcgetattr(fd)
+    new[3] = new[3] | termios.ECHO          # lflags
+    try:
+        termios.tcsetattr(fd, termios.TCSADRAIN, new)
+    except:
+        print("TTY Error: On No Echo")
+        
+#    cProfile.run('main()')

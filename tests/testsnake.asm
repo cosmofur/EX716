@@ -51,13 +51,16 @@ L random.asm
 # Center the original Snake Head location save it as first item in array.
   @PUSHI ScrWidth @RTR @POPI CURX        # CURX = ScrWidth/2
   @PUSHI ScrHeight @RTR @POPI CURY       # CURY = ScrHeight/2
-  @MC2M 0 ArryIndx
+  @MC2M 2 ArryIndx
   @MM2M CURX ArryBuff                    # Array[0,0]=CURX
   @MM2M CURY ArryBuff+2                  # Array[0,1]=CURY
-  @PUSH ArryBuff                         # Setup TailX/Y to point to 'end' of snake (which starts as same as head)
-  @DUP
+  @MM2M CURX ArryBuff+4 
+  @MM2M CURY ArryBuff+6 
+  @MM2M CURX ArryBuff+8 
+  @MM2M CURY ArryBuff+10
+  @PUSHI ArryBuff                         # Setup TailX/Y to point to 'end' of snake (which starts as same as head)
   @POPI TailX                            # TailX == Array[0,0]
-  @ADD 2
+  @PUSHI ArryBuff+2
   @POPI TailY                            # TailY == Array[0,1]
   @CALL CreateFood
    
@@ -75,7 +78,6 @@ L random.asm
 :CYIdx 0
 :ReadKeyBoard
   @POPI RKReturn
-#  @PUSH ArryIndx @RTL @RTL    # PTR = Index*(4 Bytes) + ArrayBuff
   @PUSH ArryBuff        # Keyboard commands can only change the snake's head values (index 0)
   @DUP    @POPI CXIdx   # CXIdx is pointer to current Array[ArryIndx,0]
   @ADD 2  @POPI CYIdx   # CYIdy is pointer to current Array[ArryIndx,1]
@@ -159,15 +161,11 @@ L random.asm
 :DisplaySnake
    # First erase old snake head.
    	
-   @PUSHII TailX
-   @PUSHII TailY
-   @CALL ScrMove
-   @PRT " "
    # If ArryIndx > 0, we need to 'shift' the array.
    @PUSHI ArryIndx
-   @CMP 1 @POPNULL
-   @JLT NoShiftNeeded
-      @CALL ShiftArray
+   @CMP 0 @POPNULL
+   @JMPZ NoShiftNeeded
+     @CALL ShiftArray
    :NoShiftNeeded
    @CALL ReadKeyBoard
    # Test for food
@@ -182,6 +180,7 @@ L random.asm
       @CALL CreateFood      
    :NoFood
    @MC2M ArryBuff DSArryPtr
+   @PUSHII TailX  @PUSHII TailY @CALL ScrMove @PRT " "   
    @PUSHI CURX @PUSHI CURY @CALL ScrMove @PRT "S"
    @ForIfA2V DSIndex 0 ArryIndx NextTail
       @PUSHII DSArryPtr    # PUSH Array[Index,0]
@@ -189,7 +188,6 @@ L random.asm
       @PUSHII DSArryPtr    # PUSH Array[Index,1]
       @INC2I DSArryPtr
       @CALL ScrMove
-      @PRTI DSIndex
       @PRT "s"	
    @NextNamed DSIndex NextTail
 
@@ -198,7 +196,7 @@ L random.asm
 # GrowSnake procedure Adds one to the ArryIndx and copies the tail data to new cell
 :GSPtr 0
 :GrowSnake
-  @PUSH ArryIndx @RTL @RTL    # PTR = Index*(4 Bytes) + ArrayBuff
+  @PUSHI ArryIndx @RTL @RTL    # PTR = Index*(4 Bytes) + ArrayBuff
   @ADD ArryBuff
   @POPI GSPtr        # GSPtr points to offset of index + address of buffer
   @PUSHII GSPtr      # Save on stack current Array Tails X and Y
@@ -210,47 +208,36 @@ L random.asm
   @INC2I GSPtr       # Save the Y Value at Arry(Index+1,1)
   @POPII GSPtr
   @INCI ArryIndx     # Name make ArryIndx point to new tail
-  @PUSHI TailX       # TailX/Y is what we will erase in the next displaysnake cycle
-  @ADD 4
-  @POPI TailX
-  @PUSHI TailY       # TailX/Y is what we will erase in the next displaysnake cycle
-  @ADD 4
-  @POPI TailY 
-
 @RET
 
 # ShiftArray moves all the array data up one step closer to the tail
 :SAPtr 0
+:SBPtr 0
 :SAIndex1 0
+###############
 :ShiftArray
-@MC2M ArryBuff SAPtr      # SAPtr points to head of array.
-@INC2I SAPtr              # Star SAPtr at the 'second' element
-@INC2I SAPtr
-@ForIfA2V SAIndex1 0 ArryIndx SAForLoop
-   @PUSHII SAPtr       # Push Arry[index+1,0]
-   @INC2I SAPtr
-   @PUSHII             # Push Arry[index+1,1]
-   @SWP
-   @PUSHI SAPtr
-   @SUB 6              # Move back to Arry[index] and pop them off there
-   @POPI SAPtr
-   @POPII SAPtr        # Understand effect we want is
-   @INC2I SAPtr         #  Array[i,0] = Array[i+1,0]
-   @POPII SAPtr        #  Array[i,1] = Array[i+1,1]
-   @PUSH SAPtr
-   @ADD 6              # Setup for next loop step
-   @POPI SAPtr 
-   @NextNamed SAIndex1 SAForLoop
-# SAPtr at this point should be pointing 'beyond' the last entry. So lets setup TailX and TailY
-@PUSH 4         # Move it back two words to point to last cell of Snake
-@PUSHI SAPtr
-@SUBS
+# Set SAPtr to 'last' entry of snake data so we can work backwards
+#  SAPtr = (ArryBuff * 8) + ArryBuff
+@PUSHI ArryIndx
+@RTL @RTL   # There are 4 bytes in each XY entry, so Left Shift 2
+@ADD ArryBuff
+@POPI SBPtr
+@PUSH 4
+@SUBI SBPtr # SAPtr = SBPtr - 4
 @POPI SAPtr
-@PUSHII SAPtr
-@POPI TailX
-@INC2I SAPtr
-@PUSHII SAPtr
-@POPI TailY
+# Save what ever last entry way befor as new TailX,Y
+@PUSHII SBPtr @POPI TailX
+@PUSHI SBPtr @ADD 2 @PUSHS @POPI TailY   # This is how to do math on address and save new value
+@ForIfA2V SAIndex1 0 ArryIndx SAForLoop
+   @PUSHII SAPtr @POPII SBPtr         # Save the X part of A pointer to B pointer
+   # This line is a little tricky.
+   #  Aval=( [ SAPtr + 2]); Bval= SBPtr + 2; [Bval] = Aval
+   @PUSHI SAPtr @ADD 2 @PUSHS  # Aval (on stack)
+   @PUSHI SBPtr @ADD 2         # Bval (on stack)
+   @POPS                       # Put Aval at addrss of Bval, Saves Y part of A to B
+   @MM2M SAPtr SBPtr           # Save A pointer as Future B pointer
+   @PUSHI 4 @SUB SAPtr @POPI SAPtr  # Mova A pointer down 2 words.
+@NextNamed SAIndex1 SAForLoop 
 @RET
 
 :DebugPrint
