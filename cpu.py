@@ -61,6 +61,8 @@ JSONFNAME="CPU.json"
 if CPUPATH is None:
 #   CPUPATH = "/home/backs1/src/cpu/lib/:.:/home/backs1/src/cpu"
     CPUPATH = ".:../lib/:./lib/"
+# CPU.json is a table of the opt codes to values that is used just by the dissassembly and debugging
+# modules as a way to give human readable optcodes. In a pure execution version of this code. It is not needed.
 for testpath in CPUPATH.split(":"):
     if os.path.exists(testpath + "/" + JSONFNAME):
         JSONFNAME=testpath + "/" + JSONFNAME
@@ -71,18 +73,24 @@ OPTSYM = []
 OPTDICT = {}
 
 for i in SymToValMap:
+    # We are going 'old school' 8 bit ascii encoding only.
+    # None of this newfagle 2 or 3 byte character sets. :-)
     OPTLIST.append(i[0])
     OPTSYM.append(i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'))
     OPTDICT[i[1].encode('ascii', "ignore").decode('utf-8', 'ignore')] = [i[0],i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'),i[2]]
     OPTDICT[str(i[0])] = [i[0],i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'),i[2]]
 
 def shandler(signum, frame):
+    # This is NOT (as yet) an interupt handler for the CPU, just a way to drop code into the debugger.
+    # 
     msg = "Ctrl-c"
     print(msg, end="", flush=True)
     debugger()
 signal.signal(signal.SIGINT, shandler)
 
 def validatestr(instr,typecode):
+    # When we call int() function we must first make sure the string passed if value for that
+    # numeric base. We support hex, octal, binary and 'decimal' 
     alpha="0123456789xo"
     if typecode == 16:
         alpha="0123456789abcdefABCDEF-+x"
@@ -100,7 +108,12 @@ def validatestr(instr,typecode):
     
     
 
-
+# I must admit it, I am not a 'natural' OO programmer.
+# I learned to code back in the 'waterfall' days and to me using 'class' here
+# just feels like fluff around good and true solid 'functions'
+# I'd appologize for bad code, except I really don't want to, as I consider OO a
+# handicap, and not a feature.  
+#
 class microcpu:
 
     cpu_id_iter = itertools.count()
@@ -335,7 +348,10 @@ class microcpu:
         self.mb[0xff] -= 2
 
     def SetFlags(self, A1):
-        OF = 0
+        # The Basic SetFlags only works for fixed numbers so we'll only look at
+        # Zero, Negative and Carry.
+        # Overflow requires us to know if we are adding or subtracting so we'll do
+        # That inside the add/sub/cmp operations
         ZF = 0
         NF = 0
         CF = 0
@@ -346,29 +362,43 @@ class microcpu:
             NF = 1
         if ((A1 & 0x10000) != 0):
             CF = 1
-        # Just a note, over flow can only office if carry bit is set AND sign bit is NOT set,
-        # OR sign bit IS set but Carry Bit is not set. (XOR between NF and CF)
-        if (not bool(NF)) ^ ( not bool(CF)):
-            OF = 1
-        self.flags = ZF+(NF<<1)+(CF<<2)+(OF<<3)
+        self.flags = ZF+(NF<<1)+(CF<<2)
 
     def optCMP(self, asvalue):
         R1 = asvalue
         R2 = self.fetchAcum(0)
         A1 = R1 - R2
         self.SetFlags(A1 & 0xffff)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
+            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow 
 
     def optCMPS(self, address):
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R1 - R2
         self.SetFlags(A1 & 0xffff)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
+            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow         
 
     def optCMPI(self, address):
         R1 = self.getwordat(address)
         R2 = self.fetchAcum(0)        
         A1 = R1 - R2
         self.SetFlags(A1 & 0xffff)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
+            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow         
 
 
     def optCMPII(self, address):
@@ -378,10 +408,18 @@ class microcpu:
         self.optCMPI(newaddress)
 
     def optADD(self, invalue):
-        R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        R2 = self.twos_compFrom(invalue, 16)
+#        R1 = self.twos_compFrom(self.fetchAcum(0),16)
+#        R2 = self.twos_compFrom(invalue, 16)
+        R1 = self.fetchAcum(0)
+        R2 = invalue
         A1 = R1 + R2
         self.SetFlags(A1)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ( (NBR1 == 0 and NBR2 == 0 and NBA1 == 1) or
+             (NBR1 != NBR2  and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow         
         self.StoreAcum(0,A1)
 
     def optADDS(self, invalue):
@@ -391,6 +429,12 @@ class microcpu:
         R2 = self.fetchAcum(1)
         A1 = R1 + R2
         self.SetFlags(A1)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ( (NBR1 == 0 and NBR2 == 0 and NBA1 == 1) or
+             (NBR1 != NBR2  and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow         
         self.mb[0xff] -= 1
         self.StoreAcum(0,A1)
 
@@ -415,23 +459,46 @@ class microcpu:
         R1 = invalue
         A1 = R1 - R2
         self.SetFlags(A1)
-        #        A1 = A1 & 0xffff
+        A1 = A1 & 0xffff
         self.StoreAcum(0,A1)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
+            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow                 
+        
 
     def optSUBS(self, invalue):
-        R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        R2 = self.twos_compFrom(self.fetchAcum(1),16)
+#        R1 = self.twos_compFrom(self.fetchAcum(0),16)
+#        R2 = self.twos_compFrom(self.fetchAcum(1),16)
+        R1 = self.fetchAcum(0)
+        R2 = self.fetchAcum(1)
         A1 = R1 - R2
         self.SetFlags(A1)
         self.mb[0xff] -= 1
         self.StoreAcum(0,A1)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
+            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow        
 
     def optSUBI(self, address):
-        R1 = self.twos_compFrom(self.getwordat(address),16)
-        R2 = self.twos_compFrom(self.fetchAcum(0),16)
+#        R1 = self.twos_compFrom(self.getwordat(address),16)
+#        R2 = self.twos_compFrom(self.fetchAcum(0),16)
+        R1 = self.getwordat(address)
+        R2 = self.fetchAcum(0)      
         A1 = (R1 - R2) & 0xffff
         self.SetFlags(A1)
         self.StoreAcum(0,A1)
+        NBR1=(R1 & 0x8000) >> 15
+        NBR2=(R2 & 0x8000) >> 15
+        NBA1=(A1 & 0x8000) >> 15
+        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
+            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
+            self.flags=self.flags | 0x8  #Set OverFlow                
 
     def optSUBII(self, address):
         if address >= MAXMEMSP:
@@ -756,8 +823,8 @@ class microcpu:
         # RRTC mean Rotate Right Through Carry
         # Means after rotation current CF becomes high bit, and previous low bit saves to CF
         R1 = self.fetchAcum(0)
-        NCF = ( 1 if ( R1 & 1 != 0) else 0 ) << 2
-        OCF = (1 if (self.flags & 0x04 != 0) else 0) << 15
+        NCF = ( 1 if ( R1 & 1 != 0) else 0 ) << 2              # New Carry Flag from Right most bit
+        OCF = (1 if (self.flags & 0x04 != 0) else 0) << 15     # Pull CF from flags and make it 1 | 0
         R1 = R1 >> 1 | OCF
         self.flags = ( self.flags & 0xfffb) | NCF
         self.StoreAcum(0,R1)
@@ -766,8 +833,8 @@ class microcpu:
         # RLTC means Rotate Left Through Carry
         # After rotation current CF becomes low bit, and previous high bit saves to CF
         R1 = self.fetchAcum(0)
-        NCF = ( 1 if ( R1 & 0x08000 != 0) else 0) << 2
-        OCF = ( 1 if (self.flags & 0x04 != 0) else 0)
+        NCF = ( 1 if ( R1 & 0x08000 != 0) else 0) << 2       # New Carry Flag from Left Most bit
+        OCF = ( 1 if (self.flags & 0x04 != 0) else 0)        # Pull CF from flags and make 1 | 0
         R1 = R1 << 1 + OCF
         self.flags = ( self.flags & 0xfffb) | NCF
         self.StoreAcum(0,R1)
@@ -818,7 +885,7 @@ class microcpu:
         self.flags = self.mb[sp]
         self.mb[0xff] -= 1
 
-    def evalpc(self):
+    def evalpc(self):      #main evaluate current instruction at memeory[pc]
         global GPC
         pc = self.pc
         GPC = pc
@@ -831,14 +898,13 @@ class microcpu:
             DissAsm(pc, 1, self)
             watchfield = ""
             if watchwords:    
-#            if len(watchwords) > 0:
                 wfcomma = ""
                 for wb in watchwords:
                     nv = self.memspace[wb]
                     watchfield = (watchfield + wfcomma + "%04x" % self.getwordat(nv))
                     wfcomma = ","
                 watchfield = "Watch[" + watchfield + "]"
-        if (OPTDICT[str(optcode)][2] == 3):
+        if (OPTDICT[str(optcode)][2] == 3):  # In HW this would be when we know if we read 3 bytes or 1
             argument = self.getwordat(pc + 1)
         else:
             argument = 0
@@ -847,24 +913,6 @@ class microcpu:
         self.pc = pc
         self.switcher(optcode,argument)
 
-
-    def rdumpt(self):
-
-        FLAGS = "----"
-        if (self.flags and 1) > 0:
-            FLAGS = "Z"+FLAGS[1:]
-        if (self.flags and 2) > 0:
-            FLAGS = FLAGS[0:1]+"N"+FLAGS[2:]
-        if (self.flags and 4) > 0:
-            FLAGS = FLAGS[0:2]+"C"+FLAGS[3:]
-        if (self.flags and 8) > 0:
-            FLAGS = FLAGS[0:3]+"O"+FLAGS[4:]
-        print(" PC: %s -- Flags: %s(%s) " % ( self.pc, self.flags, FLAGS ))
-        for m in range(0,self.mb[0xff]):
-            mi = m * 2
-            v = self.mb[mi]
-            sys.stdout.write("SP(%s)%s(%s) " % (m,v,hex(v)))
-        print("")
 
 def removecomments(inline):
     # Return inline up to to any '#' that is not inside quotes, else return full inline.
@@ -902,17 +950,17 @@ def GetQuoted(inline):
             break
         elif not(inescape) and c == '\\':
             inescape = True            
-        elif inescape:
+        elif inescape:        # We support some but not all the \ codes 'c' does
             if c == 'n':
-                outputtext += '\n'
+                outputtext += '\n'         # Newline
             elif c == 't':
-                outputtext += '\t'
+                outputtext += '\t'         # Tab
             elif c == 'e':
-                outputtext += ord(32)
+                outputtext += ord(32)      # ESC
             elif c == '0':
-                outputtext += '\0'
+                outputtext += '\0'         # Null
             elif c == 'b':
-                outputtext += '\b'
+                outputtext += '\b'         # BackSpace
             else:
                 outputtext += c
             inescape = False
@@ -927,7 +975,7 @@ def nextword(ltext):
     result = ""
     wbefore = True
     wafter = False
-    spliter = " ,"
+    spliter = " ,"            # We allow both " "s and "," as word splitters
     for c in ltext:
         size += 1
         if c in spliter and wbefore:
@@ -958,7 +1006,7 @@ def Str2Word(instr):
     return Result
 
 def Str32Word(instr):
-    # Support for 0x, hex, 0b for binary and Oo for ocatal as welll as decimal by default
+    # Support for 0x, hex, 0b for binary and Oo for ocatal as well as decimal by default
     result = 0
     if type(instr) != str:
         # Conversion doesn't make sense if instr is not a string.
@@ -967,21 +1015,27 @@ def Str32Word(instr):
         # Must be decimal as 0x0 is the smallest by length non decimal
         result = int(instr)
     else:
-        if instr[0:2] == "0x":            
+        if instr[0:2] == "0x":            # Hex
             result = validatestr(instr,16)
-        elif instr[0:2] == "0b":
+        elif instr[0:2] == "0b":          # Binary
             result = validatestr(instr,2)
-        elif instr[0:2] == "0o":
+        elif instr[0:2] == "0o":          # Octal
             result = validatestr(instr,8)
-        elif instr[0:1] == '"':
+        elif instr[0:1] == '"':           # Quoted text
             result = ord(instr[1:2])
             if (len(instr)>3):
                 result = result + (ord(instr[2:3]) << 8)
         elif instr[0:1] != "b" and ( instr[0:1].upper() >= "A" and instr[0:1].upper() <= "Z" ):
+            # Note the test for 'b', its a shame but to allow b0 to mean byte 0, we lost lables that start with 'b'
             if instr in FileLabels:
                 result = FileLabels[instr]
             else:
-                CPU.raiseerror("054 Use of fixed value as lable before defined.")
+                # While we allow lables that represent future addresses to be used before being defined.
+                # becuase we just need to overwrite the fixed size 16b memory address once we figure it out
+                # But with 'STR2WORD' is used when we need a final value that maybe used in calculation rather
+                # that a fixed storage as that result may not occupy any spot in memory, that we can 'fix' in
+                # a second pass.
+                CPU.raiseerror("054 Use of fixed value as label before defined.")
         else:
             valid=True
             for i in instr:
@@ -999,9 +1053,14 @@ def Str32Word(instr):
     
 
 def Str2Byte(instr):
+    # Just use the Str2Word and keep the lowest byte
     return Str2Word(instr) & 0xff
 
 def DissAsm(start, length, CPU):
+    # The DissAsm is not really required for interpitation of the code, but is a usefull tool for debugging
+    # The need for the CPU.json file is just used by this module, (and debugger) so a 'speed optimized'
+    # version of the code would not need CPU.json at all.
+    #
     global watchwords
     StoreMem = CPU.memspace
     i = start

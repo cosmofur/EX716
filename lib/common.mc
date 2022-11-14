@@ -186,7 +186,7 @@ M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print immediate value (usefull to print value of pointer)
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
-M PRTTOP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PUSHI %0M1 @PRTI %0M1
+M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
 # Print 32bit number starting at address
 M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
 # Read an Integer from keyboard
