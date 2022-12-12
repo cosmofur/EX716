@@ -56,7 +56,6 @@ M INT2LONG \
 # This is for when the src value is a pointer to a 16b number
 M INTI2LONG \
     @PUSHI %1 @PUSH %2 @CALL INT2LONG
-# INT2LONGI treats the 32b as pointer16 to 32b data
 # Started life as a macro, now its a function, with macro like calling.
 M INT2LONGI \
     @PUSH %1 @PUSHI %2 @CALL INT2LONG
@@ -634,10 +633,22 @@ G LONG2INT
 @PUSHI MMPtr @ADD 2 @PUSHS @POPI MMLocal+2
 @PUSHII NNPtr @POPI NNLocal
 @PUSHI NNPtr @ADD 2 @PUSHS @POPI NNLocal+2
-@MOVE32AVI $$$0 M_ANS
+@MOVE32AV $$$0 M_ANS
 @MC2M 0 M_NEGFLAG
 @MOVE32AVI $$$0 M_ZERO
 @MOVE32AVI $$$1 M_ONE
+#@PRT "Local Memory Block:" @PRTNL
+#@PRT "MReturn: " @PRTHEXI MReturn @PRTNL
+#@PRT "MResultPtr: " @PRTHEXI MResultPtr @PRTNL
+#@PRT "MMPtr: " @PRTHEXI MMPtr @PRTNL
+#@PRT "NNPtr: " @PRTHEXI NNPtr @PRTNL
+#@PRT "MMLocal: " @PRT32I MMLocal @PRTNL
+#@PRT "NNLocal: " @PRT32I NNLocal @PRTNL
+#@PRT "M_TEMP: " @PRT32I M_TEMP @PRTNL
+#@PRT "M_ANS: " @PRT32I M_ANS @PRTNL
+#@PRT "M_ZERO: " @PRT32I M_ZERO @PRTNL
+#@PRT "M_ONE: " @PRT32I M_ONE @PRTNL
+#@PRTLN "------------"
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL
 @JGE M1NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
