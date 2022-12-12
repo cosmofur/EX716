@@ -46,7 +46,7 @@ G DIV
     @JMPZ BitNotSet
     #Here Bit is set
       @PUSH 1
-      @ORI Remainder         # ~ R(0) = N(Index) (IF BitNotSet R(ReverIdx) remains 0)
+      @ORI Remainder         # Set the low bit to one
       @POPI Remainder
     :BitNotSet
     @PUSHI Denominator      # if R >= D
@@ -78,6 +78,7 @@ G DIV
 @RET
 :DivideByZero
 @PRTLN "Divide By Zero"
+@PUSH 0 @PUSH 0
 @PUSHI RETURN
 @RET
 :RETURN 0

@@ -1,5 +1,7 @@
 # String Functions
 ! STRING_DONE
+L mul.ld
+L div.ld
 M STRING_DONE 1
 # In the function comments, %R meens this value is used by refrence (ptr) and %V means pass by value.
 
@@ -9,19 +11,14 @@ M STRING_DONE 1
 # Return [ length ]
 
 # Defind the Global String Labels but also some Macro Functions to simplfy use. 
-G strlen
+G strlen G strcat G midstr G memchr G memcmp G itos G stoi G strfndc
+
 M Fstrlen @PUSH %1 @CALL strlen
-G strcat
 M Fstrcat @PUSH %1 @PUSH %2 @CALL strcat
-G midstr
 M Fmidstr @PUSH %1 @PUSH %2 @PUSH %3 @CALL midstr
-G memchr
 M Fmemchr @PUSH %1 @PUSHI %2 @PUSH %3 @CALL memchr
-G memcmp
 M FmemcmpV @PUSH %1 @PUSH %2 @PUSH %3 @CALL memcmp
 M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
-G itos
-G stoi
 #
 #
 
@@ -147,7 +144,9 @@ G stoi
 	@CALL strlen
 	@PUSHI scat_str1_in
 	@ADDS  # Add length to start pos of str1 to get indert point.
-	@SUB 1
+	@PUSH 1
+	@SWP   # Normal SUB is B-A, so swap it around
+	@SUBS
 	@POPI scat_index1
 :strcat_loop1
 	@PUSHII scat_index2
@@ -266,25 +265,40 @@ G stoi
 # On Stack STRPTR.
 #
 :stoi
-@POPI siReturn1 @POPI siStrPtr @PUSHI siStrPtr
+@POPI siReturn1 @DUP @POPI siStrPtr
 @CALL strlen @POPI siLength       # Set siLength to length of string.
 @MC2M 0 siResult @MC2M 1 siMulti  # Zero out result and set initial multiplier to 1
+@MC2M 0 siNegFlag                 # zero for possitive numbers	
 :siMainLoop
 # While siLength != 0
-  @PUSHI siLength @CMP 0 @JMPZ siEndLoop
-  # Note we did not POPNULL after pushing siLength so it is still there.
+  @PUSHI siLength @CMP 0 @POPNULL @JMPZ siEndLoop	
+  @DECI siLength @PUSHI siLength   # Size is 1 to N but Index is 0 to N-1
   @ADDI siStrPtr    # Add in siStrPtr so TOS is pointer to an siLength index of string.
-  @POPS             #  @StrPtr[siLength]
-  @SUB 0x30         # ASCII code to number subtract 0x30
+  @PUSHS            #  @StrPtr[siLength]
+  @AND 0xff	    #  Only care about 8 bit character there.
+  @CMP "-" b0       #  Look for Negative Flag
+  @JNZ SiNormal
+     # If '-' seen.
+     @MC2M 1 siNegFlag
+     @JMP siMainLoop
+  :SiNormal
+  @PUSH 0x30        
+  @SWP              # Normal SUB is B-A so swap order
+  @SUBS             # ASCII code to number subtract 0x30
   @PUSHI siMulti    # Multiply by index^10 
-  @CALL MUL  
-  @ADDI siResult @PUSHI siResult   # Result = str[index]*siMulti + Result
-  @PUSH 10 @PUSH siMulti @CALL MUL # siMulti = siMulti*10
+  @CALL MUL
+  @ADDI siResult @POPI siResult   # Result = str[index]*siMulti + Result
+  @PUSH 10 @PUSHI siMulti @CALL MUL # siMulti = siMulti*10
   @POPI siMulti
-  @DECI siLength
 @JMP siMainLoop
 :siEndLoop
-@POPNULL
+# If Negative flag set
+@PUSHI siNegFlag @CMP 0 @POPNULL
+@JMPZ siNotNegative
+   @PUSHI siResult
+   @COMP2
+   @POPI siResult
+:siNotNegative
 @PUSHI siResult
 @PUSHI siReturn1
 @RET
@@ -293,6 +307,7 @@ G stoi
 :siMulti 0
 :siLength 0
 :siStrPtr 0
+:siNegFlag 0
 
 # Now integer to string
 # On stack, StrPtr, InValue, Base
@@ -315,7 +330,7 @@ G stoi
 @JGE isNotNeg        # JGE means last cmp was NOT 'N' and NOT 'Z'
   # Is negative
   @MC2M 1 isNegFlag
-  @PUSHI isWorkVal @COMP2 @POPI isWorkVal   # isWorkVal=abs(isWorkVal)
+  @PUSH 1 @PUSHI isWorkVal @SUBS @INV @POPI isWorkVal   # isWorkVal=abs(isWorkVal)
 :isNotNeg
 @MC2M isWorkBuff isRevIndex      # We'll first go left to right, so index starts at zero. We'll reverse it later.
 # While WorkVal > 0
@@ -329,7 +344,7 @@ G stoi
   @POPI isWorkVal   # isWorkVal=INT(isWorkVal/base)
   @AND 0x0f         # We only handle cases were bases are <=16  
   @ADD 0x30         # TOS is digit value so add 0x30 to turn it ASCII
-  @CMP 0x39         # Now worry about Hex which means jump to Letters is val > 9
+  @CMP 0x40         # Now worry about Hex which means jump to Letters is val > 9
   @JGT isNotHex     # Only hex numbers could be over 0x39 so map them to A-F
      @ADD  0x7      # "A" is 0x41 so add  to turn 0x3A to 0x41
   :isNotHex
@@ -400,6 +415,35 @@ G stoi
 :mcmp_str2 0
 :mcmp_index1
 
+#
+# strfndc Finds first instance of characer in string
+# %R instring %V 16b code to match, will be masked.
+:strfndc
+      @POPI ls_return1
+      @POPI ls_strptr
+      @AND 0xff    # Only care about lower order byte
+:strfndloop1
+      @PUSHII ls_strptr
+      @AND 0xff
+      @CMP 0            #First check if end of string
+      @JMPZ strfndNoMatch
+      @CMPS             # We left the character to find on stack, so we can cmp now.
+      @POPNULL      
+      @JMPZ strfndMatch
+      @INCI ls_strptr
+      @JMP strfndloop1
+:strfndNoMatch
+      @POPNULL          # Get rid of search character
+      @PUSH -1          # No match mean -1
+      @JMP strfndReturn
+:strfndMatch
+      @POPNULL          # Get rid of search character
+      @PUSHI ls_strptr
+:strfndReturn
+      @PUSHI ls_return1
+      @RET
+      
+      
 ENDBLOCK
 :SkipStrLib
 
