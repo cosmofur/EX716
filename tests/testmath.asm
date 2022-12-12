@@ -1,0 +1,97 @@
+I common.mc
+L lmath.asm
+L mul.ld
+#
+#
+@MOVE32AV $$$-10 VA32
+@MOVE32AV $$$3 VB32
+@PUSH VA32 @PUSH VB32 @PUSH VC32 @CALL MUL32
+@PRT "Result : " @PRT32I VC32 @PRTNL
+
+@MC2M -10 Index1
+@MC2M 3 Index2
+@INTI2LONG Index1 VA32
+@INTI2LONG Index2 VB32
+@MOVE32AV $$$0 VC32
+@PRT "After Int 2 Long : " @PRT32I VA32 @PRT ", " @PRT32I VB32 @PRTNL
+@PUSH VA32 @PUSH VB32 @PUSH VC32 @CALL MUL32
+@PRT "Result : " @PRT32I VC32 @PRTNL
+
+
+@ForIfA2B Index1 -10 10 OuterLoop
+  @ForIfA2B Index2 -5 11 InnerLoop
+   @PRT "Calculation " @PRTSGNI Index1 @PRT " * " @PRTSGNI Index2 @PRTNL
+   @PRT "16b: == "
+   @PUSHI Index1 @PUSHI Index2 @CALL MUL
+   @POPI VC32
+   @PRTSGNI VC32  @PRTNL
+
+   @INTI2LONG Index1 VB32
+   @INTI2LONG Index2 VC32
+   @PRT "32b: == (" @PRT32I VB32 @PRT ", " @PRT32I VC32 @PRT ")= "
+   
+   @PUSH VB32 @PUSH VC32 @PUSH VD32 @CALL MUL32
+   @PRT32I VD32  @PRTNL
+   @PRTNL @PRTLN " ------ "
+
+
+@NextStep Index2 4 InnerLoop
+@NextStep Index1 4 OuterLoop
+@END
+
+
+
+
+@COPY32VIV VC32 VC32
+@POPI VB32
+@COPY32VIV VB32 VB32
+@PRT32I VC32 @PRT "," @PRT32I VB32
+@END
+#@PRT "VB:" @PRT32I VB32 @PRT ", VC:" @PRT32I VC32 @PRTNL
+@PUSH VB32 @PUSH VC32 @PUSH VB32 @CALL SUB32
+@PRT32I VB32
+@PUSH VC32 @PUSH VB32 @CALL CMP32
+@PRT " " @PRTTOP
+@MOVE32AV 1 VA32
+@MOVE32AV 2 VB32
+@MC2M 0 Index
+:LOOP1
+   @PUSH VA32 @PUSH VB32 @PUSH VC32 @CALL ADD32
+   @PRTI Index @PRT ": A(" @PRT32I VA32 @PRT ") + B(" @PRT32I VB32 @PRT ") = "@PRT32I VC32
+   @PUSH VB32 @PUSH VC32 @CALL CMP32 @PRT " VC(" @PRT32I VC32 @PRT ") cmp VB(" @PRT32I VB32 @PRT ") is " @PRTTOP
+   @PRT " SUBval as" @PUSH VB32 @PUSH VC32 @PUSH Junk @CALL SUB32 @PRT32I Junk
+   @PRTNL      
+   @CMP -1 @POPNULL   
+   @JMPZ EndLoop   
+   @COPY32VV VB32 VA32
+   @COPY32VV VC32 VB32
+   @INCI Index
+@JMP LOOP1
+:EndLoop
+@END
+:VA32 0 0
+:VB32 0 0
+:VC32 0 0
+:Junk 0 0
+:Index 0
+:Index1 0
+:Index2 0
+
+
+
+
+
+
+# Fixed 32b numbers
+:Zero32 0 0
+:One32 $$$1
+:Two32 $$$2
+:Ten32 $$$10
+:N10032 $$$-100
+#
+# Work variables
+:VA32 0 0
+:VB32 0 0
+:VC32 0 0
+:VD32 0 0
+:VE32 0 0
