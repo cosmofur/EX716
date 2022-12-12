@@ -1,6 +1,5 @@
 # EX716
-An experimental 'toy' CPU emulator based on a 'fictional' 1970's micro computer concepts. Target is be able to experiment 
-with Assembly/Machine Code without the 'compromises and overhead' of 'real' classic CPU's  
+An experimental 'toy' CPU emulator based on a 'fictional' 1970's micro computer concepts. Target is be able to experiment with Assembly/Machine Code without the 'compromises and overhead' of 'real' classic CPU's  
 The EX716 has no 'practical' use in that it would be easily out performed by even the cheapest off the shelf modern
 micro controller. Yet I feel it has some value as a training tool and as an assembly language 'toy'
 
@@ -24,9 +23,9 @@ A Physical description of a non existent CPU:
 
            External hardware  ports would include 48-64 pin package.
                     24 bit data bus (could be serialized or split into 3 read cycles of 8 bits) as the most common
-                    'instruction read' is a 8b optcode followed by 16b paramater. Normal memory reads would use 16b
+                    'instruction read' is a 8b opcode followed by 16b parameter. Normal memory reads would use 16b
                     16 bit address bus.
-                    A possible external page register could be tied to an IO chanel to provide some sort of larger memory.
+                    A possible external page register could be tied to an IO channel to provide some sort of larger memory.
                     read/write/ready Flags: To support external memory
                     Data/Memory Flag: To support specialized Data CAST POLL instructions
                     Chip Disable Flag: To support DMA hardware.
@@ -45,7 +44,7 @@ A Physical description of a non existent CPU:
               Instructions that do not have an explicit destination for its results will default to
               saving the result in the Accumulator which is also the top of HW stack.
 
-              The Majority of the instructions are an 8 bit optcode (OPT) followed by a 16 bit
+              The Majority of the instructions are an 8 bit opcode (OPT) followed by a 16 bit
               parameter.(PRM) (For efficiency a read cycle that reads 24 bits as the Instruction Load
               state makes sense)
 
@@ -62,10 +61,13 @@ A Physical description of a non existent CPU:
                         that is the Address where the value is stored or written to.  Require 2 additional read/write
                         cycles to fetch or put value.
 
-                        Stack: The top two numbers on the stack will both be used as
-                        values and for OPTs that return a numeric result, they will both be replaced by a single
-                        number. PRM is not read or used.  If determined early enough could skip the PRM
-                        read, otherwise takes same number of cycles are Direct.
+                        Stack: The top two numbers on the stack will
+                        both be used as values and for OPTs that
+                        return a numeric result, they will normally
+                        both be replaced by a single number. PRM is
+                        not read or used.  If determined early enough
+                        could skip the PRM read, otherwise takes same
+                        number of cycles as Direct.
 
               Instruction 'Groups' Most instructions are in groups where the names of otherwise
               identical functions will vary based on the Addressing Mode it is being used with.
@@ -84,14 +86,15 @@ A Physical description of a non existent CPU:
               Groups:
 
               PUSH
-                PUSH, PUSHI, PUSHII (No 'S' version)
+                PUSH, PUSHI, PUSHII, PUSHS
 
-                Saves Value to top of HW stack.
+                Saves Value to top of  HW stack. 
 
               POP
-                POPI, POPII (No 'S' or Direct versions)
+                POPI, POPII, POPS
 
-                Removes top of HW stack and stores it at target address
+                Removes top of HW stack and stores it at target address (POPS uses top of stack
+                as address and second item on stack as value to be POP'ed both are removed from stack) 
 
               CMP
                 CMP, CMPI, CMPII, CMPS
@@ -143,15 +146,15 @@ A Physical description of a non existent CPU:
              JMPI,
                 Unconditional Jump to address stored AT the address PRM points to.
 
-             NOP,        1 byte optcode, No PRM
+             NOP,        1 byte opcode, No PRM
                 No Instruction, skips PC to next instruction, does take some clock cycles so can be
                 used for timing.
 
-             DUP,        1 byte optcode, No PRM
+             DUP,        1 byte opcode, No PRM
                 Duplicate the top of stack so top two values are the same. Especially useful as a way
                 to preserve a value before modifying it.
 
-             SWP,        1 byte optcode, No PRM
+             SWP,        1 byte opcode, No PRM
                 Swaps the top two values on the stack. Especially useful in cases where the order
                 data is discovered is different than the order it needs to be processed.
 
@@ -159,8 +162,8 @@ A Physical description of a non existent CPU:
                 Main non-memory mapped, data output call. Both the stack and a 16b Direct value are
                 available as parameters to the output device 'driver' Typically the Top of Stack
                                 would hold the 'device ID' and the PRM would point to memory where output value is
-                read from. In a HW version of the CPU, the CAST command would probably be implimented as a soft
-                interupt, and in that version could be used a way to gain access to the normally hidden PC and Flag
+                read from. In a HW version of the CPU, the CAST command would probably be implemented as a soft
+                interrupt, and in that version could be used a way to gain access to the normally hidden PC and Flag
                 registers.
 
              POLL
@@ -172,9 +175,9 @@ A Physical description of a non existent CPU:
                 ( The reason they are named CAST and POLL, rather than the more descriptive 'D-IN' and 'D-OUT' was in
                 the early draft of this project, they would be used as IO to a 'on chip' hardware network in the
                 application of multi-core version of the CPU. They names stuck, but the multi-core version is left as a
-                possible future project)
+                future project)
 
-             Bit Rotate Commands, 1 byte optcode, No PRM affects just top of stack
+             Bit Rotate Commands, 1 byte opcode, No PRM affects just top of stack
 
                 RRTC: Rotate Right Through Carry
                 RLTC: Rotate Left Through Carry
@@ -187,16 +190,16 @@ A Physical description of a non existent CPU:
                 Through Carry: ==   CF > ROTATE > CF
                 Normal Rotate: ==   0 > ROTATE > CF
 
-             INV, 1 byte optcode, No PRM affects just top of stack
+             INV, 1 byte opcode, No PRM affects just top of stack
 
                 Invert all the bits of top of stack. Can be combined with AND or OR to effect NOR and
                 NAND logic.
 
-             COMP2, 1 byte optcode, No PRM affects just top of stack
+             COMP2, 1 byte opcode, No PRM affects just top of stack
              
                              Invert then adds one to bits of top of stack, also known as the 2's compliment. When
                 2' compliment is applied to a number, negative numbers have a natural format that
-                works positive numbers without additional hardware logic required.
+                works with positive numbers without additional hardware logic required.
 
 
 The 'Macro Assembler'.
@@ -222,10 +225,10 @@ The main logic loop of the assembler is:
                 Numeric data, in decimal, octal, hex or binary formats.
                 Quoted text is saved as bytes with some support for common \'s codes like \n for newline.
 
-                Big part of the word is handled by the 'One Letter' codes, which are.
+                Big part of the work is handled by the 'One Letter' codes, which are.
 
                     '.' number    :  Sets the active address to number, also sets start address. You can have multiple
-                                     '.' entries in a soruce file to mark off diffrent blocks of memory. If you use any
+                                     '.' entries in a source file to mark off different blocks of memory. If you use any
                                      '.' numbers, you should always add one at the end of your source file to identify
                                      the program entry point.
                     'I' filename  :  Imports a file as if it was part of the current input stream.
@@ -233,8 +236,8 @@ The main logic loop of the assembler is:
                     ':' Label     :  Unlike others assemblers labels are identified with a proceeding ":"
                     '@' Macro     :  Executes Macro, %1-%9 (max) are the arguments, %0 is unique ID
                    '=' Label Val :  Assigns a fixed 16b numeric value to a label.
-                                     Lables and Macros do not share dictionary space, so you can a Label and Macro with
-                                     the same names, but mean diffrent things.
+                                     Labels and Macros do not share dictionary space, so you
+                                     can reuse a Label and Macro with the same names, but mean different things.
                     'P' Print line:  Print rest of line for logging or debugging, at assembly time.
                     '!' Macro     :  The 'only' conditional logic for the Macro system, if the named
                                      Macro is already defined, then skip forward until ENDBLOCK, meant
@@ -245,165 +248,146 @@ The main logic loop of the assembler is:
                                      can use %0 adjacent with other text to create local unique
                                      variables for each instance of the Macro called.
                     'G' Label        Defines a Label as Global, All the callable addresses defined
-                                     inside a library file, need to be declared with 'G'
-                    Number           16 bit number, set to current inserting address.
+                                     inside a library file, need to be declared with 'G'.
+				     'G' declarations should be made near top of the file, before the Label is used.
+                    Number           16 bit number, save to current working address.
                     0xNumber         Hex number
                     0oNumber         Octal number
                     0bNumber         Binary (01) number
                     bNumber          Forces number to be treated as 8bit byte rather than 16 bit word
-                    $$Number         Another way to treat a number as a byte. (This also means that lower case 'b' can
-                                     not be used as start of any lable, use uppercase 'B' where you need them)
-                    $Number          Treat Number as 16b word, (default
-                    $$$Number        32bit number, Purly for storing assembly time values into memory.
+		    		    (This also means that lower case 'b' can
+                                     not be used as start of any label, use uppercase 'B' where you need them)
+                    $$Number         Another way to treat a number as a byte. 
+                    $Number          Treat Number as 16b word, (default)
+                    $$$Number        32bit number, Purely for storing assembly time values into memory.
                                      Labels CAN NOT hold a full 32 bit number. But a 16b label can point to where in
                                      memory a 32b number is stored.
 
-                    "text"           Ascii text will be copied to memory as bytes, you have to add a "b0" to terminate.
+                    "text"           ASCII text will be copied to memory as bytes, you have to add a "b0" to NULL terminate.
 
-And that's it! All the opcodes along with basic common quality of life macros, are defined in the Include file named common.mc combined with
- CPU.json
+And that's it! All the opcodes along with basic common quality of life macros, are defined in
+ the Include file named common.mc combined with  CPU.json
 
 In the common.mc are some extra Macros that make programming easier. All the following are simple Macros and it maybe
-worth some time reading through common.mc to see how they are implimented.
+worth some time reading through common.mc to see how they are implemented.
 
 @MC2M %1 %2  : Move Constant to Memory. Moves value of %1 to address [%2] Both can also be labels
-
 @MM2M %1 %2  : Move word stored at address [%1] to be stored at address [%2]
-
 @MMI2M %1 %2 : Move word stored at address THAT address [[%1]] points to address [%2]
-
 @MM2IM %1 %2 : Move word stored at address [%1] to be stored at address THAT address [[%2]] points to
-
 @JMPNZ %1    : Inverse logic of JMPZ
-
 @JNZ %1      : Slightly more readable than JMPNZ
-
 @JMPZI %1    : Jumps to an Indirect address [%1] if Z flag is set
-
 @JMPNZI %1   : Inverse of JMPZI for Indirect Jumps
-
 @JMPNC %1    : Inverse logic of JMPC
-
 @JMPNO %1    : Inverse logic of JMPO
-
 @JLT %1      : More 'readable' version of JMPN, if the last CMP A was < B
-
+               Worth remembering that A is what is put on stack first. B is the PRM or in case of
+	       CMPS the next (top) item on the stack.
 @JLE %1      : JMP if last CMP A <= B
-
 @JGE %1      : JMP if last CMP A >= B
-
 @JGT %1      : JMP if last CMP A > B
-
 @CALL %1     : handles overhead of pushing return address to HW stack, then calling address %1
-
 @RET         : Handles the Return from CALL...make sure that the return address is still at top
 
 The following Macros are in commmon.mc and provide basic IO, but this is the emulator doing the
 'work' and it is left as an exercise to re-write them as 'native' code.
-
 @PRTLN %1    : %1 needs to be a quoted text string constant, print it with a Newline at the end.
-
-@PRT %1      : Like PRTLN but without the ending linefeed. Use it as part of formated output.
-
+@PRT %1      : Like PRTLN but without the ending linefeed. Use it as part of formatted output.
 @PRTI %1     : Print in unsigned decimal the value stored at address [%1] no spaces added.
-
 @PRTII %1    : Print in decimal the Indirect value stored at address [[%1]]
-
 @PRTIC %1    : Like PRTI but padded with a space before and after the number.
-
 @PRTS %1     : Print the null terminated ASCII string starting at address [%1:...] b0
-
 @PRTSGN %1   : Print the Signed decimal the value stored at address [%1] no spaces added.
-
 @PRTBIN %1   : Print the value at address [%1] as a 0/1 binary string.
-
 @PRTHEXI %1  : Print the 16b hex value at address [%1]
-
 @PRTNL       : Print just a linefeed
-
 @PRTSP       : Print Just a space.
-
 @PRTSTRI     : More verbose was to say PRTS
-
-@PRTREF %1   : Print the constant given, used for printing actual address of labels
-
+@PRTREF %1   : Print the constant given, good for printing actual address of labels
 @READI %1    : Read 16b decimal number from keyboard, save to [%1]
-
+@READS %1    : Reads ASCII string from keyboard save it to null terminated buffer starting at %1, LF changed to NULL
+@READC %1    : Read one character from keyboard saves it at buffer starting at %1.
+               2 or 3 bytes are possible for speical keys, does not echo.
 @END         : Tells the emulator to exit
-
 @TOP %1      : Copies rather than POP's top of HW stack to address [%1]
-
 @StackDump   : Emulator driven printout of the current stack state.
-
 @INCI %1     : Adds one to the value at given address [%1] WILL Affect logic flags
-
+@INC2I %1    : Adds two to the value at [%1] since data is 16bit and address are on 8bit boundaries. This is frequently needed.
 @DECI %1     : Subtracts one to the value at given address [%1] WILL Affect logic flags
+@DEC2I %1    : Subtracts two from the value at [%1], same reason as INC2I
+
+Worth nothing that in several macros the following notation is used:
+    If the macro is going to work on multiple parameters, use of 'A','B','C' to mean the parameter at that
+    location is a numeric constant. Other wise use 'V' to be variable and should be a label or address where
+    that variable value is stored.
+    
 
 The following are there to make some code more compact and 'readable'
+@ADDVV2V %1 %2 %3 : Adds [%1] to [%2] and saves result to [%3]
+@SUBVV2V %1 %2 %3 : Subtracts [%2] from [%1] and saves result to [%3]
 
-@ADDAB2C %1 %2 %3 : Adds [%1] to [%2] and saves result to [%3]
+If you don't find this more readable, try reading it like this:
+   ADDVV2V as Add Variable and Variable saved to Variable
 
-@SUBAB2C %1 %2 %3 : Subtracts [%2] from [%1] and saves result to [%3]
 
 The following are logic tests that save logic tests results as True ( 1 ), or false ( 0 ), rather than
 'trusting' the ALU flags, in case you will need the results later.
-
-@ifAneB2C %1 %2 %3 : C if A != B
-
-@ifAeqB2C %1 %2 %3 : C if A == B
-
-@ifAltB2C %1 %2 %3 : C if A < B
-
-@ifAgtB2C %1 %2 %3 : C if A > B
-
-@ifAleB2C %1 %2 %3 : C if A <= B
-
-@ifAgeB2C %1 %2 %3 : C if A >= B
-
+@ifVneV2V %1 %2 %3 : C if A != B
+@ifVeqV2V %1 %2 %3 : C if A == B
+@ifVltV2V %1 %2 %3 : C if A < B
+@ifVgtV2V %1 %2 %3 : C if A > B
+@ifVleV2V %1 %2 %3 : C if A <= B
+@ifVgeV2V %1 %2 %3 : C if A >= B
 Combined with these 'if' macros, the following 'JUMPS' are based on the result saved in 'C'
-
-@JifT %1 %2        : Jump to %2 if [%1] == true
-
-@JifF %1 %2        : Jump to %2 if [%1] == false
+@JifT %1 %2        : Jump to %2 if [%1] == 1(true)
+@JifF %1 %2        : Jump to %2 if [%1] == 0(false)
 
 The following Macro provides a way to do a simple for loop over a fixed range. This is a pretty high
 level function for such a simple macro language, but it does require that each FOR loop be given a
-unique name.
+unique name. Since the name part is not using storage, it can be thought of as a mandatory comment. 
 
 @ForIfA2B %1 %2 %3 %4 : To use
-
                       [%1] where index of loop will be stored.
                       %2 is constant that is the low range of the loop.
                       %3 is constant that is the high range of the loop.
                       %4 is a REQUIRED unique name for this loop. It is just an identity symbol and
                       stores no value.
 
+    again for 'readability' try saying this in your mind as:
+        For Index from constant A to constant B
+	
 @ForIfV2V %1 %2 %3 %4 : This is nearly the same as ForIFA2B but A and B are variables rather than
 constants.
-
                       [%1] where index of loop will be stored.
                       [%2] where value that is the low range of the loop.
                       [%3] where value that is the high range of the loop.
                       %4 is a REQUIRED unique name for this loop. It is just an identity symbol and
                       stores no value.
 
-Both types FOR loop macros require a terminating 'NextName' to mark the end of the loop
+For completion sake we also have:
+@ForIfA2V           For Index from Constant to Variable
+@ForIfV2A           For Index from Variable to constant A
 
-@NextNamed %1 %2 : %1 needs to be the same %1 as the For macro, the %2 needs to be the same exact
+Both types FOR loop macros require a terminating 'NextName' or 'NextStep' to mark the end of the loop
+@NextNamed %1 %2 : %1 needs to be the same Index(%1) as the For macro, the %2 needs to be the same exact
                    symbol as used as %4 in the For macros.
+@NextStep %1 %2 %3: %1 is the Index(%1) of the For Macro, %2 is a constant to increment %1 by, and %3 is the loop name.
+    One key restriction on NextStep, the Index must eventually equal the limit value (%3 in the For Macro)
+    exactly. Otherwise the Index might overstep the limit value and continue looping the full 16bit range of values.
+    You CAN use NextStep to do a reverse For Loop (count down from high to low value)
 
 The For loops Can be nested but use unique '%4' labels
 
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
-is executed. The output of the debug,
-Output of debug listed is in format
+is executed. The output of the debug, Output of debug listed is in format
 
 For PRM type commands:
-Hex Address  OptCode  PRM[PRM]->[[PRM]]   Flags SP:Stack Depth
+Hex Address  Opcode  PRM[PRM]->[[PRM]]   Flags SP:Stack Depth
 or
 :label followed by some of the Internal symbol values of label which include the line filename.
 or for S type commands
-Hex Address OptCode HW Stack Dump
+Hex Address Opcode HW mini Stack Dump
 
 --------------------------------------------------------------------
 
@@ -415,7 +399,7 @@ Normal operation is to run it like:
 
        ./cpy.py input_file [ flags ]
 
-Include and Library files should be set a colon seperated list in the Envirmental Variable 'CPUPATH' or by default as
+Include and Library files should be set a colon separated list in the Envirmental Variable 'CPUPATH' or by default as
 sub-directories in the current working directory ./lib/ and ./test/
 
 Optional Command Line Arguments:
@@ -423,11 +407,11 @@ Optional Command Line Arguments:
 -c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There
          is no runtime performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might
          compress better and certainly would hide the program logic for 'security though obscurity' type distribution. Also
-          object formated input files 'Might' load a bit faster, as the file loader has less to do.
+          object formatted input files 'Might' load a bit faster, as the file loader has less to do.
 
 -d       Enable the raw debug mode. This is full debug output, including a detailed expansion of the read in source file
          Macros, a Hex Dump of memory and a step by step disassemble of the running code.
-         
+
 -g       Enter the interactive debugger. (See Bellow)
 
 -l       List the disassemble of the compiled code, useful to have on hand when about to debugging as it will identify
@@ -442,12 +426,54 @@ The Debugger:
 There is a built in debugger which lets you set breakpoints, single step though code, and print memory in a verity of
 ways. It is inspired by, but not compatible with the classic GDB debugger of gnu tools.
 
+b       Break
+        Set a breakpoint, can use 'labels' as targets
+	Print existing breakpoints if no parameters given.
 
-q       Quit debugger
-            Exits the emulator.
+c       Continue
+        Run without debugger output until next break statement or until program naturally exits.
 
-r       Reset
-            Resets the PC and stops current state.
+cb      Clear Breakpoints
+        Clear all breakpoints. (Sorry no way to remove just one breakpoint)
+
+d       Disassemble
+            If provided with parameters will disassemble the range of memory given.
+            First time it is entered by itself, will disassemble the current line the PC is on.
+	    Additional 'd' commands will disassemble blocks of memory in 20 byte steps.
+	    Data mixed in with code, can make the disassembly fall out of sequence.
+
+g       Goto, set the PC to an address.
+
+h       Print a help summery
+
+hex     Hex dump a range of memory. 
+
+m       Modify Memory
+            If given two or more parameters will treat first word as starting address and rest of parameters as
+	    16 bit values to be inserted in to those addresses.
+	    If given just one parameter, will use that as the start of memory to modify, then go into a
+	    mini modify sub-mode.
+	    In this sub-mode you will be prompted with the address and the two bytes starting at that address.
+	    address "XXX:[XX,XX]: "
+	    You can enter new values as either
+	           [$](default): 16 bit integers (allowing for 0x,0o and 0b for non-decimal entry)
+		   $$###       : 8 bit integers
+		   $$$###      : 32 bit integer
+		   "string"    : 8 bit quoted strings.
+		   Blank       : Doesn't change value, moves forward to next address.
+            You exit the mode by entering a '.' on line by itself.
+	    With some care you can use label values if they are already defined in memory. This included
+	    all the major opcodes if the common.mc include file has been loaded.
+
+n       Next step
+            Execute an instruction, optionally add a count to execute a number of instructions. Will show
+	    the disassembly of each instruction before it is executed. (so any values shown will be the 'before'
+	    values)
+
+s       Step Over
+            Much like 'n' but will attempt to execute all opt codes on a given source code line, good for
+	    skipping over simple macros. Unfortunately not smart enough to skip 'over' Jump or Calls.
+   	     
 
 p       Print Address
             Print the value stored at that address, it will also attempt to print the value at the address stored AT
@@ -456,31 +482,35 @@ p       Print Address
 ps      Print Stack
             dumps the current HW stack, and also attempts to print the values that stack values might be pointing to if
             they happen to be pointers.
+	    
+q       Quit debugger
+            Exits the emulator.
 
-n        Next Step 
-            Single step though the machine code, one step at a time. Does not know about or care about Macro's and will
-            step though the individual optcodes a macro may have expanded into.
-            
-s        Step (over)
-             Attempts to continue forward until the next source code line. Unfortinityly as the CALL RET are macros and not
-             elementry optcodes, it can't be used to skip over sub-routeens but will treate several commands on the same source
-             code line, as one step. Makes it easier to step though macros.
+r       Reset
+            Resets the PC and stops current state.
 
-hexdump start stop
-             Print a hexdump for a range of memory. 
-             
-d start stop Dis
-            Dissaseembles a range of memory. Will attmpt to map lables and filename line numbers as comments for refrence.
-            
-l line      List Src
-            Will attempt to dissassemble the part of the program that approimates the given line number.
-
-c  (count)  Continue
-            Run the programe for current location, util eithr end of program, breakpoint or given an optional (count) that many steps of operation.
+w       Set a memory watchpoints, when disassemble is used, it will also print values at any watch points.
 
 
 
-Lets go though some same code to see how to use this:
+
+
+
+
+
+
+
+
+
+
+
+
+Lets go though some same code to see how to use this: (These sameple
+codes were written durring the development stages of the project, and
+in many cases there are cleaner or better ways to do the same effect,
+so they are best used as examples of the way to format code, rather
+than practical examples of how to do these operations.)
+
 
 HELLO WORLD:
 It is traditional to use 'Hello World' as a first program. (This a bit too simple and silly)
@@ -496,7 +526,7 @@ Here a slightly more interesting program that shows off some logic, looping and 
 Now because we are using 16 bit math, the series is limited to N being 14 or less.
 
 I common.mc
-# Psudo Code
+# Pseudo Code
 # Input N
 # A,B,OUT,Idx = 0,1,0,2
 # while (Idx < N)
@@ -531,7 +561,7 @@ I common.mc
 :EndofLoop
 @PRTNL
 @END
-# Setup Storage, each 0 bellow is clearing a 16b word for the given label.
+# Setup Storage, each 0 bellow is reserving a 16b word for the given label.
 :A 0
 :B 0
 :N 0
@@ -540,8 +570,6 @@ I common.mc
 
 The output of this should look like:
     ./cpu.py test1.asm
-    Block Test Code
-    Start of Run: Debug: False: Watch: []
     Fibonacci Series
     Number of Terms: 10
 
@@ -551,11 +579,11 @@ The output of this should look like:
 END of Code
 --------------------------------------------------------------------
 Adding 32 bit numbers.
-there are many cases where 16 bit numbers are not sufficent. So here is an example of adding two 32 bit numbers
+there are many cases where 16 bit numbers are not sufficient. So here is an example of adding two 32 bit numbers
 together.
 I common.mc
 @PRTLN "Try to add 32bit numbers"
-@MC2M 0xff00 LowPartA           # The Assembler has no built in way to enter 32 bit decimal numbers
+@MC2M 0xff00 LowPartA           # The Assembler's natural numbers are 16b but 2 hex words are alike
 @MC2M 0 HighPartA               # So we use two 16 bit numbers, a high word, and a low word
 @MC2M 0x99 LowPartB             # Here we are going to use a loop to add together from
 @MC2M 0 HighPartB               # 0x0000ff00 + 0x00000099 to 0x0000ff00 + 0x0000FD
@@ -573,7 +601,8 @@ I common.mc
 @ADDS                           # Add the low parts first
 @PUSHI HighPartA
 @JMPNC NoCarryBit               # IF there was no carry flag set, the just jump to adding the high parts
-@PUSH 1                         # Otherwise we add the carry to one of the High Parts
+@PUSH 1                         # Otherwise we add the ca
+rry to one of the High Parts
 @ADDS
 :NoCarryBit
 @PUSHI HighPartA
