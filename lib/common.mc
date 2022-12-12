@@ -69,7 +69,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
-=CastPrint32Int 19
+=CastPrint32Int 32
 =CastSelectDisk 20
 =CastSeekDisk 21
 =CastWriteBlock 22
@@ -145,10 +145,11 @@ M JMPNZI @JMPZ $%01 @JMPI %1 :%0
 M JMPZI @JMPNZ $%01 @JMPI %1 :%0
 M JMPNC @JMPC $%0SKIP @JMP %1 :%0SKIP  # No Carry
 M JMPNO @JMPO $%01 @JMP %1 :%01        # No Overflow
-M JLT @JMPN %1                          # A < B
-M JLE @JMPN %1 @JMPZ %1                # A <= B
-M JGE @JMPZ %1 @JMPN $%01 @JMP %1 :%01   # A >= B
-M JGT @JMPZ $%01 @JMPN $%01 @JMP %1 :%01 # A > B
+#  For this group, remeber the flags are based on the B-A 
+M JLT @JMPN %1                           # B < A  B is less than A
+M JLE @JMPN %1 @JMPZ %1                  # B <= A B is less than or equal to A
+M JGE @JMPZ %1 @JMPN $%01 @JMP %1 :%01   # B >= A B is greater or equal to A
+M JGT @JMPZ $%01 @JMPN $%01 @JMP %1 :%01 # B > A  B is greater than A
 M CALL @PUSH $%01 @JMP %1 :%01
 M RET @POPI $%0D @JMPI $%0D :%0D 0
 M JNZ @JMPZ $%0J @JMP %1 :%0J
@@ -174,9 +175,9 @@ M PRTSI @PUSHI %1 @POPI %0ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
 M PRTII @PUSHII %1 @POPI %0Store \
         @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
 # Print value with sign '-' if negative
-M PRTSGN @PUSH CastPrintSignI @CAST %1 @POPNULL
+M PRTSGNI @PUSH CastPrintSignI @CAST %1 @POPNULL
 # Print value in binary
-M PRTBIN @PUSH CastPrintBinI @CAST %1 @POPNULL
+M PRTBINI @PUSH CastPrintBinI @CAST %1 @POPNULL
 # Print Line feed
 M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0NL @POPNULL
 # Print a space by itself

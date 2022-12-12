@@ -26,7 +26,7 @@ G MUL
 @ADD 1
 @POPI MM
 :MNOTNEG
-# Replete for N
+# Repeate for N
 @PUSH 0
 @CMPI NN
 @POPNULL

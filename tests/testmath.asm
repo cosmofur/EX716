@@ -1,12 +1,56 @@
 I common.mc
 L lmath.asm
-# Some helpful macros	
+L mul.ld
 #
 #
-@MOVE32AV 46368 VC32
-@MOVE32AV 28657 VB32
-#@MOVE32AV 0x6ff1 VC32
-#@MOVE32AV 0x452f VB32
+@MOVE32AV $$$-2 VA32
+@MOVE32AV $$$-3 VB32
+#@PRT "Before: " @PRT32I VA32 @PRT ", " @PRT32I VB32 @PRTNL
+#@PRT "Address VA: " @PRTREF VA32 @PRT ", Address VB: " @PRTREF VB32 @PRTNL
+:Start1
+@PUSH VA32 @PUSH VB32 @PUSH VC32 @CALL MUL32
+@PRT "Result : " @PRT32I VC32 @PRTNL
+
+#@MOVE32AV -30 VA32
+#@MOVE32AV 3 VB32
+@MC2M -10 Index1
+@MC2M 3 Index2
+@INTI2LONG Index1 VA32
+@INTI2LONG Index2 VB32
+@PRT "After Int 2 Long : " @PRT32I VA32 @PRT ", " @PRT32I VB32 @PRTNL
+@PUSH VA32 @PUSH VB32 @PUSH VC32 @CALL MUL32
+@PRT "Result : " @PRT32I VC32 @PRTNL
+
+
+@ForIfA2B Index1 -10 10 OuterLoop
+  @ForIfA2B Index2 -5 11 InnerLoop
+   @PRT "Calculation " @PRTSGNI Index1 @PRT " * " @PRTSGNI Index2 @PRTNL
+   @PRT "16b: == "
+   @PUSHI Index1 @PUSHI Index2 @CALL MUL
+   @POPI VC32
+   @PRTSGNI VC32  @PRTNL
+
+   @INTI2LONG Index1 VB32
+   @INTI2LONG Index2 VC32
+   @PRT "32b: == (" @PRT32I VB32 @PRT ", " @PRT32I VC32 @PRT ")= "
+   
+   @PUSH VB32 @PUSH VC32 @PUSH VD32 @CALL MUL32
+   @PRT32I VD32  @PRTNL
+   @PRTNL @PRTLN " ------ "
+
+
+@NextStep Index2 4 InnerLoop
+@NextStep Index1 4 OuterLoop
+@END
+
+
+
+
+@COPY32VIV VC32 VC32
+@POPI VB32
+@COPY32VIV VB32 VB32
+@PRT32I VC32 @PRT "," @PRT32I VB32
+@END
 #@PRT "VB:" @PRT32I VB32 @PRT ", VC:" @PRT32I VC32 @PRTNL
 @PUSH VB32 @PUSH VC32 @PUSH VB32 @CALL SUB32
 @PRT32I VB32
@@ -34,6 +78,8 @@ L lmath.asm
 :VC32 0 0
 :Junk 0 0
 :Index 0
+:Index1 0
+:Index2 0
 
 
 

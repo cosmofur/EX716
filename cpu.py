@@ -142,10 +142,9 @@ class microcpu:
 
     def twos_compToo(self,val,bits):
         # Convert an 'anysize' signed interget into 2comp bits size integer
+        if ( val & ( 1 << (bit -1))) != 0:
+            val = val - ( 1 << bits)
         return val
-        if val < 0:
-            val = (1 << bits) + val               # If < 0, append signbit
-        return val & (2 ** bits - 1)
 
     def twos_compFrom(self,val,bits):
 #        return val
@@ -632,10 +631,9 @@ class microcpu:
             self.raiseerror("037 Insufficent space for Message Address at %d, optCAST" % (address))
         cmd = self.fetchAcum(0)
         if cmd == 0:
-            print("Message: %d" % ( address))
-            print(self.memspace[address:address+15])
             if self.mb[0xff] > 0:
-                print("\n".join('%2x '%item for item in self.mb[0:self.mb[0xff]]))
+                print("Stack: \n".join('%02x '%item for item in self.mb[0:self.mb[0xff]]))
+            DissAsm(self.pc, 3, self)
         if cmd == 1:
             i = address
             while self.memspace[i] != 0 and i < MAXMEMSP:
@@ -657,7 +655,7 @@ class microcpu:
             sys.stdout.write("%d" % (self.twos_compFrom(v,16)))
         if cmd == 5:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%s" % bin(v))
+            sys.stdout.write("%s" % bin(v)[0:15])
         if cmd == 6:
             v = self.memspace[address]
             if ( v<31):
@@ -714,9 +712,11 @@ class microcpu:
                 DeviceFile.close()
                 DeviceHandle = None
         if cmd == 32:
-            iaddr=self.getwordat(address)
+            iaddr=address
             v=self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
-            sys.stdout.write("%d" % v)
+            if ( v & ( 1 << 31 ) != 0) :
+                v = v - (1 << 32)
+            sys.stdout.write("%s" % v)
         if cmd == 33:
             v=self.fetchAcum(0) + (self.fetchAcum(1) << 16)
             sys.stdout.write("%d" % v)
@@ -1347,6 +1347,7 @@ def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT
         curaddress += 2
     return curaddress
 
+# Load file is also the effective main loop for the assembler
 def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     global GlobalLineNum, GlobalOptCnt, Debug, MacroData, MacroPCount, FileLabels, Entry, ActiveFile, FWORDLIST, FBYTELIST
     GlobeLabels = {}
@@ -1376,6 +1377,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
             print("Reading Filename %s" % wfilename)
         while True:
             if ActiveMacro and line == "":
+                # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
                 if len(MacroLine) > 0:
                     (PosParams,PosSize)=nextword(MacroLine)
                     while (PosParams != "" and PosParams != "ENDMACENDMAC"):
@@ -1390,6 +1392,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     varbaseNext = varbaseSP
                     varbaseSP -= 1 if varbaseSP > 0 else 0
                     if PosParams == "ENDMACENDMAC":
+                        # As macro's may call other macros, we need to mark in the stream where they end.
                         MacroLine = MacroLine[PosSize:]
                     if Debug:
                         print("End-Macro: [:]%s" % backfill)
@@ -1404,6 +1407,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     ActiveMacro = False
                     continue
             else:
+                # If we are macro, or in plain text, we still end up here.
                 if line == "":
                     ExitOut = False
                     GetAnother = True
@@ -1437,6 +1441,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
             if SkipBlock:
                 while (line != ""):
                     (key, size) = nextword(line)
+                    # Because it's not a single letter command, ENDBLOCK is a bit of a outsider.
                     if key != "ENDBLOCK":
                         line = line[size:]
                         continue
@@ -1464,6 +1469,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     MacroVars[varcntstack[varbaseSP]]="__"+str(GlobalOptCnt)+"."+str(len(MacroData))
                     cpos += size
                     if macname in MacroData:
+                        # To understand what's going on here: We are making a stack that will
+                        # store the local macro var values (%1-max) and macros that call other
+                        # macros will just use a diffrent range in that same stack.
                         MacroLine = MacroData[macname] + " ENDMACENDMAC " + MacroLine
                         if  cpos < len(line):
                             varcnt = 0                            
@@ -1475,6 +1483,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                                 MacroVars[varcnt + varcntstack[varbaseSP]] = key
                                 cpos += size
                             if varcnt < MacroPCount[macname]:
+                                # When Macro was defined we counted the max %# and now require that # Parms
                                 CPU.raiseerror("045 Insufficent required parameters (%s/%s) for Macro %s" %
                                                (varcnt, MacroPCount[macname], macname))
                         varcntstack[varbaseSP + 1] = varcntstack[varbaseSP]+varcnt + 1
@@ -1485,12 +1494,14 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     else:
                         print("Missing: ", macname)
                         CPU.raiseerror("044  Macro %s is not defined" % (macname))
-
+                # Here is were we start the 'switch case' looking for commands.
                 elif line[0] == ":":
                     (key,size) = nextword(line[1:])
                     if Debug:
                         print(">>> adding %s at location %s" % (key, hex(address)))
                     if ("F."+filename+str(GlobalLineNum) in FileLabels):
+                        # We are creating an internal 'lable' for each line number.
+                        # This will allow us to print in dissassembly mode approximate src line numbers.
                         del FileLabels["F."+filename+str(GlobalLineNum)]
                     newitem = {IsLocalVar(key, GlobeLabels, LocalID, LORGFLAG): address}
                     FileLabels.update(newitem)
@@ -1507,7 +1518,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     continue
                 elif line[0] == "." and IsOneChar:
                     (value,size) = nextword(line[1:])
-                    if (value[0:1] == '$'):
+                    if (value[0:1] == '$' or ( not value[0:1].isdigit )):
+                        # We are alloing the possibility to set origin point to a lable
+                        # that has already been defined. (Like early in file do :main, then at end do . main at end)
                         if value[1:] in FileLabels.keys():
                             value = FileLabels[IsLocalVar(value[1:], GlobeLabels, LocalID, LORGFLAG)]
                         else:
@@ -1517,6 +1530,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 elif line[0] == "L" and IsOneChar:
+                    # Load a file into memory as a library, enable 'local' variables.
                     (newfilename,size) = nextword(line[1:])
                     HoldGlobeLine = GlobalLineNum
                     GlobalLineNum = 0
@@ -1527,6 +1541,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 elif line[0] == "I" and IsOneChar:
+                    # Load a file, but keep it in the 'global' context
                     (newfilename,size) = nextword(line[1:])
                     HoldGlobeLine = GlobalLineNum
                     GlobalLineNum = 0
@@ -1577,6 +1592,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 else:
+                    # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
                     LineAddrList.append([address, GlobalLineNum,filename])
 #                    LineAddrList.sort(key = lambda x: x[1])
                     (key,size) = nextword(line)
@@ -2030,6 +2046,8 @@ def main():
                 prpcmd = 2
             elif arg == "-r":
                 Remote = not(Remote)
+            elif arg == "-h":
+                print("-d Debug Assembly and Run\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter+=(arg)
             else:
