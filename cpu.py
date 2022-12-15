@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.7
 
 import numpy as np
 import itertools
@@ -14,7 +14,7 @@ import cProfile, pstats, io
 from pstats import SortKey
 
 from pathlib import Path
-path_root = Path(__file__).parents[2]
+path_root = os.path.abspath("lib")
 sys.path.append(str(path_root))
 
 
@@ -59,11 +59,9 @@ LineAddrList = [[0,0],[0,0]]
 CPUPATH = os.getenv('CPUPATH')
 JSONFNAME="CPU.json"
 if CPUPATH is None:
-#   CPUPATH = "/home/backs1/src/cpu/lib/:.:/home/backs1/src/cpu"
     CPUPATH = ".:../lib/:./lib/"
-# CPU.json is a table of the opt codes to values that is used just by the dissassembly and debugging
-# modules as a way to give human readable optcodes. In a pure execution version of this code. It is not needed.
 for testpath in CPUPATH.split(":"):
+    print("Doing testpath: %s" % testpath)
     if os.path.exists(testpath + "/" + JSONFNAME):
         JSONFNAME=testpath + "/" + JSONFNAME
 with open(JSONFNAME,"r") as openfile:
