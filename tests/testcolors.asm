@@ -1,5 +1,5 @@
 I common.mc
-L screen.asm
+L screen.ld
 
 @PRTLN "Start:"
 @CALL SCRcls

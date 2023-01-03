@@ -1,5 +1,5 @@
 L common.mc
-L screen.asm
+L screen.ld
 L mul.ld
 @CALL WinClear
 @PUSH 25

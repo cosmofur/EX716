@@ -1,5 +1,5 @@
 I common.mc
-L lmath.asm
+L lmath.ld
 @JMP TestStart
 :IDX 0
 :ODX 0

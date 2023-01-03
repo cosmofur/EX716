@@ -1,5 +1,5 @@
 I common.mc
-L lmath.asm
+L lmath.ld
 L mul.ld
 #
 #

@@ -1,5 +1,5 @@
 I common.mc
-L lmath.asm
+L lmath.ld
 @PRT "Start of Math: A:"
 @PRTHEXI APTR_HIGH
 @PRTHEXI APTR
