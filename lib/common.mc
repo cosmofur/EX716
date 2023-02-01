@@ -151,6 +151,8 @@ M JLE @JMPN %1 @JMPZ %1                  # B <= A B is less than or equal to A
 M JGE @JMPZ %1 @JMPN $%01 @JMP %1 :%01   # B >= A B is greater or equal to A
 M JGT @JMPZ $%01 @JMPN $%01 @JMP %1 :%01 # B > A  B is greater than A
 M CALL @PUSH $%01 @JMP %1 :%01
+M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
+M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
 M RET @POPI $%0D @JMPI $%0D :%0D 0
 M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
@@ -225,7 +227,8 @@ M DISKSEEK @MC2M %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_s
 # No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
 M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREAD @PUSH PollReadBlock @CAST %1 @POPNULL
+M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
+M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
 
 # The Following are some convient macros to simplify some of the most common logic and jump functions
 # Math Group,   3 params A, B and C all are simple memeory addresses or lables.
@@ -318,12 +321,3 @@ M NextStep \
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
 
 ENDBLOCK
-@JMP CODE__BEGIN__
-:Buffer
-0 0 0
-# Put here some libraries
-:CODE__BEGIN__
-#
-# Cast Codes: 1=String b0, 2=Integer imediate Unsigned. 3=Integer mem[address]. 4=Signed Int mem[address] 5=Binary mem[address]
-#
-
