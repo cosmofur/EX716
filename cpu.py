@@ -32,6 +32,7 @@ GlobeLabels = {}
 FWORDLIST = []
 FBYTELIST = []
 MacroData = {}
+MacroStack = []
 breakpoints = []
 tempbreakpoints = []
 MacroPCount = {}
@@ -1215,6 +1216,7 @@ def IsLocalVar(inlable, LocalID, LORGFLAG):
         return inlable + "___" + str(LocalID)
 
 def ReplaceMacVars(line,MacroVars,varcntstack,varbaseSP):
+    global MacroStack
     i = 0
     newline = ""
     inquote = False
@@ -1235,11 +1237,32 @@ def ReplaceMacVars(line,MacroVars,varcntstack,varbaseSP):
         if c == "%" and not(inquote):
             Before = line[0:i-1]
             After = line[i+1:]
-            varval = int(line[i:i+1])
-            if len(MacroVars) < varval:
-                CPU.raiseerror("039 Macro %v Var %s is not defined" % (varval,line))
-            newline = newline+MacroVars[varcntstack[varbaseSP] + varval]
-            i = i + 1
+            if ( line[i:i+1] == "P"):
+                # POP value from refrence stack...does not change newline
+                if (not MacroStack ):
+                    CPU.raiseerror("039a Macro Refrence Stack Underflow: %s" % line)
+                i += 1
+                MacroStack.pop()
+                continue
+            elif (line[i:i+1] == "S" ):
+                # Stores the current %0 value to refrence stack
+                # Does not change the newline
+                MacroStack.append(MacroVars[varcntstack[varbaseSP]])
+                i += 1
+                continue
+            elif (line[i:i+1] == "V"):
+                # Insert into newline value that top if refrence stack...do not pop it
+                if (not MacroStack):
+                   CPU.raiseerror("039b Macro Refrence Stack Underflow: %s" % line)
+                newline = newline + MacroStack[-1]
+                i += 1
+                continue
+            elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
+                varval = int(line[i:i+1])
+                if len(MacroVars) < varval:
+                    CPU.raiseerror("039 Macro %v Var %s is not defined" % (varval,line))
+                newline = newline+MacroVars[varcntstack[varbaseSP] + varval]
+                i = i + 1
         else:
             newline = newline + c
     return newline
