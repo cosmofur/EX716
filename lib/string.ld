@@ -11,7 +11,7 @@ M STRING_DONE 1
 # Return [ length ]
 
 # Defind the Global String Labels but also some Macro Functions to simplfy use. 
-G strlen G strcat G midstr G memchr G memcmp G itos G stoi G strfndc
+G strlen G strcat G midstr G memchr G memcmp G itos G stoi G strfndc G strucase
 
 M Fstrlen @PUSH %1 @CALL strlen
 M Fstrcat @PUSH %1 @PUSH %2 @CALL strcat
@@ -24,26 +24,30 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 
 # strlen ( %R strptr )
 #  Returns length of string
+:len_return1 0
+:len_strptr 0
+:len_char 0
+:len_index1 0
 :strlen
-	@POPI ls_return1
-	@POPI ls_strptr
-	@MC2M 0 ls_index1
+	@POPI len_return1
+	@POPI len_strptr
+	@MC2M 0 len_index1
 :strlenloop1
-	@PUSHII ls_strptr    # set c to value at index.
-	@POPI ls_CVal1
+	@PUSHII len_strptr    # set c to value at index.
+	@POPI len_char
 	@PUSH 0x00ff         #mask out just lower order value
-	@ANDI ls_CVal1
-	@POPI ls_CVal1
+	@ANDI len_char
+	@POPI len_char
 	@PUSH 0              # Test for null character
-	@CMPI ls_CVal1
+	@CMPI len_char
 	@POPNULL
 	@JMPZ strlendone
-	@INCI ls_strptr
-	@INCI ls_index1
+	@INCI len_strptr
+	@INCI len_index1
 	@JMP strlenloop1
 	:strlendone
-	@PUSHI ls_index1
-	@PUSHI ls_return1
+	@PUSHI len_index1
+	@PUSHI len_return1
 	@RET
 	
 	
@@ -52,7 +56,13 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 # Copies from instring from start to stopindex to outstring.
 # Outstring must already be large enough to hold result.
 # Is start < len(string) or stop > len(string) then adjust to fix range
-	:midstr
+:ms_Index1 0
+:ms_Index2 0
+:ms_Return1 0	
+:ms_InString1 0
+:ms_OutString1 0
+:ms_CVal1 0
+:midstr
 	@POPI ms_Return1
 	@POPI ms_Index2        # Stopindex
 	@POPI ms_Index1        # Starindex
@@ -100,7 +110,12 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	@JMP RetIdx2Over
 ## memchr ( %R strptr, %V (16b) char const, %V nbytes  )
 ##  returns index where char is in strptr up to max of nbytes or -1 if not found.
-
+:memchr_nlimit 0
+:memchr_char 0
+:memchr_strptr 0
+:memchr_result 0
+:memchr_Return1 0
+#
 :memchr
 	@POPI memchr_Return1   # Return vector:memchr_loop1
 	@POPI memchr_nlimit
@@ -131,6 +146,13 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	@RET
 #
 # strcat(str1,str2) result is str2 is appened to str1. str1 must already be large enough for results allong with null at end.
+#
+:scat_return1 0
+:scat_str1_in 0
+:scat_str2_in 0
+:scat_index1 0
+:scat_index2 0
+:scat_max 0
 #
 :strcat
 	@POPI scat_return1
@@ -199,6 +221,11 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 #   +1 if remainder is positive (str1 > str2)
 #    0 if they are the same (up to length limit)
 #   -1 if remainder is negative (str1 < str2)
+:mcmp_return1 0
+:mcmp_length1 0
+:mcmp_str1 0
+:mcmp_str2 0
+:mcmp_index1
 :memcmp
        @POPI mcmp_return1
        @POPI mcmp_length1       
@@ -313,12 +340,21 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 # On stack, StrPtr, InValue, Base
 # Push params StrPtr (of at least 6 characters length to support "65535" b0
 # Then the integer value
+:isReturn1 0
+:isBase 0
+:isInvalue 0
+:isStrPtr 0
+:isWorkBuff 0 0 0 0 0 0 0 0
+:isNegFlag 0
+:isWorkVal 0
+:isRevIndex 0
+#
 :itos
 @POPI isReturn1
 @POPI isBase
 @POPI isInvalue
 @POPI isStrPtr
-# Fill workBuff with spaces for now
+#a Fill workBuff with spaces for now
 @MC2M 0x3000 isWorkBuff   # We preload first digit as zero, as this lets us skip the zero test later.
 @MC2M 0x0 isWorkBuff+2    # We haven't used this too often but this sort of simple math is allowed
 @MC2M 0x0 isWorkBuff+4    # But only for lables and there can't be a space around the '+' (or '-')
@@ -379,58 +415,24 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 :isExitReverseLoop
   @PUSHI isReturn1
   @RET
-:isReturn1 0
-:isBase 0
-:isInvalue 0
-:isStrPtr 0
-:isWorkBuff 0 0 0 0 0 0 0 0
-:isNegFlag 0
-:isWorkVal 0
-:isRevIndex 0
-
-:ls_index1 0
-:ls_strptr 0
-:ls_CVal1 0
-:ls_return1 0		
-:ms_Index1 0
-:ms_Index2 0
-:ms_Return1 0	
-:ms_InString1 0
-:ms_OutString1 0
-:ms_CVal1 0
-:memchr_nlimit 0
-:memchr_char 0
-:memchr_strptr 0
-:memchr_result 0
-:memchr_Return1 0
-:scat_return1 0
-:scat_str1_in 0
-:scat_str2_in 0
-:scat_index1 0
-:scat_index2 0
-:scat_max 0
-:mcmp_return1 0
-:mcmp_length1 0
-:mcmp_str1 0
-:mcmp_str2 0
-:mcmp_index1
-
 #
 # strfndc Finds first instance of characer in string
 # %R instring %V 16b code to match, will be masked.
+:fnd_return1 0
+:fnd_strptr 0
 :strfndc
-      @POPI ls_return1
-      @POPI ls_strptr
+      @POPI fnd_return1
+      @POPI fnd_strptr
       @AND 0xff    # Only care about lower order byte
 :strfndloop1
-      @PUSHII ls_strptr
+      @PUSHII fnd_strptr
       @AND 0xff
       @CMP 0            #First check if end of string
       @JMPZ strfndNoMatch
       @CMPS             # We left the character to find on stack, so we can cmp now.
       @POPNULL      
       @JMPZ strfndMatch
-      @INCI ls_strptr
+      @INCI fnd_strptr
       @JMP strfndloop1
 :strfndNoMatch
       @POPNULL          # Get rid of search character
@@ -438,12 +440,43 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
       @JMP strfndReturn
 :strfndMatch
       @POPNULL          # Get rid of search character
-      @PUSHI ls_strptr
+      @PUSHI fnd_strptr
 :strfndReturn
-      @PUSHI ls_return1
+      @PUSHI fnd_return1
       @RET
-      
-      
+#
+# strucase replace lowercase letters with uppercase ones.
+# strucase(string)
+:ucs_len 0
+:ucs_index 0
+:ucs_char1 0
+:ucs_strptr 0
+:strucase
+      @SWP    # save the return address
+      @DUP    # First get length of string
+      @CALL strlen
+      @POPI ucs_len
+      @POPI ucs_strptr
+      @ForIA2V ucs_index 0 ucs_len
+      	 @PUSHI ucs_strptr
+	 @ADDI ucs_index
+	 @PUSHS
+	 @DUP  #Save full word to preserver upper byte
+	 @AND 0xff00
+	 @SWP  # Now handle the lowerbyte
+	 @AND 0xff
+	 @CMP "a" b0
+	 @JGT ucs_NotAlpha # if "a" > top; then not a letter
+	 @CMP "z" b0
+	 @JLT ucs_NotAlpha # if "z" < top; then not a letter
+	 @AND 0xdf         # Mask the bits from lower to uppercase in ASCII code
+	 :ucs_NotAlpha
+	 @ORS              # Or together lower and upper bytes
+	 @PUSHI ucs_strptr # Return the reformated upper/lower bytes back to strptr
+	 @ADDI ucs_index
+	 @POPS
+      @Next ucs_index
+      @RET
 ENDBLOCK
 :SkipStrLib
 

@@ -1,0 +1,29 @@
+# Test Math
+I common.mc
+L lmath.ld
+L string.ld
+. 0xe000
+:AVAL $$$0
+:BVAL $$$0
+:CVAL $$$0
+:CVALPTR 0
+:DVAL 0
+:String "        " 0
+
+:main . main
+@MC2M 300 DVAL
+@INTI2LONG DVAL AVAL
+@INTI2LONG DVAL BVAL
+@PRT32I AVAL @PRTNL @PRT32I BVAL @PRTNL
+
+
+@PUSH AVAL @PUSH BVAL @PUSH CVAL
+@CALL MUL32
+@PRT32I CVAL
+@PRTNL
+@PUSH CVAL @POPI CVALPTR
+@PUSH CVAL @PUSH 10 @PUSH String
+@CALL i32tos
+@PRTS String
+@PRTNL
+@END

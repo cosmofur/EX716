@@ -1,5 +1,5 @@
 I common.mc
-L lmath.asm
+L lmath.ld
 L mul.ld
 #
 #
@@ -18,8 +18,8 @@ L mul.ld
 @PRT "Result : " @PRT32I VC32 @PRTNL
 
 
-@ForIfA2B Index1 -10 10 OuterLoop
-  @ForIfA2B Index2 -5 11 InnerLoop
+@ForIA2B Index1 -10 10
+  @ForIA2B Index2 -5 11
    @PRT "Calculation " @PRTSGNI Index1 @PRT " * " @PRTSGNI Index2 @PRTNL
    @PRT "16b: == "
    @PUSHI Index1 @PUSHI Index2 @CALL MUL
@@ -35,8 +35,8 @@ L mul.ld
    @PRTNL @PRTLN " ------ "
 
 
-@NextStep Index2 4 InnerLoop
-@NextStep Index1 4 OuterLoop
+@NextBy Index2 4
+@NextBy Index1 4
 @END
 
 

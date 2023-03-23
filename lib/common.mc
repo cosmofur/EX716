@@ -151,6 +151,8 @@ M JLE @JMPN %1 @JMPZ %1                  # B <= A B is less than or equal to A
 M JGE @JMPZ %1 @JMPN $%01 @JMP %1 :%01   # B >= A B is greater or equal to A
 M JGT @JMPZ $%01 @JMPN $%01 @JMP %1 :%01 # B > A  B is greater than A
 M CALL @PUSH $%01 @JMP %1 :%01
+M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
+M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
 M RET @POPI $%0D @JMPI $%0D :%0D 0
 M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
@@ -225,7 +227,8 @@ M DISKSEEK @MC2M %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_s
 # No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
 M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREAD @PUSH PollReadBlock @CAST %1 @POPNULL
+M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
+M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
 
 # The Following are some convient macros to simplify some of the most common logic and jump functions
 # Math Group,   3 params A, B and C all are simple memeory addresses or lables.
@@ -236,94 +239,9 @@ M SUBVV2V @PUSH %2 @SUBI %1 @POPI %3
 M ADDVA2C @PUSHI %1 @ADD %2 @POPI %3
 M SUBAV2C @PUSH %2 @SUBI %1 @POPI %3
 
-# Logical IF's results compair A and B and save T(1)/F(0) to C
-# This is for simplicity and cases where the result matters mutlitple times or later then when the CMP was done.
-M ifVneV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JMPZ %0Skip @PUSH 1 @POPI %3 :%0Skip
-M ifVeqV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JNZ %0Skip @PUSH 1 @POPI %3 :%0Skip
-M ifVltV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JGE %0Skip @PUSH 1  @POPI %3 :%0Skip
-M ifVgtV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JLE %0Skip @PUSH 1  @POPI %3 :%0Skip
-M ifVleV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JGT %0Skip @PUSH 1  @POPI %3 :%0Skip
-M ifVgeV2V @PUSH 0 @POPI %3 @PUSHI %1 @CMPI %2 @POPNULL @JLT %0Skip @PUSH 1  @POPI %3 :%0Skip
-# Jumps based not on current flags but T or F values in location.	
-M JifT @PUSH 0 @CMPI %1 @POPNULL @JMPZ %0Skip @JMP %2 :%0Skip
-M JifF @PUSH 0 @CMPI %1 @POPNULL @JNZ %0Skip @JMP %2 :%0Skip
-# The following provides an MACRO verison of 'for next' loops.
-# For 1:IndexName 2:Start_Constant 3:Stop_Constant 4:Named_Next
-# The first variation is sort of like "for i from 1 to 10" or similure logic with fixed numbers
-M ForIfA2B \
-   @PUSH %2 @POPI %1 \
-   @MC2M %3 %4_stop \
-   @PUSHI %1 \
-   @CMPI %4_stop \
-   @POPNULL \
-   @JMPZ %4_exit \
-   :%4Loop1
-# For 1:IndexName 2:Start_variable 3:Stop_Variable 4:Named_next (vars are only evaluated on first entry to loop)
-# This variation is when the range is not fixed and is stored in variables.
-M ForIfV2V \
-  @PUSHI %2 @POPI %1 \
-  @MM2M %3 %4_stop \
-  @PUSHI %1 \
-  @CMPI %4_stop \
-  @POPNULL \
-  @JMPZ %4_exit \
-  :%4Loop1
-# This is a mixed version with a constant as the first entry and a variable as the second
-# For 1:IndexName 2:StartConstant 3:Stop_Variable 4:Named_next
-M ForIfA2V \
-  @PUSH %2 @POPI %1 \
-  @MM2M %3 %4_stop \
-  @PUSHI %1 \
-  @CMPI %4_stop \
-  @POPNULL \
-  @JMPZ %4_exit \
-  :%4Loop1
-# This is a mixed version with a variable as the first entry and a constant as the second
-# For 1:IndexName 2:StartConstant 3:Stop_Variable 4:Named_next
-M ForIfV2A \
-  @PUSHI %2 @POPI %1 \
-  @MC2M %3 %4_stop \
-  @PUSHI %1 \
-  @CMPI %4_stop \
-  @POPNULL \
-  @JMPZ %4_exit \
-  :%4Loop1  
-  
-
-# Matching Next command for pass same values as above for 1:IndexName and 2:Named_next
-M NextNamed \
-   @INCI %1 \
-   @PUSHI %1 \
-   @CMPI %2_stop \
-   @POPNULL \
-   @JMPZ %2_exit \
-   @JMP %2Loop1 \
-   :%2_test 0 \
-   :%2_stop 0 \
-   :%2_exit
-# A variable of NextNamed will be NextStep which adds a 'step' value for
-# cases where incremnting by 1 is not sufficent.
-# User it "NextStep IndexVar StepValue LoopName"
-M NextStep \
-  @PUSHI %1 \
-  @ADD %2 \
-  @CMPI %3_stop \  
-  @POPI %1 \
-  @JMPZ %3_exit \
-  @JMP %3Loop1 \
-  :%3_test 0 \
-  :%3_stop 0 \
-  :%3_exit  
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
-
+#
+# FOR NEXT WHILE and CASE logic structures can be found in this related file.
+I structure.asm
 ENDBLOCK
-@JMP CODE__BEGIN__
-:Buffer
-0 0 0
-# Put here some libraries
-:CODE__BEGIN__
-#
-# Cast Codes: 1=String b0, 2=Integer imediate Unsigned. 3=Integer mem[address]. 4=Signed Int mem[address] 5=Binary mem[address]
-#
-

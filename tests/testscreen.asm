@@ -1,7 +1,7 @@
 I common.mc
 L mul.ld
-L string.asm
-L screen.asm
+L string.ld
+L screen2.ld
 @CALL WinClear
 @PUSH 5
 @PUSH 10

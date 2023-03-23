@@ -26,11 +26,13 @@ import termios
 import signal
 from functools import lru_cache
 
-StoreMem = np.zeros(0xffff, dtype=np.uint8)
+StoreMem = np.zeros(0x10000, dtype=np.uint8)
 FileLabels = {}
+GlobeLabels = {}
 FWORDLIST = []
 FBYTELIST = []
 MacroData = {}
+MacroStack = []
 breakpoints = []
 tempbreakpoints = []
 MacroPCount = {}
@@ -61,7 +63,6 @@ JSONFNAME="CPU.json"
 if CPUPATH is None:
     CPUPATH = ".:../lib/:./lib/"
 for testpath in CPUPATH.split(":"):
-    print("Doing testpath: %s" % testpath)
     if os.path.exists(testpath + "/" + JSONFNAME):
         JSONFNAME=testpath + "/" + JSONFNAME
 with open(JSONFNAME,"r") as openfile:
@@ -697,7 +698,6 @@ class microcpu:
                 self.raiseerror("048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == 21:
             saddr = self.getwordat(address)*0x100
-            sys.stdout.write("Moving File to block %d" % saddr)
             DeviceFile.seek(saddr,0)
         if cmd == 22:
             if address <  MAXMEMSP-0xff:
@@ -810,7 +810,6 @@ class microcpu:
                 if address < MAXMEMSP-0xff:
                     block = DeviceFile.read(256)
                     tidx=self.getwordat(address)
-                    sys.stdout.write(" Reading Block to address %d %d\n" % (address,tidx))
                     for i in block:
                         self.memspace[tidx] = int(i) & 0xff
                         tidx += 1
@@ -1209,13 +1208,15 @@ def fileonpath(filename):
     print("Import Filename error, %s not found" % ( filename))
     sys.exit(-1)
 
-def IsLocalVar(inlable, GlobeLabels, LocalID, LORGFLAG):
+def IsLocalVar(inlable, LocalID, LORGFLAG):
+    global GlobeLabels
     if inlable in GlobeLabels or LORGFLAG == GLOBALFLAG or inlable in FileLabels:
         return inlable
     else:
         return inlable + "___" + str(LocalID)
 
 def ReplaceMacVars(line,MacroVars,varcntstack,varbaseSP):
+    global MacroStack
     i = 0
     newline = ""
     inquote = False
@@ -1236,18 +1237,39 @@ def ReplaceMacVars(line,MacroVars,varcntstack,varbaseSP):
         if c == "%" and not(inquote):
             Before = line[0:i-1]
             After = line[i+1:]
-            varval = int(line[i:i+1])
-            if len(MacroVars) < varval:
-                CPU.raiseerror("039 Macro %v Var %s is not defined" % (varval,line))
-            newline = newline+MacroVars[varcntstack[varbaseSP] + varval]
-            i = i + 1
+            if ( line[i:i+1] == "P"):
+                # POP value from refrence stack...does not change newline
+                if (not MacroStack ):
+                    CPU.raiseerror("039a Macro Refrence Stack Underflow: %s" % line)
+                i += 1
+                MacroStack.pop()
+                continue
+            elif (line[i:i+1] == "S" ):
+                # Stores the current %0 value to refrence stack
+                # Does not change the newline
+                MacroStack.append(MacroVars[varcntstack[varbaseSP]])
+                i += 1
+                continue
+            elif (line[i:i+1] == "V"):
+                # Insert into newline value that top if refrence stack...do not pop it
+                if (not MacroStack):
+                   CPU.raiseerror("039b Macro Refrence Stack Underflow: %s" % line)
+                newline = newline + MacroStack[-1]
+                i += 1
+                continue
+            elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
+                varval = int(line[i:i+1])
+                if len(MacroVars) < varval:
+                    CPU.raiseerror("039 Macro %v Var %s is not defined" % (varval,line))
+                newline = newline+MacroVars[varcntstack[varbaseSP] + varval]
+                i = i + 1
         else:
             newline = newline + c
     return newline
 
 
-def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT):
-    global FileLabels, FWORDLIST, FBYTELIST
+def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
+    global FileLabels, FWORDLIST, FBYTELIST, GlobeLabels
     # pass in string that is either a number, or a label, with possible modifiers
     # possible results
     #    instr is a label.
@@ -1312,15 +1334,16 @@ def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT
             modvalstr=""
             modstart = stopi + 1
             modstop = modstart + 1
-            while working[modstop].isdigit():
+            while (working[modstop].isspace() == False ):
                 modstop += 1
-            modval = int(working[modstart:modstop])
+            modval = DecodeStr(working[modstart:modstop], curaddress, CPU, LocalID, LORGFLAG, True)
+#            modval = int(working[modstart:modstop])
         if working[starti:stopi] in FileLabels.keys():
             Result = Str2Word(FileLabels[working[starti:stopi]]) + modval
         else:
             # This is case where the lable has not yet been defined, we will save it in FWORDLIST for 2nd pass.
             Result = 0
-            newkey = IsLocalVar(working[starti:stopi], GlobeLabels, LocalID, LORGFLAG)
+            newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)
             FWORDLIST.append([newkey, curaddress, modval])
             # Lables that are not yet defined HAVE to be 16b
             ByteFlag = False
@@ -1347,8 +1370,7 @@ def DecodeStr(instr, curaddress, CPU, GlobeLabels, LocalID, LORGFLAG, JUSTRESULT
 
 # Load file is also the effective main loop for the assembler
 def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
-    global GlobalLineNum, GlobalOptCnt, Debug, MacroData, MacroPCount, FileLabels, Entry, ActiveFile, FWORDLIST, FBYTELIST
-    GlobeLabels = {}
+    global GlobalLineNum, GlobalOptCnt, Debug, MacroData, MacroPCount, FileLabels, Entry, ActiveFile, FWORDLIST, FBYTELIST, GlobeLabels
     ActiveFile = filename
     StoreMem = CPU.memspace
     address = int(offset)
@@ -1501,7 +1523,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         # We are creating an internal 'lable' for each line number.
                         # This will allow us to print in dissassembly mode approximate src line numbers.
                         del FileLabels["F."+filename+str(GlobalLineNum)]
-                    newitem = {IsLocalVar(key, GlobeLabels, LocalID, LORGFLAG): address}
+                    newitem = {IsLocalVar(key, LocalID, LORGFLAG): address}
                     FileLabels.update(newitem)
                     line = line[size+1:]
                     continue
@@ -1510,8 +1532,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     (value,size) = nextword(line)
                     if (not(value[0:len(value)].isdecimal())):
-                        value = DecodeStr(value, address, CPU, GlobeLabels, LocalID, LORGFLAG, True)
-                    FileLabels.update({IsLocalVar(key, GlobeLabels, LocalID, LORGFLAG): value})
+                        value = DecodeStr(value, address, CPU, LocalID, LORGFLAG, True)
+                    FileLabels.update({IsLocalVar(key, LocalID, LORGFLAG): value})
                     line = line[size+1:]
                     continue
                 elif line[0] == "." and IsOneChar:
@@ -1520,7 +1542,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         # We are alloing the possibility to set origin point to a lable
                         # that has already been defined. (Like early in file do :main, then at end do . main at end)
                         if value[1:] in FileLabels.keys():
-                            value = FileLabels[IsLocalVar(value[1:], GlobeLabels, LocalID, LORGFLAG)]
+                            value = FileLabels[IsLocalVar(value[1:], LocalID, LORGFLAG)]
                         else:
                             CPU.raiseerror("040 Line %s, Origin point labels %s have to be defined before use:" % (GlobalOptCnt,value))
                     address = Str2Word(value)
@@ -1598,7 +1620,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if address > highaddress:
                         highaddress = address
                     if len(key) > 0:
-                        address = DecodeStr(key, address, CPU, GlobeLabels, LocalID, LORGFLAG, False)
+                        address = DecodeStr(key, address, CPU,  LocalID, LORGFLAG, False)
         for store in FWORDLIST:
             key = store[0]
             vaddress = store[1]
@@ -1987,9 +2009,9 @@ def debugger(FileLabels):
 
 
 def main():
-    global Debug, CPU
+    global Debug, CPU, GlobeLabels
     
-    DEFMEMSIZE = 0xffff+2
+    DEFMEMSIZE = 0x10000
     Remote = False
     Debug = False
     CPU = microcpu(0, DEFMEMSIZE)
@@ -2034,6 +2056,7 @@ def main():
                 UseDebugger = True
             elif arg == "-c":
                 OptCodeFlag = True
+                print("Optcode flag set")
             elif arg == "-O":
                 BinaryOutFlag = True
             elif arg == "-w":
@@ -2050,7 +2073,7 @@ def main():
                 breakafter+=(arg)
             else:
                 files.append(arg)
-    Entry = 0
+#    Entry = 0
     maxusedmem = 0
     print("# Assembly Start")
     for curfile in files:
@@ -2064,23 +2087,47 @@ def main():
         rpdb.set_trace()
     if OptCodeFlag:
         newfile = files[0][:-2]+".o"
-        f = open(newfile,"w")
-        f.write("# BIN(%s,%s,%s\n"%(files,CPU.pc,len(CPU.memspace)))
-        i = 0
-        limiter = len(CPU.memspace)
-        # Count backwards to find how much of the top of mem is just zeros
+        f = open(newfile, "w")
+        f.write("# BIN(%s,%s,%s\n. 0\n"%(files,CPU.pc,len(CPU.memspace)))
+        toplimit = len(CPU.memspace)
         for i in range(len(CPU.memspace)-1,1,-1):
-            if CPU.memspace[i] != 0:
+            if CPU.memspace[i] !=0:
                 break
-            limiter -= 1
-        # Write out dump of memory as lines of hex numbers up 16 bytes long, but the address in a comment at end of line.
-        for i in range(0,limiter):
-            v = CPU.memspace[i]
-            f.write("b0x%02x "%v)
-            if ( ((i + 1) % 16) == 0 ):
-                f.write("# %04x - %04x\n" % (i-0xf,i))
+            toplimit -= 1
+        i = 0
+        zerocount=0
+        while ( i < toplimit):
+            if (CPU.memspace[i] == 0):
+                zerostart=i
+                while (CPU.memspace[i] == 0 and i < toplimit):
+                    zerocount += 1
+                    i += 1
+                if zerocount < 10:
+                 # If zero count is < 10 then just print it out
+                    for j in range(0,zerocount):
+                        f.write("b0x%01x " % 0)
+                        if ( (( j + zerostart + 1) % 16 ) == 0):
+                            f.write("# %04x - %04x\n" % ( j + zerostart - 0xf, i))
+                    zerocount=0
+                    continue
+                else:
+                    # More than 10 zerros, just set new '.' spot
+                    f.write("\n# Skipping zero block size: 0x%04x\n. 0x%04x\n" % (zerocount,i))
+                    zerocount=0
+                    continue   # We already inc'ed i so skip the common one.
+            else:
+                # Not a zero, so just write normally
+                v = CPU.memspace[i]
+                f.write("b0x%02x " % v )
+                if ( ((i + 1) % 16) == 0 ):
+                    f.write("# %04x - %04x\n" % (i-0xf,i))
             i += 1
-        f.write("\n")
+        f.write("\n#End Memory:\n")
+        
+        for gkey in GlobeLabels:
+            if gkey in FileLabels:
+                f.write("=%s %s\nG %s\n" % ( gkey,FileLabels[gkey],gkey))
+        f.write("\n# Set Entry:\n. 0x%04x\n" % (Entry))
     if BinaryOutFlag:
         newfile = files[0][:-2]+".bin"
         f = open(newfile,"wb")

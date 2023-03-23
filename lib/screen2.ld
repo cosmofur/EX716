@@ -84,7 +84,7 @@ b$27 "[" b0
 @PRT "2J"
 @MM2M WinPage1 WCSrcIndex1
 @MM2M WinPage2 WCDstIndex1
-@ForIfA2B WCIndex1 0 2000 WCLoop1
+@ForIA2B WCIndex1 0 2000
    @PUSH 0x2020
    @DUP
    @POPII WCSrcIndex1
@@ -96,7 +96,7 @@ b$27 "[" b0
    @ADDI WCDstIndex1
    @POPI WCDstIndex1
    @INCI WCIndex1
-@NextNamed WCIndex1 WCLoop1 
+@Next WCIndex1
 @RET
 :WCIndex1 0
 :WCSrcIndex1 0
@@ -107,8 +107,8 @@ b$27 "[" b0
 @MM2M WinPage1 WRSrcPage
 @MM2M WinPage2 WRDstPage
 @MC2M 0 WRDiffBlock
-@ForIfA2V WRYcur 0 WinHeight ForLinesLoop
- @ForIfA2V WRXcur 0 WinWidth ForColsLoop
+@ForIA2V WRYcur 0 WinHeight
+ @ForIA2V WRXcur 0 WinWidth
    @PUSHII WRSrcPage
    @PUSHII WRDstPage
    @PUSH 1 @CMPI WRDiffBlock @POPNULL
@@ -148,8 +148,8 @@ b$27 "[" b0
         @INC2I WRSrcPage
 	@INC2I WRDstPage
    :WRPastOtherLogic
- @NextStep WRXcur 2 ForColsLoop
-@NextStep WRYcur 1 ForLinesLoop
+ @NextBy WRXcur 2
+@NextBy WRYcur 1
 #
 # If we drop here and WRDiffBlock is still '1' then that means the end of SRC string was diffrent from DST
 # and we never ran back into a 'match' so just print what's one the stack.
@@ -265,7 +265,7 @@ b$27 "[0;0H" b0
 @PRTSI WRBeginSrcDiff
 @POPII WRSrcPage    # Put the preserved old word that was at the end, back.
 #
-@ForIfV2V WRCpIndex WRBeginSrcDiff WRSrcPage WRNamedLoop1
+@ForIV2V WRCpIndex WRBeginSrcDiff WRSrcPage
   @PUSHII WRCpIndex
   @AND 0xff
   @PUSHII WRBeginDstDiff        # We will be only copying the 'low bytes' so preserve the High one.
@@ -273,7 +273,7 @@ b$27 "[0;0H" b0
   @ADDS
   @POPII WRBeginDstDiff
   @INCI WRBeginDstDiff
-@NextNamed WRCpIndex WRNamedLoop1
+@Next WRCpIndex
 #
 # Ok were at the exit point of the inner loop for cases were there Was a diffrence.
 # But now we need to handle the no diffrence parts
@@ -375,7 +375,7 @@ b$27 "[0;0H" b0
 @POPI WWStartSpot
 # By the time we get here, this loop handles the main job.
 # WWStartStop to EndSpot is where the strptr going to be copied.
-@ForIfV2V WWCpIndex WWStartSpot WWEndSpot WWForCopyLoop
+@ForIV2V WWCpIndex WWStartSpot WWEndSpot
   @PUSHII WWCpIndex
   @AND 0xff00     # We need to preserve the upperbyte.
   @PUSHII WWStrPtr
@@ -383,7 +383,7 @@ b$27 "[0;0H" b0
   @ADDS
   @POPII WWCpIndex
   @INCI WWStrPtr
-@NextNamed WWCpIndex WWForCopyLoop
+@Next WWCpIndex
 @PUSHI WWReturnAddr
 @RET
 # Local storage
