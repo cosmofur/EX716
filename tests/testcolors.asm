@@ -7,21 +7,21 @@ L screen.ld
 @PUSH 3
 @CALL SCRBGColor
 
-@ForIfA2B BGColor 0 16 BGColorNext
+@ForIA2B BGColor 0 16
    @PUSHI BGColor
    @CALL SCRBGColor
    @PRT "BG:"
    @PRTI BGColor
    @PRT ":"
-   @ForIfA2B FGColor 0 16 FGColorNext
+   @ForIA2B FGColor 0 16
       @PUSHI FGColor
       @CALL SCRFGColor      
       @PRT "FG:"
       @PRTI FGColor
       @PRT ":ABC"
-   @NextNamed FGColor FGColorNext
+   @Next FGColor
    @PRTNL
-@NextNamed BGColor BGColorNext
+@Next BGColor
 @CALL SCRreset
 @PRTLN "End:"
 @END

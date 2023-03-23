@@ -457,7 +457,7 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
       @CALL strlen
       @POPI ucs_len
       @POPI ucs_strptr
-      @ForIfA2V ucs_index 0 ucs_len ucs_Loop1
+      @ForIA2V ucs_index 0 ucs_len
       	 @PUSHI ucs_strptr
 	 @ADDI ucs_index
 	 @PUSHS
@@ -475,7 +475,7 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	 @PUSHI ucs_strptr # Return the reformated upper/lower bytes back to strptr
 	 @ADDI ucs_index
 	 @POPS
-      @NextNamed ucs_index ucs_Loop1
+      @Next ucs_index
       @RET
 ENDBLOCK
 :SkipStrLib

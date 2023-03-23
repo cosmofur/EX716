@@ -21,14 +21,14 @@ G rnd16 G rndsetseed G rndint
 :rnd16
 @POPI RDReturn
 @PUSHI Seed
-@PUSH 25173
+@PUSH 75
 @CALL MUL
-@ADD 13849
+@ADD 74
+@DUP
+@POPI Seed
 # To avoid an issue with the lower 5 bites cause even/odd flipping
 # We shift right 5 times.
 @RTR @RTR @RTR @RTR @RTR
-@DUP
-@POPI Seed
 @PUSHI RDReturn
 @RET
 #

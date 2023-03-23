@@ -8,35 +8,36 @@ I common.mc
 #    B=OUT
 #    Idx ++
 #    Print OUT
-@PRTLN "Fibonacci Series"
 @MC2M 0 A
 @MC2M 1 B
 @MC2M 0 OUT
 @MC2M 2 Idx
-@PRT "Number of Terms: "
-@READI N
-@PRTNL
-@PRTLN "The Fibonacci Series is:"
-@PRTI A @PRTSP @PRTI B @PRTSP      # Print ## ## \n
-:MainLoop
-# WHILE Idx < N
-@PUSHI N
-@CMPI Idx      # Subtract N from Idx and N flag set if N is > Idx
-@POPNULL
-@JMPN EndofLoop
-     @PUSHI A  @PUSHI B   @ADDS    @POPI OUT    #  OUT=A+B
-     @MM2M B A    #  A=B
-     @MM2M OUT B  #  B=OUT
-     @INCI Idx    #  Idx++
-     @PRTI OUT   #  Print OUT
-     @PRTSP
-     @JMP MainLoop
-:EndofLoop
-@PRTNL
+@PROMPT "Number of Terms: " N
+@PRTLN "The Fabonacci Series is: "
+@PUSH Idx
+@WHILE_NOTZERO
+   @POPNULL
+   @PUSHI A @ADDI B @POPI OUT   # OUT=A+B
+   @MM2M B A                    # A=B
+   @MM2M OUT B                  # B=OUR
+   @INCI Idx                    # Idx++
+   @PRTI OUT @PRTNL
+   @PUSHI N                     # If Idx > N Push 1 else Push 0
+   @PUSHI Idx
+   @IF_LT_S
+      @POPNULL @POPNULL
+      @PUSH 1
+   @ELSE
+      @POPNULL @POPNULL
+      @PUSH 0
+   @ENDIF
+@ENDWHILE
 @END
-# Setup Storage
 :A 0
 :B 0
-:N 0
-:Idx 0
 :OUT 0
+:Idx 0
+:N 0
+G A G B G OUT G Idx G N
+
+

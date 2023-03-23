@@ -362,7 +362,6 @@ Worth nothing that in several macros the following notation is used:
     location is a numeric constant. Other wise use 'V' to be variable and should be a label or address where
     that variable value is stored.
     
-
 The following are there to make some code more compact and 'readable'
 
 @ADDVV2V %1 %2 %3 : Adds [%1] to [%2] and saves result to [%3]
@@ -373,67 +372,6 @@ If you don't find this more readable, try reading it like this:
 
 ADDVV2V as Add Variable and Variable saved to Variable
 
-
-The following are logic tests that save logic tests results as True ( 1 ), or false ( 0 ), rather than
-'trusting' the ALU flags, in case you will need the results later.
-
-@ifVneV2V %1 %2 %3 : C if A != B
-
-@ifVeqV2V %1 %2 %3 : C if A == B
-
-@ifVltV2V %1 %2 %3 : C if A < B
-
-@ifVgtV2V %1 %2 %3 : C if A > B
-
-@ifVleV2V %1 %2 %3 : C if A <= B
-
-@ifVgeV2V %1 %2 %3 : C if A >= B
-
-Combined with these 'if' macros, the following 'JUMPS' are based on the result saved in 'C'
-
-@JifT %1 %2        : Jump to %2 if [%1] == 1(true)
-
-@JifF %1 %2        : Jump to %2 if [%1] == 0(false)
-
-The following Macro provides a way to do a simple for loop over a fixed range. This is a pretty high
-level function for such a simple macro language, but it does require that each FOR loop be given a
-unique name. Since the name part is not using storage, it can be thought of as a mandatory comment. 
-
-@ForIfA2B %1 %2 %3 %4 : To use
-                      [%1] where index of loop will be stored.
-                      %2 is constant that is the low range of the loop.
-                      %3 is constant that is the high range of the loop.
-                      %4 is a REQUIRED unique name for this loop. It is just an identity symbol and
-                      stores no value.
-
-    again for 'readability' try saying this in your mind as:
-        For Index from constant A to constant B
-	
-@ForIfV2V %1 %2 %3 %4 : This is nearly the same as ForIFA2B but A and B are variables rather than
-constants.
-                      [%1] where index of loop will be stored.
-                      [%2] where value that is the low range of the loop.
-                      [%3] where value that is the high range of the loop.
-                      %4 is a REQUIRED unique name for this loop. It is just an identity symbol and
-                      stores no value.
-
-For completion sake we also have:
-
-@ForIfA2V           For Index from Constant to Variable
-
-@ForIfV2A           For Index from Variable to constant A
-
-Both types FOR loop macros require a terminating 'NextName' or 'NextStep' to mark the end of the loop
-
-@NextNamed %1 %2 : %1 needs to be the same Index(%1) as the For macro, the %2 needs to be the same exact
-                   symbol as used as %4 in the For macros.
-
-@NextStep %1 %2 %3: %1 is the Index(%1) of the For Macro, %2 is a constant to increment %1 by, and %3 is the loop name.
-    One key restriction on NextStep, the Index must eventually equal the limit value (%3 in the For Macro)
-    exactly. Otherwise the Index might overstep the limit value and continue looping the full 16bit range of values.
-    You CAN use NextStep to do a reverse For Loop (count down from high to low value)
-
-The For loops Can be nested but use unique '%4' labels
 
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
 is executed. The output of the debug, Output of debug listed is in format

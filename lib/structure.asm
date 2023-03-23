@@ -1,7 +1,5 @@
 # These for structured program flow
 #
-I common.mc
-
 # This set of Macros bellow define a set of 'IF/ELSE/ENDIF' block structures.
 # Keep in mind the actual 'logic' of the IF condition is code you need to write yourself
 # THAT code leaves values on the stack that have to be fairly simple
@@ -92,12 +90,14 @@ M ELSE \
 # We also Define an V_ElseBlock to zero because if there was not else, it would never be
 # defined, or used, but would still trigger a warning message during assembly since
 # it had been indirectly referenced but not defined.
+##  :%V_ElseBlock \
+
 M ENDIF \
   @JMP %V_JustEnd \
   :%V_ENDIF \
   ! %V_ElseFlag \
      @JMP %V_JustEnd \
-     = %V_ElseBlock 0 \
+     =%V_ElseBlock 0 \
   ENDBLOCK \
   @JMP %V_ElseBlock \
   :%V_JustEnd \

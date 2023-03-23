@@ -36,7 +36,7 @@ M COPY32VV \
 # Macro coverts a double indirect to a single indirect.
 #
 M COPY32VIV \
-      @PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POPI %2+1 @POPI %2
+      @PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POPI %2+2 @POPI %2
 # 
 #  MOVE32AV is the ruff 32bit equivalent of @MC2M
 #M MOVE32AV @PUSH %1 @PUSH %2 @POPS @PUSH 0 @PUSH %2+2 @POPS
@@ -72,7 +72,6 @@ M INTI2LONGI \
 M LONG2INT @PUSH %1 @PUSH %2 @CALL LONG2INT
 
 #
-I common.mc
 ! MATH32DEFINE
 M MATH32DEFINE 1
 # Define the globals
@@ -630,18 +629,6 @@ G LONG2INT
 @MC2M 0 M_NEGFLAG
 @MOVE32AVI $$$0 M_ZERO
 @MOVE32AVI $$$1 M_ONE
-#@PRT "Local Memory Block:" @PRTNL
-#@PRT "MReturn: " @PRTHEXI MReturn @PRTNL
-#@PRT "MResultPtr: " @PRTHEXI MResultPtr @PRTNL
-#@PRT "MMPtr: " @PRTHEXI MMPtr @PRTNL
-#@PRT "NNPtr: " @PRTHEXI NNPtr @PRTNL
-#@PRT "MMLocal: " @PRT32I MMLocal @PRTNL
-#@PRT "NNLocal: " @PRT32I NNLocal @PRTNL
-#@PRT "M_TEMP: " @PRT32I M_TEMP @PRTNL
-#@PRT "M_ANS: " @PRT32I M_ANS @PRTNL
-#@PRT "M_ZERO: " @PRT32I M_ZERO @PRTNL
-#@PRT "M_ONE: " @PRT32I M_ONE @PRTNL
-#@PRTLN "------------"
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL
 @JGE M1NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
@@ -735,6 +722,7 @@ G LONG2INT
 :L2IB 0
 :L2IOne $$$01
 :L2IM1 0 0
+
 
 
 
