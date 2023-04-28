@@ -11,9 +11,9 @@ G readstr
 	@POLL CIn
 	# Test for Multi Byte F-Keys
 	@PUSH 0xff00
-	@CMPI CIn
+	@CMPI CIn   # A=0xff B=Cin
 	@POPNULL
-	@JGE SpecialKey
+	@JGE SpecialKey   # B >= A
 # Test for DEL or backspace (8 or 128)
 	@PUSH 8
 	@CMPI CIn
@@ -37,13 +37,13 @@ G readstr
 	@PUSH 30
 	@CMPI CIn
 	@POPNULL	
-	# Is any other ctl code under space, just ignore it.
-	@JGT ReadStrLoop1
+	# A=30 B=Cin, 
+	@JLT ReadStrLoop1 # B < A
 	# Test if char is <= 127
-	@PUSH 128
+	@PUSH 128    # A=128 B=Cin
 	@CMPI CIn
 	@POPNULL
-	@JLT ReadStrLoop1
+	@JGT ReadStrLoop1 # B > A
 # Should be a valid character, save to buffer and inc buffer index. Note place of lower vs upper bytes.
 	@PUSHI CIn
 	@POPII ReturnStr

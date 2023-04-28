@@ -14,7 +14,7 @@ G DIV
 # Test for sign
 @MC2M 0 NEGFLAG
 # Test for Negative Numbers and set NEGFLAG if just one is negative. 
-@PUSH 0 @CMPI Numerator @POPNULL
+@PUSHI Numerator @CMP 0 @POPNULL
 @JMPN ISNEG1
 @JMP NOTNEG1
 :ISNEG1
@@ -24,7 +24,7 @@ G DIV
    @PUSHI Numerator @INV @ADD 1 @POPI Numerator
 :NOTNEG1
 # Now for Denominator
-@PUSH 0 @CMPI Denominator @POPNULL
+@PUSHI Denominator @CMP 0 @POPNULL
 @JMPN ISNEG2
 @JMP NOTNEG2
 :ISNEG2
@@ -49,11 +49,13 @@ G DIV
       @ORI Remainder         # Set the low bit to one
       @POPI Remainder
     :BitNotSet
-    @PUSHI Denominator      # if R >= D
-    @CMPI Remainder         # logic is based on B - A. So Nflag set if A > B bit not set if R >= D
+    @PUSHI Remainder
+    @CMPI  Denominator      # if R >= D    
     @POPNULL
     @JMPN SkipQSet
        @PUSHI Denominator @SUBI Remainder @POPI Remainder  # R = R - D
+       @PUSHI Remainder @SUBI  Denominator
+       @POPI Remainder  # R = R - D       
        # We need to modify just the Ith bit of Qval to be a 1
        @PUSH 0xFFFF
        @ANDI ReverseBit          # QVal(indexbit) = 1

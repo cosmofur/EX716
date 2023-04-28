@@ -1,4 +1,4 @@
-#!/usr/bin/python3.7
+#!/usr/bin/python3
 
 import numpy as np
 import itertools
@@ -353,51 +353,45 @@ class microcpu:
         ZF = 0
         NF = 0
         CF = 0
-        B1 = abs(A1) & 0xffff
-        if (B1 & 0xFFFF) == 0:
-            ZF = 1
-        if ((A1 & 0xffff) & 0x8000 != 0):            
-            NF = 1
-        if ((A1 & 0x10000) != 0):
-            CF = 1
+        B2=abs(A1) & 0xffff;
+        ZF=1 if (B2 == 0) else 1
+        NF=1 if ((B2 & 0x8000) != 0) else 0
+        CF=1 if (A1 & 0xffff0000) > 0 else 0
         self.flags = ZF+(NF<<1)+(CF<<2)
 
+    def OverFlowTest(a,b,c,IsSubStraction):
+        if ( IsSubStraction == 0):
+            if (((a > 0) and (b > 0) and (c < 0)) or ((a < 0) and (b < 0) and (c >= 0))):
+                OF=1
+            else:
+                OF=0
+        else:
+            if (((a > 0) and (b < 0) and (c < 0)) or ((a < 0) and (b > 0) and (c >= 0))):
+                OF=1
+            else:
+                OF=0
+        self.flags=(self.flags & 0x37) | (OF << 3)
+                
     def optCMP(self, asvalue):
         R1 = asvalue
         R2 = self.fetchAcum(0)
-        A1 = R1 - R2
-        self.SetFlags(A1 & 0xffff)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
-            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow 
+        A1 = R2 - R1
+        self.SetFlags(A1)
+        self.OverFlowTest(R2,R1,A1,1)
 
     def optCMPS(self, address):
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
-        A1 = R1 - R2
-        self.SetFlags(A1 & 0xffff)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
-            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow         
+        A1 = R2 - R1
+        self.SetFlags(A1)
+        self.OverFlowTest(R2,R1,A1,1)        
 
     def optCMPI(self, address):
         R1 = self.getwordat(address)
         R2 = self.fetchAcum(0)        
-        A1 = R1 - R2
+        A1 = R2 - R1
         self.SetFlags(A1 & 0xffff)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
-            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow         
-
+        self.OverFlowTest(R2,R1,A1,1)
 
     def optCMPII(self, address):
         if address >= MAXMEMSP:
@@ -412,12 +406,7 @@ class microcpu:
         R2 = invalue
         A1 = R1 + R2
         self.SetFlags(A1)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ( (NBR1 == 0 and NBR2 == 0 and NBA1 == 1) or
-             (NBR1 != NBR2  and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow         
+        self.OverFlowTest(R1,R2,A1,0)
         self.StoreAcum(0,A1)
 
     def optADDS(self, invalue):
@@ -427,12 +416,7 @@ class microcpu:
         R2 = self.fetchAcum(1)
         A1 = R1 + R2
         self.SetFlags(A1)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ( (NBR1 == 0 and NBR2 == 0 and NBA1 == 1) or
-             (NBR1 != NBR2  and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow         
+        self.OverFlowTest(R1,R2,A1,0)        
         self.mb[0xff] -= 1
         self.StoreAcum(0,A1)
 
@@ -455,17 +439,11 @@ class microcpu:
 #       R2 = self.twos_compFrom(invalue,16)
         R2 = self.fetchAcum(0)
         R1 = invalue
-        A1 = R1 - R2
+        A1 = R2 - R1
         self.SetFlags(A1)
+        self.OverFlowTest(R2,R1,A1,1)
         A1 = A1 & 0xffff
         self.StoreAcum(0,A1)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
-            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow                 
-        
 
     def optSUBS(self, invalue):
 #        R1 = self.twos_compFrom(self.fetchAcum(0),16)
@@ -474,14 +452,10 @@ class microcpu:
         R2 = self.fetchAcum(1)
         A1 = R1 - R2
         self.SetFlags(A1)
+        self.OverFlowTest(R1,R2,A1,1)
         self.mb[0xff] -= 1
         self.StoreAcum(0,A1)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
-            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow        
+
 
     def optSUBI(self, address):
 #        R1 = self.twos_compFrom(self.getwordat(address),16)
@@ -490,13 +464,9 @@ class microcpu:
         R2 = self.fetchAcum(0)      
         A1 = (R1 - R2) & 0xffff
         self.SetFlags(A1)
+        self.OverFlowTest(R1,R2,A1,1)
         self.StoreAcum(0,A1)
-        NBR1=(R1 & 0x8000) >> 15
-        NBR2=(R2 & 0x8000) >> 15
-        NBA1=(A1 & 0x8000) >> 15
-        if ((NBR1 == 0 and NBR2 == 1 and NBA1 == 1) or
-            (NBR1 == 1 and NBR2 == 0 and NBA1 == 0)):
-            self.flags=self.flags | 0x8  #Set OverFlow                
+
 
     def optSUBII(self, address):
         if address >= MAXMEMSP:

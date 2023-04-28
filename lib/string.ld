@@ -71,10 +71,10 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	@PUSHI ms_InString1	
 	@CALL strlen        # Length on stack
 	@CMPI ms_Index1
-	@JLE Idx1Over
+	@JGE Idx1Over       # A=Strlen B=ms_Index if B >=A Jmp Over
 :RetIdx1Over                # Length Still on stack
 	@CMPI ms_Index2
-	@JLE Idx2Over
+	@JGE Idx2Over       # A=StrLen, B=msIndex2, if B>=A Jmp Over
 	# Neither ms_Index1 or ms_Index2 are both < len(instr)
 :RetIdx2Over
 	@POPNULL            # Take length off stack.
@@ -233,12 +233,12 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
        @POPI mcmp_str1
        @Fstrlen mcmp_str1   # Test to make sure total length test is < len(str1) and < len(str2)
        @CMPI mcmp_length1
-       @JLT mcmp_s1notlt
+       @JGE mcmp_s1notlt    # A=strlen B=length1, if B>A Jmp NotLt
 :mcmp_s2testlgth
        @POPNULL             # str1 len is fine, get rid of unneeded len
        @Fstrlen mcmp_str2
        @CMPI mcmp_length1
-       @JLT mcmp_s2notlt
+       @JGE mcmp_s2notlt    # A=strlen, B=length1, if B>A Jmp NotLT
        @POPNULL             # str2 len if fine, get rid of unneeded len
        @JMP mcmp_nextp
 :mcmp_s1notlt               # Jump here if len of str1 is < mcp_length1
@@ -363,7 +363,7 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 # Handle Negatives
 @MC2M 0 isNegFlag
 @PUSH 0 @CMPI isWorkVal @POPNULL
-@JGE isNotNeg        # JGE means last cmp was NOT 'N' and NOT 'Z'
+@JLT isNotNeg        # A=0 B=WorkVal if B < A JMP NotNeg
   # Is negative
   @MC2M 1 isNegFlag
   @PUSH 1 @PUSHI isWorkVal @SUBS @INV @POPI isWorkVal   # isWorkVal=abs(isWorkVal)
@@ -380,8 +380,8 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
   @POPI isWorkVal   # isWorkVal=INT(isWorkVal/base)
   @AND 0x0f         # We only handle cases were bases are <=16  
   @ADD 0x30         # TOS is digit value so add 0x30 to turn it ASCII
-  @CMP 0x40         # Now worry about Hex which means jump to Letters is val > 9
-  @JGT isNotHex     # Only hex numbers could be over 0x39 so map them to A-F
+  @CMP 0x39         # Now worry about Hex which means jump to Letters is val > 9
+  @JLE isNotHex     # A=x30+Val B=0x39, if B<=A not hex
      @ADD  0x7      # "A" is 0x41 so add  to turn 0x3A to 0x41
   :isNotHex
   @POPII isRevIndex  # Saves ASCII
@@ -404,8 +404,8 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
   @PUSHI isRevIndex
   @CMP isWorkBuff      # note WorkBuff is a lable location, not a variable
   @POPNULL
-  @JGT isExitReverseLoop
-  @PUSHII isRevIndex
+  @JLE isExitReverseLoop # A=RevIndex B=WorkBuff, if B<=A exit loop
+  @PUSHII isRevIndex  
   @POPII isStrPtr
   @PUSH 0
   @POPII isRevIndex     # After copying we zero out the character so in next loop only the 'lower' byte will count
@@ -466,9 +466,9 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	 @SWP  # Now handle the lowerbyte
 	 @AND 0xff
 	 @CMP "a" b0
-	 @JGT ucs_NotAlpha # if "a" > top; then not a letter
+	 @JGT ucs_NotAlpha # A=char B='a' if b > A, Jmp NotAlpha
 	 @CMP "z" b0
-	 @JLT ucs_NotAlpha # if "z" < top; then not a letter
+	 @JLT ucs_NotAlpha # A=Char B='Z' if B < A, Jmp notAlpha
 	 @AND 0xdf         # Mask the bits from lower to uppercase in ASCII code
 	 :ucs_NotAlpha
 	 @ORS              # Or together lower and upper bytes

@@ -49,28 +49,28 @@ M IF_EQ_VV \
   @JMPZ %0_True \
   %S @JMP %V_ENDIF \
   :%0_True  
-# IF_LT_S (A,B)=True if value at TOS is < value at TOS-1
+# IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
    @CMPS \
    @JMPN  %0_True \
    %S @JMP %V_ENDIF \
    :%0_True
-# IF_LT_A (A) = True if value A is < TOS
+# IF_LT_A (A) = True if TOS is < A
 M IF_LT_A \
    @PUSH %1 \
    @CMPS @POPNULL \
    @JMPN %0_True \
     %S @JMP %V_ENDIF \
     :%0_True
-# IF_GE_S will compare TOS with [TOS-1] and do block if [TOS] >= [TOS-1] ;
+# IF_GE_S will A(SFT) >= B(TOS)
 M IF_GE_S \
    @SWP @CMPS @SWP \
    @JMPN  %0_True \
    @JMPZ %0_True \
    %S @JMP %V_ENDIF \
    :%0_True
-# Like IF_LT_S but compares TOS to immediate value (testing if immediate value is < TOS
-M IF_GE_A \  
+# True if TOS >= A
+M IF_GE_A \
    @PUSH %1 @SWP @CMPS @SWP @POPNULL \
    @JMPN %0_True \
    @JMPZ %0_True \
@@ -118,8 +118,7 @@ M WHILE_NOTZERO \
   %S \
   :%V_LoopTop \
   @CMP 0 \
-  @JNZ %0_True \
-  @JMP %V_ExitLoop \
+  @JMPZ %V_ExitLoop \
   :%0_True
 
 M CONTINUE \
@@ -179,14 +178,23 @@ M CASE \
   :%0_DoCase
 
 # Takes two constant params (low value then high value, can't be swaped)
+# What going on here, might seem complex, the key is we have and IF_GE but no IF_LE
+# So some of the complexity is to make sure we can use IF_GE for both the low and high
+# range tests in the CASE. Other wise we could miss the edge cases.
 M CASE_RANGE \
   %S \
-  @CMP %1 \
-  @JMPN %0_LowGood \
-     @JMP %V_NextCase \
-  :%0_LowGood \
-     @CMP %2 \
-     @JMPN %V_NextCase
+  @IF_GE_A %1 \
+    @PUSH %2 \
+    @SWP \
+    @IF_GE_S \
+       @SWP @POPNULL \
+       @JMP %0_INRange \
+    @ELSE \
+       @SWP @POPNULL \
+    @ENDIF \
+  @ENDIF \
+  @JMP %V_NextCase \
+  :%0_INRange
 
 # Compares TOS with value at [%1] which 'maybe' dynamic.
 M CASE_REF \

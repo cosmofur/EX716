@@ -417,8 +417,8 @@ G LONG2INT
    @PUSHI IsLocalR1         # We only allow remainders that are <=16 so lower word of R1 should work.
    @AND 0x0f                # Just to make sure, we mask out any artifacts with lower nibble
    @ADD 0x30                # Turn Remainder to ASCII
-   @CMP 0x40
-   @JGT isNotHex            # only hex number require jump to A-F
+   @CMP 0x30+10             # A=0x30-0x40 B=0x3A
+   @JLT isNotHex            # IF B>39 add 7 to move to letters to A-F
        @ADD 0x07
    :isNotHex
    @POPII isRevIndex        # save the ASCII code
@@ -439,8 +439,8 @@ G LONG2INT
 :isGoReverseLoop
   # while isRevIndex > isWorkBuff
   @PUSHI isRevIndex
-  @CMP isWorkBuff @POPNULL
-  @JGT isExitReverseLoop
+  @CMP isWorkBuff @POPNULL   # A=isRevIndex B=isWorkBuff
+  @JGE isExitReverseLoop     # If B<A ExitLoop
   @PUSHII isRevIndex
   @POPII isStrPtr
   @PUSH 0
@@ -514,14 +514,14 @@ G LONG2INT
 @MC2M 0 DNEGFLAG         # Now test for Negative Number
 @MOVE32AV 1 DOne32       # We need a 32b One for possible 32b 2Compliment calc
 @PUSH DZero32 @PUSH DLocalDenom @CALL CMP32 @POPNULL  # Compare Denom to zero
-@JGE DDenomNotNeg          # Denom - 0 >= 0
+@JGT DDenomNotNeg          # A=Zero B=Denom if Denom > Zero Jump NotNeg
    # Denum is Neg. Flip flag
    @PUSHI DNEGFLAG @INV @AND 1 @POPI DNEGFLAG
    @PUSH DLocalDenom @CALL INV32   # Invert High and Low words
    @PUSH DOne32 @PUSH DLocalDenom @PUSH DLocalDenom @CALL ADD32  # Then Add one for 2Comp   
 :DDenomNotNeg
 @PUSH DZero32 @PUSH DLocalNumer @CALL CMP32 @POPNULL  # Compare Numerator to zero
-@JGE DNumerNotNeg              # Numer - 0 >= 0
+@JGT DNumerNotNeg              # A=Zero B=Numer
    # Numer is Neg, Flip Flag
    @PUSHI DNEGFLAG @INV @AND 1 @POPI DNEGFLAG
    @PUSHI DLocalNumer @INV @POPI DLocalNumer
@@ -630,7 +630,7 @@ G LONG2INT
 @MOVE32AVI $$$0 M_ZERO
 @MOVE32AVI $$$1 M_ONE
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL
-@JGE M1NotNeg
+@JGT M1NotNeg   # A=Zero B=MM if B>A jmp NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
 # Invert and add 1 to convert negative to possitive value for calculation
 @PUSHI MMLocal @INV @POPI MMLocal
@@ -638,7 +638,7 @@ G LONG2INT
 @PUSH MMLocal @PUSH M_ONE @PUSH MMLocal @CALL ADD32
 :M1NotNeg
 @PUSH M_ZERO @PUSH NNLocal @CALL CMP32 @POPNULL
-@JGE M2NotNeg
+@JGT M2NotNeg  # A=Zero B=NN if B > A Jmp NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
 # Invert and add 1 to convert negative to possitive value for calculation
 @PUSHI NNLocal @INV @POPI NNLocal

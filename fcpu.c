@@ -84,13 +84,34 @@ void SetFlags(int testval) {
   ZF=0;
   NF=0;
   CF=0;
-  OF=0;
   B2=abs(testval) & 0xffff;
-  if ( (B2 & 0xffff) == 0) {ZF=1;}
-  if ((((testval & 0xffff) & 0x8000) !=0)) {NF=1;}
-  if ((testval & 0x10000) !=0) {CF=1;}
+  ZF=(B2 == 0) ? 1:0;
+  NF=(B2 & 0x8000) != 0?1:0;
+  CF=(testval % 0xffff0000) > 0 ? 1:0;
   return;
 }
+
+void OverFlowTest(int a, int b, int c, int IsSubTraction) {
+   if ( IsSubtraction == 0) {
+    if (((a > 0) && (b > 0) && (c < 0)) || ((a < 0) && (b < 0) && (c >= 0))) {
+      // overflow occurred
+      OF=1;
+    } else {
+      // no overflow
+      OF=0;
+    }
+    else {
+      if (((a > 0) && (b < 0) && (c < 0)) || ((a < 0) && (b > 0) && (c >= 0))) {
+	// overflow occurred
+	OF=1;
+      } else {
+    // no overflow
+	OF=0;
+      }
+    }
+  }
+}
+      
 
 int get16memat(int locateaddr) {
   locateaddr=locateaddr & 0xffff;
@@ -354,58 +375,34 @@ int doeval(int startpc) {
 	 break;
        case OptValCMP:
 	 B1=topstack(OptCode);
-	 A1=Param - B1;
+	 A1=B1-Param;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     ((nbr1 == 1) && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,Param,A1,1);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValCMPI:
 	 B1=topstack(OptCode);
-	 A1=ParamI - B1;
+	 A1=B1-ParamI;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,ParamI,A1,1);	 
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValCMPII:
 	 B1=topstack(OptCode);
-	 A1=ParamII - B1;
+	 A1=B1-ParamII;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,ParamII,A1,1);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValCMPS:
 	 A2=topstack(OptCode);
 	 B1=sectopstack(OptCode);
-	 A1=A2 - B1;
+	 A1=B1 - A2;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,A2,A1,1);
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -414,13 +411,7 @@ int doeval(int startpc) {
 	 A1=Param + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(Param,B1,A1,0);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -429,13 +420,7 @@ int doeval(int startpc) {
 	 A1=ParamI + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(ParamI,B1,A1,0);	 
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -444,13 +429,7 @@ int doeval(int startpc) {
 	 A1=ParamII + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(ParamII,B1,A1,0);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -460,75 +439,51 @@ int doeval(int startpc) {
 	 A1=A2 + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(A2,B1,A1,0);		 
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
 	 
        case OptValSUB:
+	 // We are starting to 'reverse' the older SUB and CMP login. A will be the value currently on the stack
+	 // and B will be the 'passed' value, except in the case of Stack/Stack which case A if SFT and B is TOS
 	 B1=popstack(OptCode);
-	 A1=Param - B1;
+	 A1=B1-Param;
 	 SetFlags(A1);
+	 OverFlowTest(B1,Param,A1,1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValSUBI:
 	 B1=popstack(OptCode);
-	 A1=ParamI - B1;
+	 A1=B1-ParamI;
 	 SetFlags(A1);
+	 OverFlowTest(B1,ParamI,A1,1);	 
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValSUBII:
 	 B1=popstack(OptCode);
-	 A1=ParamII - B1;
+	 A1=B1-ParamII;
+	 OverFlowTest(B1,ParamII,A1,1);	 
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValSUBS:
 	 A2=popstack(OptCode);
 	 B1=popstack(OptCode);
-	 A1=A2 - B1;
+	 A1=B1 - A2;
 	 SetFlags(A1);
+	 OverFlowTest(B1,A2,A1,1);	 
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -538,13 +493,6 @@ int doeval(int startpc) {
 	 A1=Param & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -553,13 +501,6 @@ int doeval(int startpc) {
 	 A1=ParamI & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -568,13 +509,6 @@ int doeval(int startpc) {
 	 A1=ParamII & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -584,13 +518,6 @@ int doeval(int startpc) {
 	 A1=A2 & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -600,13 +527,6 @@ int doeval(int startpc) {
 	 A1=Param | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;	 
@@ -615,13 +535,6 @@ int doeval(int startpc) {
 	 A1=ParamI | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -630,13 +543,6 @@ int doeval(int startpc) {
 	 A1=ParamII | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -646,13 +552,6 @@ int doeval(int startpc) {
 	 A1=A2 | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
