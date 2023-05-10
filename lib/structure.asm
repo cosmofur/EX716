@@ -4,9 +4,12 @@
 # Keep in mind the actual 'logic' of the IF condition is code you need to write yourself
 # THAT code leaves values on the stack that have to be fairly simple
 # Conditions supported by the IF blocks are:
-#    TOS == ZERO,  TOS != ZERO, Immediate < TOS, Immediate >= TOS, TOS < [TOS-1] and TOS >= [TOS-1]
+# ZERO, NO_ZERO, EQ_S, EQ_A, EQ_V, EQ_VV, GT_A, GE_A, GT_S, GE_S, LT_A, LE_A, LT_S, LE_S
 #    Stack is not poped so what ever values you are testing, will remain on stack.
-#    We are not providing a <= or simple > logic so use stack swaps if needed or code around it.
+# EQ_V means cmping stack vs variable, EQ_VV means cmping two Variables for equality.
+# EQ_VV is really the only one that takes two parameters.
+# When 'reading' the GT and LT macros, think A is GT/LT B, with B being the second value given.
+
 
 
 # IF_ZERO will start an IF[ELSE]ENDIF block if the value on the stack is zero
@@ -61,7 +64,21 @@ M IF_LT_A \
    @CMPS @POPNULL \
    @JMPN %0_True \
     %S @JMP %V_ENDIF \
-    :%0_True
+	:%0_True
+# IF_LE_S (A,B)=True if SFT(A) <= TOS(B)
+M IF_LE_S \
+  @CMPS \
+  @JMPZ %0_True \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+# IF_LE_A (A) = True if TOS is <=A
+M IF_LE_A \
+  @CMPS \
+  @JMPZ %0_True \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
 # IF_GE_S will A(SFT) >= B(TOS)
 M IF_GE_S \
    @SWP @CMPS @SWP \
@@ -76,6 +93,18 @@ M IF_GE_A \
    @JMPZ %0_True \
     %S @JMP %V_ENDIF \
     :%0_True
+# True if (A,B) A>B
+M IF_GT_S \
+  @SWP @CMPS @SWP \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+# True if TOP > A
+M IF_GT_A \
+  @PUSH %1 @SWP @CMPS @SWP @POPNULL \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
 #
 # ELSE is common to all the IF type blocks.
 # Note how if we fall into the ELSE block from the code right above.
@@ -97,7 +126,7 @@ M ENDIF \
   :%V_ENDIF \
   ! %V_ElseFlag \
      @JMP %V_JustEnd \
-     =%V_ElseBlock 0 \
+     =%V_ElseBlock 00 \
   ENDBLOCK \
   @JMP %V_ElseBlock \
   :%V_JustEnd \

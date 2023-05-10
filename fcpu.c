@@ -86,13 +86,17 @@ void SetFlags(int testval) {
   CF=0;
   B2=abs(testval) & 0xffff;
   ZF=(B2 == 0) ? 1:0;
-  NF=(B2 & 0x8000) != 0?1:0;
-  CF=(testval % 0xffff0000) > 0 ? 1:0;
+  NF=(testval & 0x8000) != 0?1:0;
+  CF=(testval & 0xffff0000) > 0 ? 1:0;
   return;
 }
 
-void OverFlowTest(int a, int b, int c, int IsSubTraction) {
-   if ( IsSubtraction == 0) {
+void OverFlowTest(int a, int b, int c, int IsSubtraction) {
+  a=((a & 0xffff) > 0x8000) ? -1: 1;
+  b=((b & 0xffff) > 0x8000) ? -1: 1;
+  c=((c & 0xffff) > 0x8000) ? -1: 1;  
+				     
+  if ( IsSubtraction == 0) {
     if (((a > 0) && (b > 0) && (c < 0)) || ((a < 0) && (b < 0) && (c >= 0))) {
       // overflow occurred
       OF=1;
@@ -100,14 +104,14 @@ void OverFlowTest(int a, int b, int c, int IsSubTraction) {
       // no overflow
       OF=0;
     }
-    else {
-      if (((a > 0) && (b < 0) && (c < 0)) || ((a < 0) && (b > 0) && (c >= 0))) {
-	// overflow occurred
-	OF=1;
-      } else {
-    // no overflow
-	OF=0;
-      }
+  }
+  else {
+    if (((a > 0) && (b < 0) && (c < 0)) || ((a < 0) && (b > 0) && (c >= 0))) {
+      // overflow occurred
+      OF=1;
+    } else {
+      // no overflow
+      OF=0;
     }
   }
 }
@@ -297,7 +301,7 @@ int doeval(int startpc) {
   int ParamII=0;
   int Opsize;
   int OptCode;
-  int nbr1; int nbr2; int nba1;
+  int nbr1; int nbr2;
   int OCF,NCF;
   int TF;
   
@@ -310,12 +314,13 @@ int doeval(int startpc) {
       Opsize=1;
       OptCode=memory[PC];
       nbr1=0; nbr2=0;
-      if (HWStack[HWSPIDX]>=1) nbr1=topstack(PC);
-      if (HWStack[HWSPIDX]>=2) nbr2=sectopstack(PC);
-
+      if (HWStack[HWSPIDX]>=1) nbr1=topstack(PC); else nbr1=-1;
+      if (HWStack[HWSPIDX]>=2) nbr2=sectopstack(PC); else nbr2=-1;
+      nbr1=nbr1 & 0xffff;
+      nbr2=nbr2 & 0xffff;
       if (PC >= DebugRange1 && PC <= DebugRange2) {
-      printf("%04x:%s(%02x) P1:%04x [P1]:%04x [[P1]]:%04x TS: %04x STS: %04x ZF:%01d NF:%01d CF:%01d OF:%01d\n",
-	     PC,optcnames[OptCode],OptCode,Param,ParamI,ParamII,nbr1,nbr2,ZF,NF,CF,OF);
+      printf("%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)\n",
+	     PC,optcnames[OptCode],Param,ParamI,ParamII,nbr1,nbr2,ZF,NF,CF,OF,HWStack[HWSPIDX]);
 	}
        switch(OptCode) {
        case OptValNOP:
@@ -338,6 +343,11 @@ int doeval(int startpc) {
 	 Opsize=3; 
 	 PC += Opsize;
 	 break;
+       case OptValPUSHII:
+	 pushstack(ParamII,OptCode);
+	 Opsize=3; 
+	 PC += Opsize;
+	 break;	 
        case OptValPUSHS:
 	 pushstack(get16memat(popstack(OptCode)),OptCode);
 	 Opsize=1;
@@ -679,7 +689,7 @@ int doeval(int startpc) {
 	 PC=PC+Opsize;
 	 break;
        default:
-	 printf("Unknown OptCode %d\n",OptCode);
+	 printf("Unknown OptCode %d at address %0x04\n",OptCode,PC);
 	 PC++;
 	 break;
        }       

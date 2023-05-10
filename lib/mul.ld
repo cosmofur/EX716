@@ -5,80 +5,37 @@
 M MUL_SEEN 1
 @JMP MULINIT
 G MUL
-:MUL
+G MULU
+:MULU
 @POPI RETURN
 @POPI MM
 @POPI NN
 @MC2M 0 ANS
-@MC2M 0 NEGFLAG
-# Test for Negative Numbers
-@PUSH 0
-@CMPI MM   # Same set flags as M - 0
-@POPNULL
-@JGT MNOTNEG  # A=0 B=MM, if B > A, jmp NotNeg
-# Invert NEGFLAG
-@PUSHI NEGFLAG
-@INV
-@POPI NEGFLAG
-# Now Invert M (for 2's comp)
-@PUSHI MM
-@INV
-@ADD 1
-@POPI MM
-:MNOTNEG
-# Repeate for N
-@PUSH 0
-@CMPI NN
-@POPNULL
-@JGT NNOTNEG   # A=0 B=N if B>0 Jmp NotNeg
-@PUSHI NEGFLAG
-@INV
-@POPI NEGFLAG
 @PUSHI NN
-@INV
-@ADD 1
-@POPI NN
-:NNOTNEG
-# While M != 0
-:WHILE1
-  @PUSH 0
-  @CMPI MM
-  @POPNULL
-  @JMPZ ENDWHILE
-# if m & 1 ; then m >> 1
-  @PUSHI MM
-  @AND 1
-  @CMPI ONEMASK
-  @POPNULL
-  @JMPNZ ENDIF1
-     # ANS = ANS + N
-     @PUSHI ANS
-     @ADDI NN
-     @POPI ANS
-:ENDIF1
-  # N = N << 1
-  @PUSHI NN
-  @RTL
-  @POPI NN
-  # M = M / 2
-  @PUSHI MM
-  @RTR
-  @POPI MM
-@JMP WHILE1
-:ENDWHILE   # Convert to Negative if NEGFLAG is set
-@PUSH 0
-@CMPI NEGFLAG
+@IF_ZERO      # If either NN or MM is zero, answer is zero
+   @PUSHI RETURN
+   @RET
+@ENDIF
 @POPNULL
-@JMPZ NOTNEG
-@PUSHI ANS
-@INV
-@ADD 1
-@POPI ANS
-:NOTNEG
+@PUSHI MM     # A additional MM is zero test would be redundent.
+@WHILE_NOTZERO
+# if m & 1 ; then m >> 1  
+  @AND 1
+  @IF_NOTZERO  # If MM[0]==1: ANS+=NN
+     @PUSHI ANS @ADDI NN @POPI ANS 
+  @ENDIF
+  @POPNULL
+  @PUSHI NN  @RTL  @POPI NN   # NN << 1
+  @PUSHI MM  @RTR  @POPI MM   # MM >> 1
+  @PUSHI MM
+@ENDWHILE
+@POPNULL
 @PUSHI ANS
 @PUSHI RETURN
 @RET
 :RETURN
+0
+:RETURN2
 0
 :NN
 0
@@ -86,13 +43,36 @@ G MUL
 0
 :ANS
 0
-:NEGFLAG
+:SIGN
 0
 :ONEMASK
 1
-:UNUSED
-0
-b0
-b0
+#
+# Now for the Signed version of MUL
+:MUL
+@POPI RETURN2
+@MC2M 0 SIGN
+@IF_LT_A 0          # IF NN or MM < 0 Invert SIGN
+   @PUSHI SIGN
+   @INV @POPI SIGN
+@ENDIF
+@SWP
+@IF_LT_A 0
+   @PUSHI SIGN
+   @INV @POPI SIGN
+@ENDIF
+@SWP
+@CALL MULU
+@PUSHI SIGN
+@IF_GT_A 0         # If SING==-1 Invert Answer
+  @POPNULL
+  @COMP2
+@ELSE
+  @POPNULL
+@ENDIF
+@PUSHI RETURN2
+@RET
 :MULINIT
 ENDBLOCK
+
+

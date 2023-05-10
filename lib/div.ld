@@ -1,95 +1,99 @@
-# Input: Stack RET, Divident, Divisor
+# Input: Stack RET, NUM DENOM (Reminder NUM is the larger number being divided by the smaller DENOM) 
 # Requires common.mc
 ! DEFINEDDIV
 M DEFINEDDIV 0
+G DIVU G DIV
 @JMP DIVINIT
-G DIV
-:DIV
+:DIVU
 @POPI RETURN
-@POPI Denominator
-@POPI Numerator        # Is also known as Dividend
-# Test for divide by zero
-@PUSH 0 @CMPI Denominator @POPNULL
-@JMPZ DivideByZero
-# Test for sign
-@MC2M 0 NEGFLAG
-# Test for Negative Numbers and set NEGFLAG if just one is negative. 
-@PUSHI Numerator @CMP 0 @POPNULL
-@JMPN ISNEG1
-@JMP NOTNEG1
-:ISNEG1
-# Invert Negflag
-   @PUSHI NEGFLAG @INV @POPI NEGFLAG
-   # Do Abs(Numerator)
-   @PUSHI Numerator @INV @ADD 1 @POPI Numerator
-:NOTNEG1
-# Now for Denominator
-@PUSHI Denominator @CMP 0 @POPNULL
-@JMPN ISNEG2
-@JMP NOTNEG2
-:ISNEG2
-# Invert NegFlag
-   @PUSHI NEGFLAG @INV @POPI NEGFLAG
-   # Do Abs(Denominator)
-   @PUSHI Denominator @INV @ADD 1 @POPI Denominator
-:NOTNEG2
+@POPI B_VAL
+@POPI A_VAL
+@PUSHI B_VAL
+@IF_ZERO
+   @PRTLN "Divide by Zero error:"
+   @PUSH 0 @PUSH 0
+   @PUSHI RETURN
+   @RET
+@ENDIF
+@POPNULL
 @MC2M 0 QVal
 @MC2M 0 Remainder
-@MC2M 0x8000 ReverseBit
-@MC2M 16 Index
-:MainLoop
-@PUSHI Index @CMP 0 @POPNULL
-@JMPZ ExitMainLoop
-    @PUSHI Remainder @RTL @POPI Remainder    # R = R << 1
-    @PUSHI Numerator @ANDI ReverseBit        # Set True if Ith bit is on.
-    @CMP 0 @POPNULL         # If Ith bit is off.
-    @JMPZ BitNotSet
-    #Here Bit is set
-      @PUSH 1
-      @ORI Remainder         # Set the low bit to one
-      @POPI Remainder
-    :BitNotSet
-    @PUSHI Remainder
-    @CMPI  Denominator      # if R >= D    
-    @POPNULL
-    @JMPN SkipQSet
-       @PUSHI Denominator @SUBI Remainder @POPI Remainder  # R = R - D
-       @PUSHI Remainder @SUBI  Denominator
-       @POPI Remainder  # R = R - D       
-       # We need to modify just the Ith bit of Qval to be a 1
-       @PUSH 0xFFFF
-       @ANDI ReverseBit          # QVal(indexbit) = 1
-       @ADDI QVal
-       @POPI QVal
-    :SkipQSet
-    @PUSHI ReverseBit @RTR @POPI ReverseBit   # ReverseBit >> 1
-    @DECI Index
-    @JMP MainLoop
-:ExitMainLoop
-@PUSHI NEGFLAG
-@CMP 0
-@POPNULL
-@JMPZ NotNeg
-   @PUSHI QVal
-   @COMP2
-   @POPI QVal
-:NotNeg
+@MC2M 0x8000 MASK   # For the ith bit tests MASK will be bit at ith location of 16 bits
+@ForIA2B Index 0 16
+    @PUSHI Remainder @RTL @POPI Remainder        # Remainder << 1
+    @PUSHI MASK @PUSHI A_VAL @ANDS
+    @IF_NOTZERO
+       @POPNULL
+       @PUSH 1
+       @PUSHI Remainder
+       @ORS
+       @POPI Remainder        # Remainder[16-i]=A_VAL[16-i]
+    @ELSE
+       @POPNULL
+    @ENDIF
+    @PUSHI Remainder @PUSHI B_VAL
+    @IF_GE_S
+       @POPNULL @POPNULL
+       @PUSHI Remainder @PUSHI B_VAL @SUBS @POPI Remainder
+       @PUSHI QVal @PUSHI MASK @ORS @POPI QVal
+    @ELSE
+       @POPNULL @POPNULL
+    @ENDIF
+    @PUSHI MASK @RTR @POPI MASK  # Shift Mask to next bit from left to right
+@Next Index
 @PUSHI Remainder
 @PUSHI QVal
 @PUSHI RETURN
 @RET
-:DivideByZero
-@PRTLN "Divide By Zero"
-@PUSH 0 @PUSH 0
-@PUSHI RETURN
-@RET
 :RETURN 0
-:Numerator 0
-:Denominator 0
-:NEGFLAG 0
-:ReverseBit 0
-:Index 0
+:RETURN2 0
+:A_VAL 0
+:B_VAL 0
 :QVal 0
 :Remainder 0
+:MASK 0
+:Index 0
+:SIGN 0
+#
+# Now handle case for Signed DIV
+:DIV
+@POPI RETURN2
+@POPI B_VAL
+@POPI A_VAL
+@MC2M 0 SIGN
+@PUSH 0
+@PUSHI A_VAL
+@IF_GT_S
+   @PUSHI SIGN @INV @POPI SIGN
+   @PUSHI A_VAL @COMP2 @POPI A_VAL
+@ENDIF
+@POPNULL
+@PUSHI B_VAL
+@IF_GT_S
+   @PUSHI SIGN @INV @POPI SIGN
+   @PUSHI B_VAL @COMP2 @POPI B_VAL
+@ENDIF
+@IF_EQ_S
+   # IF they are equal, save time and just return '1'
+   @POPNULL @POPNULL
+   @PUSH 0 @PUSH 1
+   @PUSHI RETURN2
+   @RET
+@ENDIF
+@POPNULL @POPNULL
+@PUSHI A_VAL @PUSHI B_VAL
+@CALL DIVU
+@POPI A_VAL
+@POPI B_VAL
+@PUSHI SIGN
+@IF_NOTZERO
+   @PUSHI A_VAL @COMP2 @POPI A_VAL
+@ENDIF
+@POPNULL
+@PUSHI B_VAL
+@PUSHI A_VAL
+@PUSHI RETURN2
+@RET
 :DIVINIT
 ENDBLOCK
+

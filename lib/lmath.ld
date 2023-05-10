@@ -417,7 +417,7 @@ G LONG2INT
    @PUSHI IsLocalR1         # We only allow remainders that are <=16 so lower word of R1 should work.
    @AND 0x0f                # Just to make sure, we mask out any artifacts with lower nibble
    @ADD 0x30                # Turn Remainder to ASCII
-   @CMP 0x30+10             # A=0x30-0x40 B=0x3A
+   @CMP 0x3A                # A=0x30-0x40 B=0x3A
    @JLT isNotHex            # IF B>39 add 7 to move to letters to A-F
        @ADD 0x07
    :isNotHex

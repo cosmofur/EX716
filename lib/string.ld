@@ -71,10 +71,10 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	@PUSHI ms_InString1	
 	@CALL strlen        # Length on stack
 	@CMPI ms_Index1
-	@JGE Idx1Over       # A=Strlen B=ms_Index if B >=A Jmp Over
+	@JLT Idx1Over       # A=Strlen B=ms_Index if A < B Jmp Over
 :RetIdx1Over                # Length Still on stack
 	@CMPI ms_Index2
-	@JGE Idx2Over       # A=StrLen, B=msIndex2, if B>=A Jmp Over
+	@JLT Idx2Over       # A=StrLen, B=msIndex2, if B>=A Jmp Over
 	# Neither ms_Index1 or ms_Index2 are both < len(instr)
 :RetIdx2Over
 	@POPNULL            # Take length off stack.
@@ -166,9 +166,7 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	@CALL strlen
 	@PUSHI scat_str1_in
 	@ADDS  # Add length to start pos of str1 to get indert point.
-	@PUSH 1
-	@SWP   # Normal SUB is B-A, so swap it around
-	@SUBS
+	@SUB 1
 	@POPI scat_index1
 :strcat_loop1
 	@PUSHII scat_index2
@@ -233,12 +231,12 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
        @POPI mcmp_str1
        @Fstrlen mcmp_str1   # Test to make sure total length test is < len(str1) and < len(str2)
        @CMPI mcmp_length1
-       @JGE mcmp_s1notlt    # A=strlen B=length1, if B>A Jmp NotLt
+       @JLT mcmp_s1notlt    # A=strlen B=length1, if B>A Jmp NotLt
 :mcmp_s2testlgth
        @POPNULL             # str1 len is fine, get rid of unneeded len
        @Fstrlen mcmp_str2
        @CMPI mcmp_length1
-       @JGE mcmp_s2notlt    # A=strlen, B=length1, if B>A Jmp NotLT
+       @JLT mcmp_s2notlt    # A=strlen, B=length1, if B>A Jmp NotLT
        @POPNULL             # str2 len if fine, get rid of unneeded len
        @JMP mcmp_nextp
 :mcmp_s1notlt               # Jump here if len of str1 is < mcp_length1
@@ -253,11 +251,11 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
        @CMPI mcmp_length1
        @POPNULL             # Unlike Subtraction, CMP ops leave the Original value on stack, junk it when done.
        @JMPZ mcmp_length_exit     # Test end with index == max length
-       @PUSHII mcmp_str1
+       @PUSHII mcmp_str2
        @PUSH 0x00ff	          # Mask out the lower 8 bits.
        @ANDS
-       @PUSHII mcmp_str2
-       @PUSH 0x00ff
+       @PUSHII mcmp_str1
+       @PUSH 0x00ff       
        @ANDS       
        @CMPS       
        @JMPZ mcmp_continue        # Matching so far, continue
@@ -309,9 +307,7 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
      @MC2M 1 siNegFlag
      @JMP siMainLoop
   :SiNormal
-  @PUSH 0x30        
-  @SWP              # Normal SUB is B-A so swap order
-  @SUBS             # ASCII code to number subtract 0x30
+  @SUB 0x30         # Subtrack ascii '0'
   @PUSHI siMulti    # Multiply by index^10 
   @CALL MUL
   @ADDI siResult @POPI siResult   # Result = str[index]*siMulti + Result
@@ -466,9 +462,9 @@ M FmemcmpR @PUSH %1 @PUSH %2 @PUSHI %3 @CALL memcmp
 	 @SWP  # Now handle the lowerbyte
 	 @AND 0xff
 	 @CMP "a" b0
-	 @JGT ucs_NotAlpha # A=char B='a' if b > A, Jmp NotAlpha
+	 @JLT ucs_NotAlpha # A=char B='a' if A < B, Jmp NotAlpha
 	 @CMP "z" b0
-	 @JLT ucs_NotAlpha # A=Char B='Z' if B < A, Jmp notAlpha
+	 @JGT ucs_NotAlpha # A=Char B='Z' if A > B, Jmp notAlpha
 	 @AND 0xdf         # Mask the bits from lower to uppercase in ASCII code
 	 :ucs_NotAlpha
 	 @ORS              # Or together lower and upper bytes

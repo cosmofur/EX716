@@ -136,7 +136,8 @@ M FCLR b$FCLR                  # the F group is for clearing, saving, and loadin
 M FSAV b$FSAV
 M FLOD b$FLOD
 
-M MC2M @PUSH %1 @POPI %2M MM2M @PUSHI %1 @POPI %2
+M MC2M @PUSH %1 @POPI %2
+M MM2M @PUSHI %1 @POPI %2
 M MMI2M @PUSHII %1 @POPI %2
 M MM2IM @PUSHI %1 @POPII %2
 M JMPNZ @JMPZ $%01 @JMP %1 :%01        # A != B
@@ -150,7 +151,7 @@ M JMPNO @JMPO $%01 @JMP %1 :%01        # No Overflow
 M JGT @JMPN %1                           # A=A-B, if B>A or A<=B JMP %1
 M JGE @JMPN %1 @JMPZ %1                  # A=A-B, if B>=A or A<B JMP %1
 M JLT @JMPZ %0Skp @JMPN %0Skp @JMP %1 :%0Skp   #  if B<A or A>=B JMP %1
-M JLE @JMPN %0Skp @JMP %1 :%0Skip        # A=A-B, if B<=A or A>B JMP %1
+M JLE @JMPN %0Skp @JMP %1 :%0Skp         # A=A-B, if B<=A or A>B JMP %1
 M CALL @PUSH $%01 @JMP %1 :%01
 M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
 M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
@@ -214,7 +215,7 @@ M StackDump @JMP %0J :%0J @PUSH 102 @CAST 0 @POPNULL
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
-M DECI @PUSHI %1 @SUBI 1 @POPI %1
+M DECI @PUSHI %1 @SUB 1 @POPI %1
 # Adds two to variable
 M INC2I @PUSHI %1 @ADD 2 @POPI %1
 # Subtracts one from variable

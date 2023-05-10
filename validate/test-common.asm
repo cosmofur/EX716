@@ -22,6 +22,9 @@ I common.mc
 @CMP 50
 @CMP 100
 @CMP 150
+  @POPNULL
+  @PUSH 0x8000
+@CMP 0x8001    # Should cause Overflow
   @PUSH 50
 @CMPS
   @POPNULL @PUSH 100
@@ -89,9 +92,8 @@ I common.mc
    @POPNULL
    @PUSH 70 @POPI Var1
 @ANDII Ref1
-   @POPNULL
    @PUSH 15 @PUSH 45
-@AANDS
+@ANDS
    @POPNULL
    @FCLR
    @PUSH 100 @SUB 100 @POPNULL
@@ -107,7 +109,12 @@ I common.mc
    @PUSH 0xffff @ADD 1 @POPNULL
 @JMPC NextTest3
    @END
-:NextTest3   
+:NextTest3
+   @FCLR
+   @PUSH 0x8000 @SUB 0x8001 @POPNULL
+@JMPO NextTest4
+   @END
+:NextTest4
    @PUSH Forward @POPI Var1
 @JMPI Var1
    @END
