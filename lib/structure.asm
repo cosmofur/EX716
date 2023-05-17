@@ -46,6 +46,7 @@ M IF_EQ_V \
   @JMPZ %0_True \
   %S @JMP %V_ENDIF \
   :%0_True
+# If V1 == V2 True
 M IF_EQ_VV \
   @PUSHI %1 @PUSHI %2 \
   @CMPS @POPNULL @POPNULL \
@@ -60,11 +61,17 @@ M IF_LT_S \
    :%0_True
 # IF_LT_A (A) = True if TOS is < A
 M IF_LT_A \
-   @PUSH %1 \
-   @CMPS @POPNULL \
+   @CMP %1 \
    @JMPN %0_True \
     %S @JMP %V_ENDIF \
-	:%0_True
+   :%0_True
+#
+M IF_LT_V \
+   @CMPI %1 \
+   @JMPN %0_True \
+   %S @JMP %V_ENDIF \
+   :%0_True
+#
 # IF_LE_S (A,B)=True if SFT(A) <= TOS(B)
 M IF_LE_S \
   @CMPS \
@@ -74,7 +81,14 @@ M IF_LE_S \
   :%0_True
 # IF_LE_A (A) = True if TOS is <=A
 M IF_LE_A \
-  @CMPS \
+  @CMP %1\
+  @JMPZ %0_True \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+# IF_LE_V V = True if TOS is <=V
+M IF_LE_V \
+  @CMPI %1 \
   @JMPZ %0_True \
   @JMPN %0_True \
   %S @JMP %V_ENDIF \
@@ -93,6 +107,13 @@ M IF_GE_A \
    @JMPZ %0_True \
     %S @JMP %V_ENDIF \
     :%0_True
+# True if TOS >= V
+M IF_GE_V \
+   @PUSHI %1 @SWP @CMPS @SWP @POPNULL \
+   @JMPN %0_True \
+   @JMPZ %0_True \
+    %S @JMP %V_ENDIF \
+    :%0_True
 # True if (A,B) A>B
 M IF_GT_S \
   @SWP @CMPS @SWP \
@@ -102,6 +123,12 @@ M IF_GT_S \
 # True if TOP > A
 M IF_GT_A \
   @PUSH %1 @SWP @CMPS @SWP @POPNULL \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+# True if TOP > V
+M IF_GT_V \
+  @PUSHI %1 @SWP @CMPS @SWP @POPNULL \
   @JMPN %0_True \
   %S @JMP %V_ENDIF \
   :%0_True
@@ -147,6 +174,36 @@ M WHILE_NOTZERO \
   %S \
   :%V_LoopTop \
   @CMP 0 \
+  @JMPZ %V_ExitLoop \
+  :%0_True
+
+M WHILE_EQ_A \
+  %S \
+  :%V_LoopTop \
+  @CMP %1 \
+  @JMPZ %0_True \
+  @JMP %V_ExitLoop \
+  :%0_True
+
+M WHILE_NEQ_A \
+  %S \
+  :%V_LoopTop \
+  @CMP %1 \
+  @JMPZ %V_ExitLoop \
+  :%0_True
+
+M WHILE_EQ_V \
+  %S \
+  :%V_LoopTop \
+  @CMPI %1 \
+  @JMPZ %0_True \
+  @JMP %V_ExitLoop \
+  :%0_True
+
+M WHILE_NEQ_V \
+  %S \
+  :%V_LoopTop \
+  @CMPI %1 \
   @JMPZ %V_ExitLoop \
   :%0_True
 

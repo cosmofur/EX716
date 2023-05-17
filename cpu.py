@@ -1891,9 +1891,10 @@ def debugger(FileLabels):
             CPU.evalpc()
       if cmdword == "r":
           if argcnt < 1:
-              CPU.pc = 0
+              CPU.pc = Entry
               CPU.mb[0xff] = 0
-              print("PC set to 0")
+              print("PC set to %0x4" % Entry)
+              CPU.flags = 0
           else:
               CPU.pc = arglist[0]
               print("PC set to %04x" % arglist[0])
