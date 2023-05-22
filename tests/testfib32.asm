@@ -13,7 +13,7 @@ L lmath.ld
 @MOVE32AV $$$0 Aval
 @MOVE32AV $$$1 Bval
 @MOVE32AV $$$0 OUT
-@MC2M 2 Idx
+@MA2V 2 Idx
 @PRT "Number of Terms: "
 @READI Nval
 @DECI Nval

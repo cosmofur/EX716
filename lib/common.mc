@@ -136,8 +136,10 @@ M FCLR b$FCLR                  # the F group is for clearing, saving, and loadin
 M FSAV b$FSAV
 M FLOD b$FLOD
 
-M MC2M @PUSH %1 @POPI %2
-M MM2M @PUSHI %1 @POPI %2
+M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
+M MA2V @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
+M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
+M MV2V @PUSHI %1 @POPI %2  # Another way to say it, Move Variable to Variable
 M MMI2M @PUSHII %1 @POPI %2
 M MM2IM @PUSHI %1 @POPII %2
 M JMPNZ @JMPZ $%01 @JMP %1 :%01        # A != B
@@ -223,9 +225,9 @@ M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 
 # Disk IO Group
 M DISKSELI @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSEL @MC2M %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
+M DISKSEL @MA2V %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
 M DISKSEEKI @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEK @MC2M %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
+M DISKSEEK @MA2V %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
 # No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
 M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL

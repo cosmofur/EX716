@@ -25,7 +25,7 @@ b$27 "[" b0
 :WinInit
 # There no other paramters so we already have the Return Address where we need it.
 @PRTLN "-----INITILIZING....<Hit Enter>"
-@MC2M 0 ActivePage
+@MA2V 0 ActivePage
 @PRTS CSICODE @PRT "s"
 @PRTS CSICODE @PRT "999;999H"
 @PRTS CSICODE @PRT "6n"
@@ -34,7 +34,7 @@ b$27 "[" b0
 #@PUSH 20      # We limit possible results to 20 bytes
 #@CALL StrReadToChar
 @READS TermInfoBuffer
-@MC2M TermInfoBuffer TIBIndex
+@MA2V TermInfoBuffer TIBIndex
 @PRTS CSICODE @PRT "u"
 # At this point TermInfoBuffer should be "[[HH;WWR"
 # Search for ';'
@@ -64,11 +64,11 @@ b$27 "[" b0
 # We need to make sure values are not too big. Our limit is 80x50
 @PUSHI WinWidth @CMP 80 @POPNULL
 @JLE NotTooWide
-   @MC2M 80 WinWidth
+   @MA2V 80 WinWidth
 :NotTooWide
 @PUSHI WinHeight @CMP 50 @POPNULL
 @JLE NotTooTall
-  @MC2M 50 WinHeight
+  @MA2V 50 WinHeight
 :NotTooTall
 @RET
 :TermInfoBuffer "                                                      " b0
@@ -82,8 +82,8 @@ b$27 "[" b0
 @PRT "0;0H"
 @PRTS CSICODE
 @PRT "2J"
-@MM2M WinPage1 WCSrcIndex1
-@MM2M WinPage2 WCDstIndex1
+@MV2V WinPage1 WCSrcIndex1
+@MV2V WinPage2 WCDstIndex1
 @ForIA2B WCIndex1 0 2000
    @PUSH 0x2020
    @DUP
@@ -104,9 +104,9 @@ b$27 "[" b0
 
 :WinRefresh
 # At this time we aren't using the ActivePage as a flag. It's always 0 for now.
-@MM2M WinPage1 WRSrcPage
-@MM2M WinPage2 WRDstPage
-@MC2M 0 WRDiffBlock
+@MV2V WinPage1 WRSrcPage
+@MV2V WinPage2 WRDstPage
+@MA2V 0 WRDiffBlock
 @ForIA2V WRYcur 0 WinHeight
  @ForIA2V WRXcur 0 WinWidth
    @PUSHII WRSrcPage
@@ -119,7 +119,7 @@ b$27 "[" b0
        # Was in a match block, and found a diffrence.
        @PUSHI WRXcur  @PUSHI WRYcur  # Save for future ScreenWrite x,y location
        @PUSHI WRSrcPage              # Save the spot where the changed string begins.
-       @MC2M 1 WRDiffBlock           # change mode to 'expecting' diffrences.
+       @MA2V 1 WRDiffBlock           # change mode to 'expecting' diffrences.
      :WRAsExpectMatch
      @INC2I WRSrcPage
      @INC2I WRDstPage
@@ -144,7 +144,7 @@ b$27 "[" b0
 	@CALL ScreenWrite        # This write should print the 'diff' text only where they belong.	
 	@PUSHII WRDstPage
 	@POPII WRSrcPage
-	@MC2M 0 WRDiffBlock   # Set the diff block now back to 'expect to be same'
+	@MA2V 0 WRDiffBlock   # Set the diff block now back to 'expect to be same'
         @INC2I WRSrcPage
 	@INC2I WRDstPage
    :WRPastOtherLogic
@@ -156,7 +156,7 @@ b$27 "[" b0
 @PUSH 1 @CMPI WRDiffBlock @POPNULL
 @JNZ WRCleanExit
   @CALL ScreenWrite
-  @MC2M 0 WRDiffBlock
+  @MA2V 0 WRDiffBlock
 :WRCleanExit
 @RET
 :WRDiffBlock 0
@@ -175,15 +175,15 @@ b$27 "[0;0H" b0
 @POPNULL
 @JMPZ WRActZero
 # Active is 1, so use WinPage2 as src
-  @MM2M WinPage2 WRSrcPage
-  @MM2M WinPage1 WRDstPage
-  @MM2M WinPage2 WREndPageMark
+  @MV2V WinPage2 WRSrcPage
+  @MV2V WinPage1 WRDstPage
+  @MV2V WinPage2 WREndPageMark
   @JMP WRSkipElse1
 :WRActZero
 # Active is 0, so use WinPage1 as src
-  @MM2M WinPage1 WRSrcPage
-  @MM2M WinPage2 WRDstPage
-  @MM2M WinPage1 WREndPageMark
+  @MV2V WinPage1 WRSrcPage
+  @MV2V WinPage2 WRDstPage
+  @MV2V WinPage1 WREndPageMark
 :WRSkipElse1
 @PUSH 2000         # Sometime we should change this to a WinWidth * WinHeight but for now...
 @ADDI WREndPageMark
@@ -191,8 +191,8 @@ b$27 "[0;0H" b0
 @PUSHI WRSrcPage
 @ADD 2000
 @POPI WREndSrcIdx
-@MC2M 0 WRWidth
-@MC2M 0 WRHeight
+@MA2V 0 WRWidth
+@MA2V 0 WRHeight
 :WRMainLoop
   @PUSHII WRSrcPage       # Get Src word
   @AND 0x00ff             # Mask Low Byte
@@ -212,8 +212,8 @@ b$27 "[0;0H" b0
      #
      # Now we are going to loop forward until either the end or until we find a matching byte.
      #
-     @MM2M WRSrcPage WRBeginSrcDiff      # Save so we know where to 'start' later
-     @MM2M WRDstPage WRBeginDstDiff
+     @MV2V WRSrcPage WRBeginSrcDiff      # Save so we know where to 'start' later
+     @MV2V WRDstPage WRBeginDstDiff
      :WRFindDiffRangeLoop
      @INCI WRSrcPage
      @INCI WRDstPage
@@ -243,7 +243,7 @@ b$27 "[0;0H" b0
 # The first is to know that we've rolled to the next line and need to CR cursor
 :WRRollNextLineInDA
 @INCI WRHeight
-@MC2M 0 WRWidth
+@MA2V 0 WRWidth
 @JMP WRReturnInDANextLine
 #
 # We have two type of exits from the 'DiffRangeLoop'
@@ -301,7 +301,7 @@ b$27 "[0;0H" b0
 # This is the case for reaching end of linem but not end of page.
 :WROutLoopEndLine
 @INCI WRHeight
-@MC2M 0 WRWidth
+@MA2V 0 WRWidth
 @JMP WRMainLoop
 #
 # OK this is the Real end of the module.
@@ -341,8 +341,8 @@ b$27 "[0;0H" b0
 @POPI WWStrPtr
 @POPI WWYLoc
 @POPI WWXLoc
-@MM2M WinPage1 WWSrcPage
-@MM2M WinPage2 WWDstPage
+@MV2V WinPage1 WWSrcPage
+@MV2V WinPage2 WWDstPage
 @PUSHI WinHeight
 @PUSHI WinWidth
 @CALL MUL
@@ -368,7 +368,7 @@ b$27 "[0;0H" b0
 :WWDoBadMark
 # So we get here when string it 'too' large. Set EndSpot to be same as EndPage
   @POPNULL
-  @MM2M WWEndPageMark WWEndSpot
+  @MV2V WWEndPageMark WWEndSpot
 :WWSkipElseGoodMark
 @PUSHI WWSrcPage
 @ADDI WWOffset

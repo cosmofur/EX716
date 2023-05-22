@@ -1,8 +1,9 @@
-# String Functions Generation two
+s# String Functions Generation two
 ! STRING_DONE
 M STRING_DONE 1
 L div.ld
 L mul.ld
+L softstack.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
 #
 # strlen(str_var) returns length of string
@@ -29,7 +30,7 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
 :strlen
 @PUSHRETURN
 @POPI len_strptr
-@MC2M 0 len_size
+@MA2V 0 len_size
 @PUSHII len_strptr  # First character
 @AND 0x00ff
 @WHILE_NOTZERO
@@ -236,19 +237,19 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
 @POPI Base
 @POPI Invalue
 @POPI StrPtr
-@MC2M 0x3000 WorkBuff   # Preload Workbuf with zero and nulls
-@MC2M 0 WorkBuff+2
-@MC2M 0 WorkBuff+4
-@MC2M 0 NegFlag
+@MA2V 0x3000 WorkBuff   # Preload Workbuf with zero and nulls
+@MA2V 0 WorkBuff+2
+@MA2V 0 WorkBuff+4
+@MA2V 0 NegFlag
 @PUSHI Invalue
 @IF_LT_A 0
    # Is Negative
-   @MC2M 1 NegFlag
+   @MA2V 1 NegFlag
    @COMP2 @POPI Invalue   # Invale = abs(Invale)
 @ELSE
    @POPNULL
 @ENDIF
-@MC2M WorkBuff RevIndex
+@MA2V WorkBuff RevIndex
 :isMainLoop
 @PUSHI Invalue
 @IF_GT_A 0
@@ -296,15 +297,15 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
 :stoi
 @PUSHRETURN
 @POPI StrPtr
-@MC2M 0 NegFlag
-@MC2M 10 Base     # Default Base is ten
-@MC2M 0 Invalue
-@MC2M 1 Multiplier
+@MA2V 0 NegFlag
+@MA2V 10 Base     # Default Base is ten
+@MA2V 0 Invalue
+@MA2V 1 Multiplier
 @PUSHI StrPtr @CALL strlen @POPI Length
 @PUSHII StrPtr @AND 0xff
 @IF_EQ_A 0x002d      # Negative Sige in ASCII code
    @POPNULL
-   @MC2M 1 NegFlag
+   @MA2V 1 NegFlag
    @INCI StrPtr
    @DECI Length
 @ELSE
@@ -321,22 +322,22 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
       @PUSHII StrPtr @AND 0xff   # Get second character like for 0xHHHH
       @SWITCH
          @CASE 0x78      # Lower case 'x' for hex
-            @MC2M 16 Base
+            @MA2V 16 Base
             @INCI StrPtr
 	    @DEC2I Length
             @CBREAK
          @CASE 0x6F      # Lower case 'o' for octal
-            @MC2M 8 Base
+            @MA2V 8 Base
             @INCI StrPtr
 	    @DEC2I Length
             @CBREAK
          @CASE 0x62      # Lower case 'b' for binary
-            @MC2M 2 Base
+            @MA2V 2 Base
             @INCI StrPtr
 	    @DEC2I Length
             @CBREAK
          @CDEFAULT
-            @MC2M 10 Base # This is for cases where the first character was zero but net ment to indicate Base
+            @MA2V 10 Base # This is for cases where the first character was zero but net ment to indicate Base
             @DECI StrPtr
             @CBREAK
       @ENDCASE
@@ -445,6 +446,100 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
       @NextBy Index -1
   @ENDIF
 @ENDIF
+@POPRETURN
+@RET
+#
+# strchr(string,word) finds character (lower 8 bits) from word in string, returns pointer to occurance, 0 is not found
+:strchr
+@PUSHRETURN
+@ADD 0xff             # We only care about the low order byte
+@POPI Invalue
+@POPI StrPtr
+@MA2V 0 DstPtr        # Set Dst to zero so if not found it will be null
+@PUSHII StrPtr
+@AND 0xff
+@WHILE_NOTZERO
+   @IF_EQ_V Invalue   # Found match, point DST to it, and drop out of while 'early'
+      @POPNULL
+      @MV2V StrPtr DstPtr
+      @JMP BreakWhile
+   @ENDIF
+   @POPNULL
+   @INCI StrPtr
+   @PUSHII StrPtr
+   @AND 0xff
+@ENDWHILE
+:BreakWhile
+@PUSHI DstPtr
+@POPRETURN
+@RET
+#
+# strrchr(string,word) Returns pointer to 'last' instance of character in string, null it not found.
+:strrchr
+@PUSHRETURN
+@ADD 0xff
+@POPI Invalue
+@POPI StrPtr
+@MA2V 0 DstPtr
+@MV2V StrPtr StrPtrA    #Backup StrPtr for finding end case
+@PUSHI StrPtr
+@CALL strlen            #Move StrPtr to the end of the string.
+@ADDI StrPtr
+@POPI StrPtr
+@PUSHI StrPtrA          #Put the orginal start of String on stack and loop back to it
+@WHILE_NEQ_A StrPtr
+   @PUSHII StrPtr
+   @AND 0xff
+   @IF_EQ_V Invalue     # Found match, point DST to it, and drop out of while 'early'
+      @POPNULL
+      @MV2V StrPtr DstPtr
+      @JMP BreakWhileRev
+   @ENDIF
+   @POPNULL   
+   @DECI StrPtr
+@ENDWHILE
+:BreakWhileRev
+@PUSHI DstPtr
+@POPRETURN
+@RET
+#
+# strstr(string,substring) Return pointer in string, where substring can be found. NULL if no match
+:strstr
+@PUSHRETURN
+@POPI StrPtrB
+@POPI StrPtrA
+@PUSHI StrPtrB
+@CALL strlen
+@PUSHI StrPtrA
+@CALL strlen
+@IF_Lt_S       # len(StringB) is < len(StringA)
+   @POPI Base      # Length of StringA
+   @POPI Length    # Length of Stringb
+   @MM2M StrPtrA Index
+   @PUSHI StrPtrA @ADDI Base @SUBI Length  # limit of search is len(A)-len(B)
+   @POPI Base
+   @PUSHI Index
+   @WHILE_NEQ_V Base
+      @POPNULL
+      @PUSHI Index @PUSHI StrPtrB @PUSHI Length
+      @CALL strncmp
+      @IF_ZERO          # There was a match, return the Index
+         @POPNULL
+	 @PUSHI Index
+	 @JMP Endstrstr
+      @ENDIF
+      @INCI Index
+      @PUSHI Index
+    @ENDWHILE
+    # No Math if it falls here.
+    @POPNULL
+    @PUSH 0
+@ELSE
+    # pattern was larger than string, if it falls here.
+    @POPNULL @POPNULL
+    @PUSH 0
+@ENDIF
+:Endstrstr
 @POPRETURN
 @RET
 ENDBLOCK

@@ -160,7 +160,6 @@ M ENDIF \
   %P
 #
 # Now this section is for simple While loop block structures.
-# For simplicity we're only supporting the zero/not-zero test.
 #
 M WHILE_ZERO \
   %S \
@@ -228,12 +227,12 @@ M LOOP \
 # If you need a more complex test, manually do the test before UNTIL...
 # and leave either 0 or 1 on the stack.
 
-M UNTIL_ZERO \
+M UNTIL_NOTZERO \
   @CMP 0 \
   @JMPZ %V_TopLoop \
   %P
 
-M UNTIL_NOTZERO \
+M UNTIL_ZERO \
   @CMP 0 \
   @JMPNZ %V_TopLoop \
   %P
@@ -350,7 +349,7 @@ M ENDCASE \
 
 M ForIA2B \
   %S \
-  @MC2M %2 %1 \
+  @MA2V %2 %1 \
   :%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
@@ -359,7 +358,7 @@ M ForIA2B \
 # for Index from constant to variable
 M ForIA2V \
   %S \
-  @MC2M %2 %1 \
+  @MA2V %2 %1 \
   :%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
@@ -368,7 +367,7 @@ M ForIA2V \
 # for Index from variable to constant
 M ForIV2A \
   %S \
-  @MM2M %2 %1 \
+  @MV2V %2 %1 \
   :%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
@@ -377,7 +376,7 @@ M ForIV2A \
 #for Index from variable to variable
 M ForIV2V \
   %S \
-  @MM2M %2 %1 \
+  @MV2V %2 %1 \
   :%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \

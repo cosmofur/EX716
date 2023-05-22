@@ -17,7 +17,7 @@ G ScrInit G ScrClear G ScrMove G ScrWidth G ScrHeight G CSICODE
 @PRTS CSICODE @PRT "999;999H"
 @PRTS CSICODE @PRT "6n"
 @READS TermInfoBuffer
-@MC2M TermInfoBuffer TIBIndex
+@MA2V TermInfoBuffer TIBIndex
 @PRTS CSICODE @PRT "u"
 # At this point TermInfoBuffer should be "[[HH;WWR"
 # Search for ';'
@@ -44,11 +44,11 @@ G ScrInit G ScrClear G ScrMove G ScrWidth G ScrHeight G CSICODE
 # We need to make sure values are not too big. Our limit is 80x50
 @PUSHI ScrWidth @CMP 80 @POPNULL
 @JLE NotTooWide
-   @MC2M 80 ScrWidth
+   @MA2V 80 ScrWidth
 :NotTooWide
 @PUSHI ScrHeight @CMP 50 @POPNULL
 @JLE NotTooTall
-  @MC2M 50 ScrHeight
+  @MA2V 50 ScrHeight
 :NotTooTall
 @RET
 # We put an initial 24x80 responce code for a reasonable default if screen size fails to report properly

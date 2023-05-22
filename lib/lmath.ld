@@ -38,7 +38,7 @@ M COPY32VV \
 M COPY32VIV \
       @PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POPI %2+2 @POPI %2
 # 
-#  MOVE32AV is the ruff 32bit equivalent of @MC2M
+#  MOVE32AV is the ruff 32bit equivalent of @MA2V
 #M MOVE32AV @PUSH %1 @PUSH %2 @POPS @PUSH 0 @PUSH %2+2 @POPS
 #M MOVE32AVI @PUSH %1 @PUSHI %2 @POPS @PUSH 0 @PUSH %2 @ADD 2 @POPS
 M MOVE32AV @JMP %0SkipOver :%0C1 $$$%1 \
@@ -181,11 +181,11 @@ G LONG2INT
 
 
 @POPI C_PTR    # These are local copies of the original PTR's passed in.
-@MM2M C_PTR CH_PTR
+@MV2V C_PTR CH_PTR
 @POPI B_PTR
-@MM2M B_PTR BH_PTR
+@MV2V B_PTR BH_PTR
 @POPI A_PTR
-@MM2M A_PTR AH_PTR
+@MV2V A_PTR AH_PTR
 # Rather than mixing the math with ptr increments, store the High Part as separate PTR
 @INC2I CH_PTR
 @INC2I AH_PTR
@@ -376,30 +376,30 @@ G LONG2INT
 @POPI isBase              # Pointer to Base(8,10,16)
 @POPI isA32Ptr          # Address of input A32
 # Put a '0' glph in first slot of WorkBuff
-@MC2M 0x3000 isWorkBuff   # WorkBuff is empty string (11 bytes) for max 32b size
-@MC2M 0 isWorkBuff+2      # +/- -2,147,483,648 to 2,147,483,647
-@MC2M 0 isWorkBuff+4
-@MC2M 0 isWorkBuff+6
-@MC2M 0 isWorkBuff+8
-@MC2M 0 isWorkBuff+10
+@MA2V 0x3000 isWorkBuff   # WorkBuff is empty string (11 bytes) for max 32b size
+@MA2V 0 isWorkBuff+2      # +/- -2,147,483,648 to 2,147,483,647
+@MA2V 0 isWorkBuff+4
+@MA2V 0 isWorkBuff+6
+@MA2V 0 isWorkBuff+8
+@MA2V 0 isWorkBuff+10
 @MOVE32AV $$$0 isZero     # Constants we need for inverting 2scompt
 @MOVE32AV $$$1 isOne#
 # Save working copy of number
 #
 @COPY32VIV isA32Ptr isA32
-#@MC2M isWorkBuff isStrPtr    # Set string ptr to WorkBuff[0]
+#@MA2V isWorkBuff isStrPtr    # Set string ptr to WorkBuff[0]
 #
 # Test for Negative
-@MC2M 0 isNegFlag
+@MA2V 0 isNegFlag
 
 @PUSH isZero @PUSH isA32 @CALL CMP32 @POPNULL
 @JMPNZ isNotNeg
-  @MC2M 1 isNegFlag
+  @MA2V 1 isNegFlag
   # Need invert with addtion for 2s comp
   @PUSH isA32 @CALL INV32   # Invert Bits
   @PUSH isOne @PUSH isA32 @PUSH isA32 @CALL ADD32  # Add 1 for 2comp
 :isNotNeg
-@MC2M isWorkBuff isRevIndex   #First Left to right, then reverse later.
+@MA2V isWorkBuff isRevIndex   #First Left to right, then reverse later.
                               #Helpfull because this way highbyte in words
 			      #naturually add null to end of string
 :isMainLoop
@@ -511,7 +511,7 @@ G LONG2INT
 @PUSH DZero32 @PUSH DLocalDenom @CALL CMP32              # Test if Denominator is zero
 @POPNULL
 @JMPZ DDivideByZero
-@MC2M 0 DNEGFLAG         # Now test for Negative Number
+@MA2V 0 DNEGFLAG         # Now test for Negative Number
 @MOVE32AV 1 DOne32       # We need a 32b One for possible 32b 2Compliment calc
 @PUSH DZero32 @PUSH DLocalDenom @CALL CMP32 @POPNULL  # Compare Denom to zero
 @JGT DDenomNotNeg          # A=Zero B=Denom if Denom > Zero Jump NotNeg
@@ -532,7 +532,7 @@ G LONG2INT
 @MOVE32AV 0 DRemainder
 @PUSH 0x0000 @POPI DReverseBit
 @PUSH 0x8000 @POPI DReverseBit+2       # Start the Reverse bit at 32'nd bit
-@MC2M 32 DIndex
+@MA2V 32 DIndex
 :DMainLoop
 @PUSHI DIndex @CMP 0 @POPNULL
 # Explanation of loop
@@ -626,7 +626,7 @@ G LONG2INT
 @PUSHII NNPtr @POPI NNLocal
 @PUSHI NNPtr @ADD 2 @PUSHS @POPI NNLocal+2
 @MOVE32AV $$$0 M_ANS
-@MC2M 0 M_NEGFLAG
+@MA2V 0 M_NEGFLAG
 @MOVE32AVI $$$0 M_ZERO
 @MOVE32AVI $$$1 M_ONE
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL

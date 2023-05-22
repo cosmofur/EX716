@@ -19,13 +19,13 @@ L random.ld
   @PUSHI Result
   @PUSHI High
   @IF_GT_S
-     @MM2M Result High
+     @MV2V Result High
   @ENDIF
   @POPNULL @POPNULL
   @PUSHI Result
   @PUSHI Low
   @IF_LT_S
-     @MM2M Result Low
+     @MV2V Result Low
   @ENDIF
   @POPNULL @POPNULL
   @PRTI Result @PRT ","

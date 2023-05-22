@@ -17,7 +17,7 @@
 M MAllocA \
          ! SkipMANext @JMP %0AStore \
   	 G MATopMem \
-	 :MATopMem 0 :%0AStore @MC2M 0xE000 MATopMem \
+	 :MATopMem 0 :%0AStore @MA2V 0xE000 MATopMem \
 	 ENDBLOCK \      
          @PUSHI MATopMem @SUB %1 @DUP \
          @SUB 2 @PUSHI MATopMem @SWP @POPS \

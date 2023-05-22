@@ -106,12 +106,12 @@ L string.ld
 @PRT "String to I: " @POPI AA @PRTSGNI AA @PRTNL
 @PRTLN "--------------- Mem Copy tests-------"
 
-@MC2M Buffer1 AA   #Set Buffer1 to A-Z
+@MA2V Buffer1 AA   #Set Buffer1 to A-Z
 @ForIA2B Index 0x40 0x5A
   @PUSHI Index @POPII AA
   @INCI AA
 @Next Index
-@MC2M Buffer2 AA   #Set Buffer1 to A-Z
+@MA2V Buffer2 AA   #Set Buffer1 to A-Z
 @ForIA2B Index 0x40 0x5A
   @PUSH 0 @POPII AA
   @INCI AA

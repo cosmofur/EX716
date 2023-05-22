@@ -10,7 +10,7 @@ G MULU
 @POPI RETURN
 @POPI MM
 @POPI NN
-@MC2M 0 ANS
+@MA2V 0 ANS
 @PUSHI NN
 @IF_ZERO      # If either NN or MM is zero, answer is zero
    @PUSHI RETURN
@@ -51,7 +51,7 @@ G MULU
 # Now for the Signed version of MUL
 :MUL
 @POPI RETURN2
-@MC2M 0 SIGN
+@MA2V 0 SIGN
 @IF_LT_A 0          # IF NN or MM < 0 Invert SIGN
    @PUSHI SIGN
    @INV @POPI SIGN

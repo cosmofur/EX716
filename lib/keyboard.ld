@@ -3,7 +3,7 @@ G readstr
 :readstr
 	@POPI ReturnAddr
 	@POPI ReturnStr
-	@MC2M 0 Index
+	@MA2V 0 Index
 	@PUSH PollReadCharI
 	@PUSH 0
 	@POPII ReturnStr

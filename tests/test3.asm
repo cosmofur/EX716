@@ -12,14 +12,14 @@ b0
 0
 :Start
 @PRT "Values: (v16)"
-@MC2M Val16one R1
+@MA2V Val16one R1
 @PRTHEXII R1
 @PRTSP
-@MC2M Val8one R1
+@MA2V Val8one R1
 @PRT " (v8)"
 @PRTHEXII R1
 @PRTSP
-@MC2M Val32one R1
+@MA2V Val32one R1
 @INCI R1
 @INCI R1
 @PRT " (v32)"

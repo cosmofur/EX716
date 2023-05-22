@@ -37,9 +37,9 @@ L mul.ld         # Load the 16b MUL library
 . WhereMemoryAfterHeaders
 #
 # Now set the bottom of the array to a clear spot in memory
-@MC2M ArrayStart Struct1ArrayBottom
+@MA2V ArrayStart Struct1ArrayBottom
 #
-@MC2M 4 Index1         # Loading a value at Index 4 of Struct (index starts at zero)
+@MA2V 4 Index1         # Loading a value at Index 4 of Struct (index starts at zero)
 @PUSHI Index1 @PUSH AddrStructSize   # Multiple Index1 * Structure Size
 @CALL MUL
 @ADD StructArrayBottom               # Result + Structure Size
@@ -55,11 +55,11 @@ L mul.ld         # Load the 16b MUL library
 # Example of the first: Result of this would be a series of Ptr variables pointing to the named fields.
 #
 @PUSHI ArrayCursor @PUSHI FixedBlock @PUSH AddrStructSize @CALL moveblock
-@MC2M FixedBlock+FirstName FirstNamePtr       # The '+'s here would be calculated at assembly time.
-@MC2M FixedBlock+SurName SurNamePtr           # Or we could even get away with using fixed lables
-@MC2M FixedBlock+AddressLine1 Address1Ptr     # All preset at the right locations of the FixedBlock
-@MC2M FixedBlock+AddressLine2 Address2Ptr     # Chages to the FixedBlock data would not automaticly be saved
-@MC2M FixedBlock+ZIPCode ZipCodePtr           # to the original array.
+@MA2V FixedBlock+FirstName FirstNamePtr       # The '+'s here would be calculated at assembly time.
+@MA2V FixedBlock+SurName SurNamePtr           # Or we could even get away with using fixed lables
+@MA2V FixedBlock+AddressLine1 Address1Ptr     # All preset at the right locations of the FixedBlock
+@MA2V FixedBlock+AddressLine2 Address2Ptr     # Chages to the FixedBlock data would not automaticly be saved
+@MA2V FixedBlock+ZIPCode ZipCodePtr           # to the original array.
 # the main dissadvantage of the FixedBlock  method is we have no fast way to execute 'moveblock' it will
 # both require use to reserve extra memory, and loop though that memory, slowing down the code. 
 #
