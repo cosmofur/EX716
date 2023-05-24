@@ -39,8 +39,6 @@ M COPY32VIV \
       @PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POPI %2+2 @POPI %2
 # 
 #  MOVE32AV is the ruff 32bit equivalent of @MA2V
-#M MOVE32AV @PUSH %1 @PUSH %2 @POPS @PUSH 0 @PUSH %2+2 @POPS
-#M MOVE32AVI @PUSH %1 @PUSHI %2 @POPS @PUSH 0 @PUSH %2 @ADD 2 @POPS
 M MOVE32AV @JMP %0SkipOver :%0C1 $$$%1 \
            :%0SkipOver @PUSHI %0C1 @PUSH %2 @POPS \
 	   @PUSHI %0C1+2 @PUSH %2+2 @POPS
@@ -65,7 +63,7 @@ M INTI2LONGI \
     @PUSHI %1 @PUSHI %2 @CALL INT2LONG
     
 
-# LONG2INT is trucates the lower word in 32b data to 16b.But conider possibity of negative values
+# LONG2INT trucates the lower word in 32b data to 16b.But conider possibity of negative values
 # %1 is ptr to 32b data and %2 is ptr to 16b data (Does effect flags)
 # It started life as a macro, now its a function.
 
@@ -155,16 +153,16 @@ G LONG2INT
 @POPI C_PTR
 @POPI B_PTR
 @POPI A_PTR
-@PUSHII A_PTR @PUSHII B_PTR
+@PUSHII A_PTR @PUSHII B_PTR          # Put low part on stack
 @INC2I B_PTR @INC2I A_PTR # We do the inc2 here to avoid messing up flags
 @SUBS
 @POPII C_PTR
-@JMPNC SNoBorrow 
+@JMPNC SNoBorrow
 # Case for Borrow
   @PUSHII A_PTR
-  @PUSH 1 @PUSHII B_PTR @SUBS     # Barrow bit from High A
+  @PUSHII B_PTR @PUSH 1 @SUBS     # Barrow bit from High A
   @INC2I C_PTR            # C wasn't inc2 because we still needed it for the POP
-  @SUBS
+#  @SUBS
   @POPII C_PTR
   @JMP SPastNoBorrow
 :SNoBorrow
@@ -175,52 +173,11 @@ G LONG2INT
 :SPastNoBorrow
 @PUSHI ReturnAdr
 @RET
-
-@POPII C_PTR
-@INC2I A_PTR @INC2I B_PTR @INC2I C_PTR
-
-
-@POPI C_PTR    # These are local copies of the original PTR's passed in.
-@MV2V C_PTR CH_PTR
-@POPI B_PTR
-@MV2V B_PTR BH_PTR
-@POPI A_PTR
-@MV2V A_PTR AH_PTR
-# Rather than mixing the math with ptr increments, store the High Part as separate PTR
-@INC2I CH_PTR
-@INC2I AH_PTR
-@INC2I BH_PTR
-# Make copies of values the A and B points to local A and B storage.
-@PUSHII A_PTR     # Fetch low part of A from ptr
-@POPI Aval_Low
-@PUSHII AH_PTR     # Fetch high part of A from ptr
-@POPI Aval_High
-@PUSHII B_PTR     # Fetch low part of B from ptr
-@POPI Bval_Low
-@PUSHII BH_PTR     # Fetch high part of B from ptr
-@POPI Bval_High
-# Main math function.
-@PUSHI Aval_Low    # Start the Math A on stack
-@PUSHI Bval_Low
-@SUBS
-@POPII C_PTR       # Save the Low results to Low C
-@JMPNC SUB32NoCarry
-@PUSH 1     # There was a Carry, so remove 1 from B High block
-@PUSHI Bval_High
-@SUBS
-@POPI Bval_High
-:SUB32NoCarry
-@PUSHI Aval_High
-@PUSHI Bval_High
-@SUBS       # High part results on stack.
-@POPII CH_PTR     # Save High part to C High
-@PUSHI ReturnAdr
-@RET
 #
 :CMP32
 @POPI C32Return
 @PUSH C32Result
-@CALL SUB32   # We are Using SUB32 to Subtract B - A > Temp Result
+@CALL SUB32   # We are Using SUB32 to Subtract A - B > Temp Result
 #  Test if High Worked Highest Bit is set, if so, it's negative.
 @PUSHI C32Result+2
 @AND 0x8000
@@ -238,7 +195,7 @@ G LONG2INT
 @CMP 0 @POPNULL
 @JMPZ C32IsZero
 :C32NotZeroOrNeg     #Having failed both zero and negative, must be positive
-@PUSH 1 @CMP 2 @POPNULL   # For flags to be 'reset' for simpler testing.
+@PUSH 2 @CMP 1 @POPNULL   # For flags to be 'reset' for simpler testing.
 @PUSH 1
 @JMP C32End
 :C32IsZero
@@ -246,7 +203,7 @@ G LONG2INT
 @CMP 0               # Force the Z Flag to be set, so we avoid testing again
 @JMP C32End
 :C32IsNeg
-@PUSH 1 @CMP 0 @POPNULL   # Force the N flag to be set.
+@PUSH 0 @CMP 1 @POPNULL   # Force the N flag to be set.
 @PUSH -1
 :C32End
 @PUSHI C32Return
@@ -258,7 +215,7 @@ G LONG2INT
 :RTR32
 @POPI ReturnAdr
 # Setup Individual pointers to the Low and High parts of the Src(A) and Dst(C) numbers
-@DUP 	
+@DUP
 @POPI C_PTR @ADD 2 @POPI CH_PTR
 @DUP
 @POPI A_PTR @ADD 2 @POPI AH_PTR
@@ -326,33 +283,6 @@ G LONG2INT
 :RL32AVAL 0
 :RL32OutCarry 0
 :RL32UpperHold 0
-@DUP
-@POPI C_PTR
-@POPI CH_PTR
-@INC2I CH_PTR
-@DUP
-@POPI A_PTR
-@POPI AH_PTR
-@INC2I AH_PTR
-@PUSHII A_PTR     # Fetch low part of A from ptr
-@POPI Aval_Low
-@PUSHII AH_PTR     # Fetch high part of A from ptr
-@POPI Aval_High
-@PUSHI Aval_Low
-# Clear Carry
-@PUSH 1
-@CMP 0
-@POPNULL
-# Since We are rotating 'left' we do Low Part first
-@RTL
-# Then We rotate the High part with what ever carry there was left over
-@PUSHI Aval_High
-@RTL
-# Move results to C
-@POPII CH_PTR
-@POPII C_PTR
-@PUSHI ReturnAdr
-@RET
 # We need some basic string functions that work with 32b numbers
 # So we need to create i32tos
 # Locals
@@ -440,7 +370,7 @@ G LONG2INT
   # while isRevIndex > isWorkBuff
   @PUSHI isRevIndex
   @CMP isWorkBuff @POPNULL   # A=isRevIndex B=isWorkBuff
-  @JGE isExitReverseLoop     # If B<A ExitLoop
+  @JLT isExitReverseLoop     # If A<B ExitLoop
   @PUSHII isRevIndex
   @POPII isStrPtr
   @PUSH 0

@@ -99,11 +99,20 @@ L string.ld
 @PRT "B4(0x57E4): " @PRTS Buffer2
 @PRTNL
 @PUSH Buffer2 @CALL stoi
+:break1
 @PRT "String to I: " @POPI AA @PRTSGNI AA @PRTNL
 @PUSH Buffer1 @PUSH -321 @PUSH 10 @CALL itos
 @PRT "Integer to String:" @PRTS Buffer1 @PRTNL
 @PUSH Buffer1 @CALL stoi
 @PRT "String to I: " @POPI AA @PRTSGNI AA @PRTNL
+#############################################
+@STRSET "Animals Dog Cat Cow" Buffer1
+@STRSET "Cat" CatString
+@PRT "Searching for '" @PRTS CatString @PRT "' In string '" @PRTS Buffer1 @PRTLN "'"
+@PUSH Buffer1 @PUSH CatString @CALL strstr
+@PRT "Address match from: " @PRTREF Buffer1 @PRT " - " @PRTTOP @PRTNL
+@POPI AA
+@PRT "Result:'" @PRTSI AA @PRTLN "'"
 @PRTLN "--------------- Mem Copy tests-------"
 
 @MA2V Buffer1 AA   #Set Buffer1 to A-Z
@@ -117,7 +126,6 @@ L string.ld
   @INCI AA
 @Next Index
 @PRTLN "First 5 chars from B1 to B2"
-:Break1
 @PUSH Buffer2 @PUSH Buffer1 @PUSH 5
 @CALL memcpy
 @PRTS Buffer2

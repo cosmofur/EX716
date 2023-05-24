@@ -1,10 +1,19 @@
-s# String Functions Generation two
+# String Functions Generation two
 ! STRING_DONE
 M STRING_DONE 1
 L div.ld
 L mul.ld
 L softstack.ld
-G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
+G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr
+#
+# Soem 'String' Macros
+# STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
+G STRSET G STRSETI
+M STRSET \
+  @JMP %0_Skip :%0Store %1 b0 :%0_Skip @PUSH %2 @PUSH %0Store @CALL strcpy
+# STRSETI same as STRSET but %2 is ptr to memory rather than the address itself.
+M STRSETI \
+  @JMP %0_Skip :%0Store %1 b0 :%0_Skip @PUSHI %2 @PUSH %0Store @CALL strcpy
 #
 # strlen(str_var) returns length of string
 # Vars
@@ -398,7 +407,6 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
    # Do Nothing
 @ELSE
    @IF_LT_V SrcPtr
-      @PRTLN "Low to High for loop"
       @POPNULL
       # For efficency we'll copy whole words rather than bytes
       # But we also must account for the odd number case and
@@ -421,7 +429,6 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
       @POPNULL
   @ELSE            # Hande case where moving backworks is better.
       @POPNULL
-      @PRTLN "High to Low for loop"
       :Break2
       @PUSHI Length @RTR @POPI Base  # Length/2 (round down)
       @PUSHI SrcPtr @ADDI Length @SUB 1 @POPI SrcPtr
@@ -504,32 +511,40 @@ G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy
 @RET
 #
 # strstr(string,substring) Return pointer in string, where substring can be found. NULL if no match
+# Extra Local Variables
+:ssStrB 0
+:ssStrA 0
+:ssDstPtr 0
+:ssMaxLength 0
+:ssLength 0
+:ssIndex 0
 :strstr
 @PUSHRETURN
-@POPI StrPtrB
-@POPI StrPtrA
-@PUSHI StrPtrB
+@POPI ssStrB         # SrtB is the SubString
+@POPI ssStrA         # StrA is the Source String
+@PUSHI ssStrB
 @CALL strlen
-@PUSHI StrPtrA
+@PUSHI ssStrA
 @CALL strlen
-@IF_Lt_S       # len(StringB) is < len(StringA)
-   @POPI Base      # Length of StringA
-   @POPI Length    # Length of Stringb
-   @MM2M StrPtrA Index
-   @PUSHI StrPtrA @ADDI Base @SUBI Length  # limit of search is len(A)-len(B)
-   @POPI Base
-   @PUSHI Index
-   @WHILE_NEQ_V Base
+@IF_LT_S       # len(StringB) is < len(StringA)
+   @POPI ssMaxLength      # Full length of source string
+   @POPI ssLength         # Length of SubString
+   @MV2V ssStrA ssIndex  # Index will be pointer In String we Start Search.
+   @PUSHI ssStrA @ADDI ssMaxLength @SUBI ssLength  # We only need to search max of MaxLength-Length
+   @POPI ssDstPtr         # Loop will either find match or continue until Index==DstPtr
+   @PUSHI ssIndex
+   @WHILE_NEQ_V ssDstPtr
       @POPNULL
-      @PUSHI Index @PUSHI StrPtrB @PUSHI Length
+      @PUSHI ssIndex @PUSHI ssStrB @PUSHI ssLength
       @CALL strncmp
       @IF_ZERO          # There was a match, return the Index
          @POPNULL
-	 @PUSHI Index
+	 @PUSHI ssIndex
 	 @JMP Endstrstr
       @ENDIF
-      @INCI Index
-      @PUSHI Index
+      @POPNULL
+      @INCI ssIndex
+      @PUSHI ssIndex
     @ENDWHILE
     # No Math if it falls here.
     @POPNULL

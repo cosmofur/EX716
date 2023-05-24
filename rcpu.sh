@@ -1,6 +1,6 @@
 #!/bin/sh
-if [ "X$1" == "X" ]; then
-    echo Usage $0 filename
+if [ -z "$1" ]; then
+    echo "Usage $0 filename"
     exit
 fi
 R=$(basename -- "$1")

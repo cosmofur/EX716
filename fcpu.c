@@ -119,12 +119,14 @@ void OverFlowTest(int a, int b, int c, int IsSubtraction) {
 
 int get16memat(int locateaddr) {
   locateaddr=locateaddr & 0xffff;
-  return memory[locateaddr]+(memory[locateaddr+1]<<8);
+  if ( locateaddr == 0xffff) { return 0;}
+  return ((memory[locateaddr] & 0xff) + ((memory[locateaddr+1] & 0xff) << 8) ) &0xffff;
+
 }
 void put16atmem(int locateaddr,int val) {
   locateaddr=locateaddr & 0xffff;
   memory[locateaddr]=val & 0xff;
-  memory[locateaddr+1]=(val >> 8);
+  memory[locateaddr+1]=((val >> 8) & 0xff);
 }
 int topstack(int optcode) {
   if (HWStack[HWSPIDX] > MAXHWSTACK) {
@@ -134,7 +136,7 @@ int topstack(int optcode) {
     printf("002 MB Stack Underflow, OPCODE %d\n",optcode);
     return 0;
   }
-  return HWStack[HWStack[HWSPIDX]-1];
+  return (HWStack[HWStack[HWSPIDX]-1] & 0xffff);
 }
 
 int sectopstack(int optcode) {
@@ -307,6 +309,9 @@ int doeval(int startpc) {
   
   while(LoopForever == 1 )
     {
+      if ( PC == 0x185f ) {
+	printf("Place to put break");
+      }
       OptCount++;
       Param=get16memat(PC+1);
       ParamI=get16memat(Param);
@@ -662,7 +667,9 @@ int doeval(int startpc) {
 	 PC=PC+Opsize;
 	 break;
        case OptValCOMP2:
-	 R1=~(popstack(OptCode))+1;
+	 R1=popstack(OptCode);
+	 R1= ((~R1 & 0xffff) + 1) & 0xffff;
+	 pushstack(R1,OptCode);
 	 SetFlags(R1);
 	 Opsize=1;
 	 PC=PC+Opsize;
