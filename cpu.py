@@ -593,7 +593,7 @@ class microcpu:
         # 22 is 'write block' address points to a block of memory (256 bytes) that will be written to disk
         # 23 is sync, closes the device until the next write.
         # if 32 it will print the 32 bit integer value stored AT location of address
-        # if 33 if will print the 32 bit integer value combining top two 16b words on HW stack
+        # if 33 if will print the 32 bit integer value stored At location on Stack
 
         if address >= (MAXMEMSP-11):
             self.raiseerror("037 Insufficent space for Message Address at %d, optCAST" % (address))
@@ -623,7 +623,7 @@ class microcpu:
             sys.stdout.write("%d" % (self.twos_compFrom(v,16)))
         if cmd == 5:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%s" % bin(v)[0:15])
+            sys.stdout.write("%s" % format(v,"016b"))
         if cmd == 6:
             v = self.memspace[address]
             if ( v<31):
@@ -684,8 +684,9 @@ class microcpu:
             if ( v & ( 1 << 31 ) != 0) :
                 v = v - (1 << 32)
             sys.stdout.write("%s" % v)
-        if cmd == 33:
-            v=self.fetchAcum(0) + (self.fetchAcum(1) << 16)
+        if cmd == 33:            
+            iaddr=self.fetchAcum(1)
+            v=self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
         if cmd == 99:
             sys.stdout.write("\nEND of Code:(%d Opts)" % GlobalOptCnt )
@@ -693,7 +694,7 @@ class microcpu:
         if cmd == 100:
             Debug = (Debug + 1) if Debug < 2 else 0
         if cmd == 102:
-            sys.stdout.write("\nStack ( %d):" % (self.mb[0xff]-1))
+            sys.stdout.write("\n%04x:Stack ( %d):" % (self.pc,self.mb[0xff]-1))
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+(0xff*self.mb[i*2+1])
                 sys.stdout.write(" %04x" % (val))
@@ -800,8 +801,8 @@ class microcpu:
         # After rotation current CF becomes low bit, and previous high bit saves to CF
         R1 = self.fetchAcum(0)
         NCF = ( 1 if ( R1 & 0x08000 != 0) else 0) << 2       # New Carry Flag from Left Most bit
-        OCF = ( 1 if (self.flags & 0x04 != 0) else 0)        # Pull CF from flags and make 1 | 0
-        R1 = R1 << 1 + OCF
+        OCF = ( 1 if (self.flags & 0x04 != 0) else 0)  # Pull CF from flags and make 1 | 0
+        R1 = (R1 << 1) | OCF
         self.flags = ( self.flags & 0xfffb) | NCF
         self.StoreAcum(0,R1)
 

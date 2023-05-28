@@ -196,6 +196,8 @@ M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
 # Print 32bit number starting at address
 M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
+#
+M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.

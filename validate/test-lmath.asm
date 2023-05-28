@@ -5,13 +5,50 @@ L lmath.ld
 :Bval $$$010
 :Cval $$$00
 :Dval $$$00
+:APtr Aval
+:BPtr Bval
+:CPtr Cval
 
 :Main . Main
-@MOVE32AV $$$90 Aval
+@MOVE32AV $$$11 Aval
+@MOVE32AV $$$10  Bval	
+@MOVE32AV $$$0  Cval
+@PUSH Bval @PUSH Aval @PUSH Cval @CALL SUB32
+@PUSH Cval @CALL PRT32HEX
+@END
+
+
+@MOVE32AV $$$0x40000 Aval
+@MOVE32AV $$$93 Aval
+@MOVE32AV $$$10  Bval	
+@MOVE32AV $$$0  Cval
+
+@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32U
+@PRT "DIV A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL
+@END
+#@MOVE32AV $$$90 Aval
+#@MOVE32AV $$$10  Bval
+#@MOVE32AV $$$0  Cval
+#@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32
+#@PRT "DIV A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL 
+#@MOVE32AV $$$105 Aval
+#@MOVE32AV $$$10  Bval
+#@MOVE32AV $$$0  Cval
+#@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32U
+#@PRT "DIV A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL
+@MOVE32AV $$$15 Aval
 @MOVE32AV $$$10  Bval
 @MOVE32AV $$$0  Cval
-@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32
-@PRT "MUL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL 
+@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32U
+@PRT "DIV A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL 
+
+@MOVE32AV $$$0x31000 Aval
+@MOVE32AV $$$16  Bval
+@MOVE32AV $$$0  Cval
+@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32U
+@PRT "DIV A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL 
+
+
 
 @END
 @MOVE32AV $$$3000 Aval
@@ -34,6 +71,44 @@ L lmath.ld
 @MOVE32AV $$$0  Cval
 @PUSH Aval @PUSH Bval @PUSH Cval @CALL SUB32
 @PRT "Sub A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRTNL
+@MOVE32AV $$$0x10000 Aval
+@MOVE32AV $$$32768  Bval
+@MOVE32AV $$$0  Cval
+
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTL32
+@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTL32
+@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTL32
+@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTL32
+@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTL32
+@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+
+
+@PUSH Aval @PUSH Bval @CALL RTR32
+@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTR32
+@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTR32
+@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTR32
+@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+@COPY32VV Bval Aval
+@PUSH Aval @PUSH Bval @CALL RTR32
+@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
+
+
+
 @MOVE32AV $$$3000 Aval
 @MOVE32AV $$$100  Bval
 @MOVE32AV $$$0  Cval
@@ -49,6 +124,9 @@ L lmath.ld
 @MOVE32AV $$$0  Cval
 @PUSH Aval @PUSH Bval @CALL CMP32
 @PRT "CMP A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " Return:" @PRTTOP @POPNULL @PRTNL
+
+
+
 @MOVE32AV $$$8 Aval
 @MOVE32AV $$$4  Bval
 @MOVE32AV $$$0  Cval
@@ -74,39 +152,6 @@ L lmath.ld
 @MOVE32AV $$$0  Cval
 @PUSH Aval @PUSH Bval @PUSH Cval @CALL OR32
 @PRT "OR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRTNL
-@MOVE32AV $$$0x40000 Aval
-@MOVE32AV $$$8  Bval
-@MOVE32AV $$$0  Cval
-@PUSH Aval @PUSH Bval @CALL RTR32
-@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTR32
-@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTR32
-@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTR32
-@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTR32
-@PRT "RTR A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTL32
-@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTL32
-@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTL32
-@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTL32
-@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
-@COPY32VV Bval Aval
-@PUSH Aval @PUSH Bval @CALL RTL32
-@PRT "RTL A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRTNL
 @MOVE32AV $$$0x0 Aval
 @COPY32VV Aval Bval
 @PUSH Bval @CALL INV32
