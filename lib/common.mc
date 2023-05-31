@@ -225,6 +225,8 @@ M INC2I @PUSHI %1 @ADD 2 @POPI %1
 # Subtracts one from variable
 M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 
+# A way to impliment a 16 bit 2 comp ABS function
+M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
 # Disk IO Group
 M DISKSELI @PUSH CastSelectDisk @CAST %1 @POPNULL
 M DISKSEL @MA2V %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL

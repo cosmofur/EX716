@@ -4,7 +4,7 @@ M STRING_DONE 1
 L div.ld
 L mul.ld
 L softstack.ld
-G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr
+G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
 #
 # Soem 'String' Macros
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
@@ -556,5 +556,17 @@ M STRSETI \
 @ENDIF
 :Endstrstr
 @POPRETURN
+@RET
+# strfndc searchs string for single character returns ptr to that character
+# (strstr but with character constant on stack)
+:sfReturn 0
+:ShortString 0 0
+:strfndc
+#POPI sfReturn
+@SWP
+@POPI ShortString
+@PUSH ShortString
+@CALL strstr
+@PUSHI sfReturn
 @RET
 ENDBLOCK

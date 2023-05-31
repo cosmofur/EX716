@@ -165,6 +165,10 @@ I common.mc
     @PUSH -100
 @COMP2
 @COMP2
+@ForIA2B Var1  -10 10
+  @ABSI Var1
+  @PRTTOP @PRTSP
+@Next Var1
     @PRTLN "Successfull End"
     @END
     

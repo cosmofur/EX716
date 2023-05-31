@@ -190,9 +190,10 @@ G PRT32HEX
 @JMPNC SNoBorrow
 # Case for Borrow
   @PUSHII A_PTR
-  @PUSHII B_PTR @PUSH 1 @SUBS     # Barrow bit from High A
-  @INC2I C_PTR            # C wasn't inc2 because we still needed it for the POP
+  @PUSHII B_PTR
   @SUBS
+  @SUB 1      # Barrow bit from High A  
+  @INC2I C_PTR            # C wasn't inc2 because we still needed it for the POP
   @POPII C_PTR
   @JMP SPastNoBorrow
 :SNoBorrow
@@ -461,25 +462,21 @@ G PRT32HEX
    @PUSH DUMask @PUSHI DUA_ValPtr @PUSH DUTemp1 @CALL AND32 # AND32(A,B,C) C=A & B, pops all off.
    @PUSH DUTemp1 @PUSH DUZero @CALL CMP32
    @IF_NOTZERO
-      @PRTLN "Change Remainder:"
       @POPNULL
       # DURemainder[bit16-Index]=DUA_ValPtr[bit16-Index]
       @PUSH DUOne @PUSH DURemainder @PUSH DURemainder @CALL OR32
    @ELSE
       @POPNULL
    @ENDIF
-   @PRT "Remainder: " @PRT32I DURemainder @PRT " vs " @PRT32I LocalB 
    @PUSHI DUB_ValPtr
    @PUSH DURemainder   
 :BreakHere
    @CALL CMP32
-   @PRT " = " @PRTTOP @PRTNL
-   @IF_EQ_A -1
-      @PUSH DURemainder @PUSHI DUB_ValPtr @PUSH DURemainder @CALL SUB32 # Remain=Remain-B
-      @PUSH DUQVal @PUSH DUMask @PUSH DUQVal @CALL OR32 # QVal=QVal | Mask   
+   @IF_EQ_A 1
       @POPNULL
    @ELSE
-
+      @PUSH DURemainder @PUSHI DUB_ValPtr @PUSH DURemainder @CALL SUB32 # Remain=Remain-B
+      @PUSH DUQVal @PUSH DUMask @PUSH DUQVal @CALL OR32 # QVal=QVal | Mask   
       @POPNULL
    @ENDIF
    @PUSH DUMask @PUSH DUMask @CALL RTR32  # Mask = Mask >> 1
