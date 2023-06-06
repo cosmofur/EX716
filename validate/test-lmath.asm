@@ -15,7 +15,7 @@ L lmath.ld
 @MOVE32AV $$$10  Bval	
 @MOVE32AV $$$0  Cval
 
-@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32U
+@PUSH Aval @PUSH Bval @PUSH Cval @PUSH Dval @CALL DIV32
 @PRT "DIV A:" @PRT32I Aval @PRT " B:" @PRT32I Bval @PRT " C:" @PRT32I Cval @PRT " D:" @PRT32I Dval @PRTNL
 @MOVE32AV $$$90 Aval
 @MOVE32AV $$$10  Bval

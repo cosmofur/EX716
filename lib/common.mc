@@ -235,8 +235,11 @@ M DISKSEEK @MA2V %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_s
 # No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
 M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
 M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
+M DISKREAD @JMP %0_jmp :%0_data 0 :%0_jmp @PUSH %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
+#M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
+#M DISKREADI @JMP %0_jmp :%0_data 0 :%0_jmp @PUSHI %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
+#M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
 
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL

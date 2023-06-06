@@ -5,7 +5,7 @@
 
 #include "fcpu.h"
 
-int memory[0xffff];
+int memory[0x10000];
 int PC=0;
 int Entry=0;
 int GetNextWord();
@@ -19,6 +19,7 @@ int CF=0;
 int OF=0;
 int R1,R2,A1,B1,A2,B2;  // Scratch Variables
 int DebugRange1,DebugRange2;
+int WatchWord;
 unsigned long long int OptCount=0;
 
 int FileRead(char *fname) {
@@ -245,7 +246,10 @@ void handleCast(int Param, int ParamI, int ParamII) {
     printf("%04x",a);
     break;    
   case 32:
-    i32=(ParamI+(memory[Param+2]+( memory[Param+3] << 8))) << 16;
+    i32=ParamI+(get16memat(Param+2) << 16);
+    if ( (i32 & ( 1 << 31)) != 0) {
+      i32= ~(i32) + 1;
+    }      
     printf("%d",i32);
     break;
   case 33:
@@ -324,9 +328,13 @@ int doeval(int startpc) {
       nbr1=nbr1 & 0xffff;
       nbr2=nbr2 & 0xffff;
       if (PC >= DebugRange1 && PC <= DebugRange2) {
-      printf("%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)\n",
+      printf("%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)",
 	     PC,optcnames[OptCode],Param,ParamI,ParamII,nbr1,nbr2,ZF,NF,CF,OF,HWStack[HWSPIDX]);
-	}
+      if ( WatchWord != -1) {
+	printf(" Watch: %04x:%04x",WatchWord,get16memat(WatchWord));	
+      }
+      printf("\n");
+      }
        switch(OptCode) {
        case OptValNOP:
 	 PC++;
@@ -623,7 +631,7 @@ int doeval(int startpc) {
 	 }
 	 OCF=CF << 15;
 	 R1=R1 >> 1 | OCF;
-	 CF=NCF;
+	 CF=NCF > 0 ? 1:0;
 	 pushstack(R1,OptCode);
 	 Opsize=1;
 	 PC=PC+Opsize;	 
@@ -634,7 +642,7 @@ int doeval(int startpc) {
 	 if ( R1 & 0x8000) { NCF=1;}
 	 OCF=CF;
 	 R1=(R1<<1) + OCF;
-	 CF=NCF;
+	 CF=NCF > 0? 1:0;
 	 pushstack(R1,OptCode);
 	 Opsize=1;
 	 PC=PC+Opsize;
@@ -663,6 +671,7 @@ int doeval(int startpc) {
 	 R1=~(popstack(OptCode));
 	 pushstack(R1,OptCode);
 	 SetFlags(R1);
+	 CF=0; OF=0;
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -671,6 +680,7 @@ int doeval(int startpc) {
 	 R1= ((~R1 & 0xffff) + 1) & 0xffff;
 	 pushstack(R1,OptCode);
 	 SetFlags(R1);
+	 CF=0; OF=0;
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -753,9 +763,10 @@ int main(int argc, char *argv[])
   }
   DebugRange1=0x10000;
   DebugRange2=0x10000;
+  WatchWord=-1;
 
 
-  while ((opt = getopt(argc, argv, "hd:e:")) != -1)
+  while ((opt = getopt(argc, argv, "hd:e:w:")) != -1)
 {
     switch (opt) {
        case 'd':
@@ -764,6 +775,10 @@ int main(int argc, char *argv[])
        case 'e':
           DebugRange2=GetNextWord(&optarg);
           break;
+       case 'w':
+          WatchWord=GetNextWord(&optarg);	 
+	 break;
+      
        case 'h':
        case '?':
           printf("Put help here\n");

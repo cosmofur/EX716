@@ -91,6 +91,7 @@ I common.mc
 @ANDI Var1
    @POPNULL
    @PUSH 70 @POPI Var1
+   @PUSH 25
 @ANDII Ref1
    @PUSH 15 @PUSH 45
 @ANDS
