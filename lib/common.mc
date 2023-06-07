@@ -137,9 +137,9 @@ M FSAV b$FSAV
 M FLOD b$FLOD
 
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
-M MA2V @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
+M MC2M @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
-M MV2V @PUSHI %1 @POPI %2  # Another way to say it, Move Variable to Variable
+M MM2M @PUSHI %1 @POPI %2  # Another way to say it, Move Variable to Variable
 M MMI2M @PUSHII %1 @POPI %2
 M MM2IM @PUSHI %1 @POPII %2
 M JMPNZ @JMPZ $%01 @JMP %1 :%01        # A != B

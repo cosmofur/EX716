@@ -2231,7 +2231,7 @@ def main():
         for i in range(0, filler):
             f.write('\0'.encode('charmap'))
         f.close()
-
+        sys.exit()
     i = 0
     SP = -1
     RunMode = True

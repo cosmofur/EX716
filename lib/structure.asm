@@ -258,9 +258,9 @@ M SWITCH \
 M CASE \
   %S \
   @CMP %1 \
-  @JMPZ %0_DoCase \
+  @JMPZ %V_DoCase1 \
   @JMP %V_NextCase \
-  :%0_DoCase
+  :%V_DoCase1
 
 # Takes two constant params (low value then high value, can't be swaped)
 # What going on here, might seem complex, the key is we have and IF_GE but no IF_LE

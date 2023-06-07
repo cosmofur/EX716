@@ -44,7 +44,7 @@ A Physical description of a non existent CPU:
               Instructions that do not have an explicit destination for its results will default to
               saving the result in the Accumulator which is also the top of HW stack.
 
-              The Majority of the instructions are an 8 bit opcode (OPT) followed by a 16 bit
+              The Majority of the instructions are a 8 bit opcode (OPT) followed by a 16 bit
               parameter.(PRM) (For efficiency a read cycle that reads 24 bits as the Instruction Load
               state makes sense)
 
@@ -99,9 +99,6 @@ A Physical description of a non existent CPU:
                 Removes top of HW stack and stores it at target address (POPS uses top of stack
                 as address and second item on stack as value to be POP'ed both are removed from stack)
 
-		In case of POPS it uses top two values on stack, top of stack is the address the second
-		from top, is a value that will be pop'ed into that address.
-
               CMP
                 CMP, CMPI, CMPII, CMPS
 
@@ -122,7 +119,8 @@ A Physical description of a non existent CPU:
                 current top of stack, and in case of ADDS, destructive top two stack values. Order of paramters
 		matter in subtraction, so the rule is, the first paramater(A) is what is on the stack first, then
 		the second parameter(B) is based on the operator mode. Order is A-B and stored on replacing
-		original stack value.
+		original stack value. To Be Clear, SUBS means subtrace Top of Stack FROM Second From Top Of Stack.
+		Pop both off and save result to stack. PUSH 11 PUSH 3 SUBS results in 4 on stack, not -8.
 
               OR
                 OR, ORI, ORII, ORS
@@ -183,10 +181,10 @@ A Physical description of a non existent CPU:
 
                 ( The reason they are named CAST and POLL, rather than the more descriptive 'D-IN' and 'D-OUT' was in
                 the early draft of this project, they would be used as IO to a 'on chip' hardware network in the
-                application of multi-core version of the CPU. They names stuck, but the multi-core version is left as a
+                application of multi-core version of the CPU. The names stuck, but the multi-core version is left as a
                 future project)
 
-             Bit Rotate Commands, 1 byte opcode, No PRM affects just top of stack
+             Bit Rotate Commands, 1 byte opcode, No PRM, affects just top of stack
 
                 RRTC: Rotate Right Through Carry
                 RLTC: Rotate Left Through Carry
@@ -209,6 +207,14 @@ A Physical description of a non existent CPU:
                              Invert then adds one to bits of top of stack, also known as the 2's compliment. When
                 2' compliment is applied to a number, negative numbers have a natural format that
                 works with positive numbers without additional hardware logic required.
+
+             FCLR, Clears Flags. Mostly ment as a way to issolate CMP from previous math.
+
+             FSAV, Pushes to the stack, a compact version of the condiitonal flags. Useful for preserving
+	        a conditional state before doing addional calculations before restorting it.
+
+             FLOD, Restors the Flag state from the previous FSAV. Need to make sure stack is clear back to
+	     what it was after FSAV or may result in unwanted flag states.
 
 
 The 'Macro Assembler'.
@@ -284,10 +290,6 @@ And that's it! All the opcodes along with basic common quality of life macros, a
 
 In the common.mc are some extra Macros that make programming easier. All the following are simple Macros and it maybe
 worth some time reading through common.mc to see how they are implemented.
-
-@MA2V %1 %2  : Move Constant A to Variable Address . Moves value of %1 to address [%2] Both can also be labels
-
-@MV2V %1 %2  : Move word stored at address [%1] to be stored at address [%2]
 
 @MMI2M %1 %2 : Move word stored at address THAT address [[%1]] points to address [%2]
 
@@ -375,18 +377,14 @@ Worth nothing that in several macros the following notation is used:
     If the macro is going to work on multiple parameters, use of 'A','B','C' to mean the parameter at that
     location is a numeric constant. Other wise use 'V' to be variable and should be a label or address where
     that variable value is stored.
+
+@MA2V %1 %2  : Move Constant A to Variable Address . Moves value of %1 to address [%2] Both can also be labels
+
+@MV2V %1 %2  : Move word stored at address [%1] to be stored at address [%2]
+
+You willl also see this use of 'A' 'B' and 'V' in some of the structured programing macros like @ForIA2B
+
     
-The following are there to make some code more compact and 'readable'
-
-@ADDVV2V %1 %2 %3 : Adds [%1] to [%2] and saves result to [%3]
-
-@SUBVV2V %1 %2 %3 : Subtracts [%2] from [%1] and saves result to [%3]
-
-If you don't find this more readable, try reading it like this:
-
-ADDVV2V as Add Variable and Variable saved to Variable
-
-
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
 is executed. The output of the debug, Output of debug listed is in format
 
@@ -480,7 +478,7 @@ Use like
 	  @CBREAK
      @CDEFAULT          (Required)
           code
-	  @CBREAK
+	  @CBREAK       (Required!)
      @ENDCASE
 
 CASE A          : do block if Constant A equals TOS
@@ -494,10 +492,11 @@ The FOR loop Macors.
 One change from typical 'FOR' loops in higher level languages, is that the loop will exit
 immediaatly from the top of the loop, once the ending state is reached, so a loop from 1 to 10 will
 only run the code block from 1 to 9 and exit on 10.
+Also the Index is a SIGNED number, so rangnes over 0x7fff will require starting with a negative value.
 Typical use
   @ForIA2V Index 1 TopValue
      code
-  @Next Index
+  @Next Index           (The Variable must match both For and Next)
 
 ForIA2B Index 1 10 : Index will start at 1 and loop until it equals 10
 ForIA2V Index 10 V : Index will start at 10 and loop until it equals value at address V
@@ -506,12 +505,12 @@ ForIV2V Index V1 V2: Index will start at value at V1 and exit when it equals val
 
 Next also has variations which can allow 'reverse' loops or do calculated increments
 
-Next Index         : Basie Index, will Increment Index by 1 each time.
+Next Index         : Basic Index, will Increment Index by 1 each time.
 NextBY Index A     : Will add constant A to Index (A can be negative)
 NextByI Index V    : Will add value at V to Index (might be negative or anything)
 
 One issue to keep track off, the end condition requires Index to match a value Exactly
-It not For Index 1 to 'somthing over 10' but must match 10 exactly to exit.
+It is NOT For Index 1 to 'somthing over 10' but must match 10 exactly to exit.
 
 --------------------------------------------------------------------
 
@@ -533,7 +532,7 @@ Optional Command Line Arguments:
 
 -d       Debug mode, one -d will print out each optcode as its executed, two -d's will also step though the expansion of macros durring the assembly stage.
 
--g       Enter the interactive debugger. (See Bellow)
+-g       Enter the interactive debugger. (See Below)
 
 -l       List the disassemble of the compiled code, useful to have on hand when about to debugging as it will identify the memory locations instructions end up, which is what you need for breakpoints in the debugger.
 
@@ -609,5 +608,22 @@ r       Reset
 
 w       Set a memory watchpoints, when disassemble is used, it will also print values at any watch points.
 
+--------------------------------------
+Disk IO
 
+The CPU is too primative to directly work with a real disk or filesystem, but we do provide some very basic
+disk IO tools. In the validate folder are some code examples that use this.
 
+We have to imagine the hard disks attacheed to this CPU are primative 1970's disk packs. Each disk in the
+pack holds a max of 16MB of data, broken up in 64K of 256 byte blocks. All read and wrires are directly
+at the block level, so to something like apppending a variable length string to a text file will require some
+addditional string processing as well as buffering the block being written to.
+
+Code Macros
+@DISKSEL  A  Selects which disk to use with a constant number.
+@DISKSELI V  Selects which disk to use with a variable.
+@DISKSEEK A  Moves the Disk Head to a Block on that disk. 0-0xffff per disk.
+@DISKSEEKI V Same but with Id being a variable.
+@DISKWRITE V writes the 256 byte buffer pointed to by V
+@DISKREADI V read a 256 byte buffer from disk, at address[V] is the address to write to
+@DISKREAD A read a 256 byte buffer from disk, A points directly to where the buffer starts in memory
