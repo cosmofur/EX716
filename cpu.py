@@ -18,6 +18,83 @@ import readchar
 import cProfile
 import pstats
 import io
+
+import sys
+import os
+
+# Constants
+CastPrintStrI=1
+CastPrintInt=2
+CastPrintIntI=3
+CastPrintSignI=4
+CastPrintBinI=5
+CastPrintChar=6
+CastPrintStrII=11
+CastPrintCharI=16
+CastPrintHexI=17
+CastPrintHexII=18
+CastSelectDisk=20
+CastSeekDisk=21
+CastWriteBlock=22
+CastSyncDisk=23
+CastPrint32I=32
+CastPrint32S=33
+PollReadIntI=1
+PollReadStrI=2
+PollReadCharI=3
+PollSetNoEcho=4
+PollSetEcho=5
+PollReadCINoWait=6
+PollReadBlock=22
+
+
+if sys.platform == 'win32':
+    import msvcrt
+
+    def get_key():
+        if msvcrt.kbhit():
+            return msvcrt.getch().decode()
+        else:
+            return None
+
+elif sys.platform.startswith('linux'):
+    import termios
+    import fcntl
+    import os
+
+    def get_key():
+        fd = sys.stdin.fileno()
+
+        # Save the current terminal settings
+        old_attr = termios.tcgetattr(fd)
+        old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+
+        try:
+            # Set the terminal to non-blocking mode
+            new_attr = termios.tcgetattr(fd)
+            new_attr[3] = new_attr[3] & ~termios.ICANON & ~termios.ECHO
+            termios.tcsetattr(fd, termios.TCSANOW, new_attr)
+
+            # Set the file descriptor to non-blocking mode
+            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+
+            try:
+                # Attempt to read a single character
+                char = sys.stdin.read(1)
+                if len(char) == 0:
+                    char='\0'
+                return char
+            except IOError:
+                return None
+
+        finally:
+            # Restore the terminal settings and file descriptor flags
+            termios.tcsetattr(fd, termios.TCSAFLUSH, old_attr)
+            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
+
+else:
+    raise NotImplementedError("Unsupported platform")
+
 from pstats import SortKey
 
 from pathlib import Path
@@ -86,7 +163,7 @@ def shandler(signum, frame):
     #
     msg = "Ctrl-c"
     print(msg, end="", flush=True)
-    debugger()
+    debugger(FileLabels)
 
 
 signal.signal(signal.SIGINT, shandler)
@@ -632,7 +709,7 @@ class microcpu:
                 print("Stack: \n".join('%02x ' %
                       item for item in self.mb[0:self.mb[0xff]]))
             DissAsm(self.pc, 3, self)
-        if cmd == 1:
+        if cmd == CastPrintStrI:
             i = address
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
@@ -643,24 +720,24 @@ class microcpu:
                 else:
                     sys.stdout.write(chr(c))
                 i += 1
-        if cmd == 2:
+        if cmd == CastPrintInt:
             sys.stdout.write("%d" % address)
-        if cmd == 3:
+        if cmd == CastPrintIntI:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%d" % v)
-        if cmd == 4:
+        if cmd == CastPrintSignI:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%d" % (self.twos_compFrom(v, 16)))
-        if cmd == 5:
+        if cmd == CastPrintBinI:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%s" % format(v, "016b"))
-        if cmd == 6:
+        if cmd == CastPrintChar:
             v = self.memspace[address]
             if (v < 31):
                 print("%c" % v)
             else:
                 sys.stdout.write(chr(v))
-        if cmd == 11:
+        if cmd == CastPrintStrII:
             i = self.getwordat(self.getwordat(address))
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
@@ -675,20 +752,20 @@ class microcpu:
             sys.stdout.write("%d" % address)
         if cmd == 12:
             sys.stdout.write("%d" % self.getwordat(address))
-        if cmd == 16:
+        if cmd == CastPrintCharI:
             v = self.memspace[self.getwordat(address)]
             sys.stdout.write("%c" % chr(v))
-        if cmd == 17:
+        if cmd == CastPrintHexI:
             v = self.getwordat(address)
             sys.stdout.write("%04x" % (v))
-        if cmd == 18:
+        if cmd == CastPrintHexII:
             v = self.getwordat(self.getwordat(address))
             sys.stdout.write("%04x" % v)
         if cmd == 19:
             v = self.getwordat(address)
             v = v + (self.getwordat(address+2) << 16)
             sys.stdout.write("%s" % v)
-        if cmd == 20:
+        if cmd == CastSelectDisk:
             if DeviceHandle == None:
                 DeviceHandle = "DISK%02d.disk" % self.getwordat(address)
             try:
@@ -696,27 +773,29 @@ class microcpu:
             except IOError:
                 self.raiseerror(
                     "048 Error tying to open Random Device: %s" % DeviceHandle)
-        if cmd == 21:
+        if cmd == CastSeekDisk:
             saddr = self.getwordat(address)*0x100
             DeviceFile.seek(saddr, 0)
-        if cmd == 22:
-            if address < MAXMEMSP-0xff:
-                block = self.memspace[address:address+0xff]
+        if cmd == CastWriteBlock:
+            v = self.getwordat(address)
+            if v < MAXMEMSP-0xff:
+                block = self.memspace[v:v+0xff]
                 DeviceFile.write(bytes(block))
+                DeviceFile.flush()
             else:
                 self.raiseerror(
                     "049 Attempted to write block larger than memory to storage")
-        if cmd == 23:
+        if cmd == CastSyncDisk:
             if DeviceHandle != None:
                 DeviceFile.close()
                 DeviceHandle = None
-        if cmd == 32:
+        if cmd == CastPrint32I:
             iaddr = address
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             if (v & (1 << 31) != 0):
                 v = v - (1 << 32)
             sys.stdout.write("%s" % v)
-        if cmd == 33:
+        if cmd == CastPrint32S:
             iaddr = self.fetchAcum(1)
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
@@ -726,12 +805,12 @@ class microcpu:
         if cmd == 100:
             Debug = (Debug + 1) if Debug < 2 else 0
         if cmd == 102:
-            sys.stdout.write("\n%04x:Stack ( %d):" %
+            sys.stdout.write(" %04x:Stack ( %d):" %
                              (self.pc, self.mb[0xff]-1))
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+(0xff*self.mb[i*2+1])
                 sys.stdout.write(" %04x" % (val))
-            print("")
+            print(" ")
         sys.stdout.flush()
 
     def optPOLL(self, address):
@@ -750,7 +829,7 @@ class microcpu:
             self.raiseerror(
                 "046 Insufficent space for Message Address at %d, optPOLL" % (address))
         cmd = self.fetchAcum(0)
-        if cmd == 1:
+        if cmd == PollReadIntI:
             sys.stdout.flush()
             rawdata = sys.stdin.readline(256)
             justnum = "0"
@@ -762,7 +841,7 @@ class microcpu:
             else:
                 print("Error: %s is not valid 16 bit number" % justnum)
                 CPU.putwordat(address, 0)
-        if cmd == 2:
+        if cmd == PollReadStrI:
             sys.stdout.flush()
             rawdata = sys.stdin.readline(256)
             i = address
@@ -775,7 +854,7 @@ class microcpu:
                     if (i > (MAXMEMSP-11)):
                         self.raiseerror(
                             "047 Insufficent space for Message Address at %d, optPOLL" % (i))
-        if cmd == 3:
+        if cmd == PollReadCharI:
             # Address must be at least 4 bytes for special code strings.
             c = readchar.readkey()
             if not (c):
@@ -793,7 +872,7 @@ class microcpu:
                 self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
                 # This will create a 3 char string null terminated
                 self.putwordat(address+2, (ord(c[2])))
-        if cmd == 4:
+        if cmd == PollSetNoEcho:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
             new[3] = new[3] & ~termios.ECHO          # lflags
@@ -802,7 +881,7 @@ class microcpu:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
                 print("TTY Error: On No Echo")
-        if cmd == 5:
+        if cmd == PollSetEcho:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
             new[3] = new[3] | termios.ECHO          # lflags
@@ -811,7 +890,22 @@ class microcpu:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
                 print("TTY Error: On Echo")
-        if cmd == 22:
+        if cmd == PollReadCINoWait:
+            c='\0'
+            while True:
+                c=get_key()
+                if len(c) != '\0':
+                    break
+            if len(c)==1:
+                self.putwordat(address,ord(c))
+            elif len(c)==2:
+                self.putwordat(address, (ord(c[0])) << 8 + (ord(c[1])))
+                self.putwordat(address+2, 0)
+            elif len(c) == 3:
+                self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
+                # This will create a 3 char string null terminated
+                self.putwordat(address+2, (ord(c[2])))            
+        if cmd == PollReadBlock:
             if DeviceHandle != None:
                 v=self.getwordat(address)
                 if v <= MAXMEMSP-0xff:

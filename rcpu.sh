@@ -7,5 +7,5 @@ R=$(basename -- "$1")
 E="${R##*.}"
 FP="${R%.*}"
 cpu.py -c "$1" -l > $FP.lst
-fcpu $FP.a.o $2 $3 $4
+fcpu $FP.hex $2 $3 $4
 

@@ -22,6 +22,56 @@ int DebugRange1,DebugRange2;
 int WatchWord;
 unsigned long long int OptCount=0;
 
+#ifdef _WIN32
+    #include <conio.h>
+    #include <windows.h>
+
+    void enable_nonblocking_input() {
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD mode;
+        GetConsoleMode(hStdin, &mode);
+        SetConsoleMode(hStdin, mode & (~ENABLE_LINE_INPUT));
+    }
+
+    int kbhit() {
+        return _kbhit();
+    }
+
+    int getch() {
+        return _getch();
+    }
+
+#else
+    #include <termios.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <sys/select.h>
+
+    void enable_nonblocking_input() {
+        struct termios ttystate;
+        tcgetattr(STDIN_FILENO, &ttystate);
+        ttystate.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+    }
+
+    int kbhit() {
+        struct timeval tv;
+        fd_set fds;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+        FD_ZERO(&fds);
+        FD_SET(STDIN_FILENO, &fds);
+        select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+        return FD_ISSET(STDIN_FILENO, &fds);
+    }
+
+    int getch() {
+        int ch;
+        ch = getchar();
+        return ch;
+    }
+#endif
+
 int FileRead(char *fname) {
   FILE *fp = fopen(fname,"r");
   int temp;
@@ -284,6 +334,17 @@ void handlePoll(int Param,int ParamI,int ParamII) {
     c=getc(stdin);
     put16atmem(Param,(int)c);
     break;
+  case 6:
+    enable_nonblocking_input();
+    while (1) {
+      c=0;
+      if (kbhit()) {
+	c=getch();	
+      }
+      break;
+    }
+      put16atmem(Param,(int)c);
+      break;		 
   default:
     printf("Poll Code not implmented");
   }

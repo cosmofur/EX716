@@ -81,6 +81,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollReadCharI 3
 =PollSetNoEcho 4
 =PollSetEcho 5
+=PollReadCINoWait 6
 =PollReadBlock 22
 
 
@@ -206,6 +207,8 @@ M PROMPT @PRT %1 @READI %2
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
+# Read character from keyboard with no wait if none ready.
+M READCNW @PUSH PollReadCINoWait @POLL %1 @POPNULL
 # Turn Keyboard echo off
 M TTYNOECHO @PUSH PollSetNoEcho @POLL %1 @POPNULL
 # Turn KeyBoard echo on
@@ -233,7 +236,8 @@ M DISKSEL @MA2V %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_
 M DISKSEEKI @PUSH CastSeekDisk @CAST %1 @POPNULL
 M DISKSEEK @MA2V %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
 # No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
-M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
+M DISKWRITEI @PUSH CastWriteBlock @CAST %1 @POPNULL
+M DISKWRITE @MA2V %1 %0_Store  @PUSH CastWriteBlock @CAST %0_Store  @POPNULL @JMP %0_Skip %0:Store 0 %0_Skip
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
 M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
 M DISKREAD @JMP %0_jmp :%0_data 0 :%0_jmp @PUSH %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
