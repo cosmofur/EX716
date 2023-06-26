@@ -195,6 +195,8 @@ M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
+# Print Top valine in Hex
+M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
 # Print 32bit number starting at address
 M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
 #

@@ -143,10 +143,9 @@ M ELSE \
 #
 # The Tricky part of ENDIF is determining if we used an ELSE block or not.
 # If no ELSE had been used the %V_ElseFlag will not exist.
-# We also Define an V_ElseBlock to zero because if there was not else, it would never be
+# We also Define an V_ElseBlock to zero because if there was no ELSE, it would never be
 # defined, or used, but would still trigger a warning message during assembly since
 # it had been indirectly referenced but not defined.
-##  :%V_ElseBlock \
 
 M ENDIF \
   @JMP %V_JustEnd \

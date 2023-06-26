@@ -46,7 +46,7 @@ PollSetNoEcho=4
 PollSetEcho=5
 PollReadCINoWait=6
 PollReadBlock=22
-
+DebugOut=sys.stderr
 
 if sys.platform == 'win32':
     import msvcrt
@@ -262,17 +262,17 @@ class microcpu:
         try:
             termios.tcsetattr(fd, termios.TCSADRAIN, new)
         except:
-            print("TTY Error: On No Echo")
+            print("TTY Error: On No Echo", file=DebugOut)
 
-        print("Error Number: %s \n\tat PC:%04x" % (idcode, int(CPU.pc)))
+        print("Error Number: %s \n\tat PC:%04x" % (idcode, int(CPU.pc)),file=DebugOut)
         valid = int(idcode[0:3])
         if RunMode:
-            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC))
+            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
         new[3]
         if not InDebugger:
             sys.exit(valid)
         else:
-            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC))
+            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
             debugger(FileLabels)
 
     def loadat(self, location, values):
@@ -800,16 +800,16 @@ class microcpu:
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
         if cmd == 99:
-            sys.stdout.write("\nEND of Code:(%d Opts)" % GlobalOptCnt)
+            print("\nEND of Code:(%d Opts)" % GlobalOptCnt)
             sys.exit(address)
         if cmd == 100:
             Debug = (Debug + 1) if Debug < 2 else 0
         if cmd == 102:
-            sys.stdout.write(" %04x:Stack ( %d):" %
-                             (self.pc, self.mb[0xff]-1))
+            print(" %04x:Stack ( %d):" %
+                             (self.pc, self.mb[0xff]-1), file=DebugOut)
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+(0xff*self.mb[i*2+1])
-                sys.stdout.write(" %04x" % (val))
+                print(" %04x" % (val),file=DebugOut)
             print(" ")
         sys.stdout.flush()
 
@@ -1177,7 +1177,7 @@ def DissAsm(start, length, CPU):
     # The need for the CPU.json file is just used by this module, (and debugger) so a 'speed optimized'
     # version of the code would not need CPU.json at all.
     #
-    global watchwords
+    global watchwords,DebugOut
     StoreMem = CPU.memspace
     i = start
     while i < (start+length):
@@ -1247,7 +1247,7 @@ def DissAsm(start, length, CPU):
                 lastad = ii
                 rstring += "SD:(%d)" % CPU.mb[0xff]
 
-        print("%s %s" % (OUTLINE, rstring))
+        print("%s %s" % (OUTLINE, rstring),file=DebugOut)
     return i
 
 
@@ -1322,7 +1322,7 @@ def IsLocalVar(inlable, LocalID, LORGFLAG):
 
 
 def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
-    global MacroStack
+    global MacroStack, Debug
     i = 0
     newline = ""
     inquote = False
@@ -1345,7 +1345,12 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
             After = line[i+1:]
             if (line[i:i+1] == "P"):
                 # POP value from refrence stack...does not change newline
+                if Debug > 1:
+                    print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
+                if GlobalLineNum == 326:
+                    print("Break Spot")
                 if (not MacroStack):
+                    print("Break Here")
                     CPU.raiseerror(
                         "039a Macro Refrence Stack Underflow: %s" % line)
                 i += 1
@@ -1355,11 +1360,16 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 # Stores the current %0 value to refrence stack
                 # Does not change the newline
                 MacroStack.append(MacroVars[varcntstack[varbaseSP]])
+                if Debug > 1:
+                    print("Push to MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 i += 1
                 continue
             elif (line[i:i+1] == "V"):
                 # Insert into newline value that top if refrence stack...do not pop it
+                if Debug > 1:
+                    print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
+                    print("Break Here too")
                     CPU.raiseerror(
                         "039b Macro Refrence Stack Underflow: %s" % line)
                 newline = newline + MacroStack[-1]
@@ -2189,7 +2199,7 @@ def debugger(FileLabels):
 
 
 def main():
-    global Debug, CPU, GlobeLabels, watchwords
+    global Debug, CPU, GlobeLabels, watchwords, DebugOut
 
     DEFMEMSIZE = 0x10000
     Remote = False
@@ -2233,6 +2243,7 @@ def main():
                 ListOut = True
             elif arg == "-g":
                 UseDebugger = True
+                DebugOut=sys.stdout                
             elif arg == "-c":
                 OptCodeFlag = True
                 print("Optcode flag set")
