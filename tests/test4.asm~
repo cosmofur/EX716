@@ -9,7 +9,7 @@ I common.mc
 @PRT " = "
 @PRTI CVAL
 @PRTNL
-@MC2M 0 CMDCODE
+@MA2V 0 CMDCODE
 @PRTLN "100:Change A. 101: Change B: 102: Quit,  103: Calc "
 @PROMPT "CMD> " CMDCODE
 @PUSHI CMDCODE

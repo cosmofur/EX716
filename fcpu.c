@@ -5,7 +5,7 @@
 
 #include "fcpu.h"
 
-int memory[0xffff];
+int memory[0x10000];
 int PC=0;
 int Entry=0;
 int GetNextWord();
@@ -19,7 +19,58 @@ int CF=0;
 int OF=0;
 int R1,R2,A1,B1,A2,B2;  // Scratch Variables
 int DebugRange1,DebugRange2;
+int WatchWord;
 unsigned long long int OptCount=0;
+
+#ifdef _WIN32
+    #include <conio.h>
+    #include <windows.h>
+
+    void enable_nonblocking_input() {
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD mode;
+        GetConsoleMode(hStdin, &mode);
+        SetConsoleMode(hStdin, mode & (~ENABLE_LINE_INPUT));
+    }
+
+    int kbhit() {
+        return _kbhit();
+    }
+
+    int getch() {
+        return _getch();
+    }
+
+#else
+    #include <termios.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <sys/select.h>
+
+    void enable_nonblocking_input() {
+        struct termios ttystate;
+        tcgetattr(STDIN_FILENO, &ttystate);
+        ttystate.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+    }
+
+    int kbhit() {
+        struct timeval tv;
+        fd_set fds;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+        FD_ZERO(&fds);
+        FD_SET(STDIN_FILENO, &fds);
+        select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+        return FD_ISSET(STDIN_FILENO, &fds);
+    }
+
+    int getch() {
+        int ch;
+        ch = getchar();
+        return ch;
+    }
+#endif
 
 int FileRead(char *fname) {
   FILE *fp = fopen(fname,"r");
@@ -84,22 +135,49 @@ void SetFlags(int testval) {
   ZF=0;
   NF=0;
   CF=0;
-  OF=0;
   B2=abs(testval) & 0xffff;
-  if ( (B2 & 0xffff) == 0) {ZF=1;}
-  if ((((testval & 0xffff) & 0x8000) !=0)) {NF=1;}
-  if ((testval & 0x10000) !=0) {CF=1;}
+  ZF=(B2 == 0) ? 1:0;
+  NF=(testval & 0x8000) != 0?1:0;
+  CF=(testval & 0xffff0000) > 0 ? 1:0;
   return;
 }
 
+void OverFlowTest(int a, int b, int c, int IsSubtraction) {
+  a=((a & 0xffff) > 0x8000) ? -1: 1;
+  b=((b & 0xffff) > 0x8000) ? -1: 1;
+  c=((c & 0xffff) > 0x8000) ? -1: 1;  
+				     
+  if ( IsSubtraction == 0) {
+    if (((a > 0) && (b > 0) && (c < 0)) || ((a < 0) && (b < 0) && (c >= 0))) {
+      // overflow occurred
+      OF=1;
+    } else {
+      // no overflow
+      OF=0;
+    }
+  }
+  else {
+    if (((a > 0) && (b < 0) && (c < 0)) || ((a < 0) && (b > 0) && (c >= 0))) {
+      // overflow occurred
+      OF=1;
+    } else {
+      // no overflow
+      OF=0;
+    }
+  }
+}
+      
+
 int get16memat(int locateaddr) {
   locateaddr=locateaddr & 0xffff;
-  return memory[locateaddr]+(memory[locateaddr+1]<<8);
+  if ( locateaddr == 0xffff) { return 0;}
+  return ((memory[locateaddr] & 0xff) + ((memory[locateaddr+1] & 0xff) << 8) ) &0xffff;
+
 }
 void put16atmem(int locateaddr,int val) {
   locateaddr=locateaddr & 0xffff;
   memory[locateaddr]=val & 0xff;
-  memory[locateaddr+1]=(val >> 8);
+  memory[locateaddr+1]=((val >> 8) & 0xff);
 }
 int topstack(int optcode) {
   if (HWStack[HWSPIDX] > MAXHWSTACK) {
@@ -109,7 +187,7 @@ int topstack(int optcode) {
     printf("002 MB Stack Underflow, OPCODE %d\n",optcode);
     return 0;
   }
-  return HWStack[HWStack[HWSPIDX]-1];
+  return (HWStack[HWStack[HWSPIDX]-1] & 0xffff);
 }
 
 int sectopstack(int optcode) {
@@ -218,7 +296,10 @@ void handleCast(int Param, int ParamI, int ParamII) {
     printf("%04x",a);
     break;    
   case 32:
-    i32=(ParamI+(memory[Param+2]+( memory[Param+3] << 8))) << 16;
+    i32=ParamI+(get16memat(Param+2) << 16);
+    if ( (i32 & ( 1 << 31)) != 0) {
+      i32= ~(i32) + 1;
+    }      
     printf("%d",i32);
     break;
   case 33:
@@ -253,6 +334,17 @@ void handlePoll(int Param,int ParamI,int ParamII) {
     c=getc(stdin);
     put16atmem(Param,(int)c);
     break;
+  case 6:
+    enable_nonblocking_input();
+    while (1) {
+      c=0;
+      if (kbhit()) {
+	c=getch();	
+      }
+      break;
+    }
+      put16atmem(Param,(int)c);
+      break;		 
   default:
     printf("Poll Code not implmented");
   }
@@ -276,12 +368,15 @@ int doeval(int startpc) {
   int ParamII=0;
   int Opsize;
   int OptCode;
-  int nbr1; int nbr2; int nba1;
+  int nbr1; int nbr2;
   int OCF,NCF;
   int TF;
   
   while(LoopForever == 1 )
     {
+      if ( PC == 0x185f ) {
+	printf("Place to put break");
+      }
       OptCount++;
       Param=get16memat(PC+1);
       ParamI=get16memat(Param);
@@ -289,13 +384,18 @@ int doeval(int startpc) {
       Opsize=1;
       OptCode=memory[PC];
       nbr1=0; nbr2=0;
-      if (HWStack[HWSPIDX]>=1) nbr1=topstack(PC);
-      if (HWStack[HWSPIDX]>=2) nbr2=sectopstack(PC);
-
+      if (HWStack[HWSPIDX]>=1) nbr1=topstack(PC); else nbr1=-1;
+      if (HWStack[HWSPIDX]>=2) nbr2=sectopstack(PC); else nbr2=-1;
+      nbr1=nbr1 & 0xffff;
+      nbr2=nbr2 & 0xffff;
       if (PC >= DebugRange1 && PC <= DebugRange2) {
-      printf("%04x:%s(%02x) P1:%04x [P1]:%04x [[P1]]:%04x TS: %04x STS: %04x ZF:%01d NF:%01d CF:%01d OF:%01d\n",
-	     PC,optcnames[OptCode],OptCode,Param,ParamI,ParamII,nbr1,nbr2,ZF,NF,CF,OF);
-	}
+      printf("%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)",
+	     PC,optcnames[OptCode],Param,ParamI,ParamII,nbr1,nbr2,ZF,NF,CF,OF,HWStack[HWSPIDX]);
+      if ( WatchWord != -1) {
+	printf(" Watch: %04x:%04x",WatchWord,get16memat(WatchWord));	
+      }
+      printf("\n");
+      }
        switch(OptCode) {
        case OptValNOP:
 	 PC++;
@@ -317,6 +417,11 @@ int doeval(int startpc) {
 	 Opsize=3; 
 	 PC += Opsize;
 	 break;
+       case OptValPUSHII:
+	 pushstack(ParamII,OptCode);
+	 Opsize=3; 
+	 PC += Opsize;
+	 break;	 
        case OptValPUSHS:
 	 pushstack(get16memat(popstack(OptCode)),OptCode);
 	 Opsize=1;
@@ -354,58 +459,34 @@ int doeval(int startpc) {
 	 break;
        case OptValCMP:
 	 B1=topstack(OptCode);
-	 A1=Param - B1;
+	 A1=B1-Param;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     ((nbr1 == 1) && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,Param,A1,1);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValCMPI:
 	 B1=topstack(OptCode);
-	 A1=ParamI - B1;
+	 A1=B1-ParamI;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,ParamI,A1,1);	 
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValCMPII:
 	 B1=topstack(OptCode);
-	 A1=ParamII - B1;
+	 A1=B1-ParamII;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,ParamII,A1,1);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValCMPS:
 	 A2=topstack(OptCode);
 	 B1=sectopstack(OptCode);
-	 A1=A2 - B1;
+	 A1=B1 - A2;
 	 SetFlags(A1);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(B1,A2,A1,1);
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -414,13 +495,7 @@ int doeval(int startpc) {
 	 A1=Param + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(Param,B1,A1,0);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -429,13 +504,7 @@ int doeval(int startpc) {
 	 A1=ParamI + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(ParamI,B1,A1,0);	 
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -444,13 +513,7 @@ int doeval(int startpc) {
 	 A1=ParamII + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(ParamII,B1,A1,0);
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -460,75 +523,51 @@ int doeval(int startpc) {
 	 A1=A2 + B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+	 OverFlowTest(A2,B1,A1,0);		 
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
 	 
        case OptValSUB:
+	 // We are starting to 'reverse' the older SUB and CMP login. A will be the value currently on the stack
+	 // and B will be the 'passed' value, except in the case of Stack/Stack which case A if SFT and B is TOS
 	 B1=popstack(OptCode);
-	 A1=Param - B1;
+	 A1=B1-Param;
 	 SetFlags(A1);
+	 OverFlowTest(B1,Param,A1,1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValSUBI:
 	 B1=popstack(OptCode);
-	 A1=ParamI - B1;
+	 A1=B1-ParamI;
 	 SetFlags(A1);
+	 OverFlowTest(B1,ParamI,A1,1);	 
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValSUBII:
 	 B1=popstack(OptCode);
-	 A1=ParamII - B1;
+	 A1=B1-ParamII;
+	 OverFlowTest(B1,ParamII,A1,1);	 
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
        case OptValSUBS:
 	 A2=popstack(OptCode);
 	 B1=popstack(OptCode);
-	 A1=A2 - B1;
+	 A1=B1 - A2;
 	 SetFlags(A1);
+	 OverFlowTest(B1,A2,A1,1);	 
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
+
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -538,13 +577,6 @@ int doeval(int startpc) {
 	 A1=Param & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -553,13 +585,6 @@ int doeval(int startpc) {
 	 A1=ParamI & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -568,13 +593,6 @@ int doeval(int startpc) {
 	 A1=ParamII & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -584,13 +602,6 @@ int doeval(int startpc) {
 	 A1=A2 & B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -600,13 +611,6 @@ int doeval(int startpc) {
 	 A1=Param | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(Param & 0x8000) >> 15;
-	 nbr2=(Param & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;	 
@@ -615,13 +619,6 @@ int doeval(int startpc) {
 	 A1=ParamI | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamI & 0x8000) >> 15;
-	 nbr2=(ParamI & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -630,13 +627,6 @@ int doeval(int startpc) {
 	 A1=ParamII | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(ParamII & 0x8000) >> 15;
-	 nbr2=(ParamII & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=3;
 	 PC=PC+Opsize;
 	 break;
@@ -646,13 +636,6 @@ int doeval(int startpc) {
 	 A1=A2 | B1;
 	 SetFlags(A1);
 	 pushstack(A1,OptCode);
-	 OF=0;
-	 nbr1=(A2 & 0x8000) >> 15;
-	 nbr2=(A2 & 0x8000) >> 15;
-	 nba1=(A1 & 0x8000) >> 15;
-	 if (((nbr1 == 0) && (nbr2 == 1) && (nba1 == 1)) ||
-	     (nbr1 == 1 && (nbr2 == 0) && (nba1 == 0)))
-	   { OF=1;} // Set OverFlow flag if signs match
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -709,7 +692,7 @@ int doeval(int startpc) {
 	 }
 	 OCF=CF << 15;
 	 R1=R1 >> 1 | OCF;
-	 CF=NCF;
+	 CF=NCF > 0 ? 1:0;
 	 pushstack(R1,OptCode);
 	 Opsize=1;
 	 PC=PC+Opsize;	 
@@ -720,7 +703,7 @@ int doeval(int startpc) {
 	 if ( R1 & 0x8000) { NCF=1;}
 	 OCF=CF;
 	 R1=(R1<<1) + OCF;
-	 CF=NCF;
+	 CF=NCF > 0? 1:0;
 	 pushstack(R1,OptCode);
 	 Opsize=1;
 	 PC=PC+Opsize;
@@ -749,12 +732,16 @@ int doeval(int startpc) {
 	 R1=~(popstack(OptCode));
 	 pushstack(R1,OptCode);
 	 SetFlags(R1);
+	 CF=0; OF=0;
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
        case OptValCOMP2:
-	 R1=~(popstack(OptCode))+1;
+	 R1=popstack(OptCode);
+	 R1= ((~R1 & 0xffff) + 1) & 0xffff;
+	 pushstack(R1,OptCode);
 	 SetFlags(R1);
+	 CF=0; OF=0;
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
@@ -780,7 +767,7 @@ int doeval(int startpc) {
 	 PC=PC+Opsize;
 	 break;
        default:
-	 printf("Unknown OptCode %d\n",OptCode);
+	 printf("Unknown OptCode %d at address %0x04\n",OptCode,PC);
 	 PC++;
 	 break;
        }       
@@ -837,9 +824,10 @@ int main(int argc, char *argv[])
   }
   DebugRange1=0x10000;
   DebugRange2=0x10000;
+  WatchWord=-1;
 
 
-  while ((opt = getopt(argc, argv, "hd:e:")) != -1)
+  while ((opt = getopt(argc, argv, "hd:e:w:")) != -1)
 {
     switch (opt) {
        case 'd':
@@ -848,6 +836,10 @@ int main(int argc, char *argv[])
        case 'e':
           DebugRange2=GetNextWord(&optarg);
           break;
+       case 'w':
+          WatchWord=GetNextWord(&optarg);	 
+	 break;
+      
        case 'h':
        case '?':
           printf("Put help here\n");

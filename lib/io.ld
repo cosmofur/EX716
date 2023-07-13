@@ -14,7 +14,7 @@ G StrReadToChar
 @POPI SRCLimit
 @POPI SRCChar
 @POPI SRCStrPtr
-@MC2M 0 SRCReadCH
+@MA2V 0 SRCReadCH
 @PUSH 0 @POPII SRCStrPtr   # Initilize StrPtr to empty string
 # While SRCReadCH != SRCChar loop
 :SRCMainLoop

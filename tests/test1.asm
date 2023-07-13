@@ -8,18 +8,18 @@ I common.mc
 #    B=OUT
 #    Idx ++
 #    Print OUT
-@MC2M 0 A
-@MC2M 1 B
-@MC2M 0 OUT
-@MC2M 2 Idx
+@MA2V 0 A
+@MA2V 1 B
+@MA2V 0 OUT
+@MA2V 2 Idx
 @PROMPT "Number of Terms: " N
 @PRTLN "The Fabonacci Series is: "
 @PUSH Idx
 @WHILE_NOTZERO
    @POPNULL
    @PUSHI A @ADDI B @POPI OUT   # OUT=A+B
-   @MM2M B A                    # A=B
-   @MM2M OUT B                  # B=OUR
+   @MV2V B A                    # A=B
+   @MV2V OUT B                  # B=OUR
    @INCI Idx                    # Idx++
    @PRTI OUT @PRTNL
    @PUSHI N                     # If Idx > N Push 1 else Push 0

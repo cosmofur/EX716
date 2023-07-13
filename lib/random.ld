@@ -21,9 +21,9 @@ G rnd16 G rndsetseed G rndint
 :rnd16
 @POPI RDReturn
 @PUSHI Seed
-@PUSH 75
-@CALL MUL
-@ADD 74
+@PUSH 22673
+@CALL MULU
+@ADD 1
 @DUP
 @POPI Seed
 # To avoid an issue with the lower 5 bites cause even/odd flipping
@@ -39,7 +39,7 @@ G rnd16 G rndsetseed G rndint
 @POPI RIRange
 @CALL rnd16
 @PUSHI RIRange
-@CALL DIV   # Divsion returns both the Division and the Mod, keep Mod only
+@CALL DIVU   # Divsion returns both the Division and the Mod, keep Mod only
 @POPNULL
 @PUSHI RIReturn
 @RET

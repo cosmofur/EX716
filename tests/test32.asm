@@ -19,8 +19,8 @@ b6 b0 b0 b0
 :TestStart
 @PUSH StackSpace
 @CALL SPInit32
-@MC2M InPut IDX
-@MC2M 0 ODX
+@MA2V InPut IDX
+@MA2V 0 ODX
 :LoadLoop1
 @PUSHI IDX
 @PRT32I IDX

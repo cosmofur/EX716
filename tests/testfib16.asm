@@ -9,10 +9,10 @@ I common.mc
 #    Idx ++
 #    Print OUT
 @PRTLN "Fibonacci Series"
-@MC2M 0 Aval
-@MC2M 1 Bval
-@MC2M 0 OUT
-@MC2M 2 Idx
+@MA2V 0 Aval
+@MA2V 1 Bval
+@MA2V 0 OUT
+@MA2V 2 Idx
 @PRT "Number of Terms: "
 @READI Nval
 @DECI Nval
@@ -26,8 +26,8 @@ I common.mc
 @POPNULL
 @JMPN EndofLoop
      @PUSHI Aval  @PUSHI Bval   @ADDS    @POPI OUT    #  OUT=A+B
-     @MM2M Bval Aval    #  A=B
-     @MM2M OUT Bval  #  B=OUT
+     @MV2V Bval Aval    #  A=B
+     @MV2V OUT Bval  #  B=OUT
      @INCI Idx    #  Idx++
      @PRTI OUT   #  Print OUT
      @PRTSP

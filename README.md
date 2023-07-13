@@ -44,7 +44,7 @@ A Physical description of a non existent CPU:
               Instructions that do not have an explicit destination for its results will default to
               saving the result in the Accumulator which is also the top of HW stack.
 
-              The Majority of the instructions are an 8 bit opcode (OPT) followed by a 16 bit
+              The Majority of the instructions are a 8 bit opcode (OPT) followed by a 16 bit
               parameter.(PRM) (For efficiency a read cycle that reads 24 bits as the Instruction Load
               state makes sense)
 
@@ -88,20 +88,23 @@ A Physical description of a non existent CPU:
               PUSH
                 PUSH, PUSHI, PUSHII, PUSHS
 
-                Saves Value to top of  HW stack. 
+                Saves Value to top of  HW stack.
+
+		In case of PUSHS, takes value at Top of Stack, uses as address, and replaces it with
+		value stored at that address.
 
               POP
                 POPI, POPII, POPS
 
                 Removes top of HW stack and stores it at target address (POPS uses top of stack
-                as address and second item on stack as value to be POP'ed both are removed from stack) 
+                as address and second item on stack as value to be POP'ed both are removed from stack)
 
               CMP
                 CMP, CMPI, CMPII, CMPS
 
                 For setting logic flags, compares two values non-destructively. (Note stack is left
                 unchanged, so remember to pop off unneeded values if your not comparing them any
-                more)
+                more) Order matters and same rules apply as in Subtraction.
 
               ADD
                 ADD, ADDI, ADDII, ADDS
@@ -113,7 +116,11 @@ A Physical description of a non existent CPU:
                 SUB, SUBI, SUBII, SUBS
 
                 Subtracts two values, sets logic flags, and saves result to top of stack. Destructive of
-                current top of stack, and in case of ADDS, destructive top two stack values.
+                current top of stack, and in case of ADDS, destructive top two stack values. Order of paramters
+		matter in subtraction, so the rule is, the first paramater(A) is what is on the stack first, then
+		the second parameter(B) is based on the operator mode. Order is A-B and stored on replacing
+		original stack value. To Be Clear, SUBS means subtrace Top of Stack FROM Second From Top Of Stack.
+		Pop both off and save result to stack. PUSH 11 PUSH 3 SUBS results in 4 on stack, not -8.
 
               OR
                 OR, ORI, ORII, ORS
@@ -174,10 +181,10 @@ A Physical description of a non existent CPU:
 
                 ( The reason they are named CAST and POLL, rather than the more descriptive 'D-IN' and 'D-OUT' was in
                 the early draft of this project, they would be used as IO to a 'on chip' hardware network in the
-                application of multi-core version of the CPU. They names stuck, but the multi-core version is left as a
+                application of multi-core version of the CPU. The names stuck, but the multi-core version is left as a
                 future project)
 
-             Bit Rotate Commands, 1 byte opcode, No PRM affects just top of stack
+             Bit Rotate Commands, 1 byte opcode, No PRM, affects just top of stack
 
                 RRTC: Rotate Right Through Carry
                 RLTC: Rotate Left Through Carry
@@ -201,6 +208,14 @@ A Physical description of a non existent CPU:
                 2' compliment is applied to a number, negative numbers have a natural format that
                 works with positive numbers without additional hardware logic required.
 
+             FCLR, Clears Flags. Mostly ment as a way to issolate CMP from previous math.
+
+             FSAV, Pushes to the stack, a compact version of the condiitonal flags. Useful for preserving
+	        a conditional state before doing addional calculations before restorting it.
+
+             FLOD, Restors the Flag state from the previous FSAV. Need to make sure stack is clear back to
+	     what it was after FSAV or may result in unwanted flag states.
+
 
 The 'Macro Assembler'.
 
@@ -213,29 +228,34 @@ The main logic loop of the assembler is:
     Until End of File:
           If processing a macro:
              scan it for % variables not in quotes and replace them with text from parameters.
+	     There is specail meaning for variables %S and %P used for stack logic.
              make it the current 'line'
           else
              read in one or more lines from input (if line ends with \ append following line)
 
           strip line of unnecessary white space and comments.
           Parse the line, split it into words and look for:
-                'One Letter' Codes that define assembler directions or definitions.
+                'Letter' Codes that define assembler directions or definitions.
                 If word starts with a '@' macro, put it into the Macro Queue and loop back to beginning.
                 If word is a label or number string, turn into value and store in memory.
                 Numeric data, in decimal, octal, hex or binary formats.
                 Quoted text is saved as bytes with some support for common \'s codes like \n for newline.
 
-                Big part of the work is handled by the 'One Letter' codes, which are.
+                Big part of the work is handled by the 'Letter' codes, These codes act as reserved words
+		so avoid using single letters for Labels or variables:
 
                     '.' number    :  Sets the active address to number, also sets start address. You can have multiple
                                      '.' entries in a source file to mark off different blocks of memory. If you use any
                                      '.' numbers, you should always add one at the end of your source file to identify
                                      the program entry point.
+				     A common notation to use is:
+				     :Main . Main
+				     Which will make 'Main' the entry point for the program.
                     'I' filename  :  Imports a file as if it was part of the current input stream.
                     'L' filename  :  Loads a Library, all local labels are hidden, see 'G' command
                     ':' Label     :  Unlike others assemblers labels are identified with a proceeding ":"
                     '@' Macro     :  Executes Macro, %1-%9 (max) are the arguments, %0 is unique ID
-                   '=' Label Val :  Assigns a fixed 16b numeric value to a label.
+                    '=' Label Val :  Assigns a fixed 16b numeric value to a label.
                                      Labels and Macros do not share dictionary space, so you
                                      can reuse a Label and Macro with the same names, but mean different things.
                     'P' Print line:  Print rest of line for logging or debugging, at assembly time.
@@ -270,10 +290,6 @@ And that's it! All the opcodes along with basic common quality of life macros, a
 
 In the common.mc are some extra Macros that make programming easier. All the following are simple Macros and it maybe
 worth some time reading through common.mc to see how they are implemented.
-
-@MC2M %1 %2  : Move Constant to Memory. Moves value of %1 to address [%2] Both can also be labels
-
-@MM2M %1 %2  : Move word stored at address [%1] to be stored at address [%2]
 
 @MMI2M %1 %2 : Move word stored at address THAT address [[%1]] points to address [%2]
 
@@ -361,18 +377,14 @@ Worth nothing that in several macros the following notation is used:
     If the macro is going to work on multiple parameters, use of 'A','B','C' to mean the parameter at that
     location is a numeric constant. Other wise use 'V' to be variable and should be a label or address where
     that variable value is stored.
+
+@MA2V %1 %2  : Move Constant A to Variable Address . Moves value of %1 to address [%2] Both can also be labels
+
+@MV2V %1 %2  : Move word stored at address [%1] to be stored at address [%2]
+
+You willl also see this use of 'A' 'B' and 'V' in some of the structured programing macros like @ForIA2B
+
     
-The following are there to make some code more compact and 'readable'
-
-@ADDVV2V %1 %2 %3 : Adds [%1] to [%2] and saves result to [%3]
-
-@SUBVV2V %1 %2 %3 : Subtracts [%2] from [%1] and saves result to [%3]
-
-If you don't find this more readable, try reading it like this:
-
-ADDVV2V as Add Variable and Variable saved to Variable
-
-
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
 is executed. The output of the debug, Output of debug listed is in format
 
@@ -387,6 +399,122 @@ or
 or for S type commands
 
 Hex Address Opcode HW mini Stack Dump
+
+---------------------------The Structure Macros--------------------
+
+The Macros above are all 'simple' combining several normal operations in some sequence. The most complex
+part of them is the idea of local storage or branching lables within a macro.
+What follows is a much more complex set of macros that almost emulate mid level language structures
+One feature of these macros is they invoke a concept of a Macro Stack, which is a simulated stack that
+only has meaning durring the assembly stage of a program and does not 'exist' durring the execution of the
+program, but can have major effect on the flow control The main purpose of these stacks is to allow the
+Macro system to keep track of 'nested' loops and if blocks.
+
+Unlike 'higher' level languages when these Macros present a condition statment like an IF or a WHILE it
+can only perform an elemntry test, not a compond test like you can do in a higher level language. So a
+concept like 'IF FLAG=True' is possible, but something like 'IF FLAG=True AND Index>100' To do something like
+this, you would have to use two IF Macros, one for the FLAG test and another for the Index test.
+
+The IF_ Family:
+all Macros in the 'IF' Family follow the pattern of
+@IF_rules parameters
+  code
+[@ELSE
+   code]
+@ENDIF
+Members or the IF family include:
+IF_ZERO    : True if TOS is Zero
+IF_NOTZERO : True if TOS is anything but Zero
+IF_EQ_S    : True if TOS and SFT are equal
+IF_EQ_A    : True if TOS and Constant A are equal
+IF_EQ_V    : True if TOS and value stored at address V are equal
+IF_EQ_VV   : True if value stored at address V1 is equal to value at address V2
+IF_LT_S    : True if SFT < TOS
+IF_LT_A    : True if TOS < Constant A
+IF_LT_V    : True if TOS < value stored at address V
+IF_LE_S    : True if SFT <= TOS
+IF_LE_A    : True if TOS <= Constant A
+IF_LE_V    : True if TOS <= value stored at address V
+IF_GE_S    : True if SFT >= TOS
+IF_GE_A    : True if TOS >= Constant A
+IF_GE_V    : True if TOS >= value stored at address V
+IF_GT_S    : True if SFT > TOS
+IF_GT_A    : True if TOS > Constant A
+IF_GT_V    : True if TOS > value stored at address V
+
+
+Now the WHILE group:
+The WHILE group tests for the condition only at the 'top' of the loop.
+So you should prepare the state before the while loop starts and refresh
+it towards the bottom of the loop. 
+WHILE_ZERO       : Continue Loop if TOS == Zero
+WHILE_NOTZERO    : Continue Loop if TOS does not equal Zero
+WHILE_EQ_A       : Continue Loop if TOS equals constant A
+WHILE_NEQ_A      : Continue Loop if TOS does not equal constant A
+WHILE_EQ_V       : Continue Loop if TOS equals value at address V
+WHILE_NEQ_V      : Continue Loop if TOS does not equals value at address V
+WHILE_LT_A       : Continue Loop if TOS if A is LT TOS
+WHILE_LT_V       : Continue Loop if TOS if V is LT TOS
+WHILE_GT_A       : Continue Loop if TOS if A is GT TOS
+WHILE_GT_V       : Continue Loop if TOS if V is GT TOS
+
+The LOOP group:
+The LOOP group tests for the condition at the END of the loop (so it will do it at least once)
+As DO LOOP is less frequently than WHILE DO, we only supor the ZERO and NOTZERO tests
+@LOOP
+  code
+@UNTIL_ZERO      : Exits the Loop if TOS equals Zero
+@UNTIL_NOTZERO   : Exits the Loop if TOS does not equal Zero
+
+The SWITCH/CASE Group
+The Switch Structure is restricted to only a single 16bit value stored at TOS as the condition value.
+Use like
+     @PUSHI TestValue
+     @SWITCH
+     @CASE 1
+          code
+	  @CBREAK      (required fall though not allowed)
+     @CASE_RANGE 2 6
+          code
+	  @CBREAK
+     @CASE_I VarValue
+          code
+	  @CBREAK
+     @CDEFAULT          (Required)
+          code
+	  @CBREAK       (Required!)
+     @ENDCASE
+
+CASE A          : do block if Constant A equals TOS
+CASE_RAGE A B   : do block if constant A <= TOS <= constant B
+CASE_I V        : do block if value at address V is equal TOS
+CDEFAULT        : REQUIRED what to do if no Case matches.
+@ENDCASE        : Exit point of all blocks.
+
+
+The FOR loop Macors.
+One change from typical 'FOR' loops in higher level languages, is that the loop will exit
+immediaatly from the top of the loop, once the ending state is reached, so a loop from 1 to 10 will
+only run the code block from 1 to 9 and exit on 10.
+Also the Index is a SIGNED number, so rangnes over 0x7fff will require starting with a negative value.
+Typical use
+  @ForIA2V Index 1 TopValue
+     code
+  @Next Index           (The Variable must match both For and Next)
+
+ForIA2B Index 1 10 : Index will start at 1 and loop until it equals 10
+ForIA2V Index 10 V : Index will start at 10 and loop until it equals value at address V
+ForIV2A Index V 100: Index will start at value at address V and exit when it equals 100
+ForIV2V Index V1 V2: Index will start at value at V1 and exit when it equals value at V2
+
+Next also has variations which can allow 'reverse' loops or do calculated increments
+
+Next Index         : Basic Index, will Increment Index by 1 each time.
+NextBY Index A     : Will add constant A to Index (A can be negative)
+NextByI Index V    : Will add value at V to Index (might be negative or anything)
+
+One issue to keep track off, the end condition requires Index to match a value Exactly
+It is NOT For Index 1 to 'somthing over 10' but must match 10 exactly to exit.
 
 --------------------------------------------------------------------
 
@@ -403,11 +531,12 @@ sub-directories in the current working directory ./lib/ and ./test/
 
 Optional Command Line Arguments:
 
--c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There is no runtime performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might  compress better and certainly would hide the program logic for 'security though obscurity' type distribution. Also object formatted input files 'Might' load a bit faster, as the file loader has less to do.
+-c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There is no runtime performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might  compress better and certainly would hide the program logic for 'security though obscurity' type distribution.
+ Lastly, this output format is what the fcpu emulator uses as input. fcpu is a stripped down version of the emulator that written in C and runs many times faster than the python version.
 
--d       Enable the raw debug mode. This is full debug output, including a detailed expansion of the read in source file Macros, a Hex Dump of memory and a step by step disassemble of the running code.
+-d       Debug mode, one -d will print out each optcode as its executed, two -d's will also step though the expansion of macros durring the assembly stage.
 
--g       Enter the interactive debugger. (See Bellow)
+-g       Enter the interactive debugger. (See Below)
 
 -l       List the disassemble of the compiled code, useful to have on hand when about to debugging as it will identify the memory locations instructions end up, which is what you need for breakpoints in the debugger.
 
@@ -461,7 +590,7 @@ m       Modify Memory
 n       Next step
             Execute an instruction, optionally add a count to execute a number of instructions. Will show
 	    the disassembly of each instruction before it is executed. (so any values shown will be the 'before'
-	    values)
+	    state before the optcode is executed)
 
 s       Step Over
 	    Will set a temporary break point at the instruction 'just beyond' the current instruction. Most usefull when calling a sub-routine and want to skip over it without stepping though it one instruction at a time. 
@@ -483,137 +612,22 @@ r       Reset
 
 w       Set a memory watchpoints, when disassemble is used, it will also print values at any watch points.
 
+--------------------------------------
+Disk IO
 
+The CPU is too primative to directly work with a real disk or filesystem, but we do provide some very basic
+disk IO tools. In the validate folder are some code examples that use this.
 
+We have to imagine the hard disks attacheed to this CPU are primative 1970's disk packs. Each disk in the
+pack holds a max of 16MB of data, broken up in 64K of 256 byte blocks. All read and wrires are directly
+at the block level, so to something like apppending a variable length string to a text file will require some
+addditional string processing as well as buffering the block being written to.
 
-
-
-
-
-
-
-
-
-
-
-
-Lets go though some same code to see how to use this: (These sameple
-codes were written durring the development stages of the project, and
-in many cases there are cleaner or better ways to do the same effect,
-so they are best used as examples of the way to format code, rather
-than practical examples of how to do these operations.)
-
-
-HELLO WORLD:
-It is traditional to use 'Hello World' as a first program. (This a bit too simple and silly)
-
-   I common.mc
-   @PRT "Hello World"
-   @END
-
---------------------------------------------------------------------
-
-FIBONACCI SERIES:
-Here a slightly more interesting program that shows off some logic, looping and math function
-Now because we are using 16 bit math, the series is limited to N being 14 or less.
-
-I common.mc
-# Pseudo Code
-# Input N
-# A,B,OUT,Idx = 0,1,0,2
-# while (Idx < N)
-#    OUT=A+B
-#    A=B
-#    B=OUT
-#    Idx ++
-#    Print OUT
-@PRTLN "Fibonacci Series"
-@MC2M 0 A
-@MC2M 1 B
-@MC2M 0 OUT
-@MC2M 2 Idx
-@PRT "Number of Terms: "
-@READI N
-@PRTNL
-@PRTLN "The Fibonacci Series is:"
-@PRTI A @PRTSP @PRTI B @PRTSP      # Print A B
-:MainLoop
-# WHILE Idx < N
-@PUSHI N
-@CMPI Idx      # Test Idx - N, which would set Neg flag if N is > Idx
-@POPNULL
-@JMPN EndofLoop
-     @PUSHI A @PUSHI B @ADDS @POPI OUT    #  OUT=A+B
-     @MM2M B A    #  A=B
-     @MM2M OUT B  #  B=OUT
-     @INCI Idx    #  Idx++
-     @PRTI OUT    #  Print OUT
-     @PRTSP       #  Print " " space
-     @JMP MainLoop
-:EndofLoop
-@PRTNL
-@END
-# Setup Storage, each 0 bellow is reserving a 16b word for the given label.
-:A 0
-:B 0
-:N 0
-:Idx 0
-:OUT 0
-
-The output of this should look like:
-    ./cpu.py test1.asm
-    Fibonacci Series
-    Number of Terms: 10
-
-    The Fibonacci Series is:
-    0 1 1 2 3 5 8 13 21 34 55
-
-END of Code
---------------------------------------------------------------------
-Adding 32 bit numbers.
-there are many cases where 16 bit numbers are not sufficient. So here is an example of adding two 32 bit numbers
-together.
-I common.mc
-@PRTLN "Try to add 32bit numbers"
-@MC2M 0xff00 LowPartA           # The Assembler's natural numbers are 16b but 2 hex words are alike
-@MC2M 0 HighPartA               # So we use two 16 bit numbers, a high word, and a low word
-@MC2M 0x99 LowPartB             # Here we are going to use a loop to add together from
-@MC2M 0 HighPartB               # 0x0000ff00 + 0x00000099 to 0x0000ff00 + 0x0000FD
-@MC2M 500 Idx                   # This range will show the transition from 16bit results
-:LOOP                           # too 32 bit results.
-@PRT "A:"
-@PRTHEXI HighPartA              # We will print out the results as 8 char hex as there no built in 32bit decimal printout
-@PRTHEXI LowPartA
-@PRT " B:"
-@PRTHEXI HighPartB
-@PRTHEXI LowPartB
-@PRTNL
-@PUSHI LowPartA
-@PUSHI LowPartB
-@ADDS                           # Add the low parts first
-@PUSHI HighPartA
-@JMPNC NoCarryBit               # IF there was no carry flag set, the just jump to adding the high parts
-@PUSH 1                         # Otherwise we add the ca
-rry to one of the High Parts
-@ADDS
-:NoCarryBit
-@PUSHI HighPartA
-@ADDS                           # Here's the high part add. We should test for 32 bit overflow but this example too
-@POPI ResultHigh                # simple to care.
-@POPI ResultLow
-@PRT "Result:"
-@PRTHEXI ResultHigh
-@PRTHEXI ResultLow
-@PRTNL
-@INCI LowPartB                  # Loop until we've done 100 32bit adds.
-@DECI Idx
-@JNZ LOOP
-@END
-:LowPartA 0
-:HighPartA 0
-:LowPartB 0
-:HighPartB 0
-:ResultLow 0
-:ResultHigh 0
-:Idx 0
-
+Code Macros
+@DISKSEL  A  Selects which disk to use with a constant number.
+@DISKSELI V  Selects which disk to use with a variable.
+@DISKSEEK A  Moves the Disk Head to a Block on that disk. 0-0xffff per disk.
+@DISKSEEKI V Same but with Id being a variable.
+@DISKWRITE V writes the 256 byte buffer pointed to by V
+@DISKREADI V read a 256 byte buffer from disk, at address[V] is the address to write to
+@DISKREAD A read a 256 byte buffer from disk, A points directly to where the buffer starts in memory

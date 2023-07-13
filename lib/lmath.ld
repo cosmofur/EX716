@@ -26,21 +26,46 @@
 # INT2LONGI  Label16    [label32]
 # INT2ILONG  [Label16]  label32
 # LONG2INT   Label32    Label16
-# 
+#
+#
+# When dealing with 32I numbers, your dealing with not an elemetry object but a structure of 4 bytes
+# For most procedures you are passing ont he stack a 16b pointer to the address where the 4 bytes start
+# But when passing data from one sub-routine to another, you may run into the cases where the value
+# you have on hand, is just a pointer, where the POINTER to the 4 byte number is stored.
+# So COPY32VV means copy values at PTR to PTR
+#    COPY32VIV means copy values at PTR to PTR->PTR
+#    COPY32IVV means copy values at PTR->PTR to PTR
+#    COPY32IVIV means copy values aat PTR->PTR to PTR->PTR
+#
+# Read this to mean 'V' by itself means %n is the 16b number that is the addresss of the structure
+#                   'IV' means %n is ptr to a diffrent 16b number that is the address of the struct.
+
 # Copy is for copying the 4 bytes of a 32b word from one pointer to another
 # Passed in parameters are the labels/pointers to the first word of the 32b numbers
+#
+# V -> V
 M COPY32VV \
      @PUSHI %1 @POPI %2 @PUSHI %1+2 @POPI %2+2
-# Most of the 32Bit match functions assume you are passing a simple pointer to the
-# 32bit structure, sometimes you need to pass a double indirect pointer. The following
-# Macro coverts a double indirect to a single indirect.
-#
+# V -> V_PTR
 M COPY32VIV \
-      @PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POPI %2+2 @POPI %2
-# 
-#  MOVE32AV is the ruff 32bit equivalent of @MC2M
-#M MOVE32AV @PUSH %1 @PUSH %2 @POPS @PUSH 0 @PUSH %2+2 @POPS
-#M MOVE32AVI @PUSH %1 @PUSHI %2 @POPS @PUSH 0 @PUSH %2 @ADD 2 @POPS
+      @PUSHI %1 @PUSH %1 @ADD 2 @PUSHS \
+      @PUSHI %2 @ADD 2 @POPS \
+      @PUSHI %2 @POPS
+# V_PTR -> V
+M COPY32IVV \
+      @PUSHI %1 @PUSHS @PUSHI %1 @ADD 2 @PUSHS \
+      @POPI %2+2 @POPI %2
+# V_PTR -> V_PTR
+M COPY32IVIV \
+      @PUSHI %1 @PUSHS @PUSHI %1 @ADD 2 @PUSHS \
+      @PUSHI %2 @ADD 2 @POPS \
+      @PUSHI %2 @POPS
+      
+# We call the 'Constant' to V 'MOVE's rathar than COPY since it requires
+# diffrent logic to handle a fixed constants which are first being defined in this same
+# macro and normally that source number will not be directly refrenced again.
+# these 'MOVE's are less efficent than COPY's
+#  MOVE32AV is the ruff 32bit equivalent of @MA2V
 M MOVE32AV @JMP %0SkipOver :%0C1 $$$%1 \
            :%0SkipOver @PUSHI %0C1 @PUSH %2 @POPS \
 	   @PUSHI %0C1+2 @PUSH %2+2 @POPS
@@ -65,7 +90,7 @@ M INTI2LONGI \
     @PUSHI %1 @PUSHI %2 @CALL INT2LONG
     
 
-# LONG2INT is trucates the lower word in 32b data to 16b.But conider possibity of negative values
+# LONG2INT trucates the lower word in 32b data to 16b.But conider possibity of negative values
 # %1 is ptr to 32b data and %2 is ptr to 16b data (Does effect flags)
 # It started life as a macro, now its a function.
 
@@ -84,10 +109,13 @@ G RTR32
 G RTL32
 G INV32
 G DIV32
+G DIV32U
 G MUL32
 G i32tos
 G INT2LONG
 G LONG2INT
+G PRT32BIN
+G PRT32HEX
 
 @JMP ENDLMATH
 # Global Variables
@@ -115,7 +143,7 @@ G LONG2INT
 :One_Val 1 0
 :Zero_Val 0 0
 #
-#
+#  ADD(A,B,C)  Modifies C, removes all from Stack
 :ADD32         # Note that 32 bit math does NOT set any flags so we can't directly use it for 64 bit math.
 @POPI ReturnAdr
 @POPI C_PTR
@@ -149,22 +177,23 @@ G LONG2INT
 @PUSHI ReturnAdr
 @RET
 #
-#
+# SUB(A,B,C)  Modfies C, pops all from stack
 :SUB32
 @POPI ReturnAdr
 @POPI C_PTR
 @POPI B_PTR
 @POPI A_PTR
-@PUSHII A_PTR @PUSHII B_PTR
+@PUSHII A_PTR @PUSHII B_PTR          # Put low part on stack
 @INC2I B_PTR @INC2I A_PTR # We do the inc2 here to avoid messing up flags
 @SUBS
 @POPII C_PTR
-@JMPNC SNoBorrow 
+@JMPNC SNoBorrow
 # Case for Borrow
   @PUSHII A_PTR
-  @PUSH 1 @PUSHII B_PTR @SUBS     # Barrow bit from High A
-  @INC2I C_PTR            # C wasn't inc2 because we still needed it for the POP
+  @PUSHII B_PTR
   @SUBS
+  @SUB 1      # Barrow bit from High A  
+  @INC2I C_PTR            # C wasn't inc2 because we still needed it for the POP
   @POPII C_PTR
   @JMP SPastNoBorrow
 :SNoBorrow
@@ -175,184 +204,92 @@ G LONG2INT
 :SPastNoBorrow
 @PUSHI ReturnAdr
 @RET
-
-@POPII C_PTR
-@INC2I A_PTR @INC2I B_PTR @INC2I C_PTR
-
-
-@POPI C_PTR    # These are local copies of the original PTR's passed in.
-@MM2M C_PTR CH_PTR
-@POPI B_PTR
-@MM2M B_PTR BH_PTR
-@POPI A_PTR
-@MM2M A_PTR AH_PTR
-# Rather than mixing the math with ptr increments, store the High Part as separate PTR
-@INC2I CH_PTR
-@INC2I AH_PTR
-@INC2I BH_PTR
-# Make copies of values the A and B points to local A and B storage.
-@PUSHII A_PTR     # Fetch low part of A from ptr
-@POPI Aval_Low
-@PUSHII AH_PTR     # Fetch high part of A from ptr
-@POPI Aval_High
-@PUSHII B_PTR     # Fetch low part of B from ptr
-@POPI Bval_Low
-@PUSHII BH_PTR     # Fetch high part of B from ptr
-@POPI Bval_High
-# Main math function.
-@PUSHI Aval_Low    # Start the Math A on stack
-@PUSHI Bval_Low
-@SUBS
-@POPII C_PTR       # Save the Low results to Low C
-@JMPNC SUB32NoCarry
-@PUSH 1     # There was a Carry, so remove 1 from B High block
-@PUSHI Bval_High
-@SUBS
-@POPI Bval_High
-:SUB32NoCarry
-@PUSHI Aval_High
-@PUSHI Bval_High
-@SUBS       # High part results on stack.
-@POPII CH_PTR     # Save High part to C High
-@PUSHI ReturnAdr
-@RET
 #
+# CMP32(A,B) Pops A and B from stack, replaces with -1,0,1
 :CMP32
 @POPI C32Return
 @PUSH C32Result
-@CALL SUB32   # We are Using SUB32 to Subtract B - A > Temp Result
+@CALL SUB32   # We are Using SUB32 to Subtract A - B > Temp Result
 #  Test if High Worked Highest Bit is set, if so, it's negative.
 @PUSHI C32Result+2
 @AND 0x8000
-@CMP 0 @POPNULL
-@JMPZ C32NotNeg
-@JMP C32IsNeg
-:C32NotNeg
-# Failed the NEG test, so now look for Zero
-@PUSHI C32Result+2    # Test the High Word first
-@CMP 0 @POPNULL
-@JMPZ C32MaybeZero
-@JMP C32NotZeroOrNeg  # If it's not zero (and not neg) then report Positive
-:C32MaybeZero        # High word was not zero, so test the lower word
-@PUSHI C32Result
-@CMP 0 @POPNULL
-@JMPZ C32IsZero
-:C32NotZeroOrNeg     #Having failed both zero and negative, must be positive
-@PUSH 1 @CMP 2 @POPNULL   # For flags to be 'reset' for simpler testing.
-@PUSH 1
-@JMP C32End
-:C32IsZero
-@PUSH 0
-@CMP 0               # Force the Z Flag to be set, so we avoid testing again
-@JMP C32End
-:C32IsNeg
-@PUSH 1 @CMP 0 @POPNULL   # Force the N flag to be set.
-@PUSH -1
-:C32End
+@IF_NOTZERO      # Sign bit is set
+   @POPNULL 
+   @PUSH 0 @CMP 1 @POPNULL   # Force the N flag to be set.
+   @PUSH -1
+   @JMP C32END
+@ENDIF
+@POPNULL
+@PUSHI C32Result+2 
+@IF_ZERO  # High word is zero
+   @POPNULL
+   @PUSHI C32Result
+   @IF_ZERO  # Low Word is also zero
+      @POPNULL
+      @PUSH 0
+      @JMP C32END
+   @ENDIF
+@ENDIF
+@POPNULL
+# IF neigher Zero or Negative, must be positive.
+@PUSH 1 @CMP 0 # Do this for force flags to be nutral
+:C32END
 @PUSHI C32Return
 @RET
 :C32Return 0
 :C32Result 0 0
 #
-# RRT32 Rotate Right 32 bit version 2 Parms ptr to A and Return to C
+# RTR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to C
+# Call RTR32(A,B) Rotats A saves to B
 :RTR32
 @POPI ReturnAdr
-# Setup Individual pointers to the Low and High parts of the Src(A) and Dst(C) numbers
-@DUP 	
-@POPI C_PTR @ADD 2 @POPI CH_PTR
-@DUP
-@POPI A_PTR @ADD 2 @POPI AH_PTR
-# Fetch low part of A from ptr
-@PUSHII A_PTR  @POPI Aval_Low
-# Fetch high part of A from ptr
-@PUSHII AH_PTR @POPI Aval_High
-# Clear Carry
-@PUSH 1 @CMP 0 @POPNULL
-# Since We are rotating 'right' we do the High Part First
-@PUSHI Aval_High
+@POPI B_PTR
+@POPI A_PTR
+@PUSHI B_PTR @ADD 2        # Preset the High B address to keep the Add 2 from resetting carry
+@PUSH 1 @CMP 0 @POPNULL    # Clear Carry
+@PUSHI A_PTR @ADD 2 @PUSHS
+@RTR
+@SWP @POPS      # Swap order so we can POPS the High A rotate value to the precalced High B address
+                # We do this out of order sequnce to preserve the Carry Flag from the High A rotation.
+@PUSHII A_PTR
 @RRTC
-# Then We rotate the Low part with what ever carry there was left over
-@PUSHI Aval_Low
-@RRTC
-# Move results to C
-@POPII C_PTR
-@POPII CH_PTR
+@POPII B_PTR
 @PUSHI ReturnAdr
 @RET
 #
 # Invert Bits
-#
+# INV32(A,B) Inverts A saves to B
 :INV32
 @POPI IVReturnAdr
+@POPI IV32Bval
 @POPI IV32Aval
 @PUSHI IV32Aval
-@PUSHS @INV @PUSHI IV32Aval @POPS  # Note modification is to where Aval points to, not Aval itself.
+@PUSHS @INV @PUSHI IV32Bval @POPS  # Note modification is to where Aval points to, not Aval itself.
 @PUSHI IV32Aval @ADD 2
-@PUSHS @INV @PUSHI IV32Aval @ADD 2 @POPS
+@PUSHS @INV @PUSHI IV32Bval @ADD 2 @POPS
 @PUSHI IVReturnAdr
 @RET
 :IVReturnAdr 0
 :IV32Aval 0
+:IV32Bval 0
 #
-# RTL32 Rotate Left 32 bit version 2 Parms ptr to A and Return to C
+# RTL32 Rotate Left RTL32(A,B) rotates A saves to B
 :RTL32
-@POPI RL32ReturnAdr
-@POPI RL32CVAL
-@POPI RL32AVAL
-@PUSHI RL32AVAL
-@PUSHS         # Lower A-Val to Stack
-@PUSHI RL32AVAL
-@ADD 2
-@PUSHS         # upper A-Val to stack
-@RTL
-@POPI RL32UpperHold     #save upper part for later.
-@RTL                    # Now rotate the Lower Part
-@JMPNC RL32NoCarry
-   @PUSHI RL32UpperHold
-   @OR 0x1              # If Lower part HAD a carry, set bit one of already RTL upper part
-   @POPI RL32UpperHold
-:RL32NoCarry
-# Put result into CVAL
-@PUSHI RL32CVAL
-@POPS                   #Copy lower part of answer to CVAL
-@PUSHI RL32UpperHold
-@PUSHI RL32CVAL
-@ADD 2
-@POPS                   #Save Upper Part to CVAL
-@PUSHI RL32ReturnAdr
-@RET
-:RL32ReturnAdr  0
-:RL32CVAL 0
-:RL32AVAL 0
-:RL32OutCarry 0
-:RL32UpperHold 0
-@DUP
-@POPI C_PTR
-@POPI CH_PTR
-@INC2I CH_PTR
-@DUP
+@POPI ReturnAdr
+@POPI B_PTR
 @POPI A_PTR
-@POPI AH_PTR
-@INC2I AH_PTR
-@PUSHII A_PTR     # Fetch low part of A from ptr
-@POPI Aval_Low
-@PUSHII AH_PTR     # Fetch high part of A from ptr
-@POPI Aval_High
-@PUSHI Aval_Low
-# Clear Carry
-@PUSH 1
-@CMP 0
-@POPNULL
-# Since We are rotating 'left' we do Low Part first
+@PUSHI A_PTR @ADD 2    # We precalc the High Part of A to avoid the Add 2 when Carry Flag is set.
+@PUSH 1 @CMP 0 @POPNULL    # Clear Carry
+@PUSHII A_PTR              # Do the Low Part of A
 @RTL
-# Then We rotate the High part with what ever carry there was left over
-@PUSHI Aval_High
-@RTL
-# Move results to C
-@POPII CH_PTR
-@POPII C_PTR
+@POPII B_PTR
+# The address of High-A is still on stack, fetch it now.
+@PUSHS
+@RLTC
+@PUSHI B_PTR @ADD 2 @POPS
 @PUSHI ReturnAdr
 @RET
+
 # We need some basic string functions that work with 32b numbers
 # So we need to create i32tos
 # Locals
@@ -376,30 +313,30 @@ G LONG2INT
 @POPI isBase              # Pointer to Base(8,10,16)
 @POPI isA32Ptr          # Address of input A32
 # Put a '0' glph in first slot of WorkBuff
-@MC2M 0x3000 isWorkBuff   # WorkBuff is empty string (11 bytes) for max 32b size
-@MC2M 0 isWorkBuff+2      # +/- -2,147,483,648 to 2,147,483,647
-@MC2M 0 isWorkBuff+4
-@MC2M 0 isWorkBuff+6
-@MC2M 0 isWorkBuff+8
-@MC2M 0 isWorkBuff+10
+@MA2V 0x3000 isWorkBuff   # WorkBuff is empty string (11 bytes) for max 32b size
+@MA2V 0 isWorkBuff+2      # +/- -2,147,483,648 to 2,147,483,647
+@MA2V 0 isWorkBuff+4
+@MA2V 0 isWorkBuff+6
+@MA2V 0 isWorkBuff+8
+@MA2V 0 isWorkBuff+10
 @MOVE32AV $$$0 isZero     # Constants we need for inverting 2scompt
 @MOVE32AV $$$1 isOne#
 # Save working copy of number
 #
-@COPY32VIV isA32Ptr isA32
-#@MC2M isWorkBuff isStrPtr    # Set string ptr to WorkBuff[0]
+@COPY32IVV isA32Ptr isA32
+#@MA2V isWorkBuff isStrPtr    # Set string ptr to WorkBuff[0]
 #
 # Test for Negative
-@MC2M 0 isNegFlag
+@MA2V 0 isNegFlag
 
 @PUSH isZero @PUSH isA32 @CALL CMP32 @POPNULL
 @JMPNZ isNotNeg
-  @MC2M 1 isNegFlag
+  @MA2V 1 isNegFlag
   # Need invert with addtion for 2s comp
-  @PUSH isA32 @CALL INV32   # Invert Bits
+  @PUSH isA32 @PUSH isA32 @CALL INV32   # Invert Bits
   @PUSH isOne @PUSH isA32 @PUSH isA32 @CALL ADD32  # Add 1 for 2comp
 :isNotNeg
-@MC2M isWorkBuff isRevIndex   #First Left to right, then reverse later.
+@MA2V isWorkBuff isRevIndex   #First Left to right, then reverse later.
                               #Helpfull because this way highbyte in words
 			      #naturually add null to end of string
 :isMainLoop
@@ -417,8 +354,8 @@ G LONG2INT
    @PUSHI IsLocalR1         # We only allow remainders that are <=16 so lower word of R1 should work.
    @AND 0x0f                # Just to make sure, we mask out any artifacts with lower nibble
    @ADD 0x30                # Turn Remainder to ASCII
-   @CMP 0x40
-   @JGT isNotHex            # only hex number require jump to A-F
+   @CMP 0x3A                # A=0x30-0x40 B=0x3A
+   @JLT isNotHex            # IF B>39 add 7 to move to letters to A-F
        @ADD 0x07
    :isNotHex
    @POPII isRevIndex        # save the ASCII code
@@ -439,8 +376,8 @@ G LONG2INT
 :isGoReverseLoop
   # while isRevIndex > isWorkBuff
   @PUSHI isRevIndex
-  @CMP isWorkBuff @POPNULL
-  @JGT isExitReverseLoop
+  @CMP isWorkBuff @POPNULL   # A=isRevIndex B=isWorkBuff
+  @JLT isExitReverseLoop     # If A<B ExitLoop
   @PUSHII isRevIndex
   @POPII isStrPtr
   @PUSH 0
@@ -492,104 +429,131 @@ G LONG2INT
 :ORB_PTR 0 0
 :ORC_PTR 0 0
 
-# End of i32tos 
+# End of i32tos
 
-:DIV32
-# Call with 4 parameters DIV(Numerator, Denominator, Remainder, Quotent)
-# All are direct pointers to 32 bit numbers. If you need indirect, build a support function.
-#
-@POPI DReturn
-@POPI DQValReturnPtr
-@POPI DRemReturnPtr
-@POPI DDenomPtr
-@POPI DNumerPtr
-@PUSHII DDenomPtr @POPI DLocalDenom
-@PUSHI DDenomPtr @ADD 2 @PUSHS @POPI DLocalDenom+2
-@PUSHII DNumerPtr @POPI DLocalNumer
-@PUSHI DNumerPtr @ADD 2 @PUSHS @POPI DLocalNumer+2
-@MOVE32AV $$$0 DZero32      # Zero Out the Zero variable
-@PUSH DZero32 @PUSH DLocalDenom @CALL CMP32              # Test if Denominator is zero
+# Division for 32 Bit
+# DIVU(A,B,%Result,%Remainder)
+:LocalA 0 0
+:LocalB 0 0 
+:DIV32U
+@POPI DUReturn
+@POPI DUResult
+@POPI DUReturnRemain
+@POPI DUB_ValPtr
+@POPI DUA_ValPtr
+@COPY32IVV DUA_ValPtr LocalA
+@COPY32IVV DUB_ValPtr LocalB
+@MOVE32AV $$$0 DUZero
+@MOVE32AV $$$1 DUOne
+@MOVE32AV $$$0 DUQVal
+@MOVE32AV $$$0 DURemainder
+@MOVE32AV $$$0x80000000 DUMask
+@PUSHI DUB_ValPtr @PUSH DUZero @CALL CMP32   # Worth noting CMP32 pops off A&B and leaves just -1,0,1 on stack
+@IF_ZERO
+   @PRTLN "Divide by Zero Error:"
+   @POPNULL
+   @PUSH 0 @PUSH 0
+   @PUSHI DUReturn
+   @RET
+@ENDIF
 @POPNULL
-@JMPZ DDivideByZero
-@MC2M 0 DNEGFLAG         # Now test for Negative Number
-@MOVE32AV 1 DOne32       # We need a 32b One for possible 32b 2Compliment calc
-@PUSH DZero32 @PUSH DLocalDenom @CALL CMP32 @POPNULL  # Compare Denom to zero
-@JGE DDenomNotNeg          # Denom - 0 >= 0
-   # Denum is Neg. Flip flag
-   @PUSHI DNEGFLAG @INV @AND 1 @POPI DNEGFLAG
-   @PUSH DLocalDenom @CALL INV32   # Invert High and Low words
-   @PUSH DOne32 @PUSH DLocalDenom @PUSH DLocalDenom @CALL ADD32  # Then Add one for 2Comp   
-:DDenomNotNeg
-@PUSH DZero32 @PUSH DLocalNumer @CALL CMP32 @POPNULL  # Compare Numerator to zero
-@JGE DNumerNotNeg              # Numer - 0 >= 0
-   # Numer is Neg, Flip Flag
-   @PUSHI DNEGFLAG @INV @AND 1 @POPI DNEGFLAG
-   @PUSHI DLocalNumer @INV @POPI DLocalNumer
-   @PUSHI DLocalNumer+2 @INV @POPI DLocalNumer+2    # Invert both high an low words
-   @PUSH DOne32 @PUSH DLocalNumer @PUSH DLocalNumer @CALL ADD32  # Then Add one for 2Comp      
-:DNumerNotNeg
-@MOVE32AV 0 DQval
-@MOVE32AV 0 DRemainder
-@PUSH 0x0000 @POPI DReverseBit
-@PUSH 0x8000 @POPI DReverseBit+2       # Start the Reverse bit at 32'nd bit
-@MC2M 32 DIndex
-:DMainLoop
-@PUSHI DIndex @CMP 0 @POPNULL
-# Explanation of loop
-# We are doing a For loop though the 32 bits.
-# Going from the highest bit to the lowest bit of the Numerator
-# Regardless of that bit is set, we rotate the current Remainder left (*2)
-# When the Numerator bit is set, we add a bit to the Remainder
-# Then we take the remainder and compare to Denominator
-# If that Remainder is >= Denominator we set that bit(index) to one in QVal
-# 
-@JMPZ DExitMainLoop
-      # Left shift the Remainder by 1
-      @PUSH DRemainder @PUSH DRemainder @CALL RTL32 # Remainder << 1
-      @PUSH DLocalNumer @PUSH DReverseBit @PUSH DResultHold
-      @CALL AND32   # Result= Numerator & Reversebit
-      @PUSH DResultHold @PUSH DZero32 @CALL CMP32    # CMP Result and 32b zero, results in TOS
+@ForIA2B DUIndex 0 32
+   @PUSH DURemainder @PUSH DURemainder @CALL RTL32  # RTL32(A,B) B = A<<1, Pops both A&B off
+   @PUSH DUMask @PUSHI DUA_ValPtr @PUSH DUTemp1 @CALL AND32 # AND32(A,B,C) C=A & B, pops all off.
+   @PUSH DUTemp1 @PUSH DUZero @CALL CMP32
+   @IF_NOTZERO
       @POPNULL
-      @JMPZ DBitNotSet
-         # Bit IS set.
-	 @PUSH DOne32 @PUSH DRemainder @PUSH DRemainder @CALL OR32   # OR 1 to DRemainder
-      :DBitNotSet
-      @PUSH DLocalDenom @PUSH DRemainder @CALL CMP32
+      # DURemainder[bit16-Index]=DUA_ValPtr[bit16-Index]
+      @PUSH DUOne @PUSH DURemainder @PUSH DURemainder @CALL OR32
+   @ELSE
       @POPNULL
-      @JMPN DSkipQSet
-          @PUSH DLocalDenom @PUSH DRemainder @PUSH DRemainder @CALL SUB32  # Remain = Remain - Demonin
-	  # Now modify just the Ith bit of Qval to be 1
-	  # Fill DResultHold with all 'F'
-	  @PUSH 0xFFFF @POPI DResultHold
-	  @PUSH 0xFFFF @POPI DResultHold+2
-	  @PUSH DReverseBit @PUSH DResultHold @PUSH DResultHold @CALL AND32  # Result = Reverse & FFF...
-	  @PUSH DQval @PUSH DResultHold @PUSH DQval @CALL ADD32  # Qval = Qval + Result
-      :DSkipQSet
-      # Shift Right ReverseBit
-      @PUSH DReverseBit @PUSH DReverseBit @CALL RTR32   # ReverseBit >> 1
-      @DECI DIndex
-      @JMP DMainLoop
-:DExitMainLoop
-@PUSHI DNEGFLAG  @CMP 0 @POPNULL   # Was it Negative?
-@JMPZ DNotNeg2
-   # IS Negative.
-:DInvertAnswer
-   @PUSHI DQval @INV @POPI DQval
-   @PUSHI DQval+2 @INV @POPI DQval+2
-   @PUSH DOne32 @PUSH DQval @PUSH DQval @CALL ADD32   # 2's comp, invert and add one.
-:DNotNeg2
-# Put the Address of the two result points on stack.
-# As a matter of technique it important to understand that what was passed and is stored in the local Return vars
-# are the pointers TO where the result is going to be saved.
-#
-@PUSHI DQval @POPII DQValReturnPtr                   # Copy Qval lower to RemQvalReturnPtr   
-@PUSHI DQval+2 @PUSHI DQValReturnPtr @ADD 2 @POPS     # Copy Qval upper to RemQvalReturnPtr+2
-
-@PUSHI DRemainder @POPII DRemReturnPtr                # Copy Remainder lower word to RemReturnPtr
-@PUSHI DRemainder+2 @PUSHI DRemReturnPtr @ADD 2 @POPS # Copy Remainder upper word to RemReturnPtr+2
-@PUSHI DReturn
+   @ENDIF
+   @PUSHI DUB_ValPtr
+   @PUSH DURemainder   
+:BreakHere
+   @CALL CMP32
+   @IF_EQ_A 1
+      @POPNULL
+   @ELSE
+      @PUSH DURemainder @PUSHI DUB_ValPtr @PUSH DURemainder @CALL SUB32 # Remain=Remain-B
+      @PUSH DUQVal @PUSH DUMask @PUSH DUQVal @CALL OR32 # QVal=QVal | Mask   
+      @POPNULL
+   @ENDIF
+   @PUSH DUMask @PUSH DUMask @CALL RTR32  # Mask = Mask >> 1
+@Next DUIndex
+@COPY32VIV DURemainder DUResult
+@COPY32VIV DUQVal  DUReturnRemain
+@PUSHI DUReturn
 @RET
+# Local DIV variables
+:DUReturn 0
+:DUB_ValPtr 0
+:DUA_ValPtr 0
+:DUIndex 0
+:DUReturnRemain 0 0
+:DUResult 0 0
+:DUZero 0 0
+:DUOne 0 0
+:DUQVal 0 0
+:DURemainder 0 0
+:DUMask 0 0
+:DUTemp1 0 0
+
+
 #
+# The Signed DIV32 just calls the unsigned one but keeps track if the result should be signed.
+#
+:DIV32
+@POPI DSReturn
+@POPI DSRemain1
+@POPI DSResult
+@POPI DSBVal
+@POPI DSAVal
+@MOVE32AV $$$0 DSZero
+@MOVE32AV $$$1 DSOne
+@MA2V 0 DSNegative
+# IF A or/and B are negative invert the Negative flag
+@PUSHI DSAVal @PUSH DSZero @CALL CMP32
+@IF_LT_A 0
+   # Is Negative, reverse NegFlag and comp2 A var
+   @PUSHI DSNegative @INV @POPI DSNegative
+   @PUSHI DSAVal @PUSHI DSAVal @CALL INV32
+   @PUSHI DSAVal @PUSH DSOne @PUSHI DSAVal @CALL ADD32
+@ENDIF
+@POPNULL
+@PUSHI DSBVal @PUSH DSZero @CALL CMP32
+@IF_LT_A 0
+   # Is Negative, reverse NegFlag and comp2 B var
+   @PUSHI DSNegative @INV @POPI DSNegative
+   @PUSHI DSBVal @PUSHI DSBVal @CALL INV32
+   @PUSHI DSBVal @PUSH DSOne @PUSHI DSBVal @CALL ADD32   
+@ENDIF
+@POPNULL
+@PUSHI DSAVal
+@PUSHI DSBVal
+@PUSHI DSResult
+@PUSHI DSRemain1
+@CALL DIV32U
+@PUSHI DSNegative
+@IF_NOTZERO
+   @PUSHI DSResult @PUSHI DSResult @CALL INV32
+   @PUSHI DSResult @PUSH DSOne @PUSHI DSResult @CALL ADD32
+@ENDIF
+@PUSHI DSReturn
+@RET
+:DSReturn 0
+:DSRemain1 0
+:DSResult 0
+:DSBVal 0
+:DSAVal 0
+:DSZero $$$0
+:DSOne $$$1
+:DSNegative 0
+
+
+
+
+
 # INT2LONG function(A,B)
 #   A=Ptr to 16b data, B=Ptr to 32b destination
 :INT2LONG
@@ -626,11 +590,11 @@ G LONG2INT
 @PUSHII NNPtr @POPI NNLocal
 @PUSHI NNPtr @ADD 2 @PUSHS @POPI NNLocal+2
 @MOVE32AV $$$0 M_ANS
-@MC2M 0 M_NEGFLAG
+@MA2V 0 M_NEGFLAG
 @MOVE32AVI $$$0 M_ZERO
 @MOVE32AVI $$$1 M_ONE
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL
-@JGE M1NotNeg
+@JGT M1NotNeg   # A=Zero B=MM if B>A jmp NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
 # Invert and add 1 to convert negative to possitive value for calculation
 @PUSHI MMLocal @INV @POPI MMLocal
@@ -638,7 +602,7 @@ G LONG2INT
 @PUSH MMLocal @PUSH M_ONE @PUSH MMLocal @CALL ADD32
 :M1NotNeg
 @PUSH M_ZERO @PUSH NNLocal @CALL CMP32 @POPNULL
-@JGE M2NotNeg
+@JGT M2NotNeg  # A=Zero B=NN if B > A Jmp NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
 # Invert and add 1 to convert negative to possitive value for calculation
 @PUSHI NNLocal @INV @POPI NNLocal
@@ -706,6 +670,7 @@ G LONG2INT
       @POPI L2IM1+2  # Fetch 'local' copy of the 32b A value
       @POPI L2IM1
       @PUSH L2IM1    # Invert value of A
+      @PUSH L2IM1
       @CALL INV32
       @PUSH L2IM1
       @PUSH L2IOne
@@ -722,6 +687,36 @@ G LONG2INT
 :L2IB 0
 :L2IOne $$$01
 :L2IM1 0 0
+
+# Some debug print tools
+# Print32Hex(ptr)
+:PRT32HEX
+@POPI PHReturn
+@DUP
+@ADD 2
+@PUSHS
+@POPI PDHold
+@PRTHEXI PDHold
+@PUSHS
+@POPI PDHold
+@PRTHEXI PDHold
+@PUSHI PHReturn
+@RET
+# Print32Bin(ptr)
+:PRT32BIN
+@POPI PHReturn
+@DUP
+@ADD 2
+@PUSHS
+@POPI PDHold
+@PRTBINI PDHold
+@PUSHS
+@POPI PDHold
+@PRTBINI PDHold
+@PUSHI PHReturn
+@RET
+:PHReturn 0
+:PDHold 0
 
 
 
@@ -740,11 +735,10 @@ G LONG2INT
 :DZero32 0 0
 :DOne32 $$$01
 :DNEGFLAG 0
-:DQval 0 0
 :DRemainder 0 0
 :DReverseBit 0 0
 :DResultHold 0 0
 :DRemReturnPtr 0
-:DQValReturnPtr 0
 :ENDLMATH
 ENDBLOCK
+

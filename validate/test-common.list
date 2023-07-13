@@ -1,0 +1,195 @@
+0008:     NOP P1:6501 [I]:0000 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm8 Main 
+0009:    PUSH P1:0065 [I]:0000 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm9 
+000c:     DUP P1:0003 [I]:0000 [II]:0000 TOS[0065,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm10 
+000d:   PUSHI P1:0000 [I]:0000 [II]:0000 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm11 
+0010:  PUSHII P1:0004 [I]:0000 [II]:0000 TOS[0000,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm12 
+0013:    PUSH P1:0002 [I]:0000 [II]:0000 TOS[0000,0000] Z0 N0 C0 O0 SS(4)# F.test-common.asm13 
+0016:   PUSHS P1:0606 [I]:0000 [II]:0000 TOS[0002,0000] Z0 N0 C0 O0 SS(5) 
+0017: POPNULL P1:0606 [I]:0000 [II]:0000 TOS[0000,0000] Z0 N0 C0 O0 SS(5)# F.test-common.asm14 
+0018: POPNULL P1:0106 [I]:0000 [II]:0000 TOS[0000,0000] Z0 N0 C0 O0 SS(4) 
+0019: POPNULL P1:6501 [I]:0000 [II]:0000 TOS[0000,0065] Z0 N0 C0 O0 SS(3) 
+001a:    PUSH P1:0065 [I]:0000 [II]:0000 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm15 
+001d:    PUSH P1:00ca [I]:0f01 [II]:0000 TOS[0065,0065] Z0 N0 C0 O0 SS(3) 
+0020:     SWP P1:0008 [I]:0100 [II]:0050 TOS[00ca,0065] Z0 N0 C0 O0 SS(4)# F.test-common.asm16 
+0021:    POPI P1:0000 [I]:0000 [II]:0000 TOS[0065,00ca] Z0 N0 C0 O0 SS(4)# F.test-common.asm17 
+0024:   POPII P1:0004 [I]:0000 [II]:0065 TOS[00ca,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm18 
+0027:    PUSH P1:012f [I]:6401 [II]:0000 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm19 
+002a:    PUSH P1:0002 [I]:0000 [II]:00ca TOS[012f,0065] Z0 N0 C0 O0 SS(3) 
+002d:    POPS P1:6401 [I]:0000 [II]:00ca TOS[0002,012f] Z0 N0 C0 O0 SS(4)# F.test-common.asm20 
+002e:    PUSH P1:0064 [I]:0008 [II]:0100 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm21 
+0031:     CMP P1:0032 [I]:0032 [II]:0032 TOS[0064,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm22 
+0034:     CMP P1:0064 [I]:0008 [II]:0100 TOS[0064,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm23 
+0037:     CMP P1:0096 [I]:0011 [II]:0004 TOS[0064,0065] Z1 N0 C0 O0 SS(3)# F.test-common.asm24 
+003a: POPNULL P1:0001 [I]:2f00 [II]:0000 TOS[0064,0065] Z0 N1 C1 O0 SS(3)# F.test-common.asm25 
+003b:    PUSH P1:8000 [I]:0000 [II]:00ca TOS[0065,0065] Z0 N1 C1 O0 SS(2)# F.test-common.asm26 
+003e:     CMP P1:8001 [I]:0000 [II]:00ca TOS[8000,0065] Z0 N1 C1 O0 SS(3)# F.test-common.asm27 
+0041:    PUSH P1:0032 [I]:0032 [II]:0032 TOS[8000,0065] Z0 N1 C1 O1 SS(3)# F.test-common.asm28 
+0044:    CMPS P1:0106 [I]:0000 [II]:00ca TOS[0032,8000] Z0 N1 C1 O1 SS(4)# F.test-common.asm29 
+0045: POPNULL P1:6401 [I]:0000 [II]:00ca TOS[0032,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm30 
+0046:    PUSH P1:0064 [I]:0008 [II]:0100 TOS[8000,0065] Z0 N0 C0 O0 SS(3) 
+0049:    CMPS P1:0106 [I]:0000 [II]:00ca TOS[0064,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm31 
+004a: POPNULL P1:9601 [I]:0000 [II]:00ca TOS[0064,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm32 
+004b:    PUSH P1:0096 [I]:0011 [II]:0004 TOS[8000,0065] Z0 N0 C0 O0 SS(3) 
+004e:    CMPS P1:3201 [I]:0000 [II]:00ca TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm33 
+004f:    PUSH P1:0032 [I]:0032 [II]:0032 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm34 
+0052:    POPI P1:0000 [I]:00ca [II]:0f01 TOS[0032,0096] Z0 N0 C0 O0 SS(5) 
+0055:    CMPI P1:0000 [I]:0032 [II]:0032 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm35 
+0058:    PUSH P1:0064 [I]:0008 [II]:0100 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm36 
+005b:    POPI P1:0000 [I]:0032 [II]:0032 TOS[0064,0096] Z0 N0 C0 O0 SS(5) 
+005e:    CMPI P1:0000 [I]:0064 [II]:0008 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm37 
+0061:    PUSH P1:0096 [I]:0011 [II]:0004 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm38 
+0064:    POPI P1:0000 [I]:0064 [II]:0008 TOS[0096,0096] Z0 N0 C0 O0 SS(5) 
+0067:    CMPI P1:0000 [I]:0096 [II]:0011 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm39 
+006a:    PUSH P1:0032 [I]:0032 [II]:0032 TOS[0096,8000] Z1 N0 C0 O0 SS(4)# F.test-common.asm40 
+006d:    POPI P1:0000 [I]:0096 [II]:0011 TOS[0032,0096] Z1 N0 C0 O0 SS(5) 
+0070:   CMPII P1:0004 [I]:0000 [II]:0032 TOS[0096,8000] Z1 N0 C0 O0 SS(4)# F.test-common.asm41 
+0073:    PUSH P1:0064 [I]:0008 [II]:0100 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm42 
+0076:    POPI P1:0000 [I]:0032 [II]:0032 TOS[0064,0096] Z0 N0 C0 O0 SS(5) 
+0079:   CMPII P1:0004 [I]:0000 [II]:0064 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm43 
+007c:    PUSH P1:0096 [I]:0011 [II]:0004 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm44 
+007f:    POPI P1:0000 [I]:0064 [II]:0008 TOS[0096,0096] Z0 N0 C0 O0 SS(5) 
+0082:   CMPII P1:0004 [I]:0000 [II]:0096 TOS[0096,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm45 
+0085: POPNULL P1:5a01 [I]:0000 [II]:0096 TOS[0096,8000] Z1 N0 C0 O0 SS(4)# F.test-common.asm46 
+0086:    PUSH P1:005a [I]:0800 [II]:0000 TOS[8000,0065] Z1 N0 C0 O0 SS(3)# F.test-common.asm47 
+0089:     ADD P1:000a [I]:0065 [II]:0000 TOS[005a,8000] Z1 N0 C0 O0 SS(4)# F.test-common.asm48 
+008c: POPNULL P1:5001 [I]:0000 [II]:0096 TOS[0064,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm49 
+008d:    PUSH P1:0050 [I]:0032 [II]:0032 TOS[8000,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm50 
+0090:    PUSH P1:0014 [I]:0002 [II]:012f TOS[0050,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm51 
+0093:    POPI P1:0000 [I]:0096 [II]:0011 TOS[0014,0050] Z0 N0 C0 O0 SS(5) 
+0096:    ADDI P1:0000 [I]:0014 [II]:0002 TOS[0050,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm52 
+0099: POPNULL P1:4601 [I]:0000 [II]:0014 TOS[0064,8000] Z0 N0 C0 O0 SS(4)# F.test-common.asm53 
+009a:    PUSH P1:0046 [I]:6401 [II]:0000 TOS[8000,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm54 
+009d:    POPI P1:0000 [I]:0014 [II]:0002 TOS[0046,8000] Z0 N0 C0 O0 SS(4) 
+00a0:   ADDII P1:0004 [I]:0000 [II]:0046 TOS[8000,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm55 
+00a3: POPNULL P1:0f01 [I]:0000 [II]:0046 TOS[8046,0065] Z0 N0 C0 O1 SS(3)# F.test-common.asm56 
+00a4:    PUSH P1:000f [I]:0400 [II]:0000 TOS[0065,0065] Z0 N0 C0 O1 SS(2)# F.test-common.asm57 
+00a7:    PUSH P1:002d [I]:010a [II]:0600 TOS[000f,0065] Z0 N0 C0 O1 SS(3) 
+00aa:    ADDS P1:0106 [I]:0000 [II]:0046 TOS[002d,000f] Z0 N0 C0 O1 SS(4)# F.test-common.asm58 
+00ab: POPNULL P1:5a01 [I]:0000 [II]:0046 TOS[003c,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm59 
+00ac:    PUSH P1:005a [I]:0800 [II]:0000 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm60 
+00af:     SUB P1:000a [I]:0065 [II]:0000 TOS[005a,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm61 
+00b2: POPNULL P1:5001 [I]:0000 [II]:0046 TOS[0050,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm62 
+00b3:    PUSH P1:0050 [I]:0032 [II]:0032 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm63 
+00b6:    PUSH P1:0014 [I]:0002 [II]:012f TOS[0050,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm64 
+00b9:    POPI P1:0000 [I]:0046 [II]:6401 TOS[0014,0050] Z0 N0 C0 O0 SS(4) 
+00bc:    SUBI P1:0000 [I]:0014 [II]:0002 TOS[0050,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm65 
+00bf: POPNULL P1:4601 [I]:0000 [II]:0014 TOS[ffc4,0065] Z0 N0 C0 O0 SS(3)# F.test-common.asm66 
+00c0:    PUSH P1:0046 [I]:6401 [II]:0000 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm67 
+00c3:    POPI P1:0000 [I]:0014 [II]:0002 TOS[0046,0065] Z0 N0 C0 O0 SS(3) 
+00c6:   SUBII P1:0004 [I]:0000 [II]:0046 TOS[0065,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm68 
+00c9: POPNULL P1:0f01 [I]:0000 [II]:0046 TOS[ffe1,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm69 
+00ca:    PUSH P1:000f [I]:0400 [II]:0000 TOS[0065,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm70 
+00cd:    PUSH P1:002d [I]:010a [II]:0600 TOS[000f,0065] Z0 N0 C0 O0 SS(2) 
+00d0:    SUBS P1:0106 [I]:0000 [II]:0046 TOS[002d,000f] Z0 N0 C0 O0 SS(3)# F.test-common.asm71 
+00d1: POPNULL P1:5a01 [I]:0000 [II]:0046 TOS[001e,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm72 
+00d2:    PUSH P1:005a [I]:0800 [II]:0000 TOS[0065,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm73 
+00d5:      OR P1:000a [I]:0065 [II]:0000 TOS[005a,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm74 
+00d8: POPNULL P1:5001 [I]:0000 [II]:0046 TOS[005a,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm75 
+00d9:    PUSH P1:0050 [I]:0032 [II]:0032 TOS[0065,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm76 
+00dc:    PUSH P1:0014 [I]:0002 [II]:012f TOS[0050,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm77 
+00df:    POPI P1:0000 [I]:0046 [II]:6401 TOS[0014,0050] Z0 N0 C0 O0 SS(3) 
+00e2:     ORI P1:0000 [I]:0014 [II]:0002 TOS[0050,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm78 
+00e5: POPNULL P1:4601 [I]:0000 [II]:0014 TOS[0054,0065] Z0 N0 C0 O0 SS(2)# F.test-common.asm79 
+00e6:    PUSH P1:0046 [I]:6401 [II]:0000 TOS[0065,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm80 
+00e9:    POPI P1:0000 [I]:0014 [II]:0002 TOS[0046,0065] Z0 N0 C0 O0 SS(2) 
+00ec:    ORII P1:0004 [I]:0000 [II]:0046 TOS[0065,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm81 
+00ef: POPNULL P1:0f01 [I]:0000 [II]:0046 TOS[0067,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm82 
+00f0:    PUSH P1:000f [I]:0400 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm83 
+00f3:    PUSH P1:002d [I]:010a [II]:0600 TOS[000f,ffff] Z0 N0 C0 O0 SS(1) 
+00f6:     ORS P1:0106 [I]:0000 [II]:0046 TOS[002d,000f] Z0 N0 C0 O0 SS(2)# F.test-common.asm84 
+00f7: POPNULL P1:5a01 [I]:0000 [II]:0046 TOS[002f,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm85 
+00f8:    PUSH P1:005a [I]:0800 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm86 
+00fb:     AND P1:000a [I]:0065 [II]:0000 TOS[005a,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm87 
+00fe: POPNULL P1:5001 [I]:0000 [II]:0046 TOS[000a,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm88 
+00ff:    PUSH P1:0050 [I]:0032 [II]:0032 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm89 
+0102:    PUSH P1:0014 [I]:0002 [II]:012f TOS[0050,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm90 
+0105:    POPI P1:0000 [I]:0046 [II]:6401 TOS[0014,0050] Z0 N0 C0 O0 SS(2) 
+0108:    ANDI P1:0000 [I]:0014 [II]:0002 TOS[0050,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm91 
+010b: POPNULL P1:4601 [I]:0000 [II]:0014 TOS[0010,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm92 
+010c:    PUSH P1:0046 [I]:6401 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm93 
+010f:    POPI P1:0000 [I]:0014 [II]:0002 TOS[0046,ffff] Z0 N0 C0 O0 SS(1) 
+0112:   ANDII P1:0004 [I]:0000 [II]:0046 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm94 
+Stack Empty.
+0115:    PUSH P1:000f [I]:0400 [II]:0000 TOS[ffff,ffff] Z1 N0 C0 O0 SS(0)# F.test-common.asm95 
+0118:    PUSH P1:002d [I]:010a [II]:0600 TOS[000f,ffff] Z1 N0 C0 O0 SS(1) 
+011b:    ANDS P1:2d06 [I]:0000 [II]:0046 TOS[002d,000f] Z1 N0 C0 O0 SS(2)# F.test-common.asm96 
+011c: POPNULL P1:012d [I]:2d00 [II]:0000 TOS[000d,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm97 
+011d:    FCLR P1:6401 [I]:0000 [II]:0046 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm98 
+011e:    PUSH P1:0064 [I]:0008 [II]:0100 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm99 
+0121:     SUB P1:0064 [I]:0008 [II]:0100 TOS[0064,ffff] Z0 N0 C0 O0 SS(1) 
+0124: POPNULL P1:2e1f [I]:0000 [II]:0046 TOS[0000,ffff] Z1 N0 C0 O0 SS(1) 
+0125:    JMPZ P1:012e [I]:012d [II]:2d00 TOS[ffff,ffff] Z1 N0 C0 O0 SS(0)# F.test-common.asm100 
+012e:    FCLR P1:6401 [I]:0000 [II]:0046 TOS[ffff,ffff] Z1 N0 C0 O0 SS(0)# F.test-common.asm103 NextTest1 
+012f:    PUSH P1:0064 [I]:0008 [II]:0100 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm104 
+0132:     SUB P1:0096 [I]:0011 [II]:0004 TOS[0064,ffff] Z0 N0 C0 O0 SS(1) 
+0135: POPNULL P1:3f20 [I]:0000 [II]:0046 TOS[ffce,ffff] Z0 N1 C1 O0 SS(1) 
+0136:    JMPN P1:013f [I]:012d [II]:2d00 TOS[ffff,ffff] Z0 N1 C1 O0 SS(0)# F.test-common.asm105 
+013f:    FCLR P1:ff01 [I]:0000 [II]:0046 TOS[ffff,ffff] Z0 N1 C1 O0 SS(0)# F.test-common.asm108 NextTest2 
+0140:    PUSH P1:ffff [I]:0000 [II]:0046 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm109 
+0143:     ADD P1:0001 [I]:2f00 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(1) 
+0146: POPNULL P1:5021 [I]:0000 [II]:0046 TOS[0000,ffff] Z1 N0 C1 O0 SS(1) 
+0147:    JMPC P1:0150 [I]:012d [II]:2d00 TOS[ffff,ffff] Z1 N0 C1 O0 SS(0)# F.test-common.asm110 
+0150:    FCLR P1:0001 [I]:2f00 [II]:0000 TOS[ffff,ffff] Z1 N0 C1 O0 SS(0)# F.test-common.asm113 NextTest3 
+0151:    PUSH P1:8000 [I]:0000 [II]:0046 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm114 
+0154:     SUB P1:8001 [I]:0000 [II]:0046 TOS[8000,ffff] Z0 N0 C0 O0 SS(1) 
+0157: POPNULL P1:6122 [I]:0000 [II]:0046 TOS[ffff,ffff] Z0 N1 C1 O1 SS(1) 
+0158:    JMPO P1:0161 [I]:7001 [II]:0000 TOS[ffff,ffff] Z0 N1 C1 O1 SS(0)# F.test-common.asm115 
+0161:    PUSH P1:0170 [I]:012d [II]:2d00 TOS[ffff,ffff] Z0 N1 C1 O1 SS(0)# F.test-common.asm118 NextTest4 
+0164:    POPI P1:0000 [I]:0046 [II]:6401 TOS[0170,ffff] Z0 N1 C1 O1 SS(1) 
+0167:    JMPI P1:0000 [I]:0170 [II]:012d TOS[ffff,ffff] Z0 N1 C1 O1 SS(0)# F.test-common.asm119 
+0170:    FCLR P1:2201 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N1 C1 O1 SS(0)# F.test-common.asm122 Forward 
+0171:    PUSH P1:2222 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm123 
+0174:     RTR P1:2929 [I]:0000 [II]:0170 TOS[2222,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm124 
+0175:     RTR P1:2929 [I]:0000 [II]:0170 TOS[1111,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm125 
+0176:     RTR P1:0629 [I]:0000 [II]:0170 TOS[0888,ffff] Z0 N0 C1 O0 SS(1)# F.test-common.asm126 
+0177:     RTR P1:2d06 [I]:0000 [II]:0170 TOS[0444,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm127 
+0178: POPNULL P1:012d [I]:2d00 [II]:0000 TOS[0222,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm128 
+0179:    FCLR P1:4401 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm129 
+017a:    PUSH P1:4444 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm130 
+017d:     RTL P1:2a2a [I]:0000 [II]:0170 TOS[4444,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm131 
+017e:     RTL P1:2a2a [I]:0000 [II]:0170 TOS[8888,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm132 
+017f:     RTL P1:062a [I]:0000 [II]:0170 TOS[1110,ffff] Z0 N0 C1 O0 SS(1)# F.test-common.asm133 
+0180:     RTL P1:2d06 [I]:0000 [II]:0170 TOS[2220,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm134 
+0181: POPNULL P1:012d [I]:2d00 [II]:0000 TOS[4440,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm135 
+0182:    FCLR P1:1101 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm136 
+0183:    PUSH P1:1111 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm137 
+0186:    RRTC P1:2727 [I]:0000 [II]:0170 TOS[1111,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm138 
+0187:    RRTC P1:2727 [I]:0000 [II]:0170 TOS[0888,ffff] Z0 N0 C1 O0 SS(1)# F.test-common.asm139 
+0188:    RRTC P1:2727 [I]:0000 [II]:0170 TOS[8444,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm140 
+0189:    RRTC P1:2727 [I]:0000 [II]:0170 TOS[4222,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm141 
+018a:    RRTC P1:2727 [I]:0000 [II]:0170 TOS[2111,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm142 
+018b:    RRTC P1:2727 [I]:0000 [II]:0170 TOS[1088,ffff] Z0 N0 C1 O0 SS(1)# F.test-common.asm143 
+018c:    RRTC P1:0627 [I]:0000 [II]:0170 TOS[8844,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm144 
+018d:    RRTC P1:2d06 [I]:0000 [II]:0170 TOS[4422,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm145 
+018e: POPNULL P1:012d [I]:2d00 [II]:0000 TOS[2211,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm146 
+018f:    FCLR P1:1101 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm147 
+0190:    PUSH P1:1111 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm148 
+0193:    RLTC P1:2828 [I]:0000 [II]:0170 TOS[1111,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm149 
+0194:    RLTC P1:2828 [I]:0000 [II]:0170 TOS[2222,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm150 
+0195:    RLTC P1:2828 [I]:0000 [II]:0170 TOS[4444,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm151 
+0196:    RLTC P1:2828 [I]:0000 [II]:0170 TOS[8888,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm152 
+0197:    RLTC P1:2828 [I]:0000 [II]:0170 TOS[1110,ffff] Z0 N0 C1 O0 SS(1)# F.test-common.asm153 
+0198:    RLTC P1:2828 [I]:0000 [II]:0170 TOS[4440,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm154 
+0199:    RLTC P1:0628 [I]:0000 [II]:0170 TOS[8880,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm155 
+019a:    RLTC P1:2d06 [I]:0000 [II]:0170 TOS[1100,ffff] Z0 N0 C1 O0 SS(1)# F.test-common.asm156 
+019b: POPNULL P1:012d [I]:2d00 [II]:0000 TOS[4400,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm157 
+019c:    FCLR P1:0001 [I]:2f01 [II]:0000 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm158 
+019d:    PUSH P1:ff00 [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0)# F.test-common.asm159 
+01a0:     INV P1:2b2b [I]:0000 [II]:0170 TOS[ff00,ffff] Z0 N0 C0 O0 SS(1)# F.test-common.asm160 
+01a1:     INV P1:2b2b [I]:0000 [II]:0170 TOS[00ff,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm161 
+01a2:     INV P1:062b [I]:0000 [II]:0170 TOS[ff00,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm162 
+01a3:     INV P1:0106 [I]:0000 [II]:0170 TOS[00ff,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm163 
+01a4: POPNULL P1:9c01 [I]:0000 [II]:0170 TOS[ff00,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm164 
+01a5:    PUSH P1:ff9c [I]:0000 [II]:0170 TOS[ffff,ffff] Z0 N1 C1 O0 SS(0)# F.test-common.asm165 
+01a8:   COMP2 P1:232c [I]:0000 [II]:0170 TOS[ff9c,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm166 
+01a9:   COMP2 P1:c023 [I]:0000 [II]:0170 TOS[0064,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm167 
+01aa:     JMP P1:01c0 [I]:0101 [II]:0100 TOS[ff9c,ffff] Z0 N1 C1 O0 SS(1) 
+01c0:    PUSH P1:0001 [I]:2f01 [II]:0000 TOS[ff9c,ffff] Z0 N1 C1 O0 SS(1)# __776.1401 
+01c3:    CAST P1:01ad [I]:7553 [II]:0000 TOS[0001,ff9c] Z0 N1 C1 O0 SS(2) 
+Successfull End01c6:    CAST P1:01bd [I]:000a [II]:0065 TOS[0001,ff9c] Z0 N1 C1 O0 SS(2) 
+
+01c9: POPNULL P1:6301 [I]:0000 [II]:0170 TOS[0001,ff9c] Z0 N1 C1 O0 SS(2) 
+01ca:    PUSH P1:0063 [I]:0800 [II]:0000 TOS[ff9c,ffff] Z0 N1 C1 O0 SS(1)# F.test-common.asm169 
+01cd:    CAST P1:0000 [I]:0170 [II]:012d TOS[0063,ff9c] Z0 N1 C1 O0 SS(2) 
+
+END of Code:(804 Opts)

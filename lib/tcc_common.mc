@@ -42,10 +42,10 @@ M PTSP2FREE \
 
 # In line code to set global software flags from current HW flags state.
 M SFLAGS \
-  @MC2M 0 PR_FN \
-  @MC2M 0 PR_FO \
-  @MC2M 0 PR_FC \
-  @MC2M 0 PR_FZ \
+  @MA2V 0 PR_FN \
+  @MA2V 0 PR_FO \
+  @MA2V 0 PR_FC \
+  @MA2V 0 PR_FZ \
   @JMPZ %0PR_SetZ \
   :%0RT_SetC \
   @JMPC %0PR_SetC \
@@ -55,16 +55,16 @@ M SFLAGS \
   @JMPN %0PR_SetN \
   @JMP %0PR_END \
   :%0PR_SetZ \
-  @MC2M 1 PR_FZ \
+  @MA2V 1 PR_FZ \
   @JMP %0RT_SetC \
   :%0PR_SetC \
-  @MC2M 1 PR_FC \
+  @MA2V 1 PR_FC \
   @JMP %0RT_SetO \
   :%0PR_SetO \
-  @MC2M 1 PR_FO \
+  @MA2V 1 PR_FO \
   @JMP %0RT_SetN \
   :%0PR_SetN \
-  @MC2M 1 PR_FN \
+  @MA2V 1 PR_FN \
   :%0PR_END
 
 # Imed value to SP Stack
@@ -352,8 +352,8 @@ M SRET \
         0
 :PrintStack
 	@POPI LReturn
-	@MM2M SSP Lptr
-	@MC2M 0 Lidx
+	@MV2V SSP Lptr
+	@MA2V 0 Lidx
 	@PRT "------Stack Dump:"
 	@PRTI Lptr
 	@PRTNL

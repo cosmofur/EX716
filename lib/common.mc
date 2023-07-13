@@ -81,6 +81,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollReadCharI 3
 =PollSetNoEcho 4
 =PollSetEcho 5
+=PollReadCINoWait 6
 =PollReadBlock 22
 
 
@@ -106,7 +107,7 @@ M ADD b$ADD %1
 M ADDS b$ADDS
 M ADDI b$ADDI %1
 M ADDII b$ADDII %1
-M SUB b$SUB %1        # Sub Tract %1 FROM top of stack (push A, Sub B == B-A not A-B)
+M SUB b$SUB %1          # (updated SUB ~ TOS=(TOS-P1))
 M SUBS b$SUBS
 M SUBI b$SUBI %1
 M SUBII b$SUBII %1
@@ -126,7 +127,7 @@ M JMP b$JMP %1
 M JMPI b$JMPI %1
 M CAST b$CAST %1
 M POLL b$POLL %1
-M RRTC b$RRTC
+  M RRTC b$RRTC
 M RLTC b$RLTC
 M RTR b$RTR
 M RTL b$RTL
@@ -136,8 +137,10 @@ M FCLR b$FCLR                  # the F group is for clearing, saving, and loadin
 M FSAV b$FSAV
 M FLOD b$FLOD
 
-M MC2M @PUSH %1 @POPI %2
-M MM2M @PUSHI %1 @POPI %2
+M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
+M MC2M @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
+M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
+M MM2M @PUSHI %1 @POPI %2  # Another way to say it, Move Variable to Variable
 M MMI2M @PUSHII %1 @POPI %2
 M MM2IM @PUSHI %1 @POPII %2
 M JMPNZ @JMPZ $%01 @JMP %1 :%01        # A != B
@@ -145,11 +148,13 @@ M JMPNZI @JMPZ $%01 @JMPI %1 :%0
 M JMPZI @JMPNZ $%01 @JMPI %1 :%0
 M JMPNC @JMPC $%0SKIP @JMP %1 :%0SKIP  # No Carry
 M JMPNO @JMPO $%01 @JMP %1 :%01        # No Overflow
-#  For this group, remeber the flags are based on the B-A 
-M JLT @JMPN %1                           # B < A  B is less than A
-M JLE @JMPN %1 @JMPZ %1                  # B <= A B is less than or equal to A
-M JGE @JMPZ %1 @JMPN $%01 @JMP %1 :%01   # B >= A B is greater or equal to A
-M JGT @JMPZ $%01 @JMPN $%01 @JMP %1 :%01 # B > A  B is greater than A
+#  For this group, remeber the flags are based on the B-A
+#  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
+#          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
+M JGT @JMPN %1                           # A=A-B, if B>A or A<=B JMP %1
+M JGE @JMPN %1 @JMPZ %1                  # A=A-B, if B>=A or A<B JMP %1
+M JLT @JMPZ %0Skp @JMPN %0Skp @JMP %1 :%0Skp   #  if B<A or A>=B JMP %1
+M JLE @JMPN %0Skp @JMP %1 :%0Skp         # A=A-B, if B<=A or A>B JMP %1
 M CALL @PUSH $%01 @JMP %1 :%01
 M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
 M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
@@ -190,8 +195,12 @@ M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
+# Print Top valine in Hex
+M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
 # Print 32bit number starting at address
 M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
+#
+M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
@@ -200,6 +209,8 @@ M PROMPT @PRT %1 @READI %2
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
+# Read character from keyboard with no wait if none ready.
+M READCNW @PUSH PollReadCINoWait @POLL %1 @POPNULL
 # Turn Keyboard echo off
 M TTYNOECHO @PUSH PollSetNoEcho @POLL %1 @POPNULL
 # Turn KeyBoard echo on
@@ -213,31 +224,28 @@ M StackDump @JMP %0J :%0J @PUSH 102 @CAST 0 @POPNULL
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
-M DECI @PUSH 1 @SUBI %1 @POPI %1
+M DECI @PUSHI %1 @SUB 1 @POPI %1
 # Adds two to variable
 M INC2I @PUSHI %1 @ADD 2 @POPI %1
 # Subtracts one from variable
-M DEC2I @PUSH 2 @SUBI %1 @POPI %1
+M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 
+# A way to impliment a 16 bit 2 comp ABS function
+M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
 # Disk IO Group
 M DISKSELI @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSEL @MC2M %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
+M DISKSEL @MA2V %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
 M DISKSEEKI @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEK @MC2M %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
+M DISKSEEK @MA2V %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
 # No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
-M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
+M DISKWRITEI @PUSH CastWriteBlock @CAST %1 @POPNULL
+M DISKWRITE @MA2V %1 %0_Store  @PUSH CastWriteBlock @CAST %0_Store  @POPNULL @JMP %0_Skip %0:Store 0 %0_Skip
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
 M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
-
-# The Following are some convient macros to simplify some of the most common logic and jump functions
-# Math Group,   3 params A, B and C all are simple memeory addresses or lables.
-# Unlike nor 'SUB' the notion of B From A makes more sense here.
-M ADDVBVV @PUSHI %1 @ADDI %2 @POPI %3
-M SUBVV2V @PUSH %2 @SUBI %1 @POPI %3
-# Math Group 3 Params A # and C to add/sub constant # to A and save to C
-M ADDVA2C @PUSHI %1 @ADD %2 @POPI %3
-M SUBAV2C @PUSH %2 @SUBI %1 @POPI %3
+M DISKREAD @JMP %0_jmp :%0_data 0 :%0_jmp @PUSH %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
+#M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
+#M DISKREADI @JMP %0_jmp :%0_data 0 :%0_jmp @PUSHI %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
+#M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
 
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
