@@ -453,6 +453,10 @@ WHILE_EQ_A       : Continue Loop if TOS equals constant A
 WHILE_NEQ_A      : Continue Loop if TOS does not equal constant A
 WHILE_EQ_V       : Continue Loop if TOS equals value at address V
 WHILE_NEQ_V      : Continue Loop if TOS does not equals value at address V
+WHILE_LT_A       : Continue Loop if TOS if A is LT TOS
+WHILE_LT_V       : Continue Loop if TOS if V is LT TOS
+WHILE_GT_A       : Continue Loop if TOS if A is GT TOS
+WHILE_GT_V       : Continue Loop if TOS if V is GT TOS
 
 The LOOP group:
 The LOOP group tests for the condition at the END of the loop (so it will do it at least once)
@@ -473,7 +477,7 @@ Use like
      @CASE_RANGE 2 6
           code
 	  @CBREAK
-     @CASE_REF VarValue
+     @CASE_I VarValue
           code
 	  @CBREAK
      @CDEFAULT          (Required)
@@ -483,7 +487,7 @@ Use like
 
 CASE A          : do block if Constant A equals TOS
 CASE_RAGE A B   : do block if constant A <= TOS <= constant B
-CASE_REF V      : do block if value at address V is equal TOS
+CASE_I V        : do block if value at address V is equal TOS
 CDEFAULT        : REQUIRED what to do if no Case matches.
 @ENDCASE        : Exit point of all blocks.
 

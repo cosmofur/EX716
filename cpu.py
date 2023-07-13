@@ -1083,34 +1083,45 @@ def GetQuoted(inline):
 
 
 def nextword(ltext):
+    # Nextword skips past any heading whitespace
+    # Ends when it find end of line, or more whitespace
+    # If it finds "+" or "-" it exits, but backspaced out so not to include them.
+    signstart=True
     size = 0
     result = ""
-    wbefore = True
-    wafter = False
-    spliter = " ,"            # We allow both " "s and "," as word splitters
-    for c in ltext:
+    maxlen=len(ltext)
+    if maxlen == 0:
+        return("",0)
+    c=ltext[size:size+1]
+    while (c== " " or c == ",")and (size < maxlen):
         size += 1
-        if c in spliter and wbefore:
-            continue
-        if c == '"' and wbefore:
-            # Quoted text is it's own thing.
+        c=ltext[size:size+1]
+    if size >= maxlen:   # all while space
+        return("",0)
+    if c == '"':
+        # Special case for quoted text
             (size, result) = GetQuoted(ltext)
             result = '"'+result+'"'
-            break
-        wbefore = False
-        if not (c in spliter) and wafter:
-            size = size - 1 if size > 0 else 0
-            break
-        if c in spliter and not (wafter):
-            wafter = True
-            continue
-        elif c in spliter and wafter:
-            continue
-        if not (wbefore) and not (wafter):
-            result += c
-
-    return (result, size)
-
+            return(result,size)
+    if c in "+-" and size < maxlen:  #handle case where start character IS sign character
+        result += c
+        size +=1
+        c=ltext[size:size+1]        
+    while ( not c in " ,+-" ) and size < maxlen:
+        result += c
+        size += 1
+        c = ltext[size:size+1]
+    # When we hit '+' or '-' return immeditly, but not if its the first character seen
+    if c in "+-":
+        return(result,size)
+    signstart=False
+    # cleanup tailing whitespace
+    while c in " ," and size < maxlen:
+        c = ltext[size:size+1]
+        size += 1
+    if size > maxlen:
+        return(result,maxlen)        
+    return(result,size-1)
 
 def Str2Word(instr):
     # Both 32 and 16 bit string numbers have same rules just diffrent lengths.
@@ -1179,7 +1190,7 @@ def DissAsm(start, length, CPU):
     #
     global watchwords,DebugOut
     StoreMem = CPU.memspace
-    i = start
+    i = start    
     while i < (start+length):
         OUTLINE = ""
         FoundLabels = ""
@@ -1205,6 +1216,7 @@ def DissAsm(start, length, CPU):
         else:
             addr = CPU.mb[0xff]
         DispRef = False
+        # We are trying to find if the Direct value, Indirect and double indirect values are Labled
         MaybeLabel = removecomments(getkeyfromval(i, FileLabels)).strip()
         if MaybeLabel != "":
             FoundLabels += " "+MaybeLabel
@@ -1214,7 +1226,7 @@ def DissAsm(start, length, CPU):
         MaybeLabel = removecomments(getkeyfromval(PI, FileLabels)).strip()
         if MaybeLabel != "":
             FoundLabels += " "+MaybeLabel
-        if optcode < len(OPTSYM) and optcode >= 0:
+        if optcode < len(OPTSYM) and optcode >= 0:    # This is making the assumption that value OptCodes are in the range 0 to len(OPTSYM), which really only valid in our speical case. 
             OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)" % \
                 (i, OPTSYM[optcode], P1, PI, PII,
                  tos, sft, ZF, NF, CF, OF, addr)
@@ -1236,6 +1248,7 @@ def DissAsm(start, length, CPU):
         else:
             i = i + OPTDICT[str(optcode)][2]
         rstring = ""
+        # When debugging we might setup some Watchs for changes in known memory locations.
         if len(watchwords) > 0:
             rstring = "Watch:"
             lastad = 0
@@ -1258,6 +1271,7 @@ def getkeyfromval(val, my_dict):
     matchlimit = 0
     if val == 0:
         return ""       # Zero is specal case. It almost never a usefull linenumber
+    # We are looking for the higest valued matching linenumber
     for key, value in sorted(list(my_dict.items()), reverse=True):
         if val == value:
             if "F." in key:
@@ -1299,13 +1313,13 @@ def hexdump(startaddr, endaddr, CPU):
         i += 16
         print(" ")
 
-
+# Allow use of the CPUPATH OS Enviroment variable to find library directories.
 def fileonpath(filename):
     CPUPATH = os.getenv('CPUPATH')
     if CPUPATH == None:
-        CPUPATH = ".:lib:test:."
+        CPUPATH = ".:lib:test:."     # Default is working directory and sub-dirs lib and test
     else:
-        CPUPATH = CPUPATH + ":."
+        CPUPATH = CPUPATH + ":."     # Make sure we include CWD
     for testpath in CPUPATH.split(":"):
         if os.path.exists(testpath+"/"+filename):
             return testpath+"/"+filename
@@ -1313,6 +1327,7 @@ def fileonpath(filename):
     sys.exit(-1)
 
 
+# This is how we tell if a lable been defined as global for local for library inserts.
 def IsLocalVar(inlable, LocalID, LORGFLAG):
     global GlobeLabels
     if inlable in GlobeLabels or LORGFLAG == GLOBALFLAG or inlable in FileLabels:
@@ -1347,8 +1362,6 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 # POP value from refrence stack...does not change newline
                 if Debug > 1:
                     print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
-                if GlobalLineNum == 326:
-                    print("Break Spot")
                 if (not MacroStack):
                     print("Break Here")
                     CPU.raiseerror(
@@ -1369,7 +1382,6 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 if Debug > 1:
                     print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
-                    print("Break Here too")
                     CPU.raiseerror(
                         "039b Macro Refrence Stack Underflow: %s" % line)
                 newline = newline + MacroStack[-1]
@@ -1467,7 +1479,7 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
             Result = 0
             newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)
 #            print("At %s adding key(%s)%s" % (GlobalLineNum,ActiveFile,newkey))
-            FWORDLIST.append([newkey, curaddress, modval])
+            FWORDLIST.append([newkey, curaddress, modval, "%s:%s"%(ActiveFile,GlobalLineNum)])
             # Lables that are not yet defined HAVE to be 16b
             ByteFlag = False
             LongWordFlag = False
@@ -1506,7 +1518,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     with open(wfilename, "r") as infile:
         if address > highaddress:
             highaddress = address
-        linecount = 0
         FBYTELIST = []
         ActiveMacro = False
         MacroVars = ['0']*10
@@ -1562,7 +1573,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         GetAnother = False
                         inline = infile.readline()
                         if not (address in FileLabels):
-                            NewLine = {"F."+filename +
+                            NewLine = {"F."+filename + ":" +
                                        str(GlobalLineNum): address}
                             FileLabels.update(NewLine)
                         if inline:
@@ -1652,10 +1663,10 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if Debug > 1:
                         print(">>> adding %s at location %s" %
                               (key, hex(address)))
-                    if ("F."+filename+str(GlobalLineNum) in FileLabels):
+                    if ("F."+filename+":"+str(GlobalLineNum) in FileLabels):
                         # We are creating an internal 'lable' for each line number.
                         # This will allow us to print in dissassembly mode approximate src line numbers.
-                        del FileLabels["F."+filename+str(GlobalLineNum)]
+                        del FileLabels["F."+filename+":"+str(GlobalLineNum)]
                     newitem = {IsLocalVar(key, LocalID, LORGFLAG): address}
                     FileLabels.update(newitem)
                     line = line[size+1:]
@@ -1672,19 +1683,34 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size:]
                     continue
                 elif line[0] == "." and IsOneChar:
-                    (value, size) = nextword(line[1:])
-                    if (value[0:1] == '$' or (not value[0:1].isdigit)):
-                        # We are alloing the possibility to set origin point to a lable
-                        # that has already been defined. (Like early in file do :main, then at end do . main at end)
-                        if value[1:] in FileLabels.keys():
-                            value = FileLabels[IsLocalVar(
-                                value[1:], LocalID, LORGFLAG)]
+                    (value, size) = nextword(line[1:])                    
+                    if value[0:1] == '$' or value[0:1].isalpha:
+                        if value[0:] in FileLabels.keys():
+                            value=FileLabels[IsLocalVar(
+                                value[0:], LocalID, LORGFLAG)]
                         else:
-                            CPU.raiseerror("040 Line %s, Origin point labels %s have to be defined before use:" % (
-                                GlobalOptCnt, value))
+                            CPU.raiseerror("040 Line %s, Can not set Memory Point to lable that not yet defined." %
+                                           (GlobalOptCnt, value))
+                    else:
+                        value=Str2Word(value)
+                    line = line[size+1:] # at this point value is #val of 1st lable or constant.
+                    # We should also allow labled or constant values be modified with +/- another lable or constant
+                    if line[0:1] == "+" or line[0:1] == "-":
+                        (modvalue,size) = nextword(line[1:])
+                        # Now see if the modifier is a lable or a constant.
+                        if (modvalue[0:1] == '$' or ( not modvalue[0:1].isdigit)):
+                            if modvalue[0:] in FileLables.keys():
+                                modvalue=FileLabels[IsLocalVar(
+                                    modvalue[1:], LocalID, LORGFLAG)]
+                            else:
+                                CPU.raiseerror("040a Line %s, Can not modify Memory Point by lable that not yet defined." %(GlobalOptCnt, modvalue))
+                        if (line[0:1] == "+"):
+                            value = Str2Word(value) + Str2Word(modvalue)
+                        else:
+                            value = Str2Word(value) - Str2Word(modvalue)
+                        line = line[size+1:]    # if there was a second lable or constant bump up line past it.
                     address = Str2Word(value)
                     Entry = address
-                    line = line[size+1:]
                     continue
                 elif line[0] == "L" and IsOneChar:
                     # Load a file into memory as a library, enable 'local' variables.
@@ -1693,7 +1719,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     GlobalLineNum = 0
                     oldfilename = ActiveFile
                     highaddress = address = loadfile(
-                        newfilename, address, CPU, LOCALFLAG, GlobalOptCnt)
+                        newfilename, address, CPU, LOCALFLAG, str(GlobalOptCnt)+filename)
                     ActiveFile = oldfilename
                     GlobalLineNum = HoldGlobeLine
                     line = line[size+1:]
@@ -1705,7 +1731,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     GlobalLineNum = 0
                     oldfilename = ActiveFile
                     highaddress = address = loadfile(
-                        newfilename, address, CPU, GLOBALFLAG, GlobalOptCnt)
+                        newfilename, address, CPU, GLOBALFLAG, str(GlobalOptCnt)+filename)
                     ActiveFile = oldfilename
                     GlobalLineNum = HoldGlobeLine
                     line = line[size+1:]
@@ -1775,7 +1801,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                 StoreMem[int(vaddress)] = CPU.lowbyte(v)
                 StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:
-                print(key, " is missing ", store)
+                print(key, " is missing (SYM,ADDR,Delta,LineNum)", store)
     if Debug > 1:
         i = 0
         print("Pre-Run Memory Dump:")
@@ -1999,7 +2025,7 @@ def debugger(FileLabels):
                                             newval = Str2Word(
                                                 FileLabels[cmdline[startnum:]])
                                         else:
-                                            newval = Str2Word(
+                                            Newval = Str2Word(
                                                 cmdline[startnum:])
                                     else:
                                         newval = int(cmdline[startnum:])
@@ -2155,7 +2181,7 @@ def debugger(FileLabels):
                 GlobalLineNum = 0
                 oldfilename = ActiveFile
                 highaddress = loadfile(
-                    ii, 0, CPU, LOCALFLAG, GlobalOptCnt)
+                    ii, 0, CPU, LOCALFLAG, str(GlobalOptCnt)+filename)
                 ActiveFile = oldfilename
                 GlobalLineNum = HoldGlobeLine
             else:
@@ -2169,7 +2195,7 @@ def debugger(FileLabels):
                 GlobalLineNum = 0
                 oldfilename = ActiveFile
                 highaddress = loadfile(
-                    ii, 0, CPU, GLOBALFLAG, GlobalOptCnt)
+                    ii, 0, CPU, GLOBALFLAG, str(GlobalOptCnt)+filename)
                 ActiveFile = oldfilename
                 GlobalLineNum = HoldGlobeLine
             else:
@@ -2201,6 +2227,7 @@ def debugger(FileLabels):
 def main():
     global Debug, CPU, GlobeLabels, watchwords, DebugOut
 
+    # Setup some test filelables
     DEFMEMSIZE = 0x10000
     Remote = False
     Debug = 0

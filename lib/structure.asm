@@ -205,11 +205,42 @@ M WHILE_NEQ_V \
   @JMPZ %V_ExitLoop \
   :%0_True
 
+M WHILE_GT_A \
+  %S \
+  :%V_LoopTop \
+  @CMP %1 \
+  @JMPN %V_ExitLoop \
+  :%0_True
+
+M WHILE_GT_V \
+  %S \
+  :%V_LoopTop \
+  @CMPI %1 \
+  @JMPN %V_ExitLoop \
+  :%0_True
+
+M WHILE_LT_A \
+  %S \
+  :%V_LoopTop \
+  @CMP %1 \
+  @JMPN %0_True \
+  @JMP %V_ExitLoop \
+  :%0_True
+
+M WHILE_LT_V \
+  %S \
+  :%V_LoopTop \
+  @CMPI %1 \
+  @JMPN %0_True \
+  @JMP %V_ExitLoop \
+  :%0_True
+
 M CONTINUE \
   @JMP %V_LoopTop
 
 M BREAK \
-  @JMP %V_ExitLoop
+  @JMP %V_ExitLoop \
+  P %V
 
 M ENDWHILE \
   @JMP %V_LoopTop \
@@ -280,10 +311,10 @@ M CASE_RANGE \
   @JMP %V_NextCase \
   :%0_INRange
 
-# Compares TOS with value at [%1] which 'maybe' dynamic.
-M CASE_REF \
+# Compares TOS with value at [%1] 
+M CASE_I \
    %S \
-   @CMPI %1 \
+  @CMPI %1 \
   @JMPNZ %V_NextCase
 
 # The only reason we need CDEFAULT is to balance the Macro Stack, which would underflow without.
