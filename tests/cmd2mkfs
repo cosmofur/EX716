@@ -1,0 +1,3 @@
+
+truncate -s 5000k floppy.img
+mkfs.fat -F 16 floppy.img -s 2 -v -v

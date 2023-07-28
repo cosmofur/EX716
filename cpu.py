@@ -692,10 +692,10 @@ class microcpu:
         # 17 print 16b hex value at address
         # 18 print 16b hex value at [address]
         # 19 print 32bit int stored at 4 bytes starting at address
-        # Disk Hardware Codes: A very primitive 'random IO Block' device, no filesystem, just addresses of 256 byte blocks.
+        # Disk Hardware Codes: A very primitive 'random IO Block' device, no filesystem, just addresses of 512 byte blocks.
         # 20 is selects Random Access storage device (disk) address is the ID of the device (disk 0 , disk 1 etc)
         # 21 is 'seek' identifies the record in the current disk.
-        # 22 is 'write block' address points to a block of memory (256 bytes) that will be written to disk
+        # 22 is 'write block' address points to a block of memory (512 bytes) that will be written to disk
         # 23 is sync, closes the device until the next write.
         # if 32 it will print the 32 bit integer value stored AT location of address
         # if 33 if will print the 32 bit integer value stored At location on Stack
@@ -774,12 +774,12 @@ class microcpu:
                 self.raiseerror(
                     "048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSeekDisk:
-            saddr = self.getwordat(address)*0x100
+            saddr = self.getwordat(address)*0x200
             DeviceFile.seek(saddr, 0)
         if cmd == CastWriteBlock:
             v = self.getwordat(address)
             if v < MAXMEMSP-0xff:
-                block = self.memspace[v:v+0xff]
+                block = self.memspace[v:v+512]
                 DeviceFile.write(bytes(block))
                 DeviceFile.flush()
             else:
@@ -823,7 +823,7 @@ class microcpu:
         # 3         Read keybord character saved it as 16 bit value at address, no echo. Some See list for 'special' keys
         # 4         Set TTY no-echo
         # 5         Set TTY ech
-        # 22        Requires Disk Device already initilized. Reads 256 Byte block from [address]
+        # 22        Requires Disk Device already initilized. Reads 512 Byte block from [address]
         #
         if address >= (MAXMEMSP-11):
             self.raiseerror(
@@ -909,7 +909,7 @@ class microcpu:
             if DeviceHandle != None:
                 v=self.getwordat(address)
                 if v <= MAXMEMSP-0xff:
-                    block = DeviceFile.read(256)
+                    block = DeviceFile.read(512)
                     tidx = v
                     j=0
                     for i in block:
@@ -1081,6 +1081,17 @@ def GetQuoted(inline):
             qsize += 1
     return (qsize if qsize == 0 else qsize + 1, outputtext)
 
+def nextwordplus(ltext):
+    # This version of nextword treats "+" and "-" as part of the word.
+    (result,rsize)=nextword(ltext)
+    while ((len(ltext)>rsize) and (ltext[rsize]=="+" or ltext[rsize]=="-")):
+        (nresult,nsize)=nextword(ltext[rsize:])
+        rsize+=nsize
+        result+=nresult
+        if len(ltext) < rsize:
+            break
+    return(result,rsize)
+    
 
 def nextword(ltext):
     # Nextword skips past any heading whitespace
@@ -1535,11 +1546,12 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
             if ActiveMacro and line == "":
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
                 if len(MacroLine) > 0:
-                    (PosParams, PosSize) = nextword(MacroLine)
+                    (PosParams, PosSize) = nextwordplus(MacroLine)
                     while (PosParams != "" and PosParams != "ENDMACENDMAC"):
                         MacroLine = MacroLine[PosSize:]
                         line = line + " " + PosParams
-                        (PosParams, PosSize) = nextword(MacroLine)
+                        (PosParams, PosSize) = nextwordplus(MacroLine)
+                    
                     # at this point line should contain the macro and its possible parameters
                     # Need to subsutute and %# that are not in quotes with varval
                     line = ReplaceMacVars(
@@ -1636,7 +1648,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         if cpos < len(line):
                             varcnt = 0
                             for i in range(MacroPCount[macname]):
-                                (key, size) = nextword(line[cpos:])
+                                (key, size) = nextwordplus(line[cpos:])
                                 varcnt += 1
                                 while (varcntstack[varbaseSP]+varcnt + 2) >= len(MacroVars):
                                     MacroVars.append(['0'])
@@ -1780,7 +1792,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
                     LineAddrList.append([address, GlobalLineNum, filename])
 #                    LineAddrList.sort(key = lambda x: x[1])
-                    (key, size) = nextword(line)
+                    (key, size) = nextwordplus(line)
                     line = line[size:]
                     if address > highaddress:
                         highaddress = address
