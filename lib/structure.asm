@@ -235,12 +235,18 @@ M WHILE_LT_V \
   @JMP %V_ExitLoop \
   :%0_True
 
+
+# Note the %P in both the Continue and Break Macros
+# is there because we expect (demand) that the Break/Continue
+# be part of an IF Block and we need to pop out of the Block first.
+# This is Less flexable than full languages support.
 M CONTINUE \
+  %P \
   @JMP %V_LoopTop
 
 M BREAK \
+  %P \
   @JMP %V_ExitLoop \
-  P %V
 
 M ENDWHILE \
   @JMP %V_LoopTop \

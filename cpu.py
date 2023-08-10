@@ -1684,9 +1684,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 elif line[0] == "=":
-                    (key, size) = nextword(line[1:])
+                    (key, size) = nextword(line[1:]) 
                     line = line[size+1:]
-                    (value, size) = nextword(line)
+                    (value, size) = nextwordplus(line)
                     if (not (value[0:len(value)].isdecimal())):
                         value = DecodeStr(value, address, CPU,
                                           LocalID, LORGFLAG, True)
@@ -1695,13 +1695,14 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size:]
                     continue
                 elif line[0] == "." and IsOneChar:
-                    (value, size) = nextword(line[1:])                    
-                    if value[0:1] == '$' or value[0:1].isalpha:
+                    (value, size) = nextword(line[1:])
+                    firstch=value[0:1]
+                    if firstch.upper() >= "A" and firstch.upper() <= "Z" and firstch != "b":
                         if value[0:] in FileLabels.keys():
                             value=FileLabels[IsLocalVar(
                                 value[0:], LocalID, LORGFLAG)]
                         else:
-                            CPU.raiseerror("040 Line %s, Can not set Memory Point to lable that not yet defined." %
+                            CPU.raiseerror("040 Line %s, Can not set Memory Point %s to lable that not yet defined." %
                                            (GlobalOptCnt, value))
                     else:
                         value=Str2Word(value)
