@@ -202,7 +202,6 @@ G MemResetBit
 :MemAlloc
 @POPI MemReturn
 @POPI R1
-@PRTLN "Mask Table" @PRTBINI MemTable @PRTNL
 @PUSHI R1 @PUSHI MemBlockSize
 @CALL DIV
 @ADD 1

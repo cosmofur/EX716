@@ -71,6 +71,33 @@ unsigned long long int OptCount=0;
         return ch;
     }
 #endif
+void disable_echo() {
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode;
+    GetConsoleMode(hStdin, &mode);
+    SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
+#else
+    struct termios tty;
+    tcgetattr(STDIN_FILENO, &tty);
+    tty.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+#endif
+}
+
+void enable_echo() {
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode;
+    GetConsoleMode(hStdin, &mode);
+    SetConsoleMode(hStdin, mode | ENABLE_ECHO_INPUT);
+#else
+    struct termios tty;
+    tcgetattr(STDIN_FILENO, &tty);
+    tty.c_lflag |= ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+#endif
+}
 
 int FileRead(char *fname) {
   FILE *fp = fopen(fname,"r");
@@ -314,27 +341,42 @@ void handleCast(int Param, int ParamI, int ParamII) {
     printf("Error No such Cast Code.\n");
     break;
   }
+  fflush(stdout);
 }
 void handlePoll(int Param,int ParamI,int ParamII) {
   int a,i,pc,c;
   char inlines[255];
+  #define PollReadIntI 1
+  #define PollReadStrI 2
+  #define PollReadCharI 3
+  #define PollSetNoEcho 4
+  #define PollSetEcho 5
+  #define PollReadCINoWait 6
+  #define PollReadBlock 22
+
   switch (topstack(PC)) {
-  case 1:
+  case PollReadIntI:
     scanf("%d",&a);
     put16atmem(Param,a);
     break;
-  case 2:
+  case PollReadStrI:
     fgets(inlines,254,stdin);
     pc=ParamI;
     for(i=0;i<strlen(inlines);i++) {      
       memory[pc]=(int)inlines[i];
     }
     break;
-  case 3:
+  case PollReadCharI:
     c=getc(stdin);
     put16atmem(Param,(int)c);
     break;
-  case 6:
+  case PollSetNoEcho:
+    disable_echo();
+    break;
+  case PollSetEcho:
+    enable_echo();
+    break;
+  case PollReadCINoWait:
     enable_nonblocking_input();
     while (1) {
       c=0;
