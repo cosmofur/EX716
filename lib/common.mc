@@ -163,7 +163,7 @@ M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-M PRTLN @JMP $%01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0M @CAST $%0NL @POPNULL
+M PRTLN @JMP %01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST %0M @CAST %0NL @POPNULL
 # Print simple test message with no variables no linefeed
 M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
 # Print value of variable
@@ -197,6 +197,8 @@ M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
 # Print Top valine in Hex
 M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
+# Print Top with Sign
+M PRTSGNTOP @DUP @POPI %0Store @PRTSGNI %0Store @JMP %0Skip :%0Store 0 :%0Skip
 # Print 32bit number starting at address
 M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
 #

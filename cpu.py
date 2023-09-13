@@ -259,6 +259,28 @@ class microcpu:
         fd = sys.stdin.fileno()
         new = termios.tcgetattr(fd)
         new[3] = new[3] | termios.ECHO          # lflags
+        print("CPU State: ",file=DebugOut)
+        i=CPU.pc
+        optcode = StoreMem[i]
+        P1 = CPU.getwordat(i+1)
+        PI = CPU.getwordat(P1)
+        PII = CPU.getwordat(PI)
+        ZF = 1 if CPU.flags & 1 else 0
+        NF = 1 if CPU.flags & 2 else 0
+        CF = 1 if CPU.flags & 4 else 0
+        OF = 1 if CPU.flags & 8 else 0
+        OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%1d N%1d C%1d O%1d" % \
+                (i, OPTSYM[optcode], P1, PI, PII,
+                 ZF, NF, CF, OF)
+        print(OUTLINE, file=DebugOut)
+        if (self.mb[0xff]-1 > 0):
+            for i in range(self.mb[0xff]-1):
+                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
+                print(" %04x" % (val),file=DebugOut,end="")
+            print(" ",file=DebugOut)
+            sys.stdout.flush()
+        else:
+            print("Stack Empty",file=DebugOut)
         try:
             termios.tcsetattr(fd, termios.TCSADRAIN, new)
         except:
@@ -803,14 +825,14 @@ class microcpu:
             print("\nEND of Code:(%d Opts)" % GlobalOptCnt)
             sys.exit(address)
         if cmd == 100:
-            Debug = (Debug + 1) if Debug < 2 else 0
+            Debug = 0 if Debug else 1
         if cmd == 102:
             print(" %04x:Stack ( %d):" %
-                             (self.pc, self.mb[0xff]-1), file=DebugOut)
+                             (self.pc, self.mb[0xff]-1), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+(0xff*self.mb[i*2+1])
-                print(" %04x" % (val),file=DebugOut)
-            print(" ")
+                print(" %04x" % (val),file=DebugOut,end="")
+            print(" ",file=DebugOut)
         sys.stdout.flush()
 
     def optPOLL(self, address):
@@ -1082,14 +1104,16 @@ def GetQuoted(inline):
     return (qsize if qsize == 0 else qsize + 1, outputtext)
 
 def nextwordplus(ltext):
-    # This version of nextword treats "+" and "-" as part of the word.
+    # This version of nextword treats "+" and "-" as part of the word. But has to end on " "
     (result,rsize)=nextword(ltext)
-    while ((len(ltext)>rsize) and (ltext[rsize]=="+" or ltext[rsize]=="-")):
-        (nresult,nsize)=nextword(ltext[rsize:])
-        rsize+=nsize
-        result+=nresult
-        if len(ltext) < rsize:
-            break
+    if ( len(ltext) > (rsize-1) ):
+        if ltext[rsize-1] != " ":   # We only care about +/- if the previous character was NOT space.
+            while ((len(ltext)>rsize) and (ltext[rsize]=="+" or ltext[rsize]=="-")):
+                (nresult,nsize)=nextword(ltext[rsize:])
+                rsize+=nsize
+                result+=nresult
+                if len(ltext) < rsize:
+                    break
     return(result,rsize)
     
 
@@ -2384,7 +2408,7 @@ def main():
     if Debug > 1:
         print("Start of Run: Debug: %s: Watch: %s" % (Debug, watchwords))
     if ListOut:
-        print("-------0--Max:%04x------" % (maxusedmem))
+        print("-------0--Max:%04x------" % (maxusedmem),file=DebugOut)
         DissAsm(0, maxusedmem, CPU)
     elif UseDebugger:
         debugger(FileLabels)
