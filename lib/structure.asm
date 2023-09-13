@@ -81,7 +81,7 @@ M IF_LE_S \
   :%0_True
 # IF_LE_A (A) = True if TOS is <=A
 M IF_LE_A \
-  @CMP %1\
+  @CMP %1 \
   @JMPZ %0_True \
   @JMPN %0_True \
   %S @JMP %V_ENDIF \
@@ -109,11 +109,9 @@ M IF_GE_A \
     :%0_True
 # True if TOS >= V
 M IF_GE_V \
-   @PUSHI %1 @SWP @CMPS @SWP @POPNULL \
-   @JMPN %0_True \
-   @JMPZ %0_True \
-    %S @JMP %V_ENDIF \
-    :%0_True
+  @PUSHI %1 @CMPS @POPNULL \
+  %S \
+  @JMPN %V_ENDIF
 # True if (A,B) A>B
 M IF_GT_S \
   @SWP @CMPS @SWP \
@@ -126,12 +124,47 @@ M IF_GT_A \
   @JMPN %0_True \
   %S @JMP %V_ENDIF \
   :%0_True
+M IF_GE_A \
+  @PUSH %1 @CMPS @POPNULL \
+  %S \
+  @JMPN %V_ENDIF
 # True if TOP > V
 M IF_GT_V \
   @PUSHI %1 @SWP @CMPS @SWP @POPNULL \
   @JMPN %0_True \
   %S @JMP %V_ENDIF \
   :%0_True
+# Here are a few of the IF structures based only on the existing flags
+# This way you can use the FLAG based CMP and still use the ease of the IF/ELSE/BLOCKs
+M IF_NEG \
+  @JMPN %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+#
+M IF_POS \
+  %S \
+  @JMPN %V_ENDIF
+#
+M IF_OVERFLOW \
+  @JMPO %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+#
+M IF_NOTOVER \
+  %S \
+  @JMPN %V_ENDIF
+#
+M IF_CARRY \
+  @JMPC %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
+#
+M IF_NOTCARRY \
+  %S \
+  @JMPC %V_ENDIF
+
+
+ 
 #
 # ELSE is common to all the IF type blocks.
 # Note how if we fall into the ELSE block from the code right above.
@@ -304,18 +337,13 @@ M CASE \
 # range tests in the CASE. Other wise we could miss the edge cases.
 M CASE_RANGE \
   %S \
-  @IF_GE_A %1 \
-    @PUSH %2 \
-    @SWP \
-    @IF_GE_S \
-       @SWP @POPNULL \
-       @JMP %0_INRange \
-    @ELSE \
-       @SWP @POPNULL \
-    @ENDIF \
-  @ENDIF \
+  @CMP %1 \
+  @JMPN %V_NextCase \
+  @CMP %2 \
+  @JMPN %V_InRange \
+  @JMPZ %V_InRange \
   @JMP %V_NextCase \
-  :%0_INRange
+  :%V_InRange
 
 # Compares TOS with value at [%1] 
 M CASE_I \

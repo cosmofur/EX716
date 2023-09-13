@@ -15,7 +15,7 @@ L div.ld
 M RANDOM_SEEN 1
 #
 # We will make public the function rnd16 and rndsetseed(N)
-G rnd16 G rndsetseed G rndint
+G rnd16 G rndsetseed G rndint G rndgetseed
 
 # Our main routen is rnd16 which just returns a random number betwen 0 and 32K
 :rnd16
@@ -52,6 +52,12 @@ G rnd16 G rndsetseed G rndint
 :rndsetseed
 @SWP    # As there is only one parameter, a swap is sufficent to preserve return addr.
 @POPI Seed
+@RET
+#
+# Returns the Current Seed for presevation and later re-runs
+:rndgetseed
+@PUSHI Seed
+@SWP
 @RET
 ENDBLOCK
 :Skip2End
