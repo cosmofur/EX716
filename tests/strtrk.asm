@@ -5,18 +5,18 @@ L div.ld
 L mul.ld
 L tangental.ld
 # List of major functions:
-# InitGame(Seed,Dificulty)
+# InitGame(Seed,Difficulty)
 # GetIndex(Index) Turns 1D Array Index of Gal Structure into memory pointer to same, with some error checks
 # DrawStarMap     Prints 8x8 galactic map
-# PrtShipStats    Begining of a Computer mode output, reports current ship and game info.
-# MarkSeen(Index), scans and saves to Galctic Map, local quad and the 8 around it.
+# PrtShipStats    Beginning of a Computer mode output, reports current ship and game info.
+# MarkSeen(Index), scans and saves to Galactic Map, local quad and the 8 around it.
 # PrintQuad(Index) Turns 1D index into X,Y map coordinates. 0-7,0-7 and print them.
-# DistSpace(X1,Y1,X2,Y2) Returns integer distacne between two points on 0-7,0-7 grid
-# ConfCurrentQuad(QuadIndex,SectorIndex) Setup Object array for Stars,StarBases and Klingns in named quad.
-# KlingonAI, Handles the logic for Klingons that are 'off screen' including attacking distant starbases
+# DistSpace(X1,Y1,X2,Y2) Returns integer distance between two points on 0-7,0-7 grid
+# ConfCurrentQuad(QuadIndex,SectorIndex) Setup Object array for Stars,StarBases and Klingons in named quad.
+# KlingonAI, Handles the logic for Klingons that are 'off screen' including attacking distant StarBases
 # Command1,  User Interface, prompts and calls related functions
 # ParseNumber(String)  Turns sting in [0-7][.[0-9]] format into two integers
-# CheckDock  Examins the current Enterprise location, and if StarBase is close will refule and repair
+# CheckDock  Examine the current Enterprise location, and if StarBase is close will refuel and repair
 
 
 
@@ -56,7 +56,7 @@ L tangental.ld
 # Phaser Dir        P#[.#]            Phaser Energy Weapon. Does limited damage, but can be fired often
 # Torpedo Dir       T#[.#]            Photon Torpedo, more damage, limited supply.
 # C                 C                 Computer, reports ship condition and Direction information for nearby targets
-# Deflector Shields D                 Toggles Deflector Shields, uses 10 energey per turn and shields up to 250 damage.
+# Deflector Shields D                 Toggles Deflector Shields, uses 10 energy per turn and shields up to 250 damage.
 #
 # Quadrant Data: Total of 8 bytes: Address(N) is BaseMem+(N<<3)
 # Fields
@@ -68,6 +68,22 @@ L tangental.ld
 # bar during initialization. Each call will print an addition N characters
 # when it hits end of string, it will just stop.
 :Title 
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+"--------------------------------------------------------------------------\n"
+b0
 "          ______ _______ ______ ______    _______ ______  ______ __  __ \n"
 "         / __  //__  __// __  // __  /   /__  __// __  / / ____// / / / \n"
 "        / / /_/   / /  / /_/ // /_/ /      / /  / /_/ / / /__  / /// \n"
@@ -247,7 +263,7 @@ L tangental.ld
          @ADD 1          # 2
          @SWP            # 2
          @POPS           # 0
-         @PUSH 1         # exit inner whileloop 1
+         @PUSH 1         # exit inner while loop 1
       @ELSE
          @POPNULL        # Already reached 3 Klingon's, so just repeated while 1
          @POPNULL
@@ -625,7 +641,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 . KlingHealthArray+64
 #
 # CheckExists(TestX,TestY,ArryPtr,SizeArray): 0 if not found, or value if found
-# Our Arry assumes 6 bytes or 3 words for each entry, cells 0,1 are the index values, cell 2 is not used here.
+# Our Array assumes 6 bytes or 3 words for each entry, cells 0,1 are the index values, cell 2 is not used here.
 :CheckExists
 @POPI ReturnCE
 @POPI SizeCE
@@ -800,7 +816,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
               @ENDIF
            @ELSE
                # No star base here, so Klingon needs to decide if it's going to stay in this Quad or move
-               # to an adjactent one...and how 'smart' it is can help it move towards the direction the 
+               # to an adjacent one...and how 'smart' it is can help it move towards the direction the 
                # Enterprise is currently. 'Smarter' Klingons will eventually swam the Enterprise if it
                # is not moving.
                @POPNULL
@@ -812,7 +828,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
                   # So we'll use RND(50)+Skill > 70 means head towards the Enterprise
                   @POPNULL
                   @PUSHI IndexQuad @DUP
-                  # Get the Klingons galatic poition
+                  # Get the Klingons galactic position
                   @AND 0x7 @POPI LSY 
                   @RTR @RTR @RTR @AND 0x7 @POPI LSX
                   @PUSH 50 @CALL rndint @ADDI KlingonsSkill
@@ -996,6 +1012,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
    @CALL SRSDisplay
    @CBREAK
 @CASE "P\0"       # Photon Torpedo
+   @PRT "On Entry" @StackDump
    @PUSH CmdString
    @ADD 1
    @CALL ParseNumber 
@@ -1009,7 +1026,13 @@ b7  b7  b7  b8  b8  b9  b9  b10
    @PUSH 8                                   # Sector is 8x8
    @PRTLN "Fire along: " @PRTI V1In @PRT "." @PRTI V2In @PRTNL
    @CALL FireTrack
-   @PRTLN "---------"
+   @PRTLN "---**----"
+   @PRT "On Exit" @StackDump
+   @CALL InterCept
+   @IF_NOTZERO
+      @POPNULL
+      @PRT "Hit Object"
+   @ENDIF
    @CBREAK
 @CASE "Q\0"
    @END
@@ -1025,7 +1048,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 # Function: ParseNumber(String)
 # We have a special number format N[.M]
 # N is in range 0-7 and M is 0-9
-# This is used is several cases like navagation and targeting.
+# This is used is several cases like navigation and targeting.
 # Returns [length,Val1, Val2].
 # If length == 0: No number found and val1=val2=0
 # If Val1=9 then Error was detected 
@@ -1045,7 +1068,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @POPI StrPtrPN
 @MA2V 0 Result1PN
 @MA2V 0 StatePN     
-@MV2V StrPtrPN StrLenPN         # Will use to calculate acutual LEN used later.
+@MV2V StrPtrPN StrLenPN         # Will use to calculate actual LEN used later.
 @PUSH 1
 @WHILE_NOTZERO
     @POPNULL
@@ -1055,7 +1078,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
     # State 0:  ptr while CharPN == WhiteSpace
     # State 1:  must be character in range 0-7
     # State 2:  Move to state 3 if ch="." else exit
-    # State 3:  must be characterin range 0-9, then exit
+    # State 3:  must be character in range 0-9, then exit
     # State 4:  Unexpected character, error exit.
     # State 5:  Successful Exit
     @PUSHI StatePN
@@ -1069,7 +1092,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
            @MA2V 1 StatePN    # Once a non-space is found move to state 1
        @ENDIF
        @CBREAK
-    @CASE 1                   # Valididate that 1st digit in range 0-7
+    @CASE 1                   # Validate that 1st digit in range 0-7
        @POPNULL
        @PUSHI CharPN
        @IF_LT_A "0\0"
@@ -1111,7 +1134,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
               @DUP            # Leave a copy on stack to be poped off later.
               @SUB "0\0"      # Valid character subtract ord("0") to get value
               @POPI Val2PN
-              @MA2V 5 StatePN   # Successfull, so good exit.
+              @MA2V 5 StatePN   # Successful, so good exit.
               @INCI StrPtrPN
           @ENDIF
        @ENDIF
@@ -1124,7 +1147,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
     @PUSHI StatePN
     @IF_GE_A 4
        @IF_EQ_A 4
-           @PRTLN "Syntax Error. Inproperly formated Number"
+           @PRTLN "Syntax Error. Improperly formatted Number"
            @MA2V 9 Val1PN
        @ENDIF
        @POPNULL
@@ -1143,21 +1166,21 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @RET
 #
 # Function CheckDock
-#     Checks to see if Enterprise is within 2 units of a starbase. Is so, restocks supplies.
+#     Checks to see if Enterprise is within 2 units of a StarBases. Is so, restocks supplies.
 :CheckDock
 #
-# Check if there Are any starbases in current quad and dock if close enough.
+# Check if there Are any StarBases in current quad and dock if close enough.
 :CheckDock
 @PUSHI EnterpQuad
 @CALL GetIndex
 @ADD BaseOffset
 @PUSHS
 @IF_NOTZERO
-   # THere's a base here. See where it is.
+   # There is a base here. See where it is.
    @ForIA2V IndexCD 0 ObjectArrayCount
        @PUSHI IndexCD  @RTL @DUP @RTL @ADDS # X*2+X*4 = X*6
        @ADD ObjectArray @DUP @POPI BasePtr
-       @ADD 4 @PUSHS   # See if this objet is the Starbase
+       @ADD 4 @PUSHS   # See if this object is the StarBases
        @IF_EQ_A BaseCode
           @PUSHI EnterSect @RTR @RTR @RTR @AND 0x7  # Enterprise's X
           @PUSHI EnterSect @AND 0x7                 # Enterprise's Y
@@ -1181,7 +1204,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 #
 #
 # function: FireTrack(Start_X,Start_Y,DIR1,DIR2,SCALE)
-# Based on shottype will fire either a phaserbeem or a Torpedo at DIR1.DIR2, and return list of points
+# Based on shot type will fire either a phaserbeem or a Torpedo at DIR1.DIR2, and return list of points
 :FireTrack
 @POPI ReturnFT
 @POPI ScaleFT
@@ -1189,8 +1212,8 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @POPI Dir1FT
 @POPI Y1FT
 @POPI X1FT
+@PRT "TOP FireTrack: " @StackDump
 # Turn DIR's into an angle
-:Break1A
 @PUSHI Dir1FT @PUSH 450 @CALL MUL  # Dir1*450 for a 0-3590 circle*10
 @PUSHI Dir2FT @PUSH 45 @CALL MUL   # Dir2*45 (4.5 degrees) for space between
 @ADDS
@@ -1198,8 +1221,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 # Calculate the Delta where the end points will be on the maps current scale
 
 @POPI AngleFT
-:Break2
-@PUSHI AngleFT @CALL COSD  # Cos(Angle)
+@PUSHI AngleFT @CALL COSD  # Cols(Angle)
 @PUSHI ScaleFT @CALL MUL   # * Scale
 @PUSH 1000 @CALL DIV @SWP @POPNULL
 @POPI DeltaXFT
@@ -1207,14 +1229,17 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @PUSHI ScaleFT @CALL MUL   # * Scale
 @PUSH 1000 @CALL DIV @SWP @POPNULL
 @POPI DeltaYFT
-:Break1
 
+# Save the original start points for later tests
+@MV2V X1FT X1OFT
+@MV2V Y1FT Y1OFT
 #
 # Set the End Point at edge of map at current sale
 @PUSHI X1FT @ADDI DeltaXFT @POPI X2FT
 @PUSHI Y1FT @ADDI DeltaYFT @POPI Y2FT
 #
 @MA2V 0 MisslePathSize   # Initilize point list
+:Break1
 # First change order so X2 > X1
 @PUSHI X2FT
 @IF_LT_V X1FT
@@ -1245,6 +1270,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @PRT "Line (" @PRTSGNI X1FT @PRT "," @PRTSGNI Y1FT @PRT ")-("
 @PRTSGNI X2FT @PRT "," @PRTSGNI Y2FT @PRTLN ")"
 #IF DX is zero then draw a vertical line, without slope
+@PRT "Loop1 FireTrack: " @StackDump
 @PUSHI DXFT
 @IF_ZERO
    @POPNULL
@@ -1255,6 +1281,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
       @INCI MisslePathSize
    @Next CurYFT
 @ELSE
+   @POPNULL
    @ForIV2V CurXFT X1FT X2FT
       @PUSHI CurYFT @PUSHI CurXFT
       @POPII PathPtr @INC2I PathPtr
@@ -1271,7 +1298,34 @@ b7  b7  b7  b8  b8  b9  b9  b10
       @PUSHI DYFT @RTL @ADDS @POPI DRIVFT # D = D + 2*dy
    @Next CurXFT
 @ENDIF
+@PRT "Loop 1 End FireTrack: " @StackDump
 @MA2V MisslePathData PathPtr   # Point to start of list
+# To make the line drawing faster, we had potentallyu reversed the order of the start and stop points
+# We need to test that and now reverse the order of the output so the src point is always the first.
+@PUSHII PathPtr
+@SUBI X1OFT
+@PUSHI PathPtr @ADD 2 @PUSHS
+@SUBI Y1OFT
+@ADDS
+@IF_NOTZERO     # This will only be true if the data doesn't match the point.
+   @POPNULL
+   @PUSHI PathPtr @ADDI MisslePathSize @ADDI MisslePathSize @POPI PathPtr2 # PathPtr2=PathPtr+2*Size
+   # Reverse the order.
+   @PUSHI MisslePathSize
+   @ADD 1
+   @WHILE_NOTZERO
+      @PUSHII PathPtr @PUSHII PathPtr2
+      @POPII PathPtr @POPII PathPtr2    # Swaps 
+      @INC2I PathPtr
+      @DEC2I PathPtr2
+      @SUB 1
+   @ENDWHILE
+   @POPNULL
+   @MA2V MisslePathData PathPtr   # Reset PathPtr at end
+@ELSE
+   @POPNULL
+@ENDIF
+@PRT "Loop 2 Top FireTrack: " @StackDump
 @ForIA2V CurYFT 0 MisslePathSize
    @PUSHII PathPtr @INC2I PathPtr
    @PRTSGNTOP @PRT ","
@@ -1279,17 +1333,65 @@ b7  b7  b7  b8  b8  b9  b9  b10
    @PRTSGNTOP @PRTNL
    @POPNULL @POPNULL
 @Next CurYFT
-@PRT "End: " @StackDump
+@PRT "Loop 2 Bottom FireTrack: " @StackDump
 @PUSHI ReturnFT
 @RET
 
-
+# Function InterCept
+# This loops though the MisslePathData and determins if it intercepst with any
+# objects in the ObjectArray/ObjectArrayCount
+:InterCept
+@POPI ReturnFI
+@MA2V 0 MatchFI
+@ForIA2V Index1FI 0 MisslePathSize
+   @PUSHI Index1FI @RTL
+   @ADD MisslePathData
+   @POPI MPPtrFI
+   @ForIA2V Index2FI 0 ObjectArrayCount            
+      @PUSH ObjectArray
+      @PUSHI Index2FI @RTL @ADDI Index1FI @RTL  # Index*6
+      @ADDS    # Location is Index*6 + ObjectArray
+      @POPI  OAPtrFI
+      @PUSHII MPPtrFI      # MissleData.X
+      @PUSHII OAPtrFI      # ObjectData.X
+      @SUBS
+      @IF_ZERO
+         @POPNULL
+         @INC2I MPPtrFI  @INC2I OAPtrFI     # Move to Y data
+         @PUSHII MPPtrFI      # MissleData.Y
+         @PUSHII OAPtrFI      # ObjectData.Y
+         @SUBS
+         @IF_ZERO
+            # Both X & Y matched, so we detected a collusion
+            @POPNULL
+            @PUSHI Index2FI  # Index of 
+            @PUSH 1        # 1 Marks 'hit'
+            @PUSHI ReturnFI
+            @RET
+         @ENDIF
+         @POPNULL
+      @ENDIF
+      @POPNULL
+   @Next Index2FI
+@Next Index1FI
+@PUSH 0 @PUSH 0 # 0 Means no hit
+@PUSHI ReturnFI
+@RET
+:ReturnFI 0
+:MatchFI 0
+:Index1FI 0
+:Index2FI 0
+:MPPtrFI 0
+:OAPtrFI 0
+     
+      
 # The furthest a weapan can fire is 10 units. So we will need a max of 20 words or 40 bytes of path info
 :MisslePathData
 0 0 0 0 0 0 0 0 0 0
 0 0 0 0 0 0 0 0 0 0
 :MisslePathSize 0
 :PathPtr 0
+:PathPtr2 0
 :ReturnFT 0
 :Dir1FT 0
 :Dir2FT 0
@@ -1298,6 +1400,8 @@ b7  b7  b7  b8  b8  b9  b9  b10
 :DeltaYFT 0
 :X1FT 0
 :X2FT 0
+:X1OFT 0
+:Y1OFT 0
 :Y1FT 0
 :Y2FT 0
 :DXFT 0
