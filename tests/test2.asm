@@ -1,6 +1,21 @@
-I common.mc
-@ForIA2B II 0 5
-@Next II
+=JMP 35
+=CAST 37
+=PUSH 1
+=POPNULL 6
+=CastPrintStrI 1
+M JMP b$JMP %1
+M CAST b$CAST %1
+M PUSH b$PUSH %1
+M POPNULL b$POPNULL
+M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
+M END @PUSH 99 @CAST 0
+
+
+
+:DS
+. DS+0x100
+:Main . Main
+@PRT "Hello World"
 @END
-:II 0
+
 
