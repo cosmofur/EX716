@@ -1,3 +1,4 @@
+L string.ld
 ################
 # lmath.ld library
 # Provide procedures to do basic math on 32 bit numbers
@@ -112,6 +113,7 @@ G DIV32
 G DIV32U
 G MUL32
 G i32tos
+G stoi32
 G INT2LONG
 G LONG2INT
 G PRT32BIN
@@ -388,6 +390,118 @@ G PRT32HEX
 :isExitReverseLoop
   @PUSHI isReturn1
   @RET
+#
+# stoi32 takes a stringptr and turns it into a 32 bit Ineger
+# stoi32(string, ptrto32)
+:stoi32
+@POPI ReturnSI
+@POPI IResultPtrSI
+@POPI StrPtrSI
+@MA2V 0 NegFlagSI
+@MOVE32AV 10 BaseSI
+@MOVE32AV 0 InvalueSI
+@MOVE32AV 1 MultiplierSI
+@PUSHI StrPtrSI @CALL strlen @POPI LengthSI
+@PUSHII StrPtrSI @AND 0xff
+@IF_EQ_A "-\0"
+   @POPNULL
+   @MA2V 1 NegFlagSI
+   @INCI StrPtrSI
+   @DECI LengthSI
+@ELSE
+   @POPNULL
+@ENDIF
+@PUSHI LengthSI
+@IF_GT_A 2
+   @POPNULL    #If Legnth < 3 then must be decimal
+   @PUSHII StrPtrSI @AND 0xff
+   @IF_EQ_A "0\0"
+      @POPNULL
+      @INCI StrPtrSI
+      @PUSHII StrPtrSI @AND 0xff
+      @SWITCH
+         @CASE "x\0"
+            @MOVE32AV 16 BaseSI
+	    @INCI StrPtrSI
+	    @DEC2I LengthSI
+	    @CBREAK
+	 @CASE "o\0"
+            @MOVE32AV 8 BaseSI
+	    @INCI StrPtrSI
+	    @DEC2I LengthSI
+	    @CBREAK
+	 @CASE "b\0"
+            @MOVE32AV 2 BaseSI
+	    @INCI StrPtrSI
+	    @DEC2I LengthSI
+	    @CBREAK
+	 @CDEFAULT
+            @MOVE32AV 10 BaseSI
+	    @DECI StrPtrSI
+	    @CBREAK
+      @ENDCASE
+   @ENDIF
+@ENDIF
+@POPNULL
+@PUSHI LengthSI
+@WHILE_NOTZERO
+   @POPNULL
+   @DECI LengthSI
+   @PUSHI StrPtrSI @ADDI LengthSI 
+   @PUSHS  @AND 0xff
+   @SUB "0\0"
+   @PUSHI BaseSI   # We can only do this because we know Bases is in range 2-16
+   @IF_EQ_A 16
+      @POPNULL
+      @IF_GE_A 10
+         @SUB 7
+      @ENDIF
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @POPI B16CHARSI      # Turn the 16 bit on stack to 32 bit in storage.
+   @INTI2LONG B16CHARSI B32CHARSI
+   # ( CharOrd, Multiplier, Result)
+   @PUSH B32CHARSI @PUSH MultiplierSI @PUSH L32RegSI
+   @CALL MUL32
+   @PUSH InvalueSI @PUSH L32RegSI @PUSH InvalueSI
+   @CALL ADD32
+   @PUSH BaseSI @PUSH MultiplierSI @PUSH MultiplierSI
+   @CALL MUL32
+   @PUSHI LengthSI
+@ENDWHILE
+@POPNULL
+@COPY32VIV InvalueSI IResultPtrSI
+@PUSHI NegFlagSI
+@IF_NOTZERO
+    # Invert and add 1 for 2s comp
+    @PUSHI IResultPtrSI @PUSH InvalueSI
+    @CALL INV32
+    @INT2LONG $$$1 L32RegSI
+    @PUSH InvalueSI
+    @PUSH L32RegSI
+    @PUSH L32RegSI
+    @CALL ADD32
+    @COPY32VIV L32RegSI IResultPtrSI
+@ELSE
+   @POPNULL
+@ENDIF
+@PUSHI ReturnSI
+@RET
+
+	    
+
+:ReturnSI 0
+:IResultPtrSI 0 0
+:StrPtrSI 0
+:NegFlagSI 0
+:BaseSI 0 0
+:InvalueSI 0 0
+:MultiplierSI 0 0
+:LengthSI 0
+:B16CHARSI 0
+:B32CHARSI 0 0
+:L32RegSI 0 0
 
 # AND function AND bits in A and B and returns result to C. A&B not modified.
 :AND32
