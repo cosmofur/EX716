@@ -141,6 +141,15 @@ M IF_NEG \
   %S @JMP %V_ENDIF \
   :%0_True
 #
+M IF_ZFLAG \
+  @JMPZ %0_True \  
+  %S @JMP %V_ENDIF \
+  :%0_True
+#
+M IF_NOTZF \
+  %S \
+  @JMPZ %V_ENDIF
+#
 M IF_POS \
   %S \
   @JMPN %V_ENDIF
