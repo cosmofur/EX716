@@ -163,7 +163,7 @@ def shandler(signum, frame):
     #
     msg = "Ctrl-c"
     print(msg, end="", flush=True)
-    debugger(FileLabels)
+    debugger(FileLabels,"")
 
 
 signal.signal(signal.SIGINT, shandler)
@@ -295,7 +295,7 @@ class microcpu:
             sys.exit(valid)
         else:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
-            debugger(FileLabels)
+            debugger(FileLabels,"")
 
     def loadat(self, location, values):
         i = location
@@ -1422,6 +1422,15 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 newline = newline + MacroStack[-1]
                 i += 1
                 continue
+            elif (line[i:i+1] == "W"):
+                # Insert into newline value that is second from top of refrense stack, do not pop it.
+                if Debug > 1:
+                    print("Refrence second from top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
+                if (not MacroStack or len(MacroStack) < 2 ):
+                    CPU.raiseerror(
+                        "039b Macro Refrence Stack Underflow: %s" % line)                
+                newline = newline + MacroStack[-2]
+                i += 1
             elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
                 varval = int(line[i:i+1])
                 if len(MacroVars) < varval:
@@ -1560,7 +1569,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
         varbaseSP = 0
         varbaseNext = 0
         varcntstack = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        SkipBlock = False
+        SkipBlock = 0
         varcnt = 0
         MacroLine = ""
         varpos = 0
@@ -1633,17 +1642,31 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     print("%04x: M-%s> %s : %s" %
                           (address, GlobalLineNum, line, MacroLine[:16]))
 
-            if SkipBlock:
+            if SkipBlock != 0:
                 while (line != ""):
                     (key, size) = nextword(line)
                     # Because it's not a single letter command, ENDBLOCK is a bit of a outsider.
-                    if key != "ENDBLOCK":
+                    # We allow embeded !/ENDBLOCK blocks, so we need to scan for three states
+                    # 1: Are we going down another depth of !'s
+                    # 2: Did we find an 'inner' ENDBLOCK
+                    # 3: Anything that's not outer ENDBLOCK is skipped.
+                    if key == "!":
+                        # Handle embeded or nested Blocks
+                        SkipBlock = SkipBlock + 1
+                        line = line[size:]                 
+                        continue
+                    elif key != "ENDBLOCK":
                         line = line[size:]
                         continue
                     else:
-                        SkipBlock = False
-                        line = line[size:]
-                        break
+                        SkipBlock = SkipBlock - 1
+                        if SkipBlock <= 0:
+                            line = line[size:]
+                            SkipBlock=0
+                            break                        
+                        else:
+                            line = line[size:]
+                            continue
                 continue
             elif line[:8] == "ENDBLOCK":
                 line = line[9:]
@@ -1780,7 +1803,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                 elif line[0] == "!" and IsOneChar:
                     (key, size) = nextword(line[1:])
                     if key in MacroData:
-                        SkipBlock = True
+                        SkipBlock =+ 1
                     line = line[size+1:]
                     continue
                 elif line[0] == "M" and IsOneChar:
@@ -1850,7 +1873,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     return highaddress
 
 
-def debugger(FileLabels):
+def debugger(FileLabels,passline):
     global InDebugger, LineAddrList, watchwords, breakpoints, tempbreakpoints, GlobalOptCnt, EchoFlag, GlobalLineNum, ActiveFile
     startrange = 0
     stoprange = 0
@@ -1872,7 +1895,12 @@ def debugger(FileLabels):
         else:
             sys.stdout.write(">>")
         sys.stdout.flush()
-        cmdline = input()
+        if passline != "":
+            print("processing %s\n" % passline)
+            cmdline=passline
+            passline=""
+        else:
+            cmdline = input()
         if EchoFlag:
             new[3] = new[3] & ~termios.ECHO
             try:
@@ -2292,6 +2320,7 @@ def main():
         pass
 
     atexit.register(readline.write_history_file, histfile)
+    firstcmd=""
     for i, arg in enumerate(sys.argv[1:]):
         if skipone:
             skipone = False
@@ -2300,6 +2329,8 @@ def main():
                 print("New Watchwords %s" % (watchwords))
             if prpcmd == 2:
                 breakafter.append(Str2Word(arg))
+            if prpcmd == 3:
+               firstcmd=arg 
         else:
             if arg == "-d":
                 Debug = Debug + 1
@@ -2319,10 +2350,15 @@ def main():
             elif arg == "-b":
                 skipone = True
                 prpcmd = 2
+            elif arg == "-e":
+                prpcmd = 3
+                skipone = True
+                UseDebugger = True
+                DebugOut=sys.stdout                
             elif arg == "-r":
                 Remote = not (Remote)
             elif arg == "-h":
-                print("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n")
+                print("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
@@ -2411,7 +2447,7 @@ def main():
         print("-------0--Max:%04x------" % (maxusedmem),file=DebugOut)
         DissAsm(0, maxusedmem, CPU)
     elif UseDebugger:
-        debugger(FileLabels)
+        debugger(FileLabels,firstcmd)
     else:
         while True:
             CPU.evalpc()
