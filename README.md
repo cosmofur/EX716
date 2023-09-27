@@ -259,10 +259,14 @@ The main logic loop of the assembler is:
                                      Labels and Macros do not share dictionary space, so you
                                      can reuse a Label and Macro with the same names, but mean different things.
                     'P' Print line:  Print rest of line for logging or debugging, at assembly time.
-                    '!' Macro     :  The 'only' conditional logic for the Macro system, if the named
+                    '!' Macro     :  Conditional logic for the Macro system, if the named
                                      Macro is already defined, then skip forward until ENDBLOCK, meant
                                      as a way to keep from loading a given Library file more than
-                                     once.
+                                     once. Read as If Macro does NOT exist, do this block
+	            '?' Macro     :  Conditional logic for Macro system, if the name Macro is NOT defined
+		                     then skip forward until matching ENDBLOCK. Reverse logic of '!' Best use
+				     case testing to see if some macro action has already taken place. Might
+				     also be useful in flow control logic.
                     'M' Macro line:  Define a new named Macro, line can be extended by ending with
                                      '\' and can contain variables based on parameters %1 to %9 You
                                      can use %0 adjacent with other text to create local unique

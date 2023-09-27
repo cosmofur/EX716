@@ -1650,7 +1650,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     # 1: Are we going down another depth of !'s
                     # 2: Did we find an 'inner' ENDBLOCK
                     # 3: Anything that's not outer ENDBLOCK is skipped.
-                    if key == "!":
+                    if key == "!" or key == "?":
                         # Handle embeded or nested Blocks
                         SkipBlock = SkipBlock + 1
                         line = line[size:]                 
@@ -1800,12 +1800,17 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     print("%04x: %s" % (address, line))
                     line = ""
                     continue
-                elif line[0] == "!" and IsOneChar:
+                elif line[0] == "!" and IsOneChar:    # If Macro does NOT exist, then eval until matching ENDBLOCK
                     (key, size) = nextword(line[1:])
                     if key in MacroData:
                         SkipBlock =+ 1
                     line = line[size+1:]
                     continue
+                elif line[0] == "?" and IsOneChar:     # If Macro exists, then skip until next ENDBLOCK
+                    (key, size) = nextword(linep[1:])
+                    if not(key in MacroData):
+                        SkipBlock =+ 1
+                    line = line[size+1:]
                 elif line[0] == "M" and IsOneChar:
                     # Macros
                     # name word word %v word
@@ -2394,7 +2399,7 @@ def main():
                 if zerocount < 10:
                     # If zero count is < 10 then just print it out
                     for j in range(0, zerocount):
-                        f.write("b0x%01x " % 0)
+                        f.write("$$x%01x " % 0)
                         if (((j + zerostart + 1) % 16) == 0):
                             f.write("# %04x - %04x\n" %
                                     (j + zerostart - 0xf, i))
@@ -2409,7 +2414,7 @@ def main():
             else:
                 # Not a zero, so just write normally
                 v = CPU.memspace[i]
-                f.write("b0x%02x " % v)
+                f.write("$$x%02x " % v)
                 if (((i + 1) % 16) == 0):
                     f.write("# %04x - %04x\n" % (i-0xf, i))
             i += 1
