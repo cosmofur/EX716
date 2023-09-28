@@ -123,6 +123,7 @@ int FileRead(char *fname) {
     while ( *ptr != '\0' && FinishQuick == 0) {
       switch(*ptr) {
       case 'b':
+      case '$':
 	temp=GetNextWord(&ptr);
 	if (PC > 0xfffe) {
 	  printf("Ran out of memory\n");
@@ -353,6 +354,7 @@ void handlePoll(int Param,int ParamI,int ParamII) {
   #define PollSetEcho 5
   #define PollReadCINoWait 6
   #define PollReadBlock 22
+  printf("Doing POLL Code: %04x(%0x4x)\n", topstack(PC), ParamI);
 
   switch (topstack(PC)) {
   case PollReadIntI:
@@ -829,7 +831,15 @@ int GetNextWord(char **Passptr) {
   if ( *ptr == 'b' ) {  // skip past any 'b'
     fwdptr++;
     ptr++;
-  }  
+  }
+  if ( *ptr == '$' ) { // Bytes defined by '$$'
+    fwdptr++;
+    ptr++;
+    if ( *ptr == '$') {
+    fwdptr++;
+    ptr++;
+    }
+  }
   
   fwdptr=ptr; // Look ahead to see if it's hex
   if ( strlen(fwdptr) < 2) {

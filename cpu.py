@@ -1004,9 +1004,10 @@ class microcpu:
         self.flags = 0
 
     def optFSAV(self, address):
-        self.optPUSH(self, self.flags)
+        CPU.optPUSH( self.flags)
 
     def optFLOD(self, address):
+        sp = self.mb[0xff]        
         if sp < 1:
             self.raiseerror("051 Stack underflow, OptFLOD")
         sp -= 1
@@ -2399,7 +2400,7 @@ def main():
                 if zerocount < 10:
                     # If zero count is < 10 then just print it out
                     for j in range(0, zerocount):
-                        f.write("$$x%01x " % 0)
+                        f.write("$$0x%01x " % 0)
                         if (((j + zerostart + 1) % 16) == 0):
                             f.write("# %04x - %04x\n" %
                                     (j + zerostart - 0xf, i))
@@ -2414,7 +2415,7 @@ def main():
             else:
                 # Not a zero, so just write normally
                 v = CPU.memspace[i]
-                f.write("$$x%02x " % v)
+                f.write("$$0x%02x " % v)
                 if (((i + 1) % 16) == 0):
                     f.write("# %04x - %04x\n" % (i-0xf, i))
             i += 1
