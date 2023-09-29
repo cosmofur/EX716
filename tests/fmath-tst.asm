@@ -119,8 +119,7 @@ L string.ld
    @MOVE32AV 0 Fract32IntSF
 @ENDIF
 @MA2V 0 ExponentSF
-#            321098765432109876543210  # 1<<23
-@MOVE32AV 0b0100000000000000000000000 Mask23SF 
+@MOVE32AV $$$0x800000 Mask32SF  # Equal to 1<<23
 @PUSH Value32IntSF
 @PUSH Mask32SF
 @CALL CMP32
@@ -134,7 +133,7 @@ L string.ld
    @PUSH Value32InfSF
    @PUSH Value32InfSF
    @PUSH Value32InfSF
-   @ADD32        # Value_integer *= 2
+   @CALL ADD32        # Value_integer *= 2
    @DECI ExponentSF
    # Do the While Condition
    @PUSH Value32IntSF
@@ -148,48 +147,91 @@ L string.ld
 @ENDWHILE
 @POPNULL
 # Now format the bit fields
-@MOVE32A2IV 0 FloatPtrSF   #Zero out result structure
+@MOVE32AV 0 FloatStoreSF   #Zero out result structure
 
 @PUSHI IsNegFlagSF
 @IF_NOTZERO
   @PUSH 0x8000
-  @POPII
-   
-   
-
-
-
-
-    # Adjust the exponent if the value is less than 1
-    while value_integer < (1 << 23):
-        value_integer *= 2
-i        exponent -= 1
-
-    # Create the 32-bit floating-point structure
-    sign_bit = 1 if is_negative else 0
-    exponent_bits = (exponent + 127) & 0xFF  # Bias by 127 and limit to 8 bits
-    fraction_bits = (value_integer - (1 << 23)) & 0x7FFFFF  # Remove the implied 1
-
-    # Combine the parts into a 32-bit integer
-    float32_bits = (sign_bit << 31) | (exponent_bits << 23) | fraction_bits
-
-    return float32_bits
-
-
-
+  @POPII FloatStoreSF  # First operation, we don't have to save old data
+@ENDIF
+@POPNULL
+#
+# Put the 8 bit Exponent in bits 0-6 of byte 0 split over to bit 7 of byte 1
+@PUSHI ExponentSF
+@ADD 127 @AND 0xff
+@FCLR       # Not frequently used, but clears all flags so we can be sure Carry is zero
+@RRTC
+@IF_CARRY    # Carry flag will have the old '1'st bit
+   @MA2V 0x80 PartInfoSF   # Save low bit on Exponent into high but of next byte
+@ELSE
+   @MA2V 0 PartInfoSF
+@ENDIF
+@AND 0x7f      # On stack should be the 0-7 of the Exponent, mask it so not to confict with NF
+@PUSHII FloatStoreSF
+@ORS
+@POPII FloatStoreSF
+@PUSHI PartInfoSF
+@POPII FloatStoreSF+1     # Put the extra bit at top of 2nd byte of 32b struct
+#
+# Now do     fraction_bits = (value_integer - (1 << 23)) & 0x7FFFFF  # Remove the implied 1
+@MOVE32AV 0 Fraction32BitsSF    # Zero it out to start
+@PUSH Value32IntSF
+@MOVE32AV $$$0x800000 Mask32SF      # We may already have this value here. eq 1<<23
+@PUSH Mask32SF
+@PUSH Fraction32BitsSF
+@CALL SUB32
+@MOVE32AV $$$0x7fffff Mask32SF      # Change Mask from 1<<23 to 0x7fffff
+@PUSH Fraction32BitsSF
+@PUSH Mask32SF
+@PUSH Fraction32BitsSF
+@CALL AND32                         # Fraction bits should now be lower 23 bits of 32 bit structure.
+#
+#
+@PUSH Fraction32BitsSF
+@PUSH FloatStoreSF
+@PUSH FloatStoreSF
+@CALL OR32                          # This should combine all the fields into one structure.
+#
+# Now copy the result into the Float storage passed in the call as FloatPtrSF
+@COPY32VIV FloatStoreSF FloatPtrSF
+@PUSHI ReturnSF
+@RET
+# Storage
+:ReturnSF 0
+:FloatPtrSF 0
+:InWhilePart 0
+:PowerLoop 0
+:StrPtrSF 0
+:IsNegFlagSF 0
+:WholeBuffSF 0
+:FractBuffSF 0
+:WholePtrSF 0
+:FractPtrSF 0
+:InWholePart 0
+:ExponentSF 0
+:PartInfoSF 0
+# Here is start of the 32 bit structures needed
+:Value32IntSF $$$0
+:Fract32IntSF $$$0
+:Ten32IntSF $$$0
+:Power32IntSF $$$0
+:Mask32SF $$$0
+:FloatStoreSF $$$0
+:Value32InfSF $$$0
+:Fraction32BitsSF $$$0
 
 #format of 32 bit number in memory
 
 
-Byte 0: Sign bit, exponent bits 7-4
-Byte 1: Exponent bits 3-0, fraction bits 15-11
-Byte 2: Fraction bits 10-6
-Byte 3: Fraction bits 5-0
+#Byte 0: Sign bit, exponent bits 7-4
+#Byte 1: Exponent bits 3-0, fraction bits 15-11
+#Byte 2: Fraction bits 10-6
+#Byte 3: Fraction bits 5-0
 
 # Example for number 123.45
-Byte 0: 0x40 (Sign bit: 0, exponent bits 7-4: 1000)
-Byte 1: 0x1E (Exponent bits 3-0: 1110, fraction bits 15-11: 000)
-Byte 2: 0x2C (Fraction bits 10-6: 001011)
-Byte 3: 0x59 (Fraction bits 5-0: 1011001)
+#Byte 0: 0x40 (Sign bit: 0, exponent bits 7-4: 1000)
+#Byte 1: 0x1E (Exponent bits 3-0: 1110, fraction bits 15-11: 000)
+#Byte 2: 0x2C (Fraction bits 10-6: 001011)
+#Byte 3: 0x59 (Fraction bits 5-0: 1011001)
 
 # Sign = 0, expoent = 10001110, Fraction 0000010111011001
