@@ -429,7 +429,6 @@ M STRSETI \
       @POPNULL
   @ELSE            # Hande case where moving backworks is better.
       @POPNULL
-      :Break2
       @PUSHI Length @RTR @POPI Base  # Length/2 (round down)
       @PUSHI SrcPtr @ADDI Length @SUB 1 @POPI SrcPtr
       @PUSHI DstPtr @ADDI Length @SUB 1 @POPI DstPtr
