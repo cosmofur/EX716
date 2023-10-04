@@ -1,5 +1,18 @@
 I common.mc
-L lmapth.ld
+L lmath.ld
+L string.ld
+#
+#
+# Process for opening an preparing a file for reading/writing.
+#
+# 1) Take a string in format [/dir[/dir...]/]filename.ext
+#    In loop check each dir part and starting with the 'Root' dir
+#    work way down until you get to the 'current' directory for that filename
+#    Do this by Setting G_CurrentDirBase to disk location where DIR's are stored
+#    Once you exausted /dirs/ do a test to see if filename.ext exists.
+#    If opening for writing, create a new entry and continue.
+#    If opening for reading, and filename.ext exisints, set it up as *FILE stucture.
+
 
 :INT_ActiveDisk -1       # Which Disk
 :INT_ActiveBlock -1      # What Block in disk
@@ -42,6 +55,99 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 :WordIdx 0
 :Scratch1 0
 :Scratch2 0
+# Vars for ParseFilePath
+:ReturnPFP 0
+:StrInPFP 0
+:StrPtrPFP 0
+:StrScratch1 0 0 0 0 0 0
+:StrScratch2 0 0 0 0 0 0
+:FormatFileName 0 0 0 0 0 0
+:FormatPtr 0
+:IsDIRFlag 0
+:DirEntryInt 0
+# ReadFile
+:RecordNumber
+:FileStructure
+. FileStructure+40
+
+:TestFileName "test.txt\0"
+:Main . Main
+@PUSH 0
+@PUSH MemBuff02
+
+@CALL INT_ReadBootSector
+
+@PUSH TestFileName
+@CALL ParseFilePath
+
+@END
+#
+
+# Function ParseFilePath(StrPtr):[<255=error code | *FILE]
+# Will step though the string, and identify DIR's part and Filename Part
+# Will walk the Directory entries for DIR's and the evaluate FileName Part
+:ParseFilePath
+@POPI ReturnPFP
+@POPI StrInPFP
+# Null the work space strings.
+@PUSH 0 @POPI StrScratch1
+@PUSH 0 @POPI StrScratch2
+@MV2V StrInPFP StrPtrPFP
+@PUSHII StrPtrPFP @AND 0xff # Put first character on stack
+# Loop until full path has been parsed.
+@WHILE_NOTZERO
+    @MA2V 0 IsDIRFlag    # Turn true is pattern is expected to be DIR
+    @ForIA2B FormatPtr 0 11 # Fill 8.3 Formated fileename with spaces.
+       @PUSH " \0"
+       @PUSH FormatPtr
+       @ADD FormatFileName
+       @POPS
+    @Next FormatPtr
+    @MA2V FormatFileName FormatPtr    # Set Pointer to start of filename buffer
+    @WHILE_NOTZERO     # Same test as outer loop.
+       @IF_EQ_A "/\0"   # If First character is '/' then skip it.
+          @POPNULL # End of block
+	  @PUSH 0
+	  @MA2V 1 IsDIRFlag# If it ends in a '/' it better be a DIR
+       @ELSE
+          @IF_EQ_A ".\0"   # When we see the '.' move the Pointer to Extenion part
+	     @PUSH FormatFileName
+	     @ADD 8
+	     @POPI FormatPtr
+	     # We don't save the '.' just skip forward now.
+	  @ELSE
+             @OR 0x2000     # Replace 0 in high byte with space hex20
+             @POPII FormatPtr
+             @INCI FormatPtr
+	  @ENDIF
+        @ENDIF
+	@POPNULL
+	@INCI StrPtrPFP
+	@PUSHII StrPtrPFP @AND 0xff   # Get next character
+     @ENDWHILE
+     @POPNULL
+     @MA2V 0 DirEntryInt
+     @PUSH 0
+     @WHILE_ZERO
+        @PUSH MemBuff01
+        @PUSH 0          # Disk ID 0
+	@PUSH DirEntryInt
+	@CALL INT_ReadDIREntry
+        @PUSH FormatFileName
+	@PUSH G_FileName
+	@PUSH 11
+	@CALL strncmp
+	@PRT "String Compair Filenames " @PRTS G_FileName @PRT " and " @PRTS FormatFileName @PRT " is :" @PRTTOP
+	@IF_ZERO
+	   @POPNULL
+	   @PUSH 1
+	@ENDIF
+     @ENDWHILE
+@ENDWHILE
+@END
+	
+
+        
 
 
 
@@ -95,15 +201,16 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 # Function INT_ReadBootSector(MemoryPtr,DiskID)
 # This will set the G_RootDirBlock to the Root Directory based on the Boot Sector
 :INT_ReadBootSector
-@POPI DiskID
+@POPI ReturnAddr
 @POPI MemoryPtr
+@POPI DiskID
 # If we're reading the BootSector ist a good idea to make sure the global
 # values about the disk are also updated.
 @MV2V DiskID INT_ActiveDisk
 @MA2V -1 INT_ActiveBlock
 @DISKSELI DiskID
 @DISKSEEK 0
-@DISREADI MemoryPtr
+@DISKREADI MemoryPtr
 # Fields we care about at this Point.
 #
 # Get from Boot structure the reserved_sectors + number_of_fasts*sectors_per_fat
@@ -208,6 +315,16 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 @PUSHI FileStructure @ADD 18 @PUSHS
 @SUB 2
 @RTL
+@PRT "Unfinished"
+@END
+
+:MemBuff01
+. MemBuff01+512
+:MemBuff02
+. MemBuff02+512
+0 0 0
+. Main
+
 
 
 

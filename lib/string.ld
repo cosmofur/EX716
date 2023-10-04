@@ -276,13 +276,11 @@ M STRSETI \
    @JMP isMainLoop
 @ENDIF
 @POPNULL
-@PUSHI NegFlag
-@IF_EQ_A 1
+@IF_EQ_VA NegFlag 1
    @PUSH "-" b0     # Push '-' to result
    @POPII StrPtr
    @INCI StrPtr
 @ENDIF
-@POPNULL
 :ReverseLoop
 @PUSHI RevIndex
 @IF_GT_A WorkBuff
@@ -359,14 +357,11 @@ M STRSETI \
    @POPNULL
    @PUSHI StrPtr @ADDI Length @PUSHS @AND 0xff  # Fetches StrPtr[Length]
    @SUB 0x30
-   @PUSHI Base
-   @IF_EQ_A 16  # Are we dealign with Hex numbers?
+   @IF_EQ_VA Base 16  # Are we dealign with Hex numbers?
       @POPNULL
       @IF_GE_A 10    # Was it > 10
          @SUB 7 # In which case we need to deail with the ASCII gab between '9' and 'A' down by 7
       @ENDIF
-   @ELSE
-      @POPNULL
    @ENDIF
    @PUSHI Multiplier
    @CALL MULU
