@@ -16,7 +16,6 @@ L string.ld
 
 :INT_ActiveDisk -1       # Which Disk
 :INT_ActiveBlock -1      # What Block in disk
-:INT_DirListStart -1     # First Block of current DIR structure.
 :G_FileName "12345678"
 :G_FileExtension "123"
 :G_FileAttributes b0
@@ -31,20 +30,36 @@ L string.ld
 :G_FileSize 0 0
 :G_RootDirBlock 0
 :G_CurrentDirBase 0
-:G_SectorsPerFat 0
-:G_NumberOfFats 0
-:G_FatStartSector 0
+:G_SectorsPerFAT 0
+:G_StartOfFATs 0
+:G_NumberOfFATs 0
+:G_SmallSectors 0  # For our use SmallSectors is same as Max Sector Count, limit to 32MB disks
+
+
 #
 # Set the global variabes up as global.
 #
 G INT_ActiveDisk
 G INT_ActiveBlock
-G G_FileExtension G G_FileAttributes G G_FileReserved
-G G_CreateTime10ms G G_CreateDate G G_LastAccess
-G G_FirstClusterHigh G G_LastModificationTime
-G G_LastModificationDate G G_FirstClusterLow
-G G_FileSize G G_RootDirBlock G G_CurrentDirBase 0
-G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
+G G_FileName
+G G_FileExtension
+G G_FileAttributes
+G G_FileReserved
+G G_CreateTime10ms
+G G_CreateDate
+G G_LastAccessDate
+G G_FirstClusterHigh
+G G_LastModificationTime
+G G_LastModificationDate
+G G_FirstClusterLow
+G G_FileSize
+G G_RootDirBlock
+G G_CurrentDirBase
+G G_SectorsPerFat
+G G_StartOfFATs
+G G_NumberOfFATs
+G G_SmallSectors
+
 #
 # Most of these functions are ment to be called directly and do not call each other.
 # So we can get away with some shared local variables.
@@ -65,6 +80,7 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 :FormatPtr 0
 :IsDIRFlag 0
 :DirEntryInt 0
+:MemoryBuffPtr 0
 # ReadFile
 :RecordNumber
 :FileStructure
@@ -77,18 +93,20 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 
 @CALL INT_ReadBootSector
 
+@PUSH MemBuff01
 @PUSH TestFileName
 @CALL ParseFilePath
 
 @END
 #
 
-# Function ParseFilePath(StrPtr):[<255=error code | *FILE]
+# Function ParseFilePath(MemBuff, StrPtr):[<255=error code | *FILE]
 # Will step though the string, and identify DIR's part and Filename Part
 # Will walk the Directory entries for DIR's and the evaluate FileName Part
 :ParseFilePath
 @POPI ReturnPFP
 @POPI StrInPFP
+@POPI MemoryBuffPtr
 # Null the work space strings.
 @PUSH 0 @POPI StrScratch1
 @PUSH 0 @POPI StrScratch2
@@ -99,7 +117,7 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
     @MA2V 0 IsDIRFlag    # Turn true is pattern is expected to be DIR
     @ForIA2B FormatPtr 0 11 # Fill 8.3 Formated fileename with spaces.
        @PUSH " \0"
-       @PUSH FormatPtr
+       @PUSHI FormatPtr
        @ADD FormatFileName
        @POPS
     @Next FormatPtr
@@ -111,41 +129,69 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 	  @MA2V 1 IsDIRFlag# If it ends in a '/' it better be a DIR
        @ELSE
           @IF_EQ_A ".\0"   # When we see the '.' move the Pointer to Extenion part
+             @POPNULL      # Get Rid of the '.'
 	     @PUSH FormatFileName
 	     @ADD 8
 	     @POPI FormatPtr
 	     # We don't save the '.' just skip forward now.
 	  @ELSE
+	     @AND 0xDF      # Changes Lowercase to Uppercase	  
              @OR 0x2000     # Replace 0 in high byte with space hex20
              @POPII FormatPtr
              @INCI FormatPtr
 	  @ENDIF
         @ENDIF
-	@POPNULL
 	@INCI StrPtrPFP
 	@PUSHII StrPtrPFP @AND 0xff   # Get next character
      @ENDWHILE
      @POPNULL
      @MA2V 0 DirEntryInt
      @PUSH 0
-     @WHILE_ZERO
-        @PUSH MemBuff01
+     #
+     @WHILE_ZERO        
+        @PUSHI MemoryBuffPtr
         @PUSH 0          # Disk ID 0
-	@PUSH DirEntryInt
+	@PUSHI DirEntryInt
+	:Break1
 	@CALL INT_ReadDIREntry
         @PUSH FormatFileName
 	@PUSH G_FileName
 	@PUSH 11
 	@CALL strncmp
-	@PRT "String Compair Filenames " @PRTS G_FileName @PRT " and " @PRTS FormatFileName @PRT " is :" @PRTTOP
+	:Break2
+	@PRT "\nLooking for: "
+	@PUSH FormatFileName
+	@CALL PrintFileName
+	@PRT " vs "
+	@PUSH G_FileName
+        @CALL PrintFileName
 	@IF_ZERO
+	   @PRT " MATCH FOUND."
+	   :BreakS
 	   @POPNULL
 	   @PUSH 1
+	@ELSE
+	   @PRT " No Match."
+	   @POPNULL
+	   @INCI DirEntryInt
+	   @PUSH 0
 	@ENDIF
      @ENDWHILE
 @ENDWHILE
+@PUSHI ReturnPFP
 @END
-	
+
+:PrintFileName
+@SWP
+@ForIA2B PFNIdx 0 11
+   @DUP @ADDI PFNIdx @PUSHS @AND 0xff
+   @POPI PFNCharB
+   @PRTS PFNCharB
+@Next PFNIdx
+@POPNULL
+@RET
+:PFNIdx 0
+:PFNCharB 0
 
         
 
@@ -158,9 +204,10 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 # copied off quickly.
 :INT_ReadDIREntry
 @POPI ReturnAddr
-@POPI MemoryPtr
-@POPI DiskID
 @POPI Entry
+@POPI DiskID
+@POPI MemoryPtr
+
 @IF_EQ_VV INT_ActiveDisk DiskID
 # No change.
 @ELSE
@@ -170,14 +217,14 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 @ENDIF
 #
 # We find the Disk Block by 'Entry/32'
-# We find the entry in the block by Mod(Entry,32)
+# We find the entry in the block by Entry & 0x1f
 #
-@PUSHI Entry @RTR @RTR @RTR @RTR @RTR
+@PUSHI Entry @RTR @RTR @RTR @RTR @RTR @ADDI G_CurrentDirBase
 @IF_EQ_V INT_ActiveBlock
 # No Change
 @ELSE
    @POPI INT_ActiveBlock
-   @ADDI G_CurrentDirBase
+   @PRT "Reading New Block: " @PRTHEXI INT_ActiveBlock
    @DISKSEEKI INT_ActiveBlock
    @DISKREADI MemoryPtr
 @ENDIF
@@ -199,12 +246,11 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 #
 #
 # Function INT_ReadBootSector(MemoryPtr,DiskID)
-# This will set the G_RootDirBlock to the Root Directory based on the Boot Sector
 :INT_ReadBootSector
 @POPI ReturnAddr
 @POPI MemoryPtr
 @POPI DiskID
-# If we're reading the BootSector ist a good idea to make sure the global
+# If we're reading the BootSector its a good idea to make sure the global
 # values about the disk are also updated.
 @MV2V DiskID INT_ActiveDisk
 @MA2V -1 INT_ActiveBlock
@@ -213,45 +259,42 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 @DISKREADI MemoryPtr
 # Fields we care about at this Point.
 #
-# Get from Boot structure the reserved_sectors + number_of_fasts*sectors_per_fat
+# BIOS Parameter Block Fields
+=BIOSReservedSectors 0x0e
+=BIOSNumberOfFATS 0x10
+=BIOSSmallSectors 0x13
+=BIOSSectorsPerFAT 0x16
 #
+# There are other BIOS Parameters that affect 'real' disks and should be confirmed
+# to make sure the disk is 'valid' but we'll be foolishly trusting for now.
+
 @PUSHI MemoryPtr
-@DUP @ADD 14          # Offset of Reserved Sectors
-@PUSHS @AND 0xff      # Byte Value
-@POPI Scratch1
 #
-@DUP @ADD 15          # Number of FATs
-@PUSHS @AND 0xff      # Byte Value
+@DUP @ADD BIOSReservedSectors @PUSHS @AND 0xff
+@POPI G_StartOfFATs
 #
-@DUP @ADD 20          # Sectors per FAT
-@PUSHS
+@DUP @ADD BIOSNumberOfFATS @PUSHS @AND 0xff
+@POPI G_NumberOfFATs
 #
-@CALL MUL
-@ADDI Scratch1       # Result is now Root Dir Sector
-@POPI G_CurrentDirBase
+@DUP @ADD BIOSSmallSectors @PUSHS
+@POPI G_SmallSectors                   # as we are sticking to 'old' fat16, this is total number of sectors.
 #
-@DUP @ADD 20         # Where the FAT tables start
-@PUSHS
-@POPI G_SectorsPerFat
+@DUP @ADD BIOSSectorsPerFAT @PUSHS
+@POPI G_SectorsPerFAT
 #
-@DUP @ADD 15
-@PUSHS
-@POPI G_NumberOfFats # How many fat table records.
+# We use the above to calculate the first sector of the Root Directory
+@PUSHI G_SectorsPerFAT @PUSHI G_NumberOfFATs @CALL MUL
+@ADDI G_StartOfFATs
+@DUP @POPI G_CurrentDirBase @POPI G_RootDirBlock
 #
-# We have to calculate the FatStartSector as its not given on its own.
-@DUP 14
-@PUSHS @AND 0xff     # number Reserved Sectors
-@PUSHI G_NumberOfFats
-@PUSHI G_SectorsPerFat
-@CALL MUL            # FatStartSector=Reserved+NumberOfFats*SectorsPerFat
-@POPI G_FatStartSector
+
 @POPNULL
 @PUSHI ReturnAddr
 @RET
 #
 #
 :INT_CreateFileRecord(MemoryPtr)
-# Copies the current Global varaibale to a FileStructure which will be used to manage that file.
+# Function Copies the current Global varaibale to a FileStructure which will be used to manage that file.
 :INT_CreateFileRecord
 @POPI ReturnAddr
 @POPI MemoryPtr
@@ -363,3 +406,21 @@ G G_SectorsPerFat G G_NumberOfFats G G_FatStartSector
 #  40    | 8 | File system type (usually `FAT16`)
 #  48    | 446 | Bootstrap code
 # 510    | 2 | End of sector marker (usually `0xAA55`)
+#
+# From example DISK01
+# 0xb    :  00,02    Word: Bytes Per Sector (512=0x0200) 
+# 0xd    :  04       Byte: Sectors Per Cluster
+# 0xe    :  04,00    Word: Reserved Sectors ( 4 ) G_BIOSReservedSectors
+# 0x10   :  02       Byte: Number of FAT tables (2)
+# 0x11   :  00,02    Word: Max Entries in ROOT Dir (512)
+# 0x13   :  00,80    Word: Number Sectors (0x8000)
+# 0x15   :  f8       Byte: Media Type        N.A.
+# 0x16   :  20,00    Word: Sectors Per FAT (0x20)
+# 0x18   :  20,00    Word: Sectors Per Track N.A. (0x20)
+# 0x1A   :  02,00    Word: Number of Heads N.A. (0x2)
+# 0x1C   :  0,0,0,0  DWord: Hidden Sectors. N.A. ($$$00)
+#
+# From this we can determin the values we should be calculating
+# G_FatStartSector = Reserved Sectors + 1
+# G_RootDirBlock = Reserved Sectors + (Number of FAT Tables) * ( Sectors Per FAT )
+#       0x44     = 4                +      2                 *   0x20

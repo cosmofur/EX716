@@ -235,16 +235,15 @@ M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 # A way to impliment a 16 bit 2 comp ABS function
 M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
 # Disk IO Group
-M DISKSELI @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSEL @MA2V %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
-M DISKSEEKI @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEK @MA2V %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
-# No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
-M DISKWRITEI @PUSH CastWriteBlock @CAST %1 @POPNULL
-M DISKWRITE @MA2V %1 %0_Store  @PUSH CastWriteBlock @CAST %0_Store  @POPNULL @JMP %0_Skip %0:Store 0 %0_Skip
+M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
+M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
+M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST :%0_LOC 0 @POPNULL
+M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
+M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteBloc @CAST :%0_LOC 0 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
-M DISKREAD @JMP %0_jmp :%0_data 0 :%0_jmp @PUSH %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
+M DISKREAD @PUSH PollReadBlock @POLL %1 @POPNULL
+M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadBlock @POLL :%0_LOC 0 @POPNULL
 #M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
 #M DISKREADI @JMP %0_jmp :%0_data 0 :%0_jmp @PUSHI %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
 #M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL

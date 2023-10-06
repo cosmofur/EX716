@@ -228,6 +228,8 @@ M STRSETI \
       @POPRETURN
       @RET
    @ENDIF
+   @INCI SrcPtr
+   @INCI DstPtr
    @POPNULL
    @POPNULL
 @Next Index

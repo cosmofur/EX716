@@ -213,6 +213,8 @@ def validatestr(instr, typecode):
 class microcpu:
 
     cpu_id_iter = itertools.count()
+    DiskPtr = -1
+    
 
     def switcher(self, optcall, argument):
         default = "Invalid call"
@@ -789,20 +791,24 @@ class microcpu:
             sys.stdout.write("%s" % v)
         if cmd == CastSelectDisk:
             if DeviceHandle == None:
-                DeviceHandle = "DISK%02d.disk" % self.getwordat(address)
+                DeviceHandle = "DISK%02d.disk" % address
             try:
                 DeviceFile = open(DeviceHandle, "r+b")
+                self.DiskPtr = 0
+                DeviceFile.seek(0,0)
             except IOError:
                 self.raiseerror(
                     "048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSeekDisk:
-            saddr = self.getwordat(address)*0x200
-            DeviceFile.seek(saddr, 0)
+            self.DiskPtr = address*0x200
+            DeviceFile.seek(self.DiskPtr, 0)
         if cmd == CastWriteBlock:
-            v = self.getwordat(address)
+            v = address
             if v < MAXMEMSP-0xff:
                 block = self.memspace[v:v+512]
+                DeviceFile.seek(self.DiskPtr)
                 DeviceFile.write(bytes(block))
+                self.DiskPtr =+ 0x200
                 DeviceFile.flush()
             else:
                 self.raiseerror(
@@ -810,6 +816,7 @@ class microcpu:
         if cmd == CastSyncDisk:
             if DeviceHandle != None:
                 DeviceFile.close()
+                self.DiskPtr = -1
                 DeviceHandle = None
         if cmd == CastPrint32I:
             iaddr = address
@@ -929,8 +936,9 @@ class microcpu:
                 self.putwordat(address+2, (ord(c[2])))            
         if cmd == PollReadBlock:
             if DeviceHandle != None:
-                v=self.getwordat(address)
+               v=address
                 if v <= MAXMEMSP-0xff:
+                    DeviceFile.seek(self.DiskPtr,0)
                     block = DeviceFile.read(512)
                     tidx = v
                     j=0
