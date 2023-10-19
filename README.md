@@ -153,6 +153,9 @@ A Physical description of a non existent CPU:
              JMPI,
                 Unconditional Jump to address stored AT the address PRM points to.
 
+             JMPS,       1 byte opcode, No PRM
+                Unconditional Jump to address on top of stack. Used mostly for Call/Ret
+
              NOP,        1 byte opcode, No PRM
                 No Instruction, skips PC to next instruction, does take some clock cycles so can be
                 used for timing.
@@ -228,16 +231,17 @@ The main logic loop of the assembler is:
     Until End of File:
           If processing a macro:
              scan it for % variables not in quotes and replace them with text from parameters.
-	     There is specail meaning for variables %S and %P used for stack logic.
+	     There is specail meaning for variables %S, %V and %P used for stack logic.
              make it the current 'line'
           else
              read in one or more lines from input (if line ends with \ append following line)
+             If you use \ you can not mix comments on any but the last line.
 
           strip line of unnecessary white space and comments.
           Parse the line, split it into words and look for:
                 'Letter' Codes that define assembler directions or definitions.
                 If word starts with a '@' macro, put it into the Macro Queue and loop back to beginning.
-                If word is a label or number string, turn into value and store in memory.
+                If word is a label or number string, turn into value and store in current memory pointer.
                 Numeric data, in decimal, octal, hex or binary formats.
                 Quoted text is saved as bytes with some support for common \'s codes like \n for newline.
 
@@ -251,6 +255,8 @@ The main logic loop of the assembler is:
 				     A common notation to use is:
 				     :Main . Main
 				     Which will make 'Main' the entry point for the program.
+                                     But remember to not put any addtional '.' markers as the lastone becomes the entry point.
+
                     'I' filename  :  Imports a file as if it was part of the current input stream.
                     'L' filename  :  Loads a Library, all local labels are hidden, see 'G' command
                     ':' Label     :  Unlike others assemblers labels are identified with a proceeding ":"
@@ -287,7 +293,9 @@ The main logic loop of the assembler is:
                                      Labels CAN NOT hold a full 32 bit number. But a 16b label can point to where in
                                      memory a 32b number is stored.
 
-                    "text"           ASCII text will be copied to memory as bytes, you have to add a "b0" to NULL terminate.
+                    "text"           ASCII text will be copied to memory as bytes, 
+                                     you have to add a b0 or include '\0' to NULL terminate.
+
 
 And that's it! All the opcodes along with basic common quality of life macros, are defined in
  the Include file named common.mc combined with  CPU.json
@@ -338,7 +346,9 @@ The following Macros are in commmon.mc and provide basic IO, but this is the emu
 
 @PRTIC %1    : Like PRTI but padded with a space before and after the number.
 
-@PRTS %1     : Print the null terminated ASCII string starting at address [%1:...] b0
+@PRTS %1     : Print the null terminated ASCII string starting at address 
+
+@PRTSI %1    : Print the null terminated ASCII script starting at [address]
 
 @PRTSGN %1   : Print the Signed decimal the value stored at address [%1] no spaces added.
 
@@ -346,11 +356,13 @@ The following Macros are in commmon.mc and provide basic IO, but this is the emu
 
 @PRTHEXI %1  : Print the 16b hex value at address [%1]
 
+@PRTTOP      : Prints the Top of Stack
+
+@PRTHEXTOP   : Print Top of Stack in Hex
+
 @PRTNL       : Print just a linefeed
 
 @PRTSP       : Print Just a space.
-
-@PRTSTRI     : More verbose was to say PRTS
 
 @PRTREF %1   : Print the constant given, good for printing actual address of labels
 
@@ -433,6 +445,7 @@ IF_EQ_S    : True if TOS and SFT are equal
 IF_EQ_A    : True if TOS and Constant A are equal
 IF_EQ_V    : True if TOS and value stored at address V are equal
 IF_EQ_VV   : True if value stored at address V1 is equal to value at address V2
+IF_EQ_VA   : True if value stores at Address V is equal to Constant value A
 IF_LT_S    : True if SFT < TOS
 IF_LT_A    : True if TOS < Constant A
 IF_LT_V    : True if TOS < value stored at address V
@@ -623,7 +636,7 @@ The CPU is too primative to directly work with a real disk or filesystem, but we
 disk IO tools. In the validate folder are some code examples that use this.
 
 We have to imagine the hard disks attacheed to this CPU are primative 1970's disk packs. Each disk in the
-pack holds a max of 16MB of data, broken up in 64K of 256 byte blocks. All read and wrires are directly
+pack holds a max of 32MB of data, broken up in 64K of 512 byte blocks. All read and wrires are directly
 at the block level, so to something like apppending a variable length string to a text file will require some
 addditional string processing as well as buffering the block being written to.
 
@@ -632,6 +645,6 @@ Code Macros
 @DISKSELI V  Selects which disk to use with a variable.
 @DISKSEEK A  Moves the Disk Head to a Block on that disk. 0-0xffff per disk.
 @DISKSEEKI V Same but with Id being a variable.
-@DISKWRITE V writes the 256 byte buffer pointed to by V
-@DISKREADI V read a 256 byte buffer from disk, at address[V] is the address to write to
-@DISKREAD A read a 256 byte buffer from disk, A points directly to where the buffer starts in memory
+@DISKWRITE V writes the 512 byte buffer pointed to by V
+@DISKREADI V read a 512 byte buffer from disk, at address[V] is the address to write to
+@DISKREAD A read a 512 byte buffer from disk, A points directly to where the buffer starts in memory

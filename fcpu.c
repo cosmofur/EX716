@@ -354,8 +354,6 @@ void handlePoll(int Param,int ParamI,int ParamII) {
   #define PollSetEcho 5
   #define PollReadCINoWait 6
   #define PollReadBlock 22
-  printf("Doing POLL Code: %04x(%0x4x)\n", topstack(PC), ParamI);
-
   switch (topstack(PC)) {
   case PollReadIntI:
     scanf("%d",&a);
@@ -418,9 +416,6 @@ int doeval(int startpc) {
   
   while(LoopForever == 1 )
     {
-      if ( PC == 0x185f ) {
-	printf("Place to put break");
-      }
       OptCount++;
       Param=get16memat(PC+1);
       ParamI=get16memat(Param);
@@ -718,6 +713,9 @@ int doeval(int startpc) {
        case OptValJMPI:
 	 PC=ParamI;
 	 break;
+       case OptValJMPS:
+	 PC=popstack(OptCode);
+	 break;	 	   
        case OptValCAST:
 	 handleCast(Param,ParamI,ParamII);
 	 Opsize=3;

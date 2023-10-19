@@ -46,17 +46,18 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =JMPO 34
 =JMP 35
 =JMPI 36
-=CAST 37
-=POLL 38
-=RRTC 39
-=RLTC 40
-=RTR 41
-=RTL 42
-=INV 43
-=COMP2 44
-=FCLR 45
-=FSAV 46
-=FLOD 47
+=JMPS 37
+=CAST 38
+=POLL 39
+=RRTC 40
+=RLTC 41
+=RTR 42
+=RTL 43
+=INV 44
+=COMP2 45
+=FCLR 46
+=FSAV 47
+=FLOD 48
 
 # Cast and Poll Codes
 =CastPrintStrI 1
@@ -125,6 +126,7 @@ M JMPC b$JMPC %1
 M JMPO b$JMPO %1
 M JMP b$JMP %1
 M JMPI b$JMPI %1
+M JMPS b$JMPS
 M CAST b$CAST %1
 M POLL b$POLL %1
   M RRTC b$RRTC
@@ -158,7 +160,8 @@ M JLE @JMPN %0Skp @JMP %1 :%0Skp         # A=A-B, if B<=A or A>B JMP %1
 M CALL @PUSH $%01 @JMP %1 :%01
 M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
 M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
-M RET @POPI $%0D @JMPI $%0D :%0D 0
+#M RET @POPI $%0D @JMPI $%0D :%0D 0
+M RET @JMPS
 M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.

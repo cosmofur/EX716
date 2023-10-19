@@ -339,7 +339,7 @@ class microcpu:
         # Saves at top of stack the Acum value. Does not change stack.
         # Address zero is always top, a given index >0 will try to save value at that stack depth
         CTPS = self.mb[0xff]
-        if address >= MAXHWSTACK:
+        if address > MAXHWSTACK:
             self.raiseerror(
                 "002 Invalide Buffer Refrence %d, StoreAcum" % address)
         if address == 0:
@@ -699,6 +699,11 @@ class microcpu:
         newaddress = self.getwordat(address)
         self.pc = newaddress
 
+    def optJMPS(self,address):
+        newaddress = self.fetchAcum(0)
+        self.mb[0xff] -= 1
+        self.pc = newaddress
+        
     def optCAST(self, address):
         global Debug, DeviceHandle, DeviceFile
         # In the future 'CAST' will related to networking, for now it will just write to stdout
@@ -936,7 +941,7 @@ class microcpu:
                 self.putwordat(address+2, (ord(c[2])))            
         if cmd == PollReadBlock:
             if DeviceHandle != None:
-               v=address
+                v=address
                 if v <= MAXMEMSP-0xff:
                     DeviceFile.seek(self.DiskPtr,0)
                     block = DeviceFile.read(512)
@@ -1114,13 +1119,15 @@ def GetQuoted(inline):
 
 def nextwordplus(ltext):
     # This version of nextword treats "+" and "-" as part of the word. But has to end on " "
+    if (len(ltext) == 0 ):
+        return("",0)
     (result,rsize)=nextword(ltext)
-    if ( len(ltext) > (rsize-1) ):
+    if ( len(ltext) > (rsize-1) ):        
         if ltext[rsize-1] != " ":   # We only care about +/- if the previous character was NOT space.
             while ((len(ltext)>rsize) and (ltext[rsize]=="+" or ltext[rsize]=="-")):
                 (nresult,nsize)=nextword(ltext[rsize:])
-                rsize+=nsize
                 result+=nresult
+                rsize+=nsize
                 if len(ltext) < rsize:
                     break
     return(result,rsize)
@@ -1516,15 +1523,22 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
         while working[stopi].isalnum() or working[stopi] == "_" or working[stopi] == ".":
             stopi += 1
         # in working[stopi+1] is a '+' or '-' then there is a modifier
-        if working[stopi] == '+' or working[stopi] == '-':
+        modstart = stopi
+        modstop = modstart + 1
+        while working[modstart] == '+' or working[modstart] == '-':
+            if working[modstart] == "-":
+                modsign=-1
+            else:
+                modsign=1
             modvalstr = ""
-            modstart = stopi + 1
-            modstop = modstart + 1
-            while (working[modstop].isspace() == False):
+            modstart = modstart + 1
+            while (working[modstop].isspace() == False and
+                   (working[modstop] != "+" and working[modstop] != "-")):
                 modstop += 1
-            modval = DecodeStr(
-                working[modstart:modstop], curaddress, CPU, LocalID, LORGFLAG, True)
-#            modval = int(working[modstart:modstop])
+            modval = modval + DecodeStr(
+                working[modstart:modstop], curaddress, CPU, LocalID, LORGFLAG, True) * modsign
+            modstart=modstop
+            modstop=modstop + 1
         if working[starti:stopi] in FileLabels.keys():
             Result = Str2Word(FileLabels[working[starti:stopi]]) + modval
         else:
@@ -1599,7 +1613,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = ReplaceMacVars(
                         line, MacroVars, varcntstack, varbaseSP)
                     if Debug > 1:
-                        print("Expanded Macro: %s" % line)
+                        print("Expanded Macro: %s(%40s)" % (line,MacroLine))
                     varbaseNext = varbaseSP
                     varbaseSP -= 1 if varbaseSP > 0 else 0
                     if PosParams == "ENDMACENDMAC":
@@ -1626,6 +1640,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         GlobalLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
+                        if Debug > 1:
+                            print("%s:%s> %60s" % (wfilename,str(GlobalLineNum),inline), file=DebugOut)
                         if not (address in FileLabels):
                             NewLine = {"F."+filename + ":" +
                                        str(GlobalLineNum): address}
