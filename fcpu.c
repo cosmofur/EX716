@@ -353,7 +353,7 @@ void handlePoll(int Param,int ParamI,int ParamII) {
   #define PollSetNoEcho 4
   #define PollSetEcho 5
   #define PollReadCINoWait 6
-  #define PollReadBlock 22
+  #define PollReadSector 22
   switch (topstack(PC)) {
   case PollReadIntI:
     scanf("%d",&a);

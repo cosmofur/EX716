@@ -35,7 +35,7 @@ CastPrintHexI=17
 CastPrintHexII=18
 CastSelectDisk=20
 CastSeekDisk=21
-CastWriteBlock=22
+CastWriteSector=22
 CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
@@ -45,7 +45,7 @@ PollReadCharI=3
 PollSetNoEcho=4
 PollSetEcho=5
 PollReadCINoWait=6
-PollReadBlock=22
+PollReadSector=22
 DebugOut=sys.stderr
 
 if sys.platform == 'win32':
@@ -236,7 +236,7 @@ class microcpu:
     def insertbyte(self, location, value):
         self.memspace[location] = value
 
-    def twos_compToo(self, val, bits):
+    def UNUSED_twos_compToo(self, val, bits):
         # Convert an 'anysize' signed interget into 2comp bits size integer
         if (val & (1 << (bit - 1))) != 0:
             val = val - (1 << bits)
@@ -299,13 +299,13 @@ class microcpu:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
             debugger(FileLabels,"")
 
-    def loadat(self, location, values):
+    def UNUSED_loadat(self, location, values):
         i = location
         for val in values:
             self.memspace[i] = val
             i += 1
 
-    def readfrom(self, location, blocksize):
+    def UNUSED_readfrom(self, location, blocksize):
         result = []
         for i in range(blocksize):
             result += self.memspace[i+location]
@@ -807,7 +807,7 @@ class microcpu:
         if cmd == CastSeekDisk:
             self.DiskPtr = address*0x200
             DeviceFile.seek(self.DiskPtr, 0)
-        if cmd == CastWriteBlock:
+        if cmd == CastWriteSector:
             v = address
             if v < MAXMEMSP-0xff:
                 block = self.memspace[v:v+512]
@@ -939,7 +939,7 @@ class microcpu:
                 self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
                 # This will create a 3 char string null terminated
                 self.putwordat(address+2, (ord(c[2])))            
-        if cmd == PollReadBlock:
+        if cmd == PollReadSector:
             if DeviceHandle != None:
                 v=address
                 if v <= MAXMEMSP-0xff:
@@ -1832,7 +1832,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 elif line[0] == "?" and IsOneChar:     # If Macro exists, then skip until next ENDBLOCK
-                    (key, size) = nextword(linep[1:])
+                    (key, size) = nextword(line[1:])
                     if not(key in MacroData):
                         SkipBlock =+ 1
                     line = line[size+1:]

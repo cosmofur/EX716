@@ -73,7 +73,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastPrint32Int 32
 =CastSelectDisk 20
 =CastSeekDisk 21
-=CastWriteBlock 22
+=CastWriteSector 22
 =CastSyncDisk 23
 =CastPrint32I 32
 =CastPrint32S 33
@@ -83,7 +83,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollSetNoEcho 4
 =PollSetEcho 5
 =PollReadCINoWait 6
-=PollReadBlock 22
+=PollReadSector 22
 
 
 # Warning about Macros
@@ -242,14 +242,11 @@ M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
 M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
 M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
 M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST :%0_LOC 0 @POPNULL
-M DISKWRITE @PUSH CastWriteBlock @CAST %1 @POPNULL
-M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteBloc @CAST :%0_LOC 0 @POPNULL
+M DISKWRITE @PUSH CastWriteSector @CAST %1 @POPNULL
+M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST :%0_LOC 0 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREAD @PUSH PollReadBlock @POLL %1 @POPNULL
-M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadBlock @POLL :%0_LOC 0 @POPNULL
-#M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
-#M DISKREADI @JMP %0_jmp :%0_data 0 :%0_jmp @PUSHI %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
-#M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
+M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
+M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL :%0_LOC 0 @POPNULL
 
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL

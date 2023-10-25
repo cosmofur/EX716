@@ -636,14 +636,14 @@ The CPU is too primative to directly work with a real disk or filesystem, but we
 disk IO tools. In the validate folder are some code examples that use this.
 
 We have to imagine the hard disks attacheed to this CPU are primative 1970's disk packs. Each disk in the
-pack holds a max of 32MB of data, broken up in 64K of 512 byte blocks. All read and wrires are directly
-at the block level, so to something like apppending a variable length string to a text file will require some
-addditional string processing as well as buffering the block being written to.
+pack holds a max of 32MB of data, broken up in 64K of 512 byte Sectors. All read and wrires are directly
+at the Sector level, so to something like apppending a variable length string to a text file will require some
+addditional string processing as well as buffering the Sector being written to.
 
 Code Macros
 @DISKSEL  A  Selects which disk to use with a constant number.
 @DISKSELI V  Selects which disk to use with a variable.
-@DISKSEEK A  Moves the Disk Head to a Block on that disk. 0-0xffff per disk.
+@DISKSEEK A  Moves the Disk Head to a Sector on that disk. 0-0xffff per disk.
 @DISKSEEKI V Same but with Id being a variable.
 @DISKWRITE V writes the 512 byte buffer pointed to by V
 @DISKREADI V read a 512 byte buffer from disk, at address[V] is the address to write to

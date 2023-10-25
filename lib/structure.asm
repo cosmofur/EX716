@@ -195,16 +195,25 @@ M ELSE \
 # defined, or used, but would still trigger a warning message during assembly since
 # it had been indirectly referenced but not defined.
 
-M ENDIF \
-  @JMP %V_JustEnd \
-  :%V_ENDIF \
-  ! %V_ElseFlag \
-     @JMP %V_JustEnd \
-     =%V_ElseBlock 00 \
-  ENDBLOCK \
-  @JMP %V_ElseBlock \
-  :%V_JustEnd \
-  %P
+# M ENDIF \
+#   @JMP %V_JustEnd \
+#   :%V_ENDIF \
+#   ! %V_ElseFlag \
+#      @JMP %V_JustEnd \
+#      =%V_ElseBlock 00 \
+#   ENDBLOCK \
+#   @JMP %V_ElseBlock \
+#   :%V_JustEnd \
+#   %P
+ M ENDIF \
+   @JMP %V_JustEnd \
+   :%V_ENDIF \
+   ? %V_ElseFlag \
+     @JMP %V_ElseBlock \
+   ENDBLOCK \
+   :%V_JustEnd \
+   %P
+
 #
 # Now this section is for simple While loop block structures.
 #
