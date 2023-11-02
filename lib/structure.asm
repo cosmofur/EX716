@@ -7,10 +7,8 @@
 # ZERO, NO_ZERO, EQ_S, EQ_A, EQ_V, EQ_VV, GT_A, GE_A, GT_S, GE_S, LT_A, LE_A, LT_S, LE_S
 #    Stack is not poped so what ever values you are testing, will remain on stack.
 # EQ_V means cmping stack vs variable, EQ_VV means cmping two Variables for equality.
-# EQ_VV is really the only one that takes two parameters.
+# EQ_VV,EQ_VA are really the only ones that takes two parameters.
 # When 'reading' the GT and LT macros, think A is GT/LT B, with B being the second value given.
-
-
 
 # IF_ZERO will start an IF[ELSE]ENDIF block if the value on the stack is zero
 # It does not pop the value off, so remove the zero when it's no longer needed
@@ -53,6 +51,14 @@ M IF_EQ_VV \
   @JMPZ %0_True \
   %S @JMP %V_ENDIF \
   :%0_True  
+# If A == V1 True
+M IF_EQ_VA \
+  @PUSHI %1 @PUSH %2 \
+  @CMPS @POPNULL @POPNULL \
+  @JMPZ %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True  
+
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
    @CMPS \
@@ -189,16 +195,25 @@ M ELSE \
 # defined, or used, but would still trigger a warning message during assembly since
 # it had been indirectly referenced but not defined.
 
-M ENDIF \
-  @JMP %V_JustEnd \
-  :%V_ENDIF \
-  ! %V_ElseFlag \
-     @JMP %V_JustEnd \
-     =%V_ElseBlock 00 \
-  ENDBLOCK \
-  @JMP %V_ElseBlock \
-  :%V_JustEnd \
-  %P
+# M ENDIF \
+#   @JMP %V_JustEnd \
+#   :%V_ENDIF \
+#   ! %V_ElseFlag \
+#      @JMP %V_JustEnd \
+#      =%V_ElseBlock 00 \
+#   ENDBLOCK \
+#   @JMP %V_ElseBlock \
+#   :%V_JustEnd \
+#   %P
+ M ENDIF \
+   @JMP %V_JustEnd \
+   :%V_ENDIF \
+   ? %V_ElseFlag \
+     @JMP %V_ElseBlock \
+   ENDBLOCK \
+   :%V_JustEnd \
+   %P
+
 #
 # Now this section is for simple While loop block structures.
 #
@@ -478,3 +493,7 @@ M NextByI \
   @JMP %V_ForTop \
   :%V_NextEnd \
   %P
+
+  
+
+  

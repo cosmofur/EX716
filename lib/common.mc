@@ -46,17 +46,18 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =JMPO 34
 =JMP 35
 =JMPI 36
-=CAST 37
-=POLL 38
-=RRTC 39
-=RLTC 40
-=RTR 41
-=RTL 42
-=INV 43
-=COMP2 44
-=FCLR 45
-=FSAV 46
-=FLOD 47
+=JMPS 37
+=CAST 38
+=POLL 39
+=RRTC 40
+=RLTC 41
+=RTR 42
+=RTL 43
+=INV 44
+=COMP2 45
+=FCLR 46
+=FSAV 47
+=FLOD 48
 
 # Cast and Poll Codes
 =CastPrintStrI 1
@@ -72,7 +73,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastPrint32Int 32
 =CastSelectDisk 20
 =CastSeekDisk 21
-=CastWriteBlock 22
+=CastWriteSector 22
 =CastSyncDisk 23
 =CastPrint32I 32
 =CastPrint32S 33
@@ -82,7 +83,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollSetNoEcho 4
 =PollSetEcho 5
 =PollReadCINoWait 6
-=PollReadBlock 22
+=PollReadSector 22
 
 
 # Warning about Macros
@@ -125,6 +126,7 @@ M JMPC b$JMPC %1
 M JMPO b$JMPO %1
 M JMP b$JMP %1
 M JMPI b$JMPI %1
+M JMPS b$JMPS
 M CAST b$CAST %1
 M POLL b$POLL %1
   M RRTC b$RRTC
@@ -158,7 +160,8 @@ M JLE @JMPN %0Skp @JMP %1 :%0Skp         # A=A-B, if B<=A or A>B JMP %1
 M CALL @PUSH $%01 @JMP %1 :%01
 M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
 M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
-M RET @POPI $%0D @JMPI $%0D :%0D 0
+#M RET @POPI $%0D @JMPI $%0D :%0D 0
+M RET @JMPS
 M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
@@ -235,19 +238,15 @@ M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 # A way to impliment a 16 bit 2 comp ABS function
 M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
 # Disk IO Group
-M DISKSELI @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSEL @MA2V %1 %0_store @PUSH CastSelectDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
-M DISKSEEKI @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEK @MA2V %1 %0_store @PUSH CastSeekDisk @CAST %0_store @JMP %0_End :%0_store 0 :%0_End @POPNULL
-# No point of an 'I' version of DISKWRITE or READ as target is always a buffer.
-M DISKWRITEI @PUSH CastWriteBlock @CAST %1 @POPNULL
-M DISKWRITE @MA2V %1 %0_Store  @PUSH CastWriteBlock @CAST %0_Store  @POPNULL @JMP %0_Skip %0:Store 0 %0_Skip
+M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
+M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
+M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST :%0_LOC 0 @POPNULL
+M DISKWRITE @PUSH CastWriteSector @CAST %1 @POPNULL
+M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST :%0_LOC 0 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
-M DISKREAD @JMP %0_jmp :%0_data 0 :%0_jmp @PUSH %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
-#M DISKREAD @JMP %0_jmp :%0_data %1 :%0_jmp @PUSH PollReadBlock @POLL %0_data @POPNULL
-#M DISKREADI @JMP %0_jmp :%0_data 0 :%0_jmp @PUSHI %1 @POPI %0_data @PUSH PollReadBlock @POLL %0_data @POPNULL
-#M DISKREADI @PUSH PollReadBlock @POLL %1 @POPNULL
+M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
+M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL :%0_LOC 0 @POPNULL
 
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL

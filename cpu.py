@@ -35,7 +35,7 @@ CastPrintHexI=17
 CastPrintHexII=18
 CastSelectDisk=20
 CastSeekDisk=21
-CastWriteBlock=22
+CastWriteSector=22
 CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
@@ -45,7 +45,7 @@ PollReadCharI=3
 PollSetNoEcho=4
 PollSetEcho=5
 PollReadCINoWait=6
-PollReadBlock=22
+PollReadSector=22
 DebugOut=sys.stderr
 
 if sys.platform == 'win32':
@@ -213,6 +213,8 @@ def validatestr(instr, typecode):
 class microcpu:
 
     cpu_id_iter = itertools.count()
+    DiskPtr = -1
+    
 
     def switcher(self, optcall, argument):
         default = "Invalid call"
@@ -234,7 +236,7 @@ class microcpu:
     def insertbyte(self, location, value):
         self.memspace[location] = value
 
-    def twos_compToo(self, val, bits):
+    def UNUSED_twos_compToo(self, val, bits):
         # Convert an 'anysize' signed interget into 2comp bits size integer
         if (val & (1 << (bit - 1))) != 0:
             val = val - (1 << bits)
@@ -297,13 +299,13 @@ class microcpu:
             print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
             debugger(FileLabels,"")
 
-    def loadat(self, location, values):
+    def UNUSED_loadat(self, location, values):
         i = location
         for val in values:
             self.memspace[i] = val
             i += 1
 
-    def readfrom(self, location, blocksize):
+    def UNUSED_readfrom(self, location, blocksize):
         result = []
         for i in range(blocksize):
             result += self.memspace[i+location]
@@ -337,7 +339,7 @@ class microcpu:
         # Saves at top of stack the Acum value. Does not change stack.
         # Address zero is always top, a given index >0 will try to save value at that stack depth
         CTPS = self.mb[0xff]
-        if address >= MAXHWSTACK:
+        if address > MAXHWSTACK:
             self.raiseerror(
                 "002 Invalide Buffer Refrence %d, StoreAcum" % address)
         if address == 0:
@@ -697,6 +699,11 @@ class microcpu:
         newaddress = self.getwordat(address)
         self.pc = newaddress
 
+    def optJMPS(self,address):
+        newaddress = self.fetchAcum(0)
+        self.mb[0xff] -= 1
+        self.pc = newaddress
+        
     def optCAST(self, address):
         global Debug, DeviceHandle, DeviceFile
         # In the future 'CAST' will related to networking, for now it will just write to stdout
@@ -789,20 +796,24 @@ class microcpu:
             sys.stdout.write("%s" % v)
         if cmd == CastSelectDisk:
             if DeviceHandle == None:
-                DeviceHandle = "DISK%02d.disk" % self.getwordat(address)
+                DeviceHandle = "DISK%02d.disk" % address
             try:
                 DeviceFile = open(DeviceHandle, "r+b")
+                self.DiskPtr = 0
+                DeviceFile.seek(0,0)
             except IOError:
                 self.raiseerror(
                     "048 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSeekDisk:
-            saddr = self.getwordat(address)*0x200
-            DeviceFile.seek(saddr, 0)
-        if cmd == CastWriteBlock:
-            v = self.getwordat(address)
+            self.DiskPtr = address*0x200
+            DeviceFile.seek(self.DiskPtr, 0)
+        if cmd == CastWriteSector:
+            v = address
             if v < MAXMEMSP-0xff:
                 block = self.memspace[v:v+512]
+                DeviceFile.seek(self.DiskPtr)
                 DeviceFile.write(bytes(block))
+                self.DiskPtr =+ 0x200
                 DeviceFile.flush()
             else:
                 self.raiseerror(
@@ -810,6 +821,7 @@ class microcpu:
         if cmd == CastSyncDisk:
             if DeviceHandle != None:
                 DeviceFile.close()
+                self.DiskPtr = -1
                 DeviceHandle = None
         if cmd == CastPrint32I:
             iaddr = address
@@ -927,10 +939,11 @@ class microcpu:
                 self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
                 # This will create a 3 char string null terminated
                 self.putwordat(address+2, (ord(c[2])))            
-        if cmd == PollReadBlock:
+        if cmd == PollReadSector:
             if DeviceHandle != None:
-                v=self.getwordat(address)
+                v=address
                 if v <= MAXMEMSP-0xff:
+                    DeviceFile.seek(self.DiskPtr,0)
                     block = DeviceFile.read(512)
                     tidx = v
                     j=0
@@ -1004,9 +1017,10 @@ class microcpu:
         self.flags = 0
 
     def optFSAV(self, address):
-        self.optPUSH(self, self.flags)
+        CPU.optPUSH( self.flags)
 
     def optFLOD(self, address):
+        sp = self.mb[0xff]        
         if sp < 1:
             self.raiseerror("051 Stack underflow, OptFLOD")
         sp -= 1
@@ -1105,13 +1119,15 @@ def GetQuoted(inline):
 
 def nextwordplus(ltext):
     # This version of nextword treats "+" and "-" as part of the word. But has to end on " "
+    if (len(ltext) == 0 ):
+        return("",0)
     (result,rsize)=nextword(ltext)
-    if ( len(ltext) > (rsize-1) ):
+    if ( len(ltext) > (rsize-1) ):        
         if ltext[rsize-1] != " ":   # We only care about +/- if the previous character was NOT space.
             while ((len(ltext)>rsize) and (ltext[rsize]=="+" or ltext[rsize]=="-")):
                 (nresult,nsize)=nextword(ltext[rsize:])
-                rsize+=nsize
                 result+=nresult
+                rsize+=nsize
                 if len(ltext) < rsize:
                     break
     return(result,rsize)
@@ -1507,15 +1523,22 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
         while working[stopi].isalnum() or working[stopi] == "_" or working[stopi] == ".":
             stopi += 1
         # in working[stopi+1] is a '+' or '-' then there is a modifier
-        if working[stopi] == '+' or working[stopi] == '-':
+        modstart = stopi
+        modstop = modstart + 1
+        while working[modstart] == '+' or working[modstart] == '-':
+            if working[modstart] == "-":
+                modsign=-1
+            else:
+                modsign=1
             modvalstr = ""
-            modstart = stopi + 1
-            modstop = modstart + 1
-            while (working[modstop].isspace() == False):
+            modstart = modstart + 1
+            while (working[modstop].isspace() == False and
+                   (working[modstop] != "+" and working[modstop] != "-")):
                 modstop += 1
-            modval = DecodeStr(
-                working[modstart:modstop], curaddress, CPU, LocalID, LORGFLAG, True)
-#            modval = int(working[modstart:modstop])
+            modval = modval + DecodeStr(
+                working[modstart:modstop], curaddress, CPU, LocalID, LORGFLAG, True) * modsign
+            modstart=modstop
+            modstop=modstop + 1
         if working[starti:stopi] in FileLabels.keys():
             Result = Str2Word(FileLabels[working[starti:stopi]]) + modval
         else:
@@ -1590,7 +1613,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = ReplaceMacVars(
                         line, MacroVars, varcntstack, varbaseSP)
                     if Debug > 1:
-                        print("Expanded Macro: %s" % line)
+                        print("Expanded Macro: %s(%40s)" % (line,MacroLine))
                     varbaseNext = varbaseSP
                     varbaseSP -= 1 if varbaseSP > 0 else 0
                     if PosParams == "ENDMACENDMAC":
@@ -1617,6 +1640,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         GlobalLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
+                        if Debug > 1:
+                            print("%s:%s> %60s" % (wfilename,str(GlobalLineNum),inline), file=DebugOut)
                         if not (address in FileLabels):
                             NewLine = {"F."+filename + ":" +
                                        str(GlobalLineNum): address}
@@ -1650,7 +1675,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     # 1: Are we going down another depth of !'s
                     # 2: Did we find an 'inner' ENDBLOCK
                     # 3: Anything that's not outer ENDBLOCK is skipped.
-                    if key == "!":
+                    if key == "!" or key == "?":
                         # Handle embeded or nested Blocks
                         SkipBlock = SkipBlock + 1
                         line = line[size:]                 
@@ -1800,12 +1825,17 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     print("%04x: %s" % (address, line))
                     line = ""
                     continue
-                elif line[0] == "!" and IsOneChar:
+                elif line[0] == "!" and IsOneChar:    # If Macro does NOT exist, then eval until matching ENDBLOCK
                     (key, size) = nextword(line[1:])
                     if key in MacroData:
                         SkipBlock =+ 1
                     line = line[size+1:]
                     continue
+                elif line[0] == "?" and IsOneChar:     # If Macro exists, then skip until next ENDBLOCK
+                    (key, size) = nextword(line[1:])
+                    if not(key in MacroData):
+                        SkipBlock =+ 1
+                    line = line[size+1:]
                 elif line[0] == "M" and IsOneChar:
                     # Macros
                     # name word word %v word
@@ -2394,7 +2424,7 @@ def main():
                 if zerocount < 10:
                     # If zero count is < 10 then just print it out
                     for j in range(0, zerocount):
-                        f.write("b0x%01x " % 0)
+                        f.write("$$0x%01x " % 0)
                         if (((j + zerostart + 1) % 16) == 0):
                             f.write("# %04x - %04x\n" %
                                     (j + zerostart - 0xf, i))
@@ -2409,7 +2439,7 @@ def main():
             else:
                 # Not a zero, so just write normally
                 v = CPU.memspace[i]
-                f.write("b0x%02x " % v)
+                f.write("$$0x%02x " % v)
                 if (((i + 1) % 16) == 0):
                     f.write("# %04x - %04x\n" % (i-0xf, i))
             i += 1

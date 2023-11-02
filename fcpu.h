@@ -35,17 +35,18 @@
 #define OptValJMPO 34
 #define OptValJMP 35
 #define OptValJMPI 36
-#define OptValCAST 37
-#define OptValPOLL 38
-#define OptValRRTC 39
-#define OptValRLTC 40
-#define OptValRTR 41
-#define OptValRTL 42
-#define OptValINV 43
-#define OptValCOMP2 44
-#define OptValFCLR 45
-#define OptValFSAV 46
-#define OptValFLOD 47
+#define OptValJMPS 37
+#define OptValCAST 38
+#define OptValPOLL 39
+#define OptValRRTC 40
+#define OptValRLTC 41
+#define OptValRTR 42
+#define OptValRTL 43
+#define OptValINV 44
+#define OptValCOMP2 45
+#define OptValFCLR 46
+#define OptValFSAV 47
+#define OptValFLOD 48
 char *optcnames[] = {
 "NOP",
 "PUSH",

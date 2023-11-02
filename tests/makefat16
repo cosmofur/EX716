@@ -1,0 +1,16 @@
+dd if=/dev/zero of=DISK00.disk count=4 bs=1M
+fdisk DISK00.disk
+# command 'o'
+# command 'n'
+# command 'p'
+# command '1'
+# command 't'
+# command hex c'
+# command 'w'
+mkfs.vfat DISK00.disk
+
+sudo losetup -fP DISK00.disk
+sudo mount /dev/loop0 /mnt
+
+sudo umount /dev/loop0 /mnt
+sudo losetup -d /dev/loop0

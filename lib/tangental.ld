@@ -55,25 +55,19 @@ G COSR
 @ENDCASE
 :BreakSin
 @RTL              # *2
-@PUSHI SINDIR
-@IF_EQ_A -1
-   @POPNULL
+@IF_EQ_VA SINDIR -1
    @PUSH SINTable   # Get Value starting from bottom table looking backwards
    @ADD 178
    @SWP
    @SUBS
    @PUSHS
 @ELSE
-   @POPNULL
    @ADD SINTable    # Get Value starting from top and adding forward
    @PUSHS
 @ENDIF
-@PUSHI SINRST
-@IF_EQ_A -1
+@IF_EQ_VA SINRST -1
    @POPNULL
    @COMP2   # Negative
-@ELSE
-   @POPNULL
 @ENDIF
    
 :Break1

@@ -9,30 +9,24 @@ L lmath.ld
 #    B=OUT
 #    Idx ++
 #    Print OUT
+:Main . Main
 @PRTLN "Fibonacci Series"
 @MOVE32AV $$$0 Aval
 @MOVE32AV $$$1 Bval
 @MOVE32AV $$$0 OUT
-@MA2V 2 Idx
 @PRT "Number of Terms: "
 @READI Nval
-@DECI Nval
 @PRTNL
-@PRT "The Fibonacci Series is: "
-@PRTI Aval @PRTSP @PRTI Bval @PRTSP      # Print ## ## \n
 :MainLoop
 # WHILE Idx < N
-@PUSHI Idx
-@CMPI Nval
-@POPNULL
-@JMPN EndofLoop
+@PUSH Nval
+@ForIA2V Idx 0  Nval
      @PUSH Aval @PUSH Bval @PUSH OUT @CALL ADD32
      @COPY32VV Bval Aval # A=B
      @COPY32VV OUT Bval  # B=OUT     
-     @INCI Idx    #  Idx++
      @PRT32I OUT   #  Print OUT
      @PRTSP
-     @JMP MainLoop
+@Next Idx
 :EndofLoop
 @PRTNL
 @END

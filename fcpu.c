@@ -123,6 +123,7 @@ int FileRead(char *fname) {
     while ( *ptr != '\0' && FinishQuick == 0) {
       switch(*ptr) {
       case 'b':
+      case '$':
 	temp=GetNextWord(&ptr);
 	if (PC > 0xfffe) {
 	  printf("Ran out of memory\n");
@@ -352,8 +353,7 @@ void handlePoll(int Param,int ParamI,int ParamII) {
   #define PollSetNoEcho 4
   #define PollSetEcho 5
   #define PollReadCINoWait 6
-  #define PollReadBlock 22
-
+  #define PollReadSector 22
   switch (topstack(PC)) {
   case PollReadIntI:
     scanf("%d",&a);
@@ -416,9 +416,6 @@ int doeval(int startpc) {
   
   while(LoopForever == 1 )
     {
-      if ( PC == 0x185f ) {
-	printf("Place to put break");
-      }
       OptCount++;
       Param=get16memat(PC+1);
       ParamI=get16memat(Param);
@@ -716,6 +713,9 @@ int doeval(int startpc) {
        case OptValJMPI:
 	 PC=ParamI;
 	 break;
+       case OptValJMPS:
+	 PC=popstack(OptCode);
+	 break;	 	   
        case OptValCAST:
 	 handleCast(Param,ParamI,ParamII);
 	 Opsize=3;
@@ -829,7 +829,15 @@ int GetNextWord(char **Passptr) {
   if ( *ptr == 'b' ) {  // skip past any 'b'
     fwdptr++;
     ptr++;
-  }  
+  }
+  if ( *ptr == '$' ) { // Bytes defined by '$$'
+    fwdptr++;
+    ptr++;
+    if ( *ptr == '$') {
+    fwdptr++;
+    ptr++;
+    }
+  }
   
   fwdptr=ptr; // Look ahead to see if it's hex
   if ( strlen(fwdptr) < 2) {
