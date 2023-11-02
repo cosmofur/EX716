@@ -24,7 +24,7 @@ I common.mc
    @PRTI OUT @PRTNL
    @PUSHI N                     # If Idx > N Push 1 else Push 0
    @PUSHI Idx
-   @IF_LT_S
+   @IF_GE_S
       @POPNULL @POPNULL
       @PUSH 1
    @ELSE

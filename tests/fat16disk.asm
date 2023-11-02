@@ -15,7 +15,7 @@ L string.ld
 
 
 :INT_ActiveDisk -1       # Which Disk
-:INT_ActiveBlock -1      # What Block in disk
+:INT_ActiveSector -1      # What Sector in disk
 :G_FileName "12345678"
 :G_FileExtension "123"
 :G_FileAttributes b0
@@ -25,14 +25,15 @@ L string.ld
 :G_LastAccessDate 0
 :G_FirstClusterHigh 0
 :G_LastModificationTime 0
-:G_LastModificationDate 0
+:G_LastModiicationDate 0
 :G_FirstClusterLow 0
 :G_FileSize 0 0
-:G_RootDirBlock 0
+:G_RootDirSector 0
 :G_CurrentDirBase 0
 :G_SectorsPerFAT 0
 :G_StartOfFATs 0
 :G_NumberOfFATs 0
+:G_NumberOfRootFs 0
 :G_SmallSectors 0  # For our use SmallSectors is same as Max Sector Count, limit to 32MB disks
 
 
@@ -40,7 +41,7 @@ L string.ld
 # Set the global variabes up as global.
 #
 G INT_ActiveDisk
-G INT_ActiveBlock
+G INT_ActiveSector
 G G_FileName
 G G_FileExtension
 G G_FileAttributes
@@ -53,7 +54,7 @@ G G_LastModificationTime
 G G_LastModificationDate
 G G_FirstClusterLow
 G G_FileSize
-G G_RootDirBlock
+G G_RootDirSector
 G G_CurrentDirBase
 G G_SectorsPerFat
 G G_StartOfFATs
@@ -70,13 +71,14 @@ G G_SmallSectors
 :WordIdx 0
 :Scratch1 0
 :Scratch2 0
+:IsRootDirFlagIRD 0
 # Vars for ParseFilePath
 :ReturnPFP 0
 :StrInPFP 0
 :StrPtrPFP 0
 :StrScratch1 0 0 0 0 0 0
 :StrScratch2 0 0 0 0 0 0
-:FormatFileName 0 0 0 0 0 0
+:FormatFileName 0 0 0 0 0 0 0
 :FormatPtr 0
 :IsDIRFlag 0
 :DirEntryInt 0
@@ -113,52 +115,36 @@ G G_SmallSectors
 @MV2V StrInPFP StrPtrPFP
 @PUSHII StrPtrPFP @AND 0xff # Put first character on stack
 # Loop until full path has been parsed.
+
 @WHILE_NOTZERO
+    @PRT "Top of Path Parce While:" @StackDump
     @MA2V 0 IsDIRFlag    # Turn true is pattern is expected to be DIR
-    @ForIA2B FormatPtr 0 11 # Fill 8.3 Formated fileename with spaces.
-       @PUSH " \0"
-       @PUSHI FormatPtr
-       @ADD FormatFileName
-       @POPS
-    @Next FormatPtr
-    @MA2V FormatFileName FormatPtr    # Set Pointer to start of filename buffer
-    @WHILE_NOTZERO     # Same test as outer loop.
-       @IF_EQ_A "/\0"   # If First character is '/' then skip it.
-          @POPNULL # End of block
-	  @PUSH 0
-	  @MA2V 1 IsDIRFlag# If it ends in a '/' it better be a DIR
-       @ELSE
-          @IF_EQ_A ".\0"   # When we see the '.' move the Pointer to Extenion part
-             @POPNULL      # Get Rid of the '.'
-	     @PUSH FormatFileName
-	     @ADD 8
-	     @POPI FormatPtr
-	     # We don't save the '.' just skip forward now.
-	  @ELSE
-	     @AND 0xDF      # Changes Lowercase to Uppercase	  
-             @OR 0x2000     # Replace 0 in high byte with space hex20
-             @POPII FormatPtr
-             @INCI FormatPtr
-	  @ENDIF
-        @ENDIF
-	@INCI StrPtrPFP
-	@PUSHII StrPtrPFP @AND 0xff   # Get next character
-     @ENDWHILE
-     @POPNULL
-     @MA2V 0 DirEntryInt
-     @PUSH 0
-     #
-     @WHILE_ZERO        
-        @PUSHI MemoryBuffPtr
-        @PUSH 0          # Disk ID 0
-	@PUSHI DirEntryInt
-	:Break1
+
+    @PUSH FormatFileName
+    @PUSH StrPtrPFP
+    @CALL INT_FileFormat   #Format user filename to 8.3 space filled format.
+    @ADDI StrPtrPFP
+    @POPI StrPtrPFP        # Add in length of string found.
+
+    @PRT "FileName: " @PRTS FormatFileName @PRTNL
+    :Break2
+    @POPNULL
+    @MA2V 0 DirEntryInt
+    @PUSH 0
+    #
+    @WHILE_ZERO
+        @POPNULL
+        @PRT "\nTop of Match Strings While:" @StackDump
+        @PUSHI MemoryBuffPtr   # Storage
+        @PUSH 0                # Disk ID 0
+	@PUSHI DirEntryInt     # Directory Sector start
+	@PRT "\nBefore Sector Read:" @StackDump
 	@CALL INT_ReadDIREntry
+	@PRT "\nSector Read Return: " @StackDump
         @PUSH FormatFileName
 	@PUSH G_FileName
 	@PUSH 11
 	@CALL strncmp
-	:Break2
 	@PRT "\nLooking for: "
 	@PUSH FormatFileName
 	@CALL PrintFileName
@@ -166,7 +152,7 @@ G G_SmallSectors
 	@PUSH G_FileName
         @CALL PrintFileName
 	@IF_ZERO
-	   @PRT " MATCH FOUND."
+	   @PRT " MATCH FOUND." @StackDump
 	   :BreakS
 	   @POPNULL
 	   @PUSH 1
@@ -177,6 +163,7 @@ G G_SmallSectors
 	   @PUSH 0
 	@ENDIF
      @ENDWHILE
+     @PRT "Bottom of Outer While:" @StackDump     
 @ENDWHILE
 @PUSHI ReturnPFP
 @END
@@ -195,14 +182,73 @@ G G_SmallSectors
 
         
 
+# Function INT_ReadDIREntry(MemoryPtr, DiskID, CurrentDirBase, Entry, IsRootDirFlag)
+# Reads the file dir strucutre
+:INT_ReadDIREntry
+@POPI ReturnAddr
+@POPI IsRootDirFlag
+@POPI Entry
+@POPI CurrentDirBase
+@POPI DiskID
+@POPI MemoryPtr
+
+@PUSHI IsRootDirFlag
+@IF_NOTZERO   #Is Root DIR
+   @MV2V CurrentDirBase RootDirStartSector
+   @PUSHI RootDirStartSector @PUSHI G_SectorsPerCluster @CALL MUL
+   @POPI RootDirStartSector
+   @PUSHI Entry 
+
+    if IsRootDirFlag:
+        # Calculate the starting Sector of the Root Directory
+        root_dir_start_Sector = CurrentDirBase
+
+        # Calculate the absolute sector number of the Root Directory
+        root_dir_start_sector = root_dir_start_Sector * SectorsPerSector
+
+        # Calculate the offset within the sector
+        entry_offset = Entry * DirectoryEntrySize
+
+        # Read the directory entry from the Root Directory
+        read_from_disk(MemoryPtr, DiskID, root_dir_start_sector, entry_offset)
+    else:
+        # Calculate the starting cluster of the Sub-Directory
+        sub_directory_start_cluster = CurrentDirBase
+
+        # Traverse the cluster chain to find the Sub-Directory Sector
+        sub_directory_Sector = find_sub_directory_Sector(sub_directory_start_cluster, Entry)
+
+        if sub_directory_Sector is not None:
+            # Calculate the absolute sector number of the Sub-Directory Sector
+            sub_directory_sector = sub_directory_Sector * SectorsPerSector
+
+            # Calculate the offset within the sector
+            entry_offset = Entry * DirectoryEntrySize
+
+            # Read the directory entry from the Sub-Directory Sector
+            read_from_disk(MemoryPtr, DiskID, sub_directory_sector, entry_offset)
+        else:
+            # Entry not found in the Sub-Directory
+            # Handle error or return None as needed
+
+def find_sub_directory_Sector(start_cluster, entry):
+    # Implement logic to traverse the cluster chain of the Sub-Directory
+    # to find the Sector containing the directory entry at the specified index
+    # You need to use the FAT entries to follow the cluster chain
+
+    # Return the Sector number or None if the entry is not found
+
+def read_from_disk(MemoryPtr, DiskID, sector, offset):
+    # Implement a function to read data from the disk at the specified sector and offset
+    # and store it in the MemoryPtr buffer
 
 
-
-# Function INT_ReadDIREntry(MemoryPtr,DiskID,Entry)
-# MemoryPtr points to a 512 byte buffer to hold the Disk Block of the DIR strucutre.
+# Function INT_ReadDIREntry(MemoryPtr,DiskID,Entry, IsRootDirFlag)
+# MemoryPtr points to a 512 byte buffer to hold the Disk Sector of the DIR strucutre.
 # All the key values extracted will be saved global G_ variables, which should be
 # copied off quickly.
 :INT_ReadDIREntry
+@POPI IsRootDirFlag
 @POPI ReturnAddr
 @POPI Entry
 @POPI DiskID
@@ -212,25 +258,32 @@ G G_SmallSectors
 # No change.
 @ELSE
    @DISKSELI DiskID
-   @MA2V -1 INT_ActiveBlock  # If we changed disk, then active block is not longer valid
+   @MA2V -1 INT_ActiveSector  # If we changed disk, then active Sector is not longer valid
    @MV2V DiskID INT_ActiveDisk
 @ENDIF
 #
-# We find the Disk Block by 'Entry/32'
-# We find the entry in the block by Entry & 0x1f
+# We find the Disk Sector by 'Entry/32'
+# We find the entry in the Sector by Entry & 0x1f
 #
 @PUSHI Entry @RTR @RTR @RTR @RTR @RTR @ADDI G_CurrentDirBase
-@IF_EQ_V INT_ActiveBlock
+@IF_EQ_V INT_ActiveSector
 # No Change
+   @POPNULL
 @ELSE
-   @POPI INT_ActiveBlock
-   @PRT "Reading New Block: " @PRTHEXI INT_ActiveBlock
-   @DISKSEEKI INT_ActiveBlock
-   @DISKREADI MemoryPtr
+   @POPI INT_ActiveSector
+   @PRT "Reading New Sector: " @PRTHEXI INT_ActiveSector
+   @PUSHI IsRootDirFlag
+   @IF_NOTZERO
+      # Root Directories don't have to deal with Clusters, just add Offset to Base
+      @DISKSEEKI INT_ActiveSector
+      @DISKREADI MemoryPtr
+   @ELSE
+      @PUSHI INT_ActiveSector
+      
 @ENDIF
-# Now Mod(Entry,32) will be which 32byte segment of block is current.
+# Now Mod(Entry,32) will be which 32byte segment of Sector is current.
 @PUSHI Entry @AND 0x0f
-# Multiple that by 32 bytes to get of offset in the Disk block
+# Multiple that by 32 bytes to get of offset in the Disk Sector
 @RTL @RTL @RTL @RTL @RTL
 @ADDI MemoryPtr
 # Now copy the 32 bytes that start there and put in the Global Variables
@@ -253,14 +306,16 @@ G G_SmallSectors
 # If we're reading the BootSector its a good idea to make sure the global
 # values about the disk are also updated.
 @MV2V DiskID INT_ActiveDisk
-@MA2V -1 INT_ActiveBlock
+@MA2V -1 INT_ActiveSector
 @DISKSELI DiskID
 @DISKSEEK 0
 @DISKREADI MemoryPtr
 # Fields we care about at this Point.
 #
-# BIOS Parameter Block Fields
+# BIOS Parameter Sector Fields
+=BIOSSectorPerCluster 0x0d
 =BIOSReservedSectors 0x0e
+=BIOSNumberOfRootFs 0x0f
 =BIOSNumberOfFATS 0x10
 =BIOSSmallSectors 0x13
 =BIOSSectorsPerFAT 0x16
@@ -270,8 +325,14 @@ G G_SmallSectors
 
 @PUSHI MemoryPtr
 #
+@DUP @ADD BIOSSectorPerCluster @PUSHS @AND 0ff
+@POPI G_SectorsPerCluster
+#
 @DUP @ADD BIOSReservedSectors @PUSHS @AND 0xff
 @POPI G_StartOfFATs
+#
+@DUMP @ADD BIOSNumberOfRootFs @PUSHS @AND 0xff
+@POPI G_NumberOfRootFs
 #
 @DUP @ADD BIOSNumberOfFATS @PUSHS @AND 0xff
 @POPI G_NumberOfFATs
@@ -285,7 +346,7 @@ G G_SmallSectors
 # We use the above to calculate the first sector of the Root Directory
 @PUSHI G_SectorsPerFAT @PUSHI G_NumberOfFATs @CALL MUL
 @ADDI G_StartOfFATs
-@DUP @POPI G_CurrentDirBase @POPI G_RootDirBlock
+@DUP @POPI G_CurrentDirBase @POPI G_RootDirSector
 #
 
 @POPNULL
@@ -341,6 +402,123 @@ G G_SmallSectors
 @PUSHI ReturnAddr
 @RET
 
+# Function INT_FileFormat(InFileStrPtr,OutFormatedFilePtr[12 byte buffer])
+# ReForamats /filename[/filename] strings into space filled "FILENAME.EXT" format.
+# Returns [ Len of InString Used ]
+#
+:INT_FileFormat
+@POPI ReturnFF
+@POPI InStrPtrFF
+@POPI OutStrPtrFF
+# Fill Output string will all spaces
+@ForIA2B IndexFF 0 11
+   @PUSH " \0"
+   @PUSHI OutStrPtrFF @ADD IndexFF
+   @POPS
+@Next IndexFF
+@MA2V 0 LenCountFF
+@PUSHII InStrPtrFF @AND 0xff
+@IF_EQ_A "/\0"      # Handle case of string starting with "/"
+   @INCI InStrPtrFF
+   @INCI LenCountFF
+@ENDIF
+@PUSH 1
+@WHILE_NOTZERO
+   @POPNULL
+   @PUSHII InStrPtrFF @AND 0xff
+   @SWITCH
+   @CASE "/\0"          # Handle '/', end filename scan
+      @INCI InStrPtrFF
+      @INCI LenCountFF
+      @PUSH 0     # Break the While Loop
+      @CBREAK
+   @CASE ".\0"          # Handle '.', continue scan
+      @POPNULL
+      @INCI InStrPtrFF
+      @INCI LenCountFF
+      @PUSH 1
+      @CBREAK
+   @CASE 0              # Handle EOS, end scan
+      @PUSH 0
+      @CBREAK
+   @CDEFAULT
+      @AND 0xdf   # Change Lowercase to Uppercase
+      @OR "\0 "   # Replace the null with a space
+      @POPII OutStrPtrFF
+      @INCI InStrPtrFF
+      @INCI LenCountFF
+      @INCI OutStrPtrFF
+      @PUSH 1
+   @CBREAK
+   @ENDCASE
+@ENDWHILE
+@POPNULL
+@PUSHI LenCountFF
+@PUSHI ReturnFF
+@RET
+:ReturnFF 0
+:InStrPtrFF 0
+:OutStrPtrFF 0
+:LenCountFF 0
+#
+# Function INT_FindFileName(FileInStr, DirStart, DiskID, MemoryStore)
+#
+:INT_FindFileName
+@POPI ReturnFFN
+@POPI MemStFFN
+@POPI DiskIDFFN
+@POPI DirStart
+@POPI FileInFFN
+@IF_EQ_VV DirStart G_RootDirSector   # Set Flag because some rules are diffrent for ROOT dir
+   @MA2V 1 IsRootFFN
+@ELSE
+   @MA2V 0 IsRootFFN
+@ENDIF
+@MA2V 0 RecIDXFFN
+@PUSH 0
+@WHILE_ZERO
+   @POPNULL
+   @PUSH MemStFFN
+   @PUSHI DiskIDFFN
+   @PUSHI RecIDXFFN
+   @CALL INT_ReadDIREntry
+   #
+   @PUSHI FileInFFN
+   @PUSHI G_FileName
+   @PUSH 11
+   @CALL strncmp       # Compair the Filename in Sector with search string
+   @IF_ZERO
+      # Filename Match Found.
+      @PUSH 1
+   @ELSE
+      @PUSH 0
+      @IF_EQ_V G_FirstClusterLow    # We only handle small disks so only use first cluster low
+         # End of Dir List, and didn't find match.
+	 @PUSH 2    # Code 2 is Not-Found result
+      @ELSE
+          @PUSHI G_FileName @AND 0xff  #Look at first character.
+	  @IF_EQ_A 0x00
+	     # Another way End Of DIR is marked.
+	     @POPNULL @POPNULL
+	     @PUSH 2
+	  @ELSE
+             @POPNULL
+	  @ENDIF
+      @ENDIF
+   @ENDIF
+   @INCI RecIDXFFN
+@ENDWHILE
+@IF_EQ_A 1
+   @PRTS G_FileName @PRTNL " found."
+@ELSE
+   @IF_EQ_A 2
+      @PRT "No Matching File"
+   @ENDIF
+@ENDIF
+@PUSHI ReturnFFN
+@RET
+   
+
 
 #
 #
@@ -366,6 +544,8 @@ G G_SmallSectors
 :MemBuff02
 . MemBuff02+512
 0 0 0
+
+
 . Main
 
 
@@ -422,5 +602,5 @@ G G_SmallSectors
 #
 # From this we can determin the values we should be calculating
 # G_FatStartSector = Reserved Sectors + 1
-# G_RootDirBlock = Reserved Sectors + (Number of FAT Tables) * ( Sectors Per FAT )
+# G_RootDirSector = Reserved Sectors + (Number of FAT Tables) * ( Sectors Per FAT )
 #       0x44     = 4                +      2                 *   0x20

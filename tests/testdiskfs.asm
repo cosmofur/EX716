@@ -15,17 +15,17 @@ I common.mc
 # First, our simulated hardware provides an elementary disk IO the Cast an Poll functions.
 #       All of these are pretty similar to the sort of hardware interface a disk controller would provide.
 #       While our simulation uses a file (DISK#) to simulate disks, these low level IO calls do not understand
-#       concepts like files or directories, these are just hardware addresses and unformatted blocks of data.
+#       concepts like files or directories, these are just hardware addresses and unformatted Sectors of data.
 #
 #       We use a 16b number to identify the sector number, with a little math 16b-index*256bye sectors means
 #       our largest 'disk' is 16Megabyte. In the 1970's this would have been a respectable disk size. Much
 #       larger than Floppy disks where typically at the time. 
 #           SelectDisk      Opens the disk and identifies the active disk device
 #           SeekDisk        Move disk head to a given sector for read/write
-#           WriteBlock      Copies a 256byte block memory to the current disk sector.
+#           WriteSector      Copies a 256byte Sector memory to the current disk sector.
 #                           it also moves disk head to the next sector.
 #           SyncDisk        Flushes and HW buffers the Disk controller may have. Returns when disk is ready.
-#           PollReadBlock   Reverse of WriteBlock, copies 256byte data from current sector to block of memory.
+#           PollReadSector   Reverse of WriteSector, copies 256byte data from current sector to Sector of memory.
 #                           it also moves disk head to the next sector.
 #
 # Disk LayOut
