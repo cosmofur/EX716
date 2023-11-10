@@ -17,8 +17,8 @@ M SOFTSTACK_DONE 1
 G PUSHRETURN  G POPRETURN G RETSTACKMAX G ReturnStackSP G ReturnStack
 :ReturnStackSP 0
 :ReturnStack
-= RETSTACKMAX 32
-. ReturnStack+64     # 32 16b values is current limit of stack size.
+= RETSTACKMAX 32     # set to max number of 16b words on stack
+. ReturnStack+64     # 2xRETSTACKMAX values is current limit of stack size in bytes
 G PushStackError
 :PushStackError
 @PRTLN "Error. Code Stack Out of Bounds"

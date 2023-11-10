@@ -558,8 +558,7 @@ M STRSETI \
 :sfReturn 0
 :ShortString 0 0
 :strfndc
-#POPI sfReturn
-@SWP
+@POPI sfReturn       # We're not using PUSHRETURN to preserve flags
 @POPI ShortString
 @PUSH ShortString
 @CALL strstr

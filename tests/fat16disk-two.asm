@@ -1,6 +1,7 @@
 I common.mc
 L softstack.ld
 L string.ld
+L DIV.ld
 
 # Local Variables:
 
@@ -42,18 +43,20 @@ L string.ld
 b0 # For word padding on last byte above
 # Now do the 
 :DR_Struct
-:DR_FILENAME 0 0 0 0 0 b0    # 11 bytes    0
+:DR_FileName 0 0 0 0 0 b0    # 11 bytes    0
 :DR_ATTRIB b0                #             xb
 :DR_Reserve1 b0              #             xc
 :DR_CDATE 0 0 b0             # 5 byte create date format. xd
 :DR_ADATE 0                  #             x12
 :DR_HighCluster 0            # High Cluster, NA for Fat16 x0x14
 :DR_WDATE 0 0                #             0x16
-:DR_CLUSTER 0                # Cluster     0x1A
+:DR_CLUSTER 0                # Cluster     0x1A Where the FileData starts
 :DR_SIZE 0 0                 # Filesyste in 32bit format
 :DR_Struct_End
-:DR_RefID 0                  # used by Open_DirByID and ReadNextDIR
-:DR_ClusterID 0                # Which Cluster this DR belongs to.
+:DR_CurrentSect 0            # This is the abs sector of last DR entry read
+:DR_CurrentRec 0             # The most recent record within dir strucutre
+:DR_CurrentCluster 0         # For larger Dir's that span multiple Clusters of Dir info.
+
 
 
 :GL_CWD 0
@@ -85,6 +88,8 @@ b0 # For word padding on last byte above
 #
 #
 # Function ReadSector(Iindex, BufferPtr)
+#   This is a basic Read Sector, not awair of clusters or FAT tables
+#
 :ReadSector
 @StackDump
 @PUSHRETURN
@@ -93,15 +98,18 @@ b0 # For word padding on last byte above
 @POPI BufferPtr
 @POPI Iindex 
 # See if that Buffer already loaded
-@PUSHI BufferPtr @SUB 4 @PUSHS
+@PUSHI BufferPtr @ADD SectorOffset @PUSHS
 @IF_EQ_V Iindex
   # No change, Buffer already Loaded
 @ELSE
   @DISKSEEKI Iindex
   @DISKREADI BufferPtr
   @PUSH 0                   # Zero the status flag.
-  @PUSHI BufferPtr @SUB 2
+  @PUSHI BufferPtr @ADD StatusOffset
   @POPS
+  @PUSHI Iindex             # Save value of current sector number
+  @PUSHI BufferPtr @ADD SectorOffset
+  @POS
 @ENDIF
 @POPLOCAL Iindex
 @POPLOCAL BufferPtr
@@ -443,7 +451,112 @@ b0 # For word padding on last byte above
 	    
 	       
 
-	 
+# Function Open_DirByID(Cluster)
+# clears the current DR_ values and reads in first entry from Cluster
+:Open_DirByID
+@PUSHRETURN
+@PUSHLOCAL Iindex
+#
+@POPI Iindex    # save the cluster
+@PUSHI Iindex
+@PUSH BufferDir
+@CALL ReadSector
+@PUSH BufferDir
+@CALL CopyDRdata
+@MA2V 0 DR_CurrentRec 0
+@MV2V Iindex DR_CurrentCluster
+@MV2V Iindex DR_CurrentSect
+#
+@POPLOCAL Iindex
+@POPRETURN
+@RET
+
+# Function Read Next Dir
+# Reads down the Directory structure. It knows about Clusters to if it runs out of one it will ask the FAT Table when the next it.
+
+:ReadNextDir
+@PUSHRETURN
+
+# Each DIR Record is 32 bytes or 16 such records in 512 byte segment
+# We need to calculate how many 512 sectors into the DIR structure the currentRec represents
+# So 15 or less would be 1 sector, 16-31 be 2 sectors etc etc
+# So divide CurrentRec by 16 to get an sector count from 0 to max
+@PUSHI DR_CurrentRec
+@RTR @RTR @RTR @RTR  # Div 16
+#
+# add that to the CurrentSect to find how many sectors into the DIR structure we are looking.
+#
+@ADDI DR_CurrentSect
+# Now we need to figure out if the new value is overflowing the size of the Cluster
+#
+@PUSHI DR_SectorsPerCluster @AND 0xff     # Byte size value so turn into valid 16b
+@CALL DIVU
+# On return TOS will be (Next Sector / Sectors Per Cluster)
+#           SFT will be the Modular value
+@SWP
+@IF_ZERO
+   # This means we moved to a new Cluster, need to query FAT table for that.
+   @POPNULL    # Get rid of the Mod % part
+   @SUB 1      # Now find the FAT table entry
+   @CALL GetNextFatEntry
+   @IF_GE_A 0xfff8     # fff8 to ffff are a range of values that all mean End of Chain
+      # End of Chain
+      @POPNULL
+      @PUSH 0
+   @ELSE
+      @POPI DR_CurrentCluster
+      @MA2V 0 DR_CurrentRec        # zero, the record id, within this cluster.
+      @PUSHI DR_CurrentCluster     # We don't need to add record since this cases is always zero
+   @ENDIF
+@ELSE
+   # Here we know that this sector falls inside the current cluster, we just need to figureout
+   # which sector inside the cluster it is.
+   @SWP @POPNUL      # This is to get rid of the un-needed division result
+   @ADDI DR_CurrentCluster   # Its possible there will be a chain of multiple clusters, so we keep the pointer moving.
+@ENDIF
+# At this point the sector number of the DR entry should be on the Stack
+# OF it might be zero, if we reached the end of the chain, so check for that.
+@IF_NOTZERO
+  @PUSH BufferDir
+  @CALL ReadSector
+  # The DIRBuffer will now have the 512 sectore, we now need to figure out the offset within that 512 block is our DIR
+  @PUSHI DR_CurrentRec       # DR_CurrentRec is a count from 0 to max, but the offset is CR*32 
+  @AND 0x01ff
+  @RTL @RTL @RTL @RTL @RTL   # Mul by 32 to get the offset in sector
+  @PUSH DR_Struct
+  @PUSH 32
+  @CALL CopyMem              # Copy the Dir record to the Global buffer
+  @INCI DR_CurrentRec
+@ENDIF
+@POPRETURN
+@RET
+#
+# Function GetNextFatEntry
+# Given a Sector number, will return the 
+
+
+
+
+
+
+
+
+
+# Function CopyDRdata(SrcBuffer)
+@PUSHRETURN
+@PUSHLOCAL Iindex
+@POPI Iindex
+#
+@PUSHI Iindex @PUSH DR_FileName @PUSH 32 @CALL CopyMem
+#
+@POPLOCAL Iindex
+@POPRETURN
+@RET
+
+
+
+
+
 	 
   
 
@@ -456,6 +569,8 @@ b0 # For word padding on last byte above
 # here we define the space for 3 buffers.
 # [BufferName-4] == sector number
 # [BufferName-2] == state flag, 0=unchanged, 1=read only, 2=Modified and needs sync
+=SectorOffset -4
+=StateOffSet -2
 :BufferFileSector 0
 :BufferFileState 0
 :BufferFile
