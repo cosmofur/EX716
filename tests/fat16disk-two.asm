@@ -67,8 +67,8 @@ b0 # For word padding on last byte above
 :ReadBootRecord
 @PRT "RBR Start" @StackDump
 @PUSHRETURN
-@PUSHLOCAL BufferPtr
-@PUSHLOCAL Iindex
+@PUSHLOCALI BufferPtr
+@PUSHLOCALI Iindex
 @POPI BufferPtr
 @POPI Iindex    # The DiskID as temporary value
 @DISKSELI Iindex
@@ -93,8 +93,8 @@ b0 # For word padding on last byte above
 :ReadSector
 @StackDump
 @PUSHRETURN
-@PUSHLOCAL BufferPtr
-@PUSHLOCAL Iindex
+@PUSHLOCALI BufferPtr
+@PUSHLOCALI Iindex
 @POPI BufferPtr
 @POPI Iindex 
 # See if that Buffer already loaded
@@ -120,10 +120,10 @@ b0 # For word padding on last byte above
 # Function, CopyMem(Src,Dst,Length)
 #  This is basily the strcpyn command but with no concern about posisble string legnths.
 :CopyMem
-@PUSHLOCAL LenVal
-@PUSHLOCAL inputstr
-@PUSHLOCAL returnstr
-@PUSHLOCAL Iindex
+@PUSHLOCALI LenVal
+@PUSHLOCALI inputstr
+@PUSHLOCALI returnstr
+@PUSHLOCALI Iindex
 @POPI LenVal
 @POPI returnstr
 @POPI inputstr
@@ -166,7 +166,7 @@ b0 # For word padding on last byte above
 # Function isvalidFAT16Char(int c)
 :isValidFAT16Char
 @PUSHRETURN
-@PUSHLOCAL ValidFlag    # Save 'local' variable for possible reuse.
+@PUSHLOCALI ValidFlag    # Save 'local' variable for possible reuse.
 @SWITCH
    @CASE_RANGE "A\0" "Z\0"
       @MA2V 1 ValidFlag
@@ -212,9 +212,9 @@ b0 # For word padding on last byte above
 @PUSHRETURN
 #
 # Prepare local variables
-@PUSHLOCAL Iindex @PUSHLOCAL Jindex @PUSHLOCAL endIdx @PUSHLOCAL isStart
-@PUSHLOCAL isEnd  @PUSHLOCAL LenVal @PUSHLOCAL inputstr
-@PUSHLOCAL isStart
+@PUSHLOCALI Iindex @PUSHLOCALI Jindex @PUSHLOCALI endIdx @PUSHLOCALI isStart
+@PUSHLOCALI isEnd  @PUSHLOCALI LenVal @PUSHLOCALI inputstr
+@PUSHLOCALI isStart
 @PUSH 0   # Zero out the local variables
 @DUP @POPI Iindex
 @DUP @POPI Jindex
@@ -317,9 +317,9 @@ b0 # For word padding on last byte above
 #           Ptr to DR_Struct if there a match.
 :WalkDir
 @PUSHRETURN
-@PUSHLOCAL Iindex
-@PUSHLOCAL ClusterPtr
-@PUSHLOCAL inputstr
+@PUSHLOCALI Iindex
+@PUSHLOCALI ClusterPtr
+@PUSHLOCALI inputstr
 @POPI ClusterPtr
 @POPI inputstr
 
@@ -386,9 +386,9 @@ b0 # For word padding on last byte above
 # 
 :OpenDir
 @PUSHRETURN
-@PUSHLOCAL Iindex
-@PUSHLOCAL Jindex
-@PUSHLOCAL inputstr
+@PUSHLOCALI Iindex
+@PUSHLOCALI Jindex
+@PUSHLOCALI inputstr
 @POPI inputstr
 @PUSHII instring
 # First see if we start with a '/' and set to CWD to ROOT
@@ -455,7 +455,7 @@ b0 # For word padding on last byte above
 # clears the current DR_ values and reads in first entry from Cluster
 :Open_DirByID
 @PUSHRETURN
-@PUSHLOCAL Iindex
+@PUSHLOCALI Iindex
 #
 @POPI Iindex    # save the cluster
 @PUSHI Iindex
@@ -544,7 +544,7 @@ b0 # For word padding on last byte above
 
 # Function CopyDRdata(SrcBuffer)
 @PUSHRETURN
-@PUSHLOCAL Iindex
+@PUSHLOCALI Iindex
 @POPI Iindex
 #
 @PUSHI Iindex @PUSH DR_FileName @PUSH 32 @CALL CopyMem

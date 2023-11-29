@@ -1447,7 +1447,7 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 if Debug > 1:
                     print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 if (not MacroStack):
-                    print("Break Here")
+#                    print("Break Here")
                     CPU.raiseerror(
                         "049 Macro Refrence Stack Underflow: %s" % line)
                 i += 1
@@ -1632,6 +1632,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
         if Debug > 1:
             print("Reading Filename %s" % wfilename)
         while True:
+#            print("Watch:(%04x) 0cba: %02x%02x:%s" % (address, CPU.memspace[0xcbb],CPU.memspace[0xcba],line))
+#            if address == 0xb7b:
+#                print("Set Break here:")
             if ActiveMacro and line == "":
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
                 if len(MacroLine) > 0:
@@ -1776,6 +1779,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                             "054  Macro %s is not defined" % (macname))
                 # Here is were we start the 'switch case' looking for commands.
                 elif line[0] == ":":
+
                     (key, size) = nextword(line[1:])
                     if Debug > 1:
                         print(">>> adding %s at location %s" %
@@ -1901,8 +1905,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     continue
                 else:
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
+#                    if ( GlobalLineNum >= 130 and GlobalLineNum <=135):
+#                        print("break here:%s" % line)
                     LineAddrList.append([address, GlobalLineNum, filename])
-#                    LineAddrList.sort(key = lambda x: x[1])
                     (key, size) = nextwordplus(line)
                     line = line[size:]
                     if address > highaddress:
@@ -1921,6 +1926,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         # This extra bit logic handles the case of lables+## math.
                 if int(vaddress) < 100 and CPU.pc != 0:
                     print("DEBUG: mem add %s at pc %s\n" % (vaddress, CPU.pc))
+                if vaddress == 0xcba:
+                    print("FWORD at target: %s %s [%04x]=%04x" % ( key, store[1], vaddress, v))
                 StoreMem[int(vaddress)] = CPU.lowbyte(v)
                 StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:

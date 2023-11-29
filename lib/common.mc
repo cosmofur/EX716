@@ -215,6 +215,7 @@ M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 M PROMPT @PRT %1 @READI %2
 # Read a String from Keyboard
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
+M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL :%0ADDR 0xffff @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
 # Read character from keyboard with no wait if none ready.

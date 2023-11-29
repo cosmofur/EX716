@@ -1,63 +1,113 @@
 # Provides and Alternative small software stack
+
 # Used mostly so some simple low depth recursion can avoid reusing fixed storage
 #
-# @PUSHRETURN at the top of a function saves the passed return address
-# @POPRETURN restores it, and should be the last macro call before @RET
-# @PUSHLOCAL VarName, does same for a named variable. Allowing 'local' use.
-# @POPLOCAL restore it at end of function....
-# IF YOU HAVE MULTIPLE LOCAL VARIABLES, PUSH and POP in REVERSE Order!
-#   ie) PUSHLOCAL A, PUSHLOCAL B ...... POPLOCAL B, POPLOCAL A
+# This provides a Software stack which can be larger than the built in hardware stack.
+# The default is 'only' 240 bytes long and suttbale for 120 2 byte words, but you can
+# redefine any block of memory to be a new software stack.
 #
-# You can also consider PUSHRETURN and POPRETURN as a way to save the top of HW stack
-# and restore it later.
+# Main public  Macros are:
 #
+#  PUSHHW        - POP's HW stack and Pushes it to Software stack
+#  PUSHRETURN    - Same, but syntaticily clear is meant to store the Return Address of functions
+#  PUSHLOCALI    - PUSH's the value of a variable to Software Stack
+#  PUSHLOCALI    - PUSH's the value of a [variable] to Software Stack (for arrays)
+#  PUSHLOCAL     - PUSH's a constant (or lable address) to software stack
+#
+#  POPHW         - POP's SoftwareStack and PUSHS it onto the HW stack
+#  POPRETURN     - Same, but syntaticly clear is meant to recover the Return address of functions
+#  POPLOCAL      - POP's Software stack to variable
+#  POPLOCALII    - POP's SW stack to [variable] for arrays
+#  TOPLOCAL      - Puts on HW stack value at top of SW stack, without pop'ing it.
+#
+# There are also some public Functions, which the Macro's above use.
+# __MOVE_SS_HW    - Soft Stack to Hardware stack
+# __MOVE_HW_SS   - Hardware Stack to Soft Stack
+#
+# The global variables __SS_TOP __SS_SP __SS_BOTTOM can be queried but should be treated as read only
+# To change them use the globale funciton
+#
+#  SetSSStack(TopAddress,BottomAddress)
 ! SOFTSTACK_DONE
 M SOFTSTACK_DONE 1
 @JMP SkipSoftStack
-G PUSHRETURN  G POPRETURN G RETSTACKMAX G ReturnStackSP G ReturnStack
-:ReturnStackSP 0
-:ReturnStack
-= RETSTACKMAX 32     # set to max number of 16b words on stack
-. ReturnStack+64     # 2xRETSTACKMAX values is current limit of stack size in bytes
-G PushStackError
-:PushStackError
+#
+# Global key Soft Stack Values
+G __SS_TOP
+G __SS_BOTTOM
+G __SS_SP
+G __SS_BOTTOM
+G __SS_TOP
+G __MOVE_HW_SS
+G __MOVE_SS_HW
+G SetSSStack
+G __SS_StackError
+
+
+:__SS_TOP 0xfff0   # Default stack is top of mem 0xff00 to 0xfff0 about 240 bytes
+:__SS_SP 0xfff2    # The First time we push, we dec SP to TOP
+:__SS_BOTTOM 0xff00
+
+#
+# Define PUSHRETURN
+M PUSHRETURN @CALL __MOVE_HW_SS
+M PUSHHW @CALL __MOVE_HW_SS
+M PUSHLOCALI @PUSHI %1 @CALL __MOVE_HW_SS
+M PUSHLOCALII @PUSHII %1 @CALL __MOVE_HW_SS
+M PUSHLOCAL @PUSH %1 @CALL __MOVE_HW_SS
+# Function __MOVE_HW_SS
+#  Pushes top of HW Stack to SoftStack
+:__MOVE_HW_SS
+@PUSHI __SS_SP
+@IF_LT_V __SS_BOTTOM
+   @POPNULL
+   @JMP __SS_StackError
+@ENDIF
+@POPNULL
+@SWP
+@DEC2I __SS_SP      # After a PUSH mem[__SS_SP] is value of TOP
+@POPII __SS_SP
+@RET
+#
+#
+M POPRETURN @CALL __MOVE_SS_HW
+M POPHW @CALL __MOVE_SS_HW
+M POPLOCAL @CALL __MOVE_SS_HW @POPI %1
+M POPLOCALII @CALL __MOVE_SS_HW @POPII %1
+M TOPLOCAL @PUSHII __SS_SP
+# Function __MOVE_SS_HW
+# POPS top of Softstack onto HW Stack
+:__MOVE_SS_HW
+@PUSHI __SS_SP
+@IF_GT_A __SS_TOP
+   @POPNULL
+   @JMP __SS_StackError
+@ENDIF
+@POPNULL
+@PUSHII __SS_SP
+@INC2I __SS_SP
+@SWP
+@RET
+#
+# Function
+# Sets the Stack storage to a new range of memory.
+# This initilizes the stack, save/set the global __SS_SP if you need to preserve data
+# SetSSStack(TopAddress,BottomAddress)
+:SetSSStack
+@SWP
+@POPI __SS_BOTTOM
+@SWP
+@POPI __SS_TOP
+@MV2V __SS_TOP __SS_SP
+@INC2I __SS_SP
+@RET
+#
+# Standard Stack Error handler, exits on any error
+# 
+:__SS_StackError
 @PRTLN "Error. Code Stack Out of Bounds"
 @END
 
 
-# PUSHRETURN Moves the TOS to the local ReturnStack
-# Errors if depth grows over RETSTACKMAX
-M PUSHRETURN \
-   @PUSH RETSTACKMAX @CMPI ReturnStackSP @POPNULL \
-   @JMPZ PushStackError \
-      @PUSH ReturnStack \
-      @ADDI ReturnStackSP \
-      @POPS \
-      @INC2I ReturnStackSP
-      
-# PUSHs the Top of ReturnStack to HW Stack
-# Errors if Depth is already zero
-M POPRETURN \
-  @PUSH 0 @CMPI ReturnStackSP @POPNULL \
-  @JMPZ PushStackError \
-  @DEC2I ReturnStackSP \
-  @PUSHI ReturnStackSP @ADD ReturnStack @PUSHS
-
-M PUSHLOCAL \
-   @PUSH RETSTACKMAX @CMPI ReturnStackSP @POPNULL \
-   @JMPZ PushStackError \
-      @PUSHI %1 \
-      @PUSH ReturnStack \
-      @ADDI ReturnStackSP \
-      @POPS \
-      @INC2I ReturnStackSP
-
-M POPLOCAL \
-  @PUSH 0 @CMPI ReturnStackSP @POPNULL \
-  @JMPZ PushStackError \
-  @DEC2I ReturnStackSP \
-  @PUSHI ReturnStackSP @ADD ReturnStack @PUSHS \
-  @POPI %1 
-  
 :SkipSoftStack
 ENDBLOCK
