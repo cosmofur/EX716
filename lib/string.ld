@@ -5,6 +5,8 @@ L div.ld
 L mul.ld
 L softstack.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
+G ISAlphaNum G IsAlpha G ISNumeric
+
 #
 # Soem 'String' Macros
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
@@ -15,6 +17,9 @@ M STRSET \
 M STRSETI \
   @JMP %0_Skip :%0Store %1 b0 :%0_Skip @PUSHI %2 @PUSH %0Store @CALL strcpy
 #
+
+
+
 # strlen(str_var) returns length of string
 # Vars
 :StrPtrA 0
@@ -553,6 +558,79 @@ M STRSETI \
 :Endstrstr
 @POPRETURN
 @RET
+
+
+###########
+#
+# Function ISAlphaNum(String):T|F
+# Return T|F if first char in string is in set [A-Za-z0-9_]
+:ISAlphaNum
+@PUSHRETURN
+@PUSHS
+@AND 0xff
+@SWITCH
+@CASE_RANGE "a\0" "z\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "A\0" "Z\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "0\0" "9\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "_\0"
+   @PUSH 1
+   @CBREAK
+@CDEFAULT
+   @PUSH 0
+   @CBREAK
+@ENDCASE
+@SWP
+@POPNULL
+@POPRETURN
+@RET
+#
+# Function IsAlpha(string):T|F
+# Return T|F if first char in string is in set [A-Za-z]
+:ISAlpha
+@PUSHRETURN
+@PUSHS
+@AND 0xff
+@SWITCH
+@CASE_RANGE "a\0" "z\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "A\0" "Z\0"
+   @PUSH 1
+   @CBREAK
+@CDEFAULT
+   @PUSH 0
+   @CBREAK
+@ENDCASE
+@SWP
+@POPNULL
+@POPRETURN
+@RET
+
+#
+# Function ISNumeric(String):T|F
+# Return T|F if first char in string is in set [0-9]
+@PUSHRETURN
+@PUSHS
+@AND 0xff
+@SWITCH
+@CASE_RANGE "0\0" "9\0"
+   @PUSH 1
+   @CBREAK
+@CDEFAULT
+   @PUSH 0
+   @CBREAK
+@ENDCASE
+@SWP
+@POPNULL
+@POPRETURN
+@RET
+
 # strfndc searchs string for single character returns ptr to that character
 # (strstr but with character constant on stack)
 :sfReturn 0

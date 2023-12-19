@@ -1924,10 +1924,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if store[2] != 0:
                         v = v + Str2Word(store[2])
                         # This extra bit logic handles the case of lables+## math.
-                if int(vaddress) < 100 and CPU.pc != 0:
-                    print("DEBUG: mem add %s at pc %s\n" % (vaddress, CPU.pc))
-                if vaddress == 0xcba:
-                    print("FWORD at target: %s %s [%04x]=%04x" % ( key, store[1], vaddress, v))
                 StoreMem[int(vaddress)] = CPU.lowbyte(v)
                 StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:

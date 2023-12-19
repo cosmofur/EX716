@@ -10,15 +10,27 @@
 #
 #  PUSHHW        - POP's HW stack and Pushes it to Software stack
 #  PUSHRETURN    - Same, but syntaticily clear is meant to store the Return Address of functions
-#  PUSHLOCALI    - PUSH's the value of a variable to Software Stack
-#  PUSHLOCALI    - PUSH's the value of a [variable] to Software Stack (for arrays)
+#  PUSHLOCAL     - PUSH's the value constant to Software Stack
+#  PUSHLOCALI    - PUSH's the value of a [variable] to Software Stack
+#  PUSHLOCALII   - PUSH the value of a [[variable]] to software state (usefull if trying to push an item in array)
 #  PUSHLOCAL     - PUSH's a constant (or lable address) to software stack
 #
 #  POPHW         - POP's SoftwareStack and PUSHS it onto the HW stack
 #  POPRETURN     - Same, but syntaticly clear is meant to recover the Return address of functions
 #  POPLOCAL      - POP's Software stack to variable
+#                This is really POPLOCALI because in pure form POPLOCAL would make no sense as you can't
+#                pop a value to a 'constant'
 #  POPLOCALII    - POP's SW stack to [variable] for arrays
 #  TOPLOCAL      - Puts on HW stack value at top of SW stack, without pop'ing it.
+#
+# For basic usage,
+#   The goal of the these tools is to allow 'local' variables to work in a semi-natural way.
+#   PUSHRETURN saves the previous passed in return address in a non-unique storage
+#   PUSHLOCALI VARNAME, saves the current values of the var name so it can be used in recursion.
+#   POPLOCAL VARNAME, restores the previous value of the Variable from the stack (make sure order is reversed)
+#   POPRETURN Restores the Return Addres to the HW stack so the next @RET will work.
+#
+
 #
 # There are also some public Functions, which the Macro's above use.
 # __MOVE_SS_HW    - Soft Stack to Hardware stack
@@ -79,7 +91,7 @@ M TOPLOCAL @PUSHII __SS_SP
 # POPS top of Softstack onto HW Stack
 :__MOVE_SS_HW
 @PUSHI __SS_SP
-@IF_GT_A __SS_TOP
+@IF_GT_V __SS_TOP
    @POPNULL
    @JMP __SS_StackError
 @ENDIF

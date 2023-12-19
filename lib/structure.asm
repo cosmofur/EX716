@@ -448,6 +448,15 @@ M ForIA2B \
   @CMPI %1 @POPNULL \
   @JMPZ %V_NextEnd
 
+# For UP variation test for > end condition
+M ForIupA2B \
+  %S \
+  @MA2V %2 %1 \
+  :%V_ForTop \
+  @PUSH %3 \
+  @CMPI %1 @POPNULL \
+  @JMPN %V_NextEnd
+
 # for Index from constant to variable
 M ForIA2V \
   %S \
@@ -456,6 +465,15 @@ M ForIA2V \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
   @JMPZ %V_NextEnd
+
+# For Up variation to for > end condition
+M ForIupA2V \
+  %S \
+  @MA2V %2 %1 \
+  :%V_ForTop \
+  @PUSHI %3 \
+  @CMPI %1 @POPNULL \
+  @JMPN %V_NextEnd
 
 # for Index from variable to constant
 M ForIV2A \
@@ -466,6 +484,15 @@ M ForIV2A \
   @CMPI %1 @POPNULL \
   @JMPZ %V_NextEnd
 
+# For Up variation to for > end condition
+M ForIupV2A \
+  %S \
+  @MV2V %2 %1 \
+  :%V_ForTop \
+  @PUSH %3 \
+  @CMPI %1 @POPNULL \
+  @JMPN %V_NextEnd
+
 #for Index from variable to variable
 M ForIV2V \
   %S \
@@ -474,6 +501,15 @@ M ForIV2V \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
   @JMPZ %V_NextEnd
+
+M ForIupV2V \
+  %S \
+  @MV2V %2 %1 \
+  :%V_ForTop \
+  @PUSHI %3 \
+  @CMPI %1 @POPNULL \
+  @JMPN %V_NextEnd
+
 M Next \
   @INCI %1 \
   @JMP %V_ForTop \
