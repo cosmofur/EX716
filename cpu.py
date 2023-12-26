@@ -39,6 +39,11 @@ CastWriteSector=22
 CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
+CastTapeWriteI=34
+CastEnd=99
+CastDebugToggle=100
+CastStackDump=102
+
 PollReadIntI=1
 PollReadStrI=2
 PollReadCharI=3
@@ -46,6 +51,8 @@ PollSetNoEcho=4
 PollSetEcho=5
 PollReadCINoWait=6
 PollReadSector=22
+PollReadTapeI=23
+PollRewindTape=24
 DebugOut=sys.stderr
 
 if sys.platform == 'win32':
@@ -380,7 +387,7 @@ class microcpu:
     def optDUP(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.raiseerror("005 MB Stack overflow, optpush")
+            self.raiseerror("006 MB Stack overflow, optpush")
         sp *= 2
         self.mb[sp] = self.lowbyte(self.mb[sp - 2])
         self.mb[sp + 1] = self.lowbyte(self.mb[sp - 1])
@@ -389,10 +396,10 @@ class microcpu:
     def optPUSHI(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.raiseerror("006 MB Stack overflow, optPUSHI")
+            self.raiseerror("007 MB Stack overflow, optPUSHI")
         sp *= 2
         if (address+1 > MAXMEMSP):
-            self.raiseerror("007 Invalid Address: %d, optPUSHI" % (address))
+            self.raiseerror("008 Invalid Address: %d, optPUSHI" % (address))
         self.mb[sp] = self.memspace[address]
         address += 1
         if (address <= MAXMEMSP):
@@ -402,12 +409,12 @@ class microcpu:
     def optPUSHII(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.raiseerror("008 MB Stack overflow, optPUSHII")
+            self.raiseerror("009 MB Stack overflow, optPUSHII")
         sp *= 2
         newaddress = self.getwordat(address)
         if (newaddress+1 > MAXMEMSP):
             self.raiseerror(
-                "009 Invalid Indirect Address: %d, optPUSHII" % (newaddress))
+                "010 Invalid Indirect Address: %d, optPUSHII" % (newaddress))
         self.mb[sp] = self.memspace[newaddress]
         newaddress += 1
         if (newaddress <= MAXMEMSP):
@@ -421,10 +428,10 @@ class microcpu:
 
     def optPOPNULL(self, address):
         if (address > MAXMEMSP):
-            self.raiseerror("010 Invalid Address: %d, optPOPI" % (address))
+            self.raiseerror("011 Invalid Address: %d, optPOPI" % (address))
         sp = self.mb[0xff]
         if sp < 1:
-            self.raiseerror("011 Stack underflow, optPOPI")
+            self.raiseerror("012 Stack underflow, optPOPI")
         self.mb[0xff] -= 1
 
     def optSWP(self, address):
@@ -437,14 +444,14 @@ class microcpu:
 
     def optPOPI(self, address):
         if (address > MAXMEMSP):
-            self.raiseerror("010 Invalid Address: %d, optPOPI" % (address))
+            self.raiseerror("013 Invalid Address: %d, optPOPI" % (address))
         sp = self.mb[0xff]
         if sp < 1:
-            self.raiseerror("011 Stack underflow, optPOPI")
+            self.raiseerror("014 Stack underflow, optPOPI")
         sp -= 1
         sp *= 2
         if sp > (0xff/2 - 2):
-            self.raiseerror("012 MB Stack overflow, optPOPI")
+            self.raiseerror("015 MB Stack overflow, optPOPI")
         self.insertbyte(address, self.mb[sp])
         if (address+1 <= MAXMEMSP):
             self.insertbyte(address+1, self.mb[sp+1])
@@ -454,15 +461,15 @@ class microcpu:
         address = self.getwordat(firstaddress)
         if (address+1 > MAXMEMSP):
             self.raiseerror(
-                "013 Invalid Indirect Address: %d, optPOPII" % (address))
+                "016 Invalid Indirect Address: %d, optPOPII" % (address))
         sp = self.mb[0xff]
         if sp < 1:
-            self.raiseerror("014 Stack underflow, optPOPII")
+            self.raiseerror("017 Stack underflow, optPOPII")
         self.optPOPI(address)
 
     def optPOPS(self, notused):
         if self.mb[0xff] < 2:
-            self.raiseerror("051 Stack underflow, OptPOPS")
+            self.raiseerror("018 Stack underflow, OptPOPS")
         newaddress = self.fetchAcum(0)
         A1 = self.fetchAcum(1)
         self.putwordat(newaddress, A1)
@@ -522,7 +529,7 @@ class microcpu:
     def optCMPII(self, address):
         if address >= MAXMEMSP:
             self.raiseerror(
-                "017 Invalid Address for CMP: %d, optCMPII" % (address))
+                "019 Invalid Address for CMP: %d, optCMPII" % (address))
         newaddress = self.getwordat(address)
         self.optCMPI(newaddress)
 
@@ -549,16 +556,16 @@ class microcpu:
 
     def optADDI(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("023 Invalid Address: %d, optADDI" % (address))
+            self.raiseerror("020 Invalid Address: %d, optADDI" % (address))
         newaddress = self.getwordat(address)
         self.optADD(newaddress)
 
     def optADDII(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("029 Invalid Address: %d, optANDII" % (address))
+            self.raiseerror("021 Invalid Address: %d, optANDII" % (address))
         newaddress = self.getwordat(address)
         if (newaddress > MAXMEMSP):
-            self.raiseerror("030 Invalid Address %d, optANDII" % (address))
+            self.raiseerror("022 Invalid Address %d, optANDII" % (address))
         self.optADDI(newaddress)
 
     def optSUB(self, invalue):
@@ -593,10 +600,10 @@ class microcpu:
 
     def optSUBII(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("031 Invalid Address: %d, optSUBII" % (address))
+            self.raiseerror("023 Invalid Address: %d, optSUBII" % (address))
         newaddress = self.getwordat(address)
         if (newaddress > MAXMEMSP):
-            self.raiseerror("032 Invalid Address %d, optSUBII" % (address))
+            self.raiseerror("024 Invalid Address %d, optSUBII" % (address))
         self.optSUBI(newaddress)
 
     def optOR(self, ivalue):
@@ -618,16 +625,16 @@ class microcpu:
 
     def optORI(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("028 Invalid Address: %d, optORI" % (address))
+            self.raiseerror("025 Invalid Address: %d, optORI" % (address))
         newaddress = self.getwordat(address)
         self.optOR(newaddress)
 
     def optORII(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("035 Invalid Address: %d, optORII" % (address))
+            self.raiseerror("026 Invalid Address: %d, optORII" % (address))
         newaddress = self.getwordat(address)
         if (newaddress > MAXMEMSP):
-            self.raiseerror("036 Invalid Address %d, optORII" % (address))
+            self.raiseerror("027 Invalid Address %d, optORII" % (address))
         self.optORI(newaddress)
 
     def optAND(self, ivalue):
@@ -649,50 +656,50 @@ class microcpu:
 
     def optANDI(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("027 Invalid Address: %d, optANDI" % (address))
+            self.raiseerror("028 Invalid Address: %d, optANDI" % (address))
         newaddress = self.getwordat(address)
         self.optAND(newaddress)
 
     def optANDII(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("033 Invalid Address: %d, optANDII" % (address))
+            self.raiseerror("029 Invalid Address: %d, optANDII" % (address))
         newaddress = self.getwordat(address)
         if (newaddress > MAXMEMSP):
-            self.raiseerror("034 Invalid Address %d, optANDII" % (address))
+            self.raiseerror("030 Invalid Address %d, optANDII" % (address))
         self.optANDI(newaddress)
 
     def optJMPZ(self, address):
         if address >= MAXMEMSP:
             self.raiseerror(
-                "018 Invalid Address for Jump: %d, optJMPZ" % (address))
+                "031 Invalid Address for Jump: %d, optJMPZ" % (address))
         if ((self.flags & 0x1) != 0):
             self.pc = address
 
     def optJMPN(self, address):
         if address >= MAXMEMSP:
             self.raiseerror(
-                "019 Invalid Address for Jump: %d, optJMPN" % (address))
+                "032 Invalid Address for Jump: %d, optJMPN" % (address))
         if ((self.flags & 0x2) != 0):
             self.pc = address
 
     def optJMPC(self, address):
         if address >= MAXMEMSP:
             self.raiseerror(
-                "020 Invalid Address for Jump: %d, optJMPC" % (address))
+                "033 Invalid Address for Jump: %d, optJMPC" % (address))
         if ((self.flags & 0x4) != 0):
             self.pc = address
 
     def optJMPO(self, address):
         if address >= MAXMEMSP:
             self.raiseerror(
-                "021 Invalid Address for Jump: %d, optJMPO" % (address))
+                "034 Invalid Address for Jump: %d, optJMPO" % (address))
         if ((self.flags & 0x8) != 0):
             self.pc = address
 
     def optJMP(self, address):
         if address >= MAXMEMSP:
             self.raiseerror(
-                "022 Invalid Address for Jump: %d, optJMP" % (address))
+                "035 Invalid Address for Jump: %d, optJMP" % (address))
         self.pc = address
 
     def optJMPI(self, address):
@@ -731,7 +738,7 @@ class microcpu:
 
         if address >= (MAXMEMSP-11):
             self.raiseerror(
-                "037 Insufficent space for Message Address at %d, optCAST" % (address))
+                "036 Insufficent space for Message Address at %d, optCAST" % (address))
         cmd = self.fetchAcum(0)
         if cmd == 0:
             if self.mb[0xff] > 0:
@@ -803,13 +810,13 @@ class microcpu:
                 DeviceFile.seek(0,0)
             except IOError:
                 self.raiseerror(
-                    "048 Error tying to open Random Device: %s" % DeviceHandle)
+                    "037 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSeekDisk:
             self.DiskPtr = address*0x200
             DeviceFile.seek(self.DiskPtr, 0)
         if cmd == CastWriteSector:
             v = address
-            if v < MAXMEMSP-0xff:
+            if v < MAXMEMSP-0x1ff:
                 block = self.memspace[v:v+512]
                 DeviceFile.seek(self.DiskPtr)
                 DeviceFile.write(bytes(block))
@@ -817,7 +824,7 @@ class microcpu:
                 DeviceFile.flush()
             else:
                 self.raiseerror(
-                    "049 Attempted to write block larger than memory to storage")
+                    "038 Attempted to write block larger than memory to storage")
         if cmd == CastSyncDisk:
             if DeviceHandle != None:
                 DeviceFile.close()
@@ -833,18 +840,29 @@ class microcpu:
             iaddr = self.fetchAcum(1)
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
-        if cmd == 99:
+        if cmd == CastEnd:
             print("\nEND of Code:(%d Opts)" % GlobalOptCnt)
             sys.exit(address)
-        if cmd == 100:
+        if cmd == CastDebugToggle:
             Debug = 0 if Debug else 1
-        if cmd == 102:
+        if cmd == CastStackDump:
             print(" %04x:Stack ( %d):" %
                              (self.pc, self.mb[0xff]-1), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+(0xff*self.mb[i*2+1])
                 print(" %04x" % (val),file=DebugOut,end="")
             print(" ",file=DebugOut)
+        if cmd == CastTapeWriteI:
+            if DeviceHandle != None:
+                v=address
+                if v < MAXMEMSP-0x1ff:
+                    block=self.memspace[v:v+512]
+                    DeviceFile.write(bytes(block))
+                    DeviceFile.flust()
+                else:
+                    self.raiseerror(
+                        "039 Attempt to write from source memory past available memory")
+                        
         sys.stdout.flush()
 
     def optPOLL(self, address):
@@ -861,7 +879,7 @@ class microcpu:
         #
         if address >= (MAXMEMSP-11):
             self.raiseerror(
-                "046 Insufficent space for Message Address at %d, optPOLL" % (address))
+                "040 Insufficent space for Message Address at %d, optPOLL" % (address))
         cmd = self.fetchAcum(0)
         if cmd == PollReadIntI:
             sys.stdout.flush()
@@ -887,7 +905,7 @@ class microcpu:
                     i += 1
                     if (i > (MAXMEMSP-11)):
                         self.raiseerror(
-                            "047 Insufficent space for Message Address at %d, optPOLL" % (i))
+                            "041 Insufficent space for Message Address at %d, optPOLL" % (i))
         if cmd == PollReadCharI:
             # Address must be at least 4 bytes for special code strings.
             c = readchar.readkey()
@@ -942,7 +960,7 @@ class microcpu:
         if cmd == PollReadSector:
             if DeviceHandle != None:
                 v=address
-                if v <= MAXMEMSP-0xff:
+                if v <= MAXMEMSP-0x1ff:
                     DeviceFile.seek(self.DiskPtr,0)
                     block = DeviceFile.read(512)
                     tidx = v
@@ -955,8 +973,23 @@ class microcpu:
                             j=0
                 else:
                     self.raiseerror(
-                        "053 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
-
+                        "042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
+        if cmd == PollReadTapeI:
+            if DeviceHandle != None:
+                v=address
+                block=DeviceFile.read(512)
+                tidx=v
+                if v<= MAXMEMSP-0x1ff:
+                    for i in block:
+                        self.memspace[tidx] = int(i) & 0xff
+                        tidx += 1
+                else:
+                    self.raiseerror(
+                        "043 Attempt to read Tape Block with insufficent memory")
+        if cmd == PollRewindTape:
+            if DeviceHandle != None:
+                DeviceFile.seek(0)
+                
     def optRRTC(self, unused):
         # RRTC mean Rotate Right Through Carry
         # Means after rotation current CF becomes high bit, and previous low bit saves to CF
@@ -1022,11 +1055,11 @@ class microcpu:
     def optFLOD(self, address):
         sp = self.mb[0xff]        
         if sp < 1:
-            self.raiseerror("051 Stack underflow, OptFLOD")
+            self.raiseerror("044 Stack underflow, OptFLOD")
         sp -= 1
         sp *= 2
         if sp > (0xff/2-2):
-            self.raiseerror("052 Stack overflow, optFLOD")
+            self.raiseerror("045 Stack overflow, optFLOD")
         self.flags = self.mb[sp]
         self.mb[0xff] -= 1
 
@@ -1039,7 +1072,7 @@ class microcpu:
         if not (optcode in OPTLIST):
             print(OPTLIST)
             self.raiseerror(
-                "038 Optcode %s at Addr %04xis invalid:" % (optcode, pc))
+                "046 Optcode %s at Addr %04xis invalid:" % (optcode, pc))
         if Debug > 0:
             DissAsm(pc, 1, self)
             watchfield = ""
@@ -1212,7 +1245,7 @@ def Str32Word(instr):
                 # that a fixed storage as that result may not occupy any spot in memory, that we can 'fix' in
                 # a second pass.
                 CPU.raiseerror(
-                    "054 Use of fixed value as label before defined.")
+                    "047 Use of fixed value as label before defined.")
         else:
             valid = True
             for i in instr:
@@ -1224,8 +1257,8 @@ def Str32Word(instr):
             else:
                 result = 0
                 CPU.raiseerror(
-                    "050 String %s is not a valid decimal value" % instr)
-    result = result & 0xffffffff
+                    "048 String %s is not a valid decimal value" % instr)
+    result = int(result) & 0xffffffff
     return result
 
 
@@ -1414,9 +1447,9 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 if Debug > 1:
                     print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 if (not MacroStack):
-                    print("Break Here")
+#                    print("Break Here")
                     CPU.raiseerror(
-                        "039a Macro Refrence Stack Underflow: %s" % line)
+                        "049 Macro Refrence Stack Underflow: %s" % line)
                 i += 1
                 MacroStack.pop()
                 continue
@@ -1434,7 +1467,7 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                     print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
                     CPU.raiseerror(
-                        "039b Macro Refrence Stack Underflow: %s" % line)
+                        "050 Macro Refrence Stack Underflow: %s" % line)
                 newline = newline + MacroStack[-1]
                 i += 1
                 continue
@@ -1444,14 +1477,14 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                     print("Refrence second from top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack or len(MacroStack) < 2 ):
                     CPU.raiseerror(
-                        "039b Macro Refrence Stack Underflow: %s" % line)                
+                        "051 Macro Refrence Stack Underflow: %s" % line)                
                 newline = newline + MacroStack[-2]
                 i += 1
             elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
                 varval = int(line[i:i+1])
                 if len(MacroVars) < varval:
                     CPU.raiseerror(
-                        "039 Macro %v Var %s is not defined" % (varval, line))
+                        "052 Macro %v Var %s is not defined" % (varval, line))
                 newline = newline+MacroVars[varcntstack[varbaseSP] + varval]
                 i = i + 1
         else:
@@ -1599,6 +1632,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
         if Debug > 1:
             print("Reading Filename %s" % wfilename)
         while True:
+#            print("Watch:(%04x) 0cba: %02x%02x:%s" % (address, CPU.memspace[0xcbb],CPU.memspace[0xcba],line))
+#            if address == 0xb7b:
+#                print("Set Break here:")
             if ActiveMacro and line == "":
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
                 if len(MacroLine) > 0:
@@ -1729,7 +1765,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                                 cpos += size
                             if varcnt < MacroPCount[macname]:
                                 # When Macro was defined we counted the max %# and now require that # Parms
-                                CPU.raiseerror("045 Insufficent required parameters (%s/%s) for Macro %s" %
+                                CPU.raiseerror("053 Insufficent required parameters (%s/%s) for Macro %s" %
                                                (varcnt, MacroPCount[macname], macname))
                         varcntstack[varbaseSP +
                                     1] = varcntstack[varbaseSP]+varcnt + 1
@@ -1740,9 +1776,10 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     else:
                         print("Missing: ", macname)
                         CPU.raiseerror(
-                            "044  Macro %s is not defined" % (macname))
+                            "054  Macro %s is not defined" % (macname))
                 # Here is were we start the 'switch case' looking for commands.
                 elif line[0] == ":":
+
                     (key, size) = nextword(line[1:])
                     if Debug > 1:
                         print(">>> adding %s at location %s" %
@@ -1774,7 +1811,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                             value=FileLabels[IsLocalVar(
                                 value[0:], LocalID, LORGFLAG)]
                         else:
-                            CPU.raiseerror("040 Line %s, Can not set Memory Point %s to lable that not yet defined." %
+                            CPU.raiseerror("055 Line %s, Can not set Memory Point %s to lable that not yet defined." %
                                            (GlobalOptCnt, value))
                     else:
                         value=Str2Word(value)
@@ -1788,7 +1825,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                                 modvalue=FileLabels[IsLocalVar(
                                     modvalue[1:], LocalID, LORGFLAG)]
                             else:
-                                CPU.raiseerror("040a Line %s, Can not modify Memory Point by lable that not yet defined." %(GlobalOptCnt, modvalue))
+                                CPU.raiseerror("056 Line %s, Can not modify Memory Point by lable that not yet defined." %(GlobalOptCnt, modvalue))
                         if (line[0:1] == "+"):
                             value = Str2Word(value) + Str2Word(modvalue)
                         else:
@@ -1868,8 +1905,9 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     continue
                 else:
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
+#                    if ( GlobalLineNum >= 130 and GlobalLineNum <=135):
+#                        print("break here:%s" % line)
                     LineAddrList.append([address, GlobalLineNum, filename])
-#                    LineAddrList.sort(key = lambda x: x[1])
                     (key, size) = nextwordplus(line)
                     line = line[size:]
                     if address > highaddress:
@@ -1886,8 +1924,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if store[2] != 0:
                         v = v + Str2Word(store[2])
                         # This extra bit logic handles the case of lables+## math.
-                if int(vaddress) < 100 and CPU.pc != 0:
-                    print("DEBUG: mem add %s at pc %s\n" % (vaddress, CPU.pc))
                 StoreMem[int(vaddress)] = CPU.lowbyte(v)
                 StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:

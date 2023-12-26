@@ -354,6 +354,8 @@ void handlePoll(int Param,int ParamI,int ParamII) {
   #define PollSetEcho 5
   #define PollReadCINoWait 6
   #define PollReadSector 22
+  #define PollReadTapeI 23
+  #define PollRewindTape 24
   switch (topstack(PC)) {
   case PollReadIntI:
     scanf("%d",&a);
@@ -386,7 +388,9 @@ void handlePoll(int Param,int ParamI,int ParamII) {
       break;
     }
       put16atmem(Param,(int)c);
-      break;		 
+      break;
+  case PollReadTapeI:
+    
   default:
     printf("Poll Code not implmented");
   }

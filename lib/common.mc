@@ -77,6 +77,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastSyncDisk 23
 =CastPrint32I 32
 =CastPrint32S 33
+=CastTapeWriteI 34
 =PollReadIntI 1
 =PollReadStrI 2
 =PollReadCharI 3
@@ -84,6 +85,8 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollSetEcho 5
 =PollReadCINoWait 6
 =PollReadSector 22
+=PollReadTapeI 23
+=PollRewindTape 24
 
 
 # Warning about Macros
@@ -212,6 +215,7 @@ M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 M PROMPT @PRT %1 @READI %2
 # Read a String from Keyboard
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
+M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL :%0ADDR 0xffff @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
 # Read character from keyboard with no wait if none ready.
@@ -247,6 +251,14 @@ M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST :%0_LOC 0 @POPNU
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
 M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
 M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL :%0_LOC 0 @POPNULL
+# We use the same logic for both Tape and Disk Select.
+M TAPESEL @PUSH CastSelectDisk @CAST %1 @POPNULL
+M TAPESELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
+M TAPEWRITE @PUSH CastTapeWriteI @PUSHI %1 @POPI %0_LOC @CAST :%0_LOC 0 @POPNULL
+M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI %0_LOC @POLL :%0_LOC 0 @POPNULL
+M TAPEREAD @PUSH PollReadTapeI @POLL %1 0 @POPNULL
+M TAPEREWIND @PUSH PollRewindTape @POLL 0 @POPNULL
+
 
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
