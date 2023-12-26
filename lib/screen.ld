@@ -1,5 +1,6 @@
-L io.ld
 ! SCREEN_DONE
+L io.ld
+L heapmgr.ld
 M SCREEN_DONE 1
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot
 G WinHideCursor G WinShowCursor
@@ -8,7 +9,6 @@ G WinHideCursor G WinShowCursor
 :CSICODE
 #"<ESC>["b0
 b$27 "[" b0
-@JMP ENDSCREEN
 # Windows Clear
 :WinClear
 @PRTS CSICODE @PRT "0m"
@@ -44,7 +44,19 @@ b$27 "[" b0
 # Windows Plot, draws a line for X0,Y0 to X1,Y1 printing String at each point
 # Winplot(X0,Y0,X1,Y1,StrPtr
 :WinPlot
-@POPI WPReturn
+@PUSHRETURN
+@PUSHLOCALI StrPtr
+@PUSHLOCALI X0
+@PUSHLOCALI X1
+@PUSHLOCALI Y0
+@PUSHLOCALI Y1
+@PUSHLOCALI DX
+@PUSHLOCALI DY
+@PUSHLOCALI SX
+@PUSHLOCALI SY
+@PUSHLOCALI ERR
+@PUSHLOCALI E2
+@PUSHLOCALI Direct
 @POPI StrPtr
 @POPI Y1 @POPI X1 @POPI Y0 @POPI X0
 #@PUSHI X0 @RTL @RTL @RTR @POPI X0
@@ -100,7 +112,19 @@ b$27 "[" b0
    :WPEndLoop
 @ENDWHILE
 @POPNULL
-@PUSHI WPReturn
+@PUSHLOCALI Direct
+@PUSHLOCALI E2
+@PUSHLOCALI ERR
+@PUSHLOCALI SY
+@PUSHLOCALI SX
+@PUSHLOCALI DY
+@PUSHLOCALI DX
+@PUSHLOCALI Y1
+@PUSHLOCALI Y0
+@PUSHLOCALI X1
+@PUSHLOCALI X0
+@PUSHLOCALI StrPtr
+@POPRETURN
 @RET
 :WPReturn 0
 :StrPtr 0
@@ -159,7 +183,5 @@ b$27 "[" b0
 @RET
 :TermInfoBuffer "                                                      " b0
 :TIBIndex 0
-
-
 ENDBLOCK
 :ENDSCREEN
