@@ -153,16 +153,16 @@ with open(JSONFNAME, "r") as openfile:
 OPTLIST = []
 OPTSYM = []
 OPTDICT = {}
-
 for i in SymToValMap:
     # We are going 'old school' 8 bit ascii encoding only.
     # None of this newfagle 2 or 3 byte character sets. :-)
     OPTLIST.append(i[0])
     OPTSYM.append(i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'))
     OPTDICT[i[1].encode('ascii', "ignore").decode('utf-8', 'ignore')] = [i[0],
-                                                                         i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
+                        i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
     OPTDICT[str(i[0])] = [i[0], i[1].encode(
         'ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
+
 
 
 def shandler(signum, frame):
@@ -218,14 +218,15 @@ def validatestr(instr, typecode):
 # handicap, and not a feature.
 #
 class microcpu:
-
     cpu_id_iter = itertools.count()
     DiskPtr = -1
+    OPTDICTFUNC={}
     
-
+   
     def switcher(self, optcall, argument):
-        default = "Invalid call"
-        return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)
+#        return self.OPTDICTFUNC.get(optcall, lambda arg: "Invalid call")(argument)
+        return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)        
+                                     
 
     def __init__(self, origin, memspace):
         self.pc = origin
@@ -239,6 +240,7 @@ class microcpu:
         self.mb[0xff] = 0
         self.simtime = False
         self.clocksec = 1000
+        
 
     def insertbyte(self, location, value):
         self.memspace[location] = value
@@ -258,10 +260,14 @@ class microcpu:
     def FindWhatLine(self, address):
         global LineAddrList
         i = (-1)
+        FoundOne=0
         for i in LineAddrList:
             if i[0] >= address:
+                FoundOne=1
                 break
-        return i[1]
+        if FoundOne == 0 and len(LineAddrList) > 5:
+            print(" Address %s is not part of codebase.\n%s" % (address,LineAddrList[:5]))
+        return "Line %s:%s" % (i[1],i[2])
 
     def raiseerror(self, idcode):
         global GPC, RunMode, FileLabels
@@ -295,15 +301,15 @@ class microcpu:
         except:
             print("TTY Error: On No Echo", file=DebugOut)
 
-        print("Error Number: %s \n\tat PC:%04x" % (idcode, int(CPU.pc)),file=DebugOut)
+        print("Error Number: %s \n\tat PC:0x%04x " % (idcode, int(CPU.pc)),file=DebugOut)
         valid = int(idcode[0:3])
         if RunMode:
-            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
-        new[3]
+            print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
+        print(new[3])
         if not InDebugger:
             sys.exit(valid)
         else:
-            print("At OpCount: %s,%04x" % (self.FindWhatLine(GPC), GPC),file=DebugOut)
+            print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
             debugger(FileLabels,"")
 
     def UNUSED_loadat(self, location, values):
@@ -841,7 +847,7 @@ class microcpu:
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
         if cmd == CastEnd:
-            print("\nEND of Code:(%d Opts)" % GlobalOptCnt)
+            print("\nEND of Run:(%d Opts)" % GlobalOptCnt)
             sys.exit(address)
         if cmd == CastDebugToggle:
             Debug = 0 if Debug else 1
@@ -1072,7 +1078,7 @@ class microcpu:
         if not (optcode in OPTLIST):
             print(OPTLIST)
             self.raiseerror(
-                "046 Optcode %s at Addr %04xis invalid:" % (optcode, pc))
+                "046 Optcode %s at File %s, Address( %04x ), is invalid:" % (optcode,self.FindWhatLine(pc),pc))
         if Debug > 0:
             DissAsm(pc, 1, self)
             watchfield = ""
@@ -1961,10 +1967,10 @@ def debugger(FileLabels,passline):
         else:
             sys.stdout.write(">>")
         sys.stdout.flush()
-        if passline != "":
+        if len(passline) != 0:
             print("processing %s\n" % passline)
-            cmdline=passline
-            passline=""
+            cmdline=passline[0]
+            passline=passline[1:]
         else:
             cmdline = input()
         if EchoFlag:
@@ -2246,6 +2252,8 @@ def debugger(FileLabels,passline):
             while CPU.pc <= 0xffff:
                 if (CPU.pc in breakpoints or CPU.pc in tempbreakpoints) and AtLeastOne != 1:
                     print("Break Point %04x" % CPU.pc)
+                    if ( CPU.pc in tempbreakpoints):
+                        tempbreakpoints.remove(CPU.pc)
                     DissAsm(CPU.pc, 1, CPU)
                     break
                 AtLeastOne = 0
@@ -2386,7 +2394,7 @@ def main():
         pass
 
     atexit.register(readline.write_history_file, histfile)
-    firstcmd=""
+    firstcmd=[]
     for i, arg in enumerate(sys.argv[1:]):
         if skipone:
             skipone = False
@@ -2396,7 +2404,7 @@ def main():
             if prpcmd == 2:
                 breakafter.append(Str2Word(arg))
             if prpcmd == 3:
-               firstcmd=arg 
+               firstcmd+=[arg]
         else:
             if arg == "-d":
                 Debug = Debug + 1
@@ -2436,11 +2444,14 @@ def main():
     GlobalOptCnt = 0
     if len(files) == 0:
         # if no files given then drop to debugger for machine lang tests.
+        # Default to common.mc to provide base macros
+        maxusedmem = loadfile("common.mc", maxusedmem, CPU, GLOBALFLAG, 0)
         UseDebugger = True
     if Remote:
         print("RDB running on port 4444, use nc localhost 4444")
         rpdb.set_trace()
     if OptCodeFlag:
+        # Write the 'compiled' code as a hex dump file.
         newfile = create_new_filename(files[0], "hex")
         f = open(newfile, "w")
         f.write("# BIN(%s,%s,%s\n. 0\n" % (files, CPU.pc, len(CPU.memspace)))

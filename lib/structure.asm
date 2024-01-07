@@ -140,6 +140,75 @@ M IF_GT_V \
   @JMPN %0_True \
   %S @JMP %V_ENDIF \
   :%0_True
+
+
+
+#
+# Unsigned Logic follows here
+#
+M IF_UGT_V \
+   @CMPI %1 \
+   %S \
+   @JMPC %V_ENDIF \
+   @JMPZ %V_ENDIF
+M IF_UGE_V \
+   @CMPI %1 \
+   %S \   
+   @JMPC %V_ENDIF
+M IF_ULE_V \
+   @CMPI %1 \
+   %S \
+   @JMPC %0_True \
+   @JMPZ %0_True \
+   @JMP %V_ENDIF \
+   :%0_True
+M IF_ULT_V \
+    @CMPI %1 \
+    @JMPC %0_True \
+    %S @JMP %V_ENDIF \
+    :%0_True
+M IF_UGT_A \
+   @CMP %1 \
+   %S \
+   @JMPC %V_ENDIF \
+   @JMPZ %V_ENDIF
+M IF_UGE_A \
+   @CMP %1 \
+   %S \   
+   @JMPC %V_ENDIF
+M IF_ULE_A \
+   @CMP %1 \
+   @JMPC %0_True \
+   @JMPZ %0_True \
+   %S @JMP %V_ENDIF \
+   :%0_True
+M IF_ULT_A \
+    @CMP %1 \
+    @JMPC %0_True \
+    %S @JMP %V_ENDIF \
+    :%0_True
+M IF_UGT_S \
+   @CMPS \
+   %S \
+   @JMPC %V_ENDIF \
+   @JMPZ %V_ENDIF
+M IF_UGE_S \
+   @CMPS \
+   %S \   
+   @JMPC %V_ENDIF
+M IF_ULE_S \
+   @CMPS  \
+   %S \   
+   @JMPC %0_True \
+   @JMPZ %0_True \
+   @JMP %V_ENDIF \
+   :%0_True
+M IF_ULT_S \
+    @CMPS \
+    %S \    
+    @JMPC %0_True \
+    @JMP %V_ENDIF \
+    :%0_True
 # Here are a few of the IF structures based only on the existing flags
 # This way you can use the FLAG based CMP and still use the ease of the IF/ELSE/BLOCKs
 M IF_NEG \
@@ -289,6 +358,38 @@ M WHILE_LT_V \
   :%V_LoopTop \
   @CMPI %1 \
   @JMPN %0_True \
+  @JMP %V_ExitLoop \
+  :%0_True
+
+M WHILE_UGT_A \
+  %S \
+  :%V_LoopTop \
+  @CMP %1 \
+  @JMPC %V_ExitLoop \
+  @JMPZ %V_ExitLoop \  
+  :%0_True
+
+M WHILE_UGT_V \
+  %S \
+  :%V_LoopTop \
+  @CMPI %1 \
+  @JMPC %V_ExitLoop \
+  @JMPZ %V_ExitLoop \  
+  :%0_True
+
+M WHILE_ULT_A \
+  %S \
+  :%V_LoopTop \
+  @CMP %1 \
+  @JMPC %0_True \
+  @JMP %V_ExitLoop \
+  :%0_True
+  
+M WHILE_ULT_V \
+  %S \
+  :%V_LoopTop \
+  @CMPI %1 \
+  @JMPC %0_True \
   @JMP %V_ExitLoop \
   :%0_True
 

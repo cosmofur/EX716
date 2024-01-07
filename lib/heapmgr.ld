@@ -2,7 +2,7 @@
 M HeapMgrSeen 1
 L common.mc
 L softstack.ld
-= MinObjectSize 4
+= MinObjectSize 1
 = SizeHeapHead 4
 = SizeObjectHead 3
 = ObjectPtrLocation 2
@@ -55,11 +55,13 @@ G HeapListMap
 #
 @POPI SizeInBytes
 @POPI HeapID      # At this point the HeapID is same as address where heap memory starts
+@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
 #
 # test for overflow
 @PUSHI HeapID
 @ADDI SizeInBytes
-@IF_LT_V HeapID   # If overflows 0xffff memory, then value will rotate to a number less than HeapID
+@IF_ULT_V HeapID   # If overflows 0xffff memory, then value will rotate to a number less than HeapID
+   @PRTLN "HeapID + Size Overflowed"
    @POPNULL
    @PUSH 0        # Returning zero means the heap request was invalid
 @ELSE
@@ -92,7 +94,6 @@ G HeapListMap
 @PUSHLOCALI IndexX
 @PUSHLOCALI NewNextObject
 
-
 @POPI SizeInBytes
 @POPI HeapID
 #
@@ -100,7 +101,7 @@ G HeapListMap
 @POPI IndexX
 @PUSHI HeapID @ADD 2
 @PUSHS              # Total size in bytes of heap
-@IF_LT_V SizeInBytes      #  We can't deal with more SizeInBytes than the whole heap had.
+@IF_ULT_V SizeInBytes      #  We can't deal with more SizeInBytes than the whole heap had.
    # We don't have enough memory 
    @MA2V 2 ContinueLoop         # Set ContinueLoop to error code 2
 @ELSE                       # 
@@ -117,12 +118,13 @@ G HeapListMap
 	 @PUSHI IndexX
 	 @CALL GetObjectRealSize
 	 @DUP @POPI NewRemainingSize
-	 @IF_GT_V SizeInBytes          #
+	 @IF_UGT_V SizeInBytes          #
 	     #This means that the object was both free and large enough. So we tell While loop to exit.
 	     @MA2V 1 ContinueLoop
 	     # Next question Will the new object take up all the space, or leave some for a new empty object?
 	     @SUBI SizeInBytes            # TOS is the size of the old object After we subtract the size we need now.
-	     @IF_GT_A MinObjectSize       # We don't want to leave tiny objects arround that will never be used. D4
+	     @SUB SizeObjectHead
+	     @IF_UGT_A MinObjectSize       # We don't want to leave tiny objects arround that will never be used. D4
 	         @POPNULL
 		 # OK its big enough for reasonable objects
 		 @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS # Get the 'old' 'next' object. It might be zero.
@@ -158,7 +160,7 @@ G HeapListMap
 		 # We've hit the end of the HeapChain, so we have to ask if there sufficent space to extend the chain?
 		 # We do this by subtracting current Index ptr from HeapID ptr and also remove mininal overhead space for meta data
                  @PUSHI IndexX @SUBI HeapID @SUB SizeHeapHead @SUB SizeObjectHead 
-		 @IF_GT_V SizeInBytes
+		 @IF_UGT_V SizeInBytes
 		     # This means there still remains sufficent space for a new object.
 		     @MV2V IndexX ContinueLoop      # Value of new object, and flag to exit while loop.
 		     @PUSHI IndexX @ADDI SizeInBytes @SUB SizeObjectHead @POPI NewNextObject
@@ -234,7 +236,8 @@ G HeapListMap
 @CALL HeapNewObject
 @POPI NewObject
 @PUSHI NewObject
-@IF_LT_A 100       # Any Number Less than 100 is an error code.
+:Break3
+@IF_UGT_A 100       # Any Number Less than 100 is an error code.
     @POPNULL
     #
     # Now copy the old Object's data to the New Object
@@ -252,7 +255,7 @@ G HeapListMap
     @PUSHI IndexY
     # If the NewObject is smaller than the Old one we only want to copy NewSize bytes
     # otherwise if NewObject is larger, then we can safely copy the full length of OldSize
-    @IF_LT_V NewSizeInBytes
+    @IF_ULT_V NewSizeInBytes
        # If NewSizeInBytes < OldSize, then we just copy NewSize number of bytes
        @MV2V NewSizeInBytes IndexY
        @POPNULL
@@ -405,6 +408,7 @@ G HeapListMap
    @PRTHEXTOP
    @PRTNL
 @ENDWHILE
+@POPNULL
 @POPLOCAL HeapID
 @POPLOCAL ObjectID
 @POPRETURN

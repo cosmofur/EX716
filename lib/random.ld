@@ -33,7 +33,7 @@ G rnd16 G rndsetseed G rndint G rndgetseed
 @RET
 #
 # rndint allows you defind a random range 0 -> value (max 2047)
-# rndint( range )
+# function rndint( range )
 :rndint
 @POPI RIReturn
 @POPI RIRange
