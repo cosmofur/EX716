@@ -1644,11 +1644,16 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
             if ActiveMacro and line == "":
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
                 if len(MacroLine) > 0:
+                    NewLine = {"M."+ActiveMacroName+" "+filename + ":" +
+                    str(GlobalLineNum): address}
+                    FileLabels.update(NewLine)
+
                     (PosParams, PosSize) = nextwordplus(MacroLine)
                     while (PosParams != "" and PosParams != "ENDMACENDMAC"):
                         MacroLine = MacroLine[PosSize:]
                         line = line + " " + PosParams
                         (PosParams, PosSize) = nextwordplus(MacroLine)
+
                     
                     # at this point line should contain the macro and its possible parameters
                     # Need to subsutute and %# that are not in quotes with varval
@@ -1777,6 +1782,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                                     1] = varcntstack[varbaseSP]+varcnt + 1
                         varbaseNext = varbaseSP + 1
                         ActiveMacro = True
+                        ActiveMacroName = macname
                         backfill = line[cpos:] + " " + backfill
                         line = ""
                     else:
