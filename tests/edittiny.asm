@@ -7,7 +7,7 @@ L string.ld
 #
 # Common variables
 # Number of bytes in LineDBHeader for offsets.
-=LineDBHeader 4
+=LineDBHeader 2
 :Dest1 0
 :CursorPtr 0
 :Range1 0
@@ -68,13 +68,12 @@ L string.ld
 @MA2V 0 BufferSize
 # Now create a LineinfoDB, start smallish will enlarge it when we need to.
 # LineinfoDB is ptr to a simple list of memory pointers to the acutual strings that make up the lines.
-# LineinfoDB[0] = active lines, LineinfoDB[1] = space allocated. (maxsize - 4 bytes for size header ) In Lines not Bytes
+# LineinfoDB[0] = active lines
 # 0th word is the current count, and lines 1-MaxLineNum
 @PUSHI MainHeapID @PUSH 0x100
 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Out of Memory 0005" @END @ENDIF
 @POPI LineinfoDB
 @PUSH 0 @POPII LineinfoDB
-@PUSH 0x100 @PUSHI LineinfoDB @SUB LineDBHeader @POPS  # Set cell[1] to max allocated in BYTES
 #
 @MA2V 0 MaxLineNum
 #
@@ -87,7 +86,8 @@ L string.ld
 #
 # Here we start our main program loop
 @PUSH 0
-@WHILE_ZERO                # >0
+@WHILE_ZERO                # d0
+   @PRT "Top While (1) :" @StackDump
    @POPNULL
    @PRT "> "
    @MV2V CLN Range1
@@ -95,26 +95,26 @@ L string.ld
    @READSI CommandLinePtr
    @PUSHI CommandLinePtr
    @PUSHI CommandLinePtr @CALL strlen
-   @IF_ZERO                # >1
+   @IF_ZERO                # d1
       @POPNULL   
       # No text entered, just print "?" and resume While loop
       @PRTLN "?"
-   @ELSE                   # =1
+   @ELSE                   # d1a
       @POPNULL   
       @MV2V CommandLinePtr CursorPtr
       @PUSHII  CursorPtr @AND 0xff   # Look at just the first character.
-      @WHILE_EQ_A " \0"    # Skip past any spaces  >2
+      @WHILE_EQ_A " \0"    # Skip past any spaces  d2
          @POPNULL
          @INCI CursorPtr
          @PUSHII  CursorPtr @AND 0xff   # Look at just the first character.
-      @ENDWHILE            # <2
-      @IF_ZERO       # The line was just all spaces, so treat as empty line  # >2
+      @ENDWHILE            # d1<
+      @IF_ZERO       # The line was just all spaces, so treat as empty line  # d2
          @PRTLN "?"
 	 @POPNULL
-      @ELSE                # =2
+      @ELSE                # d2a
          # Now look at first character and see if it a number.
          @MA2V FALSE IsNumber         
-         @SWITCH           # >3
+         @SWITCH           # d3
          @CASE_RANGE "0\0" "9\0"
 	    @MA2V TRUE IsNumber
 	    @CBREAK
@@ -130,10 +130,11 @@ L string.ld
          @CDEFAULT
             @MA2V FALSE IsNumber
             @CBREAK
-         @ENDCASE          # <3
+         @ENDCASE          # d3<
 	 @POPNULL
          @PUSHI IsNumber
-         @IF_NOTZERO       # >3
+         @IF_NOTZERO       # d3
+            @PRTLN "Detected Number:" 
             @POPNULL
             @PUSHI CursorPtr
             @CALL GetNumberPart   # Deals with 0-9 ^ $ and . returns both value and new cursor pos.
@@ -141,39 +142,41 @@ L string.ld
             @MV2V Range1 Range2   # If there is no Range2 then Range2 defaults to Range1
             @POPI CursorPtr
             @PUSHII CursorPtr @AND 0xff     # Look at 'next' chracter, if ",' then its a range.
-            @IF_EQ_A ",\0"         # >4
+            @IF_EQ_A ",\0"         # d4
                @INCI CursorPtr
                @PUSHI CursorPtr
                @CALL GetNumberPart   # Gets second number
                @POPI Range2
                @POPI CursorPtr
-            @ENDIF                 # <4
+            @ENDIF                 # d4a
+            @PRT "Result Range1: " @PRTI Range1 @PRT " " @PRTI Range2 @PRTNL
 	 @ELSE
 	    @POPNULL
-         @ENDIF
+         @ENDIF                    # d4<
          @PUSHII CursorPtr @AND 0xff     # This should be pointing at a command letter.
-         @SWITCH                # >4
+         @SWITCH                # d5
          @CASE 0
             @PRTLN "Command not understood.
             @CBREAK
          @CASE "p\0"      # List command (list without line numbers)
+            @PRT "Print Range " @PRTI Rang1 @PRT " " @PRTI Range2 @PRTNL
             @INCI Range2
-            @ForIV2V Index1 Range1 Range2      # >5
+            @ForIV2V Index1 Range1 Range2      # d6
                 @PUSHI Index1 @PUSHI EditBuffer1Ptr
                 @CALL FetchLine          # Get Line Number and save its text to buffer
                 @PRTS EditBuffer1Ptr
                 @PRTNL
-            @Next Index1                       # <5
+            @Next Index1                       # d6<
             @CBREAK
          @CASE "n\0"      # List but also print the number numbers
             @INCI Range2
-            @ForIV2V Index1 Range1 Range2      # >5
+            @ForIV2V Index1 Range1 Range2      # d6
                 @PUSHI Index1 @PUSHI EditBuffer1Ptr
                 @CALL FetchLine          # Get Line Number and save its text to buffer
                 @PRTI Index1 @PRT ": "
                 @PRTS EditBuffer1Ptr
                 @PRTNL
-            @Next Index1                       # <5
+            @Next Index1                       # d6<
             @CBREAK
          @CASE "i\0"
             # Go into entry mode as 'insert' new text get put starting before CWL
@@ -182,10 +185,10 @@ L string.ld
 	    @POPI Range2 @POPI Range1
 	    @PUSHI Range1
             @SUB 1
-            @IF_ULT_A 0      # If for some reason user tried to use negative as start range, reset to zero # >5
+            @IF_ULT_A 0      # If for some reason user tried to use negative as start range, reset to zero # d6
                @POPNULL
                @PUSH 0
-            @ENDIF                             # <5
+            @ENDIF                             # d6<
             @CALL EntryMode
             @CBREAK
          @CASE "a\0"
@@ -213,18 +216,18 @@ L string.ld
  	    @CALL ValidRange
 	    @POPI Range2 @POPI Range1
             @PUSHI Range1
-            @IF_UGT_V Range2                    # >5
+            @IF_UGT_V Range2                    # d6
                # Swap the order.
                @PUSHI Range2
                @SWP
                @POPI Range2
                @POPI Range1
-           @ENDIF                              # <5
+           @ENDIF                              # d6<
            @INCI Range2
-           @ForIV2V Index1 Range2 Range1       # >5
+           @ForIV2V Index1 Range2 Range1       # d6
               @PUSHI Index1
               @CALL DeleteLine
-           @NextBy Index1 -1                   # <5
+           @NextBy Index1 -1                   # d6<
            @CBREAK
          @CDEFAULT
            @PRTLN "Commands:"
@@ -234,12 +237,13 @@ L string.ld
            @PRTLN "a - append mode, ex) $a"
            @PRTLN "t - Transcribe, ex 1,5t10"
            @CBREAK
-         @ENDCASE                                 # <4
+         @ENDCASE                                 # d5<
 	 @POPNULL
-      @ENDIF               # <2
-   @ENDIF                  # <1
+      @ENDIF               # d4<
+   @ENDIF                  # d3<
+   @PRT "Bottom Main If Block (1) :" @StackDump
    @PUSH 0
-@ENDWHILE                  # <0
+@ENDWHILE                  # d2<
 @END
 
 #
@@ -252,6 +256,7 @@ L string.ld
 :GetNumberPart
 @PUSHRETURN
 @PUSHLOCALI StrPtr
+@PUSHLOCALI Index1
 #
 @POPI StrPtr
 #
@@ -283,13 +288,39 @@ L string.ld
    @CBREAK
 @CASE_RANGE "0\0" "9\0"
    @PUSHI StrPtr
-   @CALL stoi
+   @INCI StrPtr
+   @PUSH 0
+   @WHILE_ZERO
+      @POPNULL
+      @PUSHII StrPtr @AND 0xff
+      @IF_GE_A "0\0"
+         @IF_LE_A "9\0"
+            @POPNULL
+            @INCI StrPtr
+            @PUSH 0
+         @ELSE
+            @POPNULL
+            @PUSH 1
+         @ENDIF
+      @ELSE
+         @POPNULL
+         @PUSH 1
+      @ENDIF
+   @ENDWHILE
+   @POPNULL
+   @PUSHII StrPtr @POPI Index1
+   @PUSH 0 @POPII StrPtr    # Tempoarly zero the next letter
+   @CALL stoi               # get the numerical value
+   @PUSHI Index1 @POPII StrPtr # Put the letter back
+   :Break1
    @CBREAK
 @CDEFAULT
    @PRTLN "Error invalid range:" @PRTS StrPtr @PRTNL
    @PUSH 0
    @CBREAK
 @ENDCASE
+:Break2
+@POPLOCAL Index1
 @POPLOCAL StrPtr
 @POPRETURN
 @RET
@@ -313,7 +344,7 @@ L string.ld
    @PUSHI LineinfoDB
    # LineNumber*2 for words rather than bytes
    @ADDI LineNumber @ADDI LineNumber # word data at LineinfoDB[index]
-   @ADD LineDBHeader                 # Header is 4 bytes, so offset index by 4.
+   @ADD LineDBHeader                 # Header 
    @PUSHS                            # TOS is ptr to line data.
    @PUSH 0xff                        # Max characters a line can have
    @CALL strncpy
@@ -327,91 +358,9 @@ L string.ld
 # Copies the lines from start to stop. Creating New lines and inserting them in the right spot of the line list.
 :CopyLines
 @PUSHRETURN
-@PUSHLOCALI Range1
-@PUSHLOCALI Range2
-@PUSHLOCALI LineNumber
-@PUSHLOCALI Index1
-@PUSHLOCALI Src1
-@PUSHLOCALI GapSize
-#
-@POPI LineNumber
-@POPI Range2
-@POPI Range1
-#
-# Creating the raw copies of the lines and asiging them new object ID is not the issue.
-# The main complexity is how we manage the LineinfoDB for these new objects.
-# It's not so bad if we are just appending new lines to the bottom of the list.
-# but more likely we're inserting towards the middle.
-# If the range1 to range2 are both above LineNumber then we just need to open a gap in the
-# LineinoDB equal to the length of the ranges.
-# BUT if range1 or/and range2 are bellow LineNumber, that menas that when we open a gap
-# the values of range1 and range2 need to be incrmented by the size of the gap.
-# What about the case where LineNumber is between Range1 to Range2? Is that even legal?
-#
-# Step one, just make sure Range1 <= Range2, else swap them.
-#
-@PUSHI Range1
-@IF_UGT_V Range2
-   @MV2V Range2 Range1
-   @POPI Range2
-@ELSE
-   @POPNULL
-@ENDIF
-#
-# We'll need the gap size GapSize=Range1-Range2+1
-@PUSHI Range2 @SUBI Range1 @ADD 1 @POPI GapSize
-#
-# Test for the error of Range1 < LineNumber < Range2
-PUSHI LineNumber
-@IF_UGT_V Range1  
-   @IF_ULT_V Range2
-      @PRTLN "? Range Can not overlap destination."
-      @MA2V 0 GapSize # This will keep the rest of funcition from doing anything.
-      @POPNULL
-   @ELSE
-      @POPNULL
-      # This means our 'insert gap' will also move Range1 and Range1 upward by GapSize
-      @PUSHI Range1 @ADDI GapSize @POPI Range1  # Range1=Range1+GapSize
-      @PUSHI Range2 @ADDI GapSize @POPI Range2  # Range2=Range2+GapSize
-   @ENDIF
-@ELSE
-   @POPNULL
-@ENDIF
-@PUSHI GapSize
-@IF_NOTZERO
-   # Make a gap in the LineinfoDB equal to GapSize starting at LineNumber
-   @PUSHI LineinfoDB
-   @PUSHI LineNumber @ADDI LineNumber # Need LineNumber in Bytes not words
-   @ADDI LineDBHeader
-   @PUSHI GapSize @ADDI GapSize   # Need GameSize in Bytes not words
-   @CALL InsertDBGap
-   @POPI LineinfoDB
-   @ForIA2V Index1 0 GapSize
-       # Src String will be Range1+Index1
-       # Dst will be a new object of given old string size.
-       # Index will be stored at LineinfoDB will be LineNumber+Index1
-       @PUSHI Range1 @ADDI Index1 @ADDI LineinfoDB @ADD LineDBHeader  @POPI Src1
-       # Prepare HeapNewObject(MainHeapID,Size)
-       @PUSHI MainHeapID
-       @PUSHI Src1
-       @CALL strlen
-       @CALL HeapNewObject @IF_ULT_A 100 @PRT "Out of Memory 006" @END @ENDIF
-       # TOS had address of new object, put it in the LineDB at array[LineNumber+Index1]
-       @PUSHI LineinfoDB @ADD LineDBHeader
-       @ADDI LineNumber @ADDI LineNumber # Words not bytes
-       @ADDI Index1 @ADDI Index1
-       @POPS
-   @Next Index1
-@ENDIF
-@POPLOCAL GapSize
-@POPLOCAL Src1
-@POPLOCAL Index1
-@POPLOCAL LineNumber
-@POPLOCAL Range2
-@POPLOCAL Range1
+@POPNULL @POPNULL @POPNULL
 @POPRETURN
 @RET
-#
 # Function EntryMode(Range1)
 :EntryMode
 @PUSHRETURN
@@ -424,9 +373,8 @@ PUSHI LineNumber
 @PUSH 0
 @WHILE_ZERO
   @POPNULL
-  @PRTI Range1 @PRT "> "
+  @PRT "I:" @PRTI Range1 @PRT " > "
   @READSI CommandLinePtr
-  :Break1
   @PUSHII CommandLinePtr  #not not masking with 0xff here. 
   @IF_EQ_A ".\0"
     # If "." by itself then end of entry mode.
@@ -442,6 +390,8 @@ PUSHI LineNumber
     # Create a new Heap Object with size of CommandLine
     @PUSHI CommandLinePtr
     @CALL strlen
+    @PUSHI MainHeapID
+    @SWP
     @CALL HeapNewObject @IF_ULT_A 100 @PRT "Out of Memory 0008" @END @ENDIF
     @POPII Index1   # While location of new object at current LineDB entry
     # Now copy the text content of CommandLinePtr into the Object
@@ -488,13 +438,18 @@ PUSHI LineNumber
 @POPI LineNumber
 @POPI LineinfoDB
 #
-# Test if GapSize+LineinfoDB[0] > LineinfoDB[1] (GapSize is in lines, LineinfoDB[1] is in bytes)
+# Test if GapSize+LineinfoDB[0] > sizeof(LineinfoDB)
 @PUSHI GapSize
-@PUSHII LineinfoDB
-@ADDS @ADD LineDBHeader @RTL   # Turn lines into bytes.
+@ADDII LineinfoDB    # Location where size of current active linedb is stored.
+@RTL                 # turn into bytes
+@ADD LineDBHeader    # TOS is total size of 'used' linedb
 #
-@PUSHI LineinfoDB @ADD 2 @PUSHS
-@POPI OldSize @PUSHI OldSize
+# Check if we have run out of space for LineinfoDB yet.
+#
+@PUSHI MainHeapID @PUSHI LineinfoDB @CALL GetObjectRealSize
+ 
+
+@ADD LineDBHeader @POPI OldSize @PUSHI OldSize
 #
 @IF_UGT_S
    # Resize LineinfoDB, add extra 256 bytes
@@ -502,37 +457,30 @@ PUSHI LineNumber
    @PUSHI MainHeapID
    @PUSHI LineinfoDB
    @PUSHI OldSize @ADD 0x100
-   :Break2
    @CALL HeapResizeObject @IF_ULT_A 100 @PRT "Out of Memory 0007" @END @ENDIF @POPI LineinfoDB
 @ELSE
    @POPNULL
    @POPNULL
 @ENDIF
 #
-# We're going to do a reverse for loop from top of Lineinfodb-GapSize down to LineNumber
-@PUSHII LineinfoDB       # Size of the active list in Lines
-@RTL                     # in Bytes.
-@ADD LineDBHeader
-@PUSHI GapSize @RTL
-@ADDS
-@ADDI LineinfoDB         # Turn from offset to Address
+# We're going to  loop Index from Total Lines down to LineNumber+Gap
+# Then copy db[index-Gap] to db[index]
+@PUSHII LineinfoDB     # Keep track these are in lines, not bytes
+@ADDI GapSize 
 @POPI TopRange
 #
-# Now get the lower range
-@PUSH LineNumber @RTL    # In Bytes
-@ADDI LineDBHeader
-@PUSHI GapSize @RTL
-@ADDS
-@ADDI LineinfoDB
+@PUSHI LineNumber
+@ADDI GapSize
 @POPI BottomRange
 #
+# Turn Ranges into Bytes/Addresses
+@PUSHI TopRange @RTL @ADDI LineinfoDB @ADD LineDBHeader @POPI TopRange
+@PUSHI BottomRange @RTL @ADDI LineinfoDB @ADD LineDBHeader @POPI BottomRange
+#
 @ForIV2V Index1 TopRange BottomRange
-   @PUSHI Index1
-   @PUSHI GapSize @RTL
-   @SUBS       #Src Address mem[Index1-GapSize*2]
-   @PUSHI Index1
-   @POPS
-@NextBy Index1 -1
+   @PUSHI Index1 @SUBI GapSize @PUSHS
+   @POPII Index1
+@NextBy Index1 -2     # Step down by 16 bit words
 @PUSHI LineinfoDB
 @POPLOCAL BottomRange
 @POPLOCAL TopRange

@@ -14,6 +14,7 @@ G HeapResizeObject
 G HeapDeleteObject
 G HeapCopyObject
 G HeapListMap
+G GetObjectRealSize
 # This is the heap manager module
 
 # It provides the following services
@@ -114,84 +115,84 @@ G HeapListMap
       @IF_ZERO     # This means this object is 'free' check it's size .. D2
          @POPNULL
          # This calculation find the total size of the next block.
-	 @PUSHI HeapID
-	 @PUSHI IndexX
-	 @CALL GetObjectRealSize
-	 @DUP @POPI NewRemainingSize
-	 @IF_UGT_V SizeInBytes          #
-	     #This means that the object was both free and large enough. So we tell While loop to exit.
-	     @MA2V 1 ContinueLoop
-	     # Next question Will the new object take up all the space, or leave some for a new empty object?
-	     @SUBI SizeInBytes            # TOS is the size of the old object After we subtract the size we need now.
-	     @SUB SizeObjectHead
-	     @IF_UGT_A MinObjectSize       # We don't want to leave tiny objects arround that will never be used. D4
-	         @POPNULL
-		 # OK its big enough for reasonable objects
-		 @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS # Get the 'old' 'next' object. It might be zero.
-		 @POPI OldNextObject
-		 #
-		 @PUSHI IndexX @ADDI SizeInBytes @ADD SizeObjectHead # TOS is Ptr to 'new' objects we're squeezing in.
+         @PUSHI HeapID
+         @PUSHI IndexX
+         @CALL GetObjectRealSize
+         @DUP @POPI NewRemainingSize
+         @IF_UGT_V SizeInBytes          #
+             #This means that the object was both free and large enough. So we tell While loop to exit.
+             @MA2V 1 ContinueLoop
+             # Next question Will the new object take up all the space, or leave some for a new empty object?
+             @SUBI SizeInBytes            # TOS is the size of the old object After we subtract the size we need now.
+             @SUB SizeObjectHead
+             @IF_UGT_A MinObjectSize       # We don't want to leave tiny objects arround that will never be used. D4
+                 @POPNULL
+                 # OK its big enough for reasonable objects
+                 @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS # Get the 'old' 'next' object. It might be zero.
+                 @POPI OldNextObject
+                 #
+                 @PUSHI IndexX @ADDI SizeInBytes @ADD SizeObjectHead # TOS is Ptr to 'new' objects we're squeezing in.
                  @POPI NewNextObject
                  #
-		 # Zero out the NewNextObject's default header
-		 @PUSH 0 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS
-		 @PUSH 0 @PUSHI NewNextObject @SUB SizeObjectHead @POPS
-		 # Now point the current object to point at the NewNextObject
-		 @PUSHI NewNextObject
-		 @PUSHI IndexX @SUB ObjectPtrLocation @POPS  # IndexX[-2]=Ptr->NewNextObject
-		 # Now setup the header of the NewNextObject
-		 @PUSHI OldNextObject
-		 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS # NewNextObject[-2]=Ptr->OldNextObject
-	     @ELSE                    # 
-		 # The space we are reclaiming was not large enough to divide but large enough for our one time use
-		 # The NextObject therefore remains the same. We just need to Mark current one as used
-		 @POPNULL
-	     @ENDIF                   # 
-	     @PUSHI IndexX @SUB SizeObjectHead @PUSHS
-	     @AND 0xff00
-	     @OR 0x1  # Mark Object as 'in use'
-	     @PUSHI IndexX @SUB SizeObjectHead @POPS
-	 @ELSE                       #
-	     # We get here if the current object is free but too small, move onward to next possible object.
-	     @POPNULL
-	     @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS
-	     @IF_ZERO                #
-		 @POPNULL
-		 # We've hit the end of the HeapChain, so we have to ask if there sufficent space to extend the chain?
-		 # We do this by subtracting current Index ptr from HeapID ptr and also remove mininal overhead space for meta data
+                 # Zero out the NewNextObject's default header
+                 @PUSH 0 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS
+                 @PUSH 0 @PUSHI NewNextObject @SUB SizeObjectHead @POPS
+                 # Now point the current object to point at the NewNextObject
+                 @PUSHI NewNextObject
+                 @PUSHI IndexX @SUB ObjectPtrLocation @POPS  # IndexX[-2]=Ptr->NewNextObject
+                 # Now setup the header of the NewNextObject
+                 @PUSHI OldNextObject
+                 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS # NewNextObject[-2]=Ptr->OldNextObject
+             @ELSE                    # 
+                 # The space we are reclaiming was not large enough to divide but large enough for our one time use
+                 # The NextObject therefore remains the same. We just need to Mark current one as used
+                 @POPNULL
+             @ENDIF                   # 
+             @PUSHI IndexX @SUB SizeObjectHead @PUSHS
+             @AND 0xff00
+             @OR 0x1  # Mark Object as 'in use'
+             @PUSHI IndexX @SUB SizeObjectHead @POPS
+         @ELSE                       #
+             # We get here if the current object is free but too small, move onward to next possible object.
+             @POPNULL
+             @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS
+             @IF_ZERO                #
+                 @POPNULL
+                 # We've hit the end of the HeapChain, so we have to ask if there sufficent space to extend the chain?
+                 # We do this by subtracting current Index ptr from HeapID ptr and also remove mininal overhead space for meta data
                  @PUSHI IndexX @SUBI HeapID @SUB SizeHeapHead @SUB SizeObjectHead 
-		 @IF_UGT_V SizeInBytes
-		     # This means there still remains sufficent space for a new object.
-		     @MV2V IndexX ContinueLoop      # Value of new object, and flag to exit while loop.
-		     @PUSHI IndexX @ADDI SizeInBytes @SUB SizeObjectHead @POPI NewNextObject
-		     @PUSH 1 @PUSHI IndexX @SUB SizeObjectHead @POPS                  # Mark IndexX as now active.
-		     @PUSHI NewNextObject @PUSHI IndexX @SUB ObjectPtrLocation @POPS      # Saves ptr to future NewNextObject
+                 @IF_UGT_V SizeInBytes
+                     # This means there still remains sufficent space for a new object.
+                     @MV2V IndexX ContinueLoop      # Value of new object, and flag to exit while loop.
+                     @PUSHI IndexX @ADDI SizeInBytes @SUB SizeObjectHead @POPI NewNextObject
+                     @PUSH 1 @PUSHI IndexX @SUB SizeObjectHead @POPS                  # Mark IndexX as now active.
+                     @PUSHI NewNextObject @PUSHI IndexX @SUB ObjectPtrLocation @POPS      # Saves ptr to future NewNextObject
                      # Zero out header of 'NewNextObject'
-		     @PUSH 0 @PUSHI NewNextObject @SUB SizeObjectHead @POPS
-		     @PUSH 0 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS
-		 @ELSE
-		     # Here is the error exit for cases where there is not sufficent space to create a new object at the tail.
-		     @MA2V 3 ContinueLoop  
+                     @PUSH 0 @PUSHI NewNextObject @SUB SizeObjectHead @POPS
+                     @PUSH 0 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS
+                 @ELSE
+                     # Here is the error exit for cases where there is not sufficent space to create a new object at the tail.
+                     @MA2V 3 ContinueLoop  
                  @ENDIF
               @ELSE
-	         # Here the case when there IS another object to check down the chain.
-		 @POPI IndexX
+                 # Here the case when there IS another object to check down the chain.
+                 @POPI IndexX
              @ENDIF                 # 
-	  @ENDIF                    # 
+          @ENDIF                    # 
        @ELSE                        #
           # Here means the current Object is not Free. So we just move on to the next one
-	     @POPNULL
-	     @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS
-	     @POPI IndexX
-	     @PUSHI IndexX
-	     @IF_ZERO                #
-		 @POPNULL
-		 # This can only be zero if we've hit the end of the heap chain and non space was large enough
-		 # We should now call a routine that will find all the free blocks and move the used blocks around
-		 # For now we'll just issue an error.
-		 @MA2V 4 ContinueLoop         # Set ContinueLoop to error code 4
+             @POPNULL
+             @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS
+             @POPI IndexX
+             @PUSHI IndexX
+             @IF_ZERO                #
+                 @POPNULL
+                 # This can only be zero if we've hit the end of the heap chain and non space was large enough
+                 # We should now call a routine that will find all the free blocks and move the used blocks around
+                 # For now we'll just issue an error.
+                 @MA2V 4 ContinueLoop         # Set ContinueLoop to error code 4
              @ELSE
-	         @POPNULL
+                 @POPNULL
              @ENDIF                 # 
         @ENDIF                      #
         # At this point were back at the main body of the while loop.
@@ -343,10 +344,10 @@ G HeapListMap
        # If IndexY is not free, we just never do this loop.
        @WHILE_ZERO
           # IndexY is another free node. Swap IndexX's PTR but also continue seeing what the next item in the chain is.
-	  @POPNULL
-	  @PUSHI IndexY @SUB 2 @PUSHS # Get where IndexY pointed too
-	  @DUP
-	  @PUSHI IndexX @SUB 2 @POPS  # Make it so original IndexX now skips IndexY and goes directly to next in chain
+          @POPNULL
+          @PUSHI IndexY @SUB 2 @PUSHS # Get where IndexY pointed too
+          @DUP
+          @PUSHI IndexX @SUB 2 @POPS  # Make it so original IndexX now skips IndexY and goes directly to next in chain
           @IF_ZERO
              # This would be true if 'Next after IndexY' is also the end of the heap.
              @POPNULL
