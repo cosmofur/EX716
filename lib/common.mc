@@ -142,6 +142,22 @@ M FCLR b$FCLR                  # the F group is for clearing, saving, and loadin
 M FSAV b$FSAV
 M FLOD b$FLOD
 
+# There no built in XOR funciton, so recreate it with this macro
+M XORS @JMP %0Skip \
+:%0Aval 0 :%0Bval 0 \
+:%0Skip \
+@POPI %0Aval @POPI %0Bval \
+@PUSHI %0Aval @ORI %0Bval \
+@PUSHI %0Aval @ANDI %0Bval \
+@SUBS
+M XORI @PUSHI %1 @XORS
+M XOR @PUSH %1 @XORS
+M XORVV @PUSHI %1 @PUSHI %2 @XORS
+M XORVA @PUSHI %1 @PUSH %2 @XORS
+M XORAV @PUSH %1 @PUSHI %2 @XORS
+
+
+
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
 M MC2M @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory

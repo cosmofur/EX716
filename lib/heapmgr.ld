@@ -48,7 +48,8 @@ G GetObjectRealSize
 :NewRemainingSize 0
 #
 #
-# Function HeapDefineMemory
+# Function HeapDefineMemory(Address,SizeInBytes)
+# Address should be start of free memory, and size is how much to allocate.
 :HeapDefineMemory
 @PUSHRETURN
 @PUSHLOCALI SizeInBytes
@@ -56,7 +57,7 @@ G GetObjectRealSize
 #
 @POPI SizeInBytes
 @POPI HeapID      # At this point the HeapID is same as address where heap memory starts
-@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
+#@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
 #
 # test for overflow
 @PUSHI HeapID
@@ -87,7 +88,7 @@ G GetObjectRealSize
 @POPRETURN
 @RET
 #
-# Function HeapNewObject
+# Function HeapNewObject(Size,HeapID)
 :HeapNewObject
 @PUSHRETURN
 @PUSHLOCALI HeapID
@@ -407,6 +408,13 @@ G GetObjectRealSize
    @POPNULL
    @PUSHI ObjectID @SUB ObjectPtrLocation @PUSHS
    @PRTHEXTOP
+   @PUSHII ObjectID @AND 0xff
+   @IF_GE_A "0\0"
+      @IF_LE_A "z\0"
+         @PRT " " @PRTSI ObjectID
+      @ENDIF
+   @ENDIF
+   @POPNULL
    @PRTNL
 @ENDWHILE
 @POPNULL

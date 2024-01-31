@@ -4,8 +4,8 @@ L mul.ld
 # Do a tight loop for time tests
 
 @PRTLN "Start"
-@ForIA2B II 0 10000
-   @ForIA2B JJ 0 25000
+@ForIA2B II 0 100
+   @ForIA2B JJ 0 250
 # Put the test OPT Code here
 #
 @NOP

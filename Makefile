@@ -1,6 +1,7 @@
 CC = gcc
 #CFLAGS = -Wall -Werror
 CFLAGS = -O0 -g -Wall -Werror
+# -I /usr/include/python03.10
 
 SRC = fcpu.c
 OBJ = $(SRC:.c=.o)
