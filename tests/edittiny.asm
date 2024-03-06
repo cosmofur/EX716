@@ -203,7 +203,6 @@ L string.ld
                @POPNULL
                @PUSH 0
             @ENDIF                             # d6<
-            :Break1
             @PUSHI Range1
             @CALL EntryMode
             @CBREAK

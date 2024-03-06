@@ -43,6 +43,8 @@ M STRSETI \
 # Function
 :strlen
 @PUSHRETURN
+@PUSHLOCALI len_strptr
+@PUSHLOCALI len_size
 @POPI len_strptr
 @MA2V 0 len_size
 @PUSHII len_strptr  # First character
@@ -56,6 +58,8 @@ M STRSETI \
 @ENDWHILE
 @POPNULL
 @PUSHI len_size
+@POPLOCAL len_size
+@POPLOCAL len_strptr
 @POPRETURN
 @RET
 #
@@ -434,7 +438,7 @@ M STRSETI \
 	 @PUSHII DstPtr
 	 @AND 0xff00
 	 @ORS
-	 @PUSHII DstPtr
+	 @POPII DstPtr
       @ENDIF
       @POPNULL
   @ELSE            # Hande case where moving backworks is better.

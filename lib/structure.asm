@@ -57,7 +57,9 @@ M IF_EQ_VA \
   @CMPS @POPNULL @POPNULL \
   @JMPZ %0_True \
   %S @JMP %V_ENDIF \
-  :%0_True  
+  :%0_True
+# Reverse for readability
+M IF_EQ_AV @IF_EQ_VA %2 %1
 
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \

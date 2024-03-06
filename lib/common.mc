@@ -200,6 +200,8 @@ M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 M PRTS @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print string starting at the address that is stored AT the given pointer.
 M PRTSI @PUSHI %1 @POPI %0ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+# Print string whos address is on the stack
+M PRTSS @POPI %0Ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
 # Print value Pointer is pointing at.
 M PRTII @PUSHII %1 @POPI %0Store \
         @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
@@ -230,7 +232,9 @@ M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
 M PROMPT @PRT %1 @READI %2
 # Read a String from Keyboard
+# Param of READS is lable of the buffer
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
+# Param of READSI is lable that contains pointer to buffer
 M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL :%0ADDR 0xffff @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL

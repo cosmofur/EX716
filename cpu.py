@@ -293,14 +293,18 @@ class microcpu:
                 (i, OPTSYM[optcode], P1, PI, PII,
                  ZF, NF, CF, OF)
         print(OUTLINE, file=DebugOut)
-        if (self.mb[0xff]-1 > 0):
-            for i in range(self.mb[0xff]-1):
-                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
-                print(" %04x" % (val),file=DebugOut,end="")
-            print(" ",file=DebugOut)
-            sys.stdout.flush()
-        else:
-            print("Stack Empty",file=DebugOut)
+        try:
+            if (self.mb[0xff]-1 > 0):
+                for i in range(self.mb[0xff]-1):
+                    val = self.mb[i*2]+(0xff*self.mb[i*2+1])
+                    print(" %04x" % (val),file=DebugOut,end="")
+                print(" ",file=DebugOut)
+                sys.stdout.flush()
+            else:
+                print("Stack Empty",file=DebugOut)
+        except:
+            print("Invalid range for stack info: SP:%03x" % ( self.mb[0xff]-1))
+            self.mb[0xff]=0xf0
         try:
             termios.tcsetattr(fd, termios.TCSADRAIN, new)
         except:

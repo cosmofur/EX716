@@ -106,7 +106,7 @@ G GetObjectRealSize
 @IF_ULT_V SizeInBytes      #  We can't deal with more SizeInBytes than the whole heap had.
    # We don't have enough memory 
    @MA2V 2 ContinueLoop         # Set ContinueLoop to error code 2
-@ELSE                       # 
+@ELSE                       #
    @POPNULL
    @MA2V 0 ContinueLoop       # This will both flag when the While Loops done and hold any possible error codes
    @PUSHI ContinueLoop
@@ -144,11 +144,11 @@ G GetObjectRealSize
                  # Now setup the header of the NewNextObject
                  @PUSHI OldNextObject
                  @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS # NewNextObject[-2]=Ptr->OldNextObject
-             @ELSE                    # 
+             @ELSE                    #
                  # The space we are reclaiming was not large enough to divide but large enough for our one time use
                  # The NextObject therefore remains the same. We just need to Mark current one as used
                  @POPNULL
-             @ENDIF                   # 
+             @ENDIF                   #
              @PUSHI IndexX @SUB SizeObjectHead @PUSHS
              @AND 0xff00
              @OR 0x1  # Mark Object as 'in use'
@@ -164,6 +164,7 @@ G GetObjectRealSize
                  @PUSHI IndexX @SUBI HeapID @SUB SizeHeapHead @SUB SizeObjectHead 
                  @IF_UGT_V SizeInBytes
                      # This means there still remains sufficent space for a new object.
+                     @POPNULL
                      @MV2V IndexX ContinueLoop      # Value of new object, and flag to exit while loop.
                      @PUSHI IndexX @ADDI SizeInBytes @SUB SizeObjectHead @POPI NewNextObject
                      @PUSH 1 @PUSHI IndexX @SUB SizeObjectHead @POPS                  # Mark IndexX as now active.
@@ -178,8 +179,8 @@ G GetObjectRealSize
               @ELSE
                  # Here the case when there IS another object to check down the chain.
                  @POPI IndexX
-             @ENDIF                 # 
-          @ENDIF                    # 
+             @ENDIF                 #
+          @ENDIF                    #
        @ELSE                        #
           # Here means the current Object is not Free. So we just move on to the next one
              @POPNULL
@@ -194,7 +195,7 @@ G GetObjectRealSize
                  @MA2V 4 ContinueLoop         # Set ContinueLoop to error code 4
              @ELSE
                  @POPNULL
-             @ENDIF                 # 
+             @ENDIF                 #
         @ENDIF                      #
         # At this point were back at the main body of the while loop.
         @PUSHI ContinueLoop
@@ -238,7 +239,6 @@ G GetObjectRealSize
 @CALL HeapNewObject
 @POPI NewObject
 @PUSHI NewObject
-:Break3
 @IF_UGT_A 100       # Any Number Less than 100 is an error code.
     @POPNULL
     #
