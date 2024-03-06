@@ -142,6 +142,22 @@ M FCLR b$FCLR                  # the F group is for clearing, saving, and loadin
 M FSAV b$FSAV
 M FLOD b$FLOD
 
+# There no built in XOR funciton, so recreate it with this macro
+M XORS @JMP %0Skip \
+:%0Aval 0 :%0Bval 0 \
+:%0Skip \
+@POPI %0Aval @POPI %0Bval \
+@PUSHI %0Aval @ORI %0Bval \
+@PUSHI %0Aval @ANDI %0Bval \
+@SUBS
+M XORI @PUSHI %1 @XORS
+M XOR @PUSH %1 @XORS
+M XORVV @PUSHI %1 @PUSHI %2 @XORS
+M XORVA @PUSHI %1 @PUSH %2 @XORS
+M XORAV @PUSH %1 @PUSHI %2 @XORS
+
+
+
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
 M MC2M @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
@@ -184,6 +200,8 @@ M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 M PRTS @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print string starting at the address that is stored AT the given pointer.
 M PRTSI @PUSHI %1 @POPI %0ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+# Print string whos address is on the stack
+M PRTSS @POPI %0Ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
 # Print value Pointer is pointing at.
 M PRTII @PUSHII %1 @POPI %0Store \
         @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
@@ -214,7 +232,9 @@ M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
 M PROMPT @PRT %1 @READI %2
 # Read a String from Keyboard
+# Param of READS is lable of the buffer
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
+# Param of READSI is lable that contains pointer to buffer
 M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL :%0ADDR 0xffff @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL

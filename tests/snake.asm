@@ -331,7 +331,6 @@ L random.ld
   @POPNULL
 @NextBy IBIndex 2
 @PUSH 0
-:Break1
 @PUSHI IBReturn
 @RET
 :CMPVAL 0

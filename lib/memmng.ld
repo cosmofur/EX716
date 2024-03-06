@@ -84,7 +84,6 @@ G MemResetBit
 @POPI MGBitIn
 @MA2V 1 MGMASK
 @PUSHI MGMASK
-:Break1
 @ForIA2V MGIndex1 0 MGBitIn
    @RTL
 @Next MGIndex1

@@ -127,7 +127,6 @@ G G_SmallSectors
     @POPI StrPtrPFP        # Add in length of string found.
 
     @PRT "FileName: " @PRTS FormatFileName @PRTNL
-    :Break2
     @POPNULL
     @MA2V 0 DirEntryInt
     @PUSH 0
@@ -153,7 +152,6 @@ G G_SmallSectors
         @CALL PrintFileName
 	@IF_ZERO
 	   @PRT " MATCH FOUND." @StackDump
-	   :BreakS
 	   @POPNULL
 	   @PUSH 1
 	@ELSE

@@ -53,7 +53,6 @@ G COSR
    @END
    @CBREAK
 @ENDCASE
-:BreakSin
 @RTL              # *2
 @IF_EQ_VA SINDIR -1
    @PUSH SINTable   # Get Value starting from bottom table looking backwards
@@ -70,7 +69,6 @@ G COSR
    @COMP2   # Negative
 @ENDIF
    
-:Break1
 @SWP              # Put Return Address back on top
 @RET
 :SINDIR 0

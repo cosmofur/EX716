@@ -19,7 +19,7 @@ M STRSETI \
 #
 
 
-
+# Function strlen
 # strlen(str_var) returns length of string
 # Vars
 :StrPtrA 0
@@ -43,6 +43,8 @@ M STRSETI \
 # Function
 :strlen
 @PUSHRETURN
+@PUSHLOCALI len_strptr
+@PUSHLOCALI len_size
 @POPI len_strptr
 @MA2V 0 len_size
 @PUSHII len_strptr  # First character
@@ -56,10 +58,14 @@ M STRSETI \
 @ENDWHILE
 @POPNULL
 @PUSHI len_size
+@POPLOCAL len_size
+@POPLOCAL len_strptr
 @POPRETURN
 @RET
 #
 #
+# Function strcat(strA,strB)
+# Concats strB to strA (modifies StrA which must already be large enough to handle both)
 :strcat
 @PUSHRETURN
 @POPI StrPtrB
@@ -82,6 +88,9 @@ M STRSETI \
 @RET
 #
 #
+# function strncat(StrA,StrB,maxlen)
+# Appends StrB to StrA up to either end of StrB or max of maxlen.
+#         StrA must still have sufficent space for combined length of both strings.
 :strncat
 @PUSHRETURN
 @POPI Length
@@ -117,7 +126,7 @@ M STRSETI \
 @RET
 
 #
-# strncpy(dest, src, length) Copies from src[0:length] to dest[0:length]
+# Function strncpy(dest, src, length) Copies from src[0:length] to dest[0:length]
 # if length>len(src) then it will only copy upto length of src.
 # It DOES NOT append a null at the end of dest automaticly.
 #
@@ -153,7 +162,9 @@ M STRSETI \
 @POPRETURN
 @RET
 #
-# strcpy without the 'n' just copies all of src to dest
+# Function(StrA, StrB) 
+# strcpy without the 'n' just copies all of StrB into StrA
+# StrA must be at least as large as the maxsize of StrB
 :strcpy
 @PUSHRETURN
 @POPI SrcPtr
@@ -172,7 +183,7 @@ M STRSETI \
 @POPRETURN
 @RET
 #
-# strncmp compairs two string and returns -1,0 or 1
+# strncmp(StrA,StrB)  compairs two string and returns -1,0 or 1
 # based on their relationship. -1 if str1 lexicongraphically < str2
 #                              +1 if str1 > str2
 #                               0 if str1 == str2
@@ -243,9 +254,9 @@ M STRSETI \
 @POPRETURN
 @RET
 #
-#
+# 
 # itos is an Integer to String function
-# itos(StrPtr,Invalue,InBase)   Base=10 for decimal, 8 for octal or 16 for hex
+# Function itos(StrPtr,Invalue,InBase)   Base=10 for decimal, 8 for octal or 16 for hex
 # Vars
 
 :itos
@@ -305,7 +316,7 @@ M STRSETI \
 @RET
 #
 # stoi, reverse of itos, takes text version of number and returns integer.
-# stoi(string)
+# Function stoi(string)
 # Vars
 
 :stoi
@@ -389,7 +400,7 @@ M STRSETI \
 @RET
 #
 #
-# strcmp is just an alternative for strncmp with a super sized 'n'
+# Function strcmp is just an alternative for strncmp with a super sized 'n'
 :strcmp
 @PUSHRETURN
 @PUSH 0x7fff
@@ -397,7 +408,8 @@ M STRSETI \
 @POPRETURN
 @RET
 #
-# memcpy(dest,src,size) Copies size bytes from src to dest
+# Function memcpy(dest,src,size) Copies size bytes from src to dest
+# 
 :memcpy
 @PUSHRETURN
 @POPI Length
@@ -426,7 +438,7 @@ M STRSETI \
 	 @PUSHII DstPtr
 	 @AND 0xff00
 	 @ORS
-	 @PUSHII DstPtr
+	 @POPII DstPtr
       @ENDIF
       @POPNULL
   @ELSE            # Hande case where moving backworks is better.

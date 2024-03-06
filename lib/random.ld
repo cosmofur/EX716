@@ -10,43 +10,68 @@
 #
 L mul.ld
 L div.ld
-@JMP Skip2End
+L softstack.ld
 ! RANDOM_SEEN
 M RANDOM_SEEN 1
 #
 # We will make public the function rnd16 and rndsetseed(N)
-G rnd16 G rndsetseed G rndint G rndgetseed
+G rnd16 G rndsetseed G rndint G rndgetseed G frnd16 G frndint
 
 # Our main routen is rnd16 which just returns a random number betwen 0 and 32K
 :rnd16
-@POPI RDReturn
+@PUSHRETURN
+@PUSHLOCALI Aval
+@PUSHLOCALI Bval
 @PUSHI Seed
-@PUSH 22673
+@MV2V Seed Bval
+@PUSH 48271
 @CALL MULU
-@ADD 1
+# Xor Result and Seed
 @DUP
-@POPI Seed
+@DUP              # s[r,r,r]
+@ORI Seed         # s[r,r,(r|s)]
+@SWP              # s[r,(r|s),r]
+@ANDI Seed        # s[r,(r|s),(r&s)]
+@SUBS             # s[r,(r|s)-r(&s)]
+#
+@ADD 1
+@IF_EQ_V Bval     # Every time we call this Cval changes so should kick us out of local loops
+   @ForIA2V Bval 0 Cval
+      @ADD 1
+   @Next Bval
+@ENDIF
+@POPI Seed        # s[r]
+#
 # To avoid an issue with the lower 5 bites cause even/odd flipping
 # We shift right 5 times.
-@RTR @RTR @RTR @RTR @RTR
-@PUSHI RDReturn
+@RRTC @RRTC @RRTC #@RRTC @RRTC
+@INCI Cval
+@IF_EQ_VA Cval 29
+   @MA2V 0 Cval
+@ENDIF
+@POPLOCAL Bval
+@POPLOCAL Aval
+@POPRETURN
 @RET
 #
 # rndint allows you defind a random range 0 -> value (max 2047)
-# rndint( range )
+# function rndint( range )
 :rndint
-@POPI RIReturn
+@PUSHRETURN
 @POPI RIRange
 @CALL rnd16
 @PUSHI RIRange
 @CALL DIVU   # Divsion returns both the Division and the Mod, keep Mod only
 @POPNULL
-@PUSHI RIReturn
+@POPRETURN
 @RET
 :RIReturn 0
 :Seed 0
-:RDReturn 0
+:Aval 0
+:Bval 0
+:Cval 0
 :RIRange 0
+:Product 0
 #
 # Set seed is just a way to set the initial seed value for a bit better randomization
 :rndsetseed
@@ -59,5 +84,66 @@ G rnd16 G rndsetseed G rndint G rndgetseed
 @PUSHI Seed
 @SWP
 @RET
+#
+# Function frnd16() a 'faster' frnd avaoiding 32 bit math
+:frnd16
+@PUSHRETURN
+@PUSHLOCALI Product
+@PUSHLOCALI Bval
+# Rather than calling the MUL function for Seed * 31973 (prime # < 0x7fff)
+# We'll using RTL's and Adds
+# Binary 31973 is binary 1111111000010011
+# Reading right to left, do a RTL and add for each on bit.
+# 
+@MV2V Seed Product
+@PUSHI Seed
+@RTL               # X << 1
+@DUP @ADDI Product @POPI Product
+@RTL @RTL @RTL     # X << 4
+@DUP @ADDI Product @POPI Product
+@RTL @RTL @RTL @RTL @RTL  # X << 9
+@DUP @ADDI Product @POPI Product
+@RTL               # X << 10
+@DUP @ADDI Product @POPI Product
+@RTL               # X << 11
+@DUP @ADDI Product @POPI Product
+@RTL               # X << 12
+@DUP @ADDI Product @POPI Product
+@RTL               # X << 13
+@DUP @ADDI Product @POPI Product
+@RTL               # X << 14
+@DUP @ADDI Product @POPI Product
+@RTL               # X << 15
+@DUP @ADDI Product @POPI Product
+# XOR result with seed.
+@PUSHI Seed
+@XORI Product
+@ADD 1
+@IF_EQ_V Bval
+   @ForIA2V Bval 0 Cval
+      @ADD 1
+   @Next Bval
+@ENDIF
+@POPI Seed
+@INCI Cval
+@IF_EQ_VA Cval 29
+   @MA2V 0 Cval
+@ENDIF
+@POPLOCAL Bval
+@POPLOCAL Product
+@POPRETURN
+@RET
+# frndint allows you defind a random range 0 -> value (max 2047)
+# function rndint( range )
+:frndint
+@PUSHRETURN
+@POPI RIRange
+@CALL frnd16
+@PUSHI RIRange
+@CALL DIVU   # Divsion returns both the Division and the Mod, keep Mod only
+@POPNULL
+@POPRETURN
+@RET
+
+
 ENDBLOCK
-:Skip2End

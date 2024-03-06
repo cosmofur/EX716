@@ -1239,7 +1239,6 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @PUSHI Y1FT @ADDI DeltaYFT @POPI Y2FT
 #
 @MA2V 0 MisslePathSize   # Initilize point list
-:Break1
 # First change order so X2 > X1
 @PUSHI X2FT
 @IF_LT_V X1FT

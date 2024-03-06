@@ -71,14 +71,19 @@ M PUSHLOCAL @PUSH %1 @CALL __MOVE_HW_SS
 #  Pushes top of HW Stack to SoftStack
 :__MOVE_HW_SS
 @PUSHI __SS_SP
-@IF_LT_V __SS_BOTTOM
+@IF_ULT_V __SS_BOTTOM
    @POPNULL
+   @PRT "PUSH:"
+   @StackDump   
    @JMP __SS_StackError
 @ENDIF
 @POPNULL
 @SWP
 @DEC2I __SS_SP      # After a PUSH mem[__SS_SP] is value of TOP
+#@PRT "Soft PUSH Mem[" @PRTHEXI __SS_BOTTOM @PRT "/" @PRTHEXI __SS_SP @PRT "/" @PRTHEXI __SS_TOP @PRT "]:"
+#@PRTHEXTOP  @PRTNL
 @POPII __SS_SP
+
 @RET
 #
 #
@@ -91,12 +96,16 @@ M TOPLOCAL @PUSHII __SS_SP
 # POPS top of Softstack onto HW Stack
 :__MOVE_SS_HW
 @PUSHI __SS_SP
-@IF_GT_V __SS_TOP
+@IF_UGT_V __SS_TOP
    @POPNULL
+   @PRT "POP:"
+   @StackDump
    @JMP __SS_StackError
 @ENDIF
 @POPNULL
+#@PRT "Soft Pop Mem[" @PRTHEXI __SS_BOTTOM @PRT "/" @PRTHEXI __SS_SP @PRT "/" @PRTHEXI __SS_TOP @PRT "]:"
 @PUSHII __SS_SP
+#@PRTHEXTOP @PRTNL
 @INC2I __SS_SP
 @SWP
 @RET
@@ -109,6 +118,7 @@ M TOPLOCAL @PUSHII __SS_SP
 @SWP
 @POPI __SS_BOTTOM
 @SWP
+@SUB 2     # We need a one word buffer for the empty case
 @POPI __SS_TOP
 @MV2V __SS_TOP __SS_SP
 @INC2I __SS_SP

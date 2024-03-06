@@ -3,7 +3,7 @@ L io.ld
 L heapmgr.ld
 M SCREEN_DONE 1
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot
-G WinHideCursor G WinShowCursor
+G WinHideCursor G WinShowCursor G ColorReset G ColorFGSet G ColorBGSet
 :WinWidth 80
 :WinHeight 24
 :CSICODE
@@ -183,5 +183,27 @@ b$27 "[" b0
 @RET
 :TermInfoBuffer "                                                      " b0
 :TIBIndex 0
+#
+# Function ColorBGSet(Color)
+:ANSICSI b$27 "[" b0
+:ColorID 0
+:ColorBGSet
+@PUSHRETURN
+@POPI ColorID
+@PRTS ANSICSI @PRT "48;5;" @PRTI ColorID @PRT "m"
+@POPRETURN
+@RET
+# Function ColorFGSet(Color)
+:ColorFGSet
+@PUSHRETURN
+@POPI ColorID
+@PRTS ANSICSI @PRT "38;5;" @PRTI ColorID @PRT "m"
+@POPRETURN
+@RET
+# Function ColorReset()
+:ColorReset
+@PRTS ANSICSI @PRT "0m"
+@RET
+
 ENDBLOCK
 :ENDSCREEN
