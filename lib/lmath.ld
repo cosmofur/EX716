@@ -1,6 +1,19 @@
 L string.ld
 ################
 # lmath.ld library
+#
+# New update to lmath, going to change some of the nameing conventions to be more compatable
+# with other libraries.
+#
+# New rules:
+# Major functions will have the format
+#   FUNC[IV][IV][IV]
+#example
+#   ADD32VVV      means all three arguments are the address where 32 bit values will be found/stored
+#   SUB32VII      means arg 1 is address, but args 2 and 3 are pointers to indirect locations.
+#   Same works for 2 argument functions
+#   RTR32VI or RTL32II
+#
 # Provide procedures to do basic math on 32 bit numbers
 #
 # Functions come in two flavors
@@ -20,47 +33,49 @@ L string.ld
 # time they are assembled. So if you need to call them in many diffrent places in your code. It
 # might be more effient to use a function call)
 # COPY32VV   Label32    Label32
-# COPY32VIV  [Label]    Label
+# COPY32VIV  [Label]    Label          (will be deprecated)
+#      New Name: COPY32IV
 # MOVE32AV   $$$Number  Label
-# MOVE32AVI  $$$Number  [Label32]
-# INT2LONG   Label16    Label32
-# INT2LONGI  Label16    [label32]
-# INT2ILONG  [Label16]  label32
-# LONG2INT   Label32    Label16
+# MOVE32AVI  $$$Number  [Label32]     (will be deprecated)
+#      New Name MOVE32AI
+# INT2LONG   Label16    Label32        (will be deprecated)
+#      New Name INT2LONGVV
+# INT2LONGI  Label16    [label32]       (will be deprecated)
+#      New Name INT2LONGVI
+# INT2ILONG  [Label16]  label32          (will be deprecated)
+#      New Name INT2LONGIV
+# LONG2INT   Label32    Label16          (will be deprecated)
+#      New Name LONG2INTIV
 #
 #
-# When dealing with 32I numbers, your dealing with not an elemetry object but a structure of 4 bytes
-# For most procedures you are passing ont he stack a 16b pointer to the address where the 4 bytes start
-# But when passing data from one sub-routine to another, you may run into the cases where the value
-# you have on hand, is just a pointer, where the POINTER to the 4 byte number is stored.
-# So COPY32VV means copy values at PTR to PTR
-#    COPY32VIV means copy values at PTR to PTR->PTR
-#    COPY32IVV means copy values at PTR->PTR to PTR
-#    COPY32IVIV means copy values aat PTR->PTR to PTR->PTR
+# The Nameing convention was changed, so the original explaination that was here, is now deprecated
 #
-# Read this to mean 'V' by itself means %n is the 16b number that is the addresss of the structure
-#                   'IV' means %n is ptr to a diffrent 16b number that is the address of the struct.
-
-# Copy is for copying the 4 bytes of a 32b word from one pointer to another
-# Passed in parameters are the labels/pointers to the first word of the 32b numbers
+# New syntax means
+#      Paramters in their order
+#      V - value passed is the direct address where the 32 bit value starts
+#      I - value passed is a 16b pointer to where the 32 bit value starts
+#      A - is used when an direct constant will be the value stored.
 #
 # V -> V
 M COPY32VV \
      @PUSHI %1 @POPI %2 @PUSHI %1+2 @POPI %2+2
 # V -> V_PTR
-M COPY32VIV \
+M COPY32VI \
       @PUSHI %1 @PUSH %1 @ADD 2 @PUSHS \
       @PUSHI %2 @ADD 2 @POPS \
       @PUSHI %2 @POPS
+M COPY32VIV @COPY32VI %1 %2
 # V_PTR -> V
-M COPY32IVV \
+M COPY32IV \
       @PUSHI %1 @PUSHS @PUSHI %1 @ADD 2 @PUSHS \
       @POPI %2+2 @POPI %2
+M COPY32IVV @COPY32IV %1 %2
 # V_PTR -> V_PTR
-M COPY32IVIV \
+M COPY32II \
       @PUSHI %1 @PUSHS @PUSHI %1 @ADD 2 @PUSHS \
       @PUSHI %2 @ADD 2 @POPS \
       @PUSHI %2 @POPS
+M COPY32IVIV @COPY32II %1 %2
       
 # We call the 'Constant' to V 'MOVE's rathar than COPY since it requires
 # diffrent logic to handle a fixed constants which are first being defined in this same
@@ -71,53 +86,43 @@ M MOVE32AV @JMP %0SkipOver :%0C1 $$$%1 \
            :%0SkipOver @PUSHI %0C1 @PUSH %2 @POPS \
 	   @PUSHI %0C1+2 @PUSH %2+2 @POPS
 
-
-M MOVE32AVI @JMP %0SkipF :%0C1 $$$%1 \
+M MOVE32AI @JMP %0SkipF :%0C1 $$$%1 \
            :%0SkipF @PUSHI %0C1 @PUSHI %2 @POPS \
 	   @PUSHI %0C1+2 @PUSHI %2 @ADD 2 @POPS
+M MOVE32AVI @MOVE32AI %1 %2
 # The INT2LONG macro takes a Label to 16b data and saves it as a 32b (zeroed high word) Label
 #  %1 is ptr to 16b data, %2 is ptr to 32b data
 # Started life as a macro, now its a function, with macro like calling.
-M INT2LONG \
+M INT2LONGVV \
     @PUSH %1 @PUSH %2 @CALL INT2LONG
+M INT2LONG @INT2LONGVV %1 %2
 # This is for when the src value is a pointer to a 16b number
-M INTI2LONG \
+M INTI2LONGVV \
     @PUSHI %1 @PUSH %2 @CALL INT2LONG
+M INTI2LONG @INT2LONGVV %1 %2
 # Started life as a macro, now its a function, with macro like calling.
-M INT2LONGI \
+M INT2LONGVI \
     @PUSH %1 @PUSHI %2 @CALL INT2LONG
+M INT2LONGI @INT2LONGVI
 # Lastly we have the case where both the src and dst are pointers
 M INTI2LONGI \
     @PUSHI %1 @PUSHI %2 @CALL INT2LONG
-    
+M INTI2LONGII M @INT2LONGII
 
 # LONG2INT trucates the lower word in 32b data to 16b.But conider possibity of negative values
 # %1 is ptr to 32b data and %2 is ptr to 16b data (Does effect flags)
 # It started life as a macro, now its a function.
 
-M LONG2INT @PUSH %1 @PUSH %2 @CALL LONG2INT
-
+M LONG2INTIV @PUSH %1 @PUSH %2 @CALL LONG2INT
+M LONG2INT @LONG2INTIV %1 %2
 #
 ! MATH32DEFINE
 M MATH32DEFINE 1
 # Define the globals
-G ADD32
-G SUB32
-G CMP32
-G AND32
-G OR32
-G RTR32
-G RTL32
-G INV32
-G DIV32
-G DIV32U
-G MUL32
-G i32tos
-G stoi32
-G INT2LONG
-G LONG2INT
-G PRT32BIN
-G PRT32HEX
+G ADD32 G SUB32 G CMP32 G AND32 G OR32 G RTR32 G RTL32 G INV32
+G DIV32 G DIV32U G MUL32 G i32tos G stoi32 G INT2LONG G LONG2INT
+G PRT32BIN G PRT32HEX
+G ADD32VVV G SUB32VVV G CMP32VVV G AND32VVV G OR32VVV G RTR32VV G RTL32VV G INV32VV
 
 @JMP ENDLMATH
 # Global Variables
@@ -144,9 +149,20 @@ G PRT32HEX
 # Constants 32b 1 and 0
 :One_Val 1 0
 :Zero_Val 0 0
-#
+M ADD32VVV @PUSH %3 @PUSH %2 @PUSH %1 @CALL ADD32VVV
+M ADD32III @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL ADD32VVV
+M ADD32IIV @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL ADD32VVV
+M ADD32IVI @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL ADD32VVV
+M ADD32IVV @PUSH %3 @PUSH %2 @PUSHI %1 @CALL ADD32VVV
+M ADD32VII @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL ADD32VVV
+M ADD32VIV @PUSH %3 @PUSHI %2 @PUSH %1 @CALL ADD32VVV
+M ADD32VVI @PUSHI %3 @PUSH %2 @PUSH %1 @CALL ADD32VVV
+
+
+# Function ADD32VVV(A_Var,B_Var,C_Var)
 #  ADD(A,B,C)  Modifies C, removes all from Stack
 :ADD32         # Note that 32 bit math does NOT set any flags so we can't directly use it for 64 bit math.
+:ADD32VVV
 @POPI ReturnAdr
 @POPI C_PTR
 @POPI B_PTR    
@@ -179,8 +195,18 @@ G PRT32HEX
 @PUSHI ReturnAdr
 @RET
 #
+M SUB32VVV @PUSH %3 @PUSH %2 @PUSH %1 @CALL SUB32VVV
+M SUB32III @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL SUB32VVV
+M SUB32IIV @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL SUB32VVV
+M SUB32IVI @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL SUB32VVV
+M SUB32IVV @PUSH %3 @PUSH %2 @PUSHI %1 @CALL SUB32VVV
+M SUB32VII @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL SUB32VVV
+M SUB32VIV @PUSH %3 @PUSHI %2 @PUSH %1 @CALL SUB32VVV
+M SUB32VVI @PUSHI %3 @PUSH %2 @PUSH %1 @CALL SUB32VVV
+# Function SUB
 # SUB(A,B,C)  Modfies C, pops all from stack
 :SUB32
+:SUB32VVV
 @POPI ReturnAdr
 @POPI C_PTR
 @POPI B_PTR
@@ -207,8 +233,15 @@ G PRT32HEX
 @PUSHI ReturnAdr
 @RET
 #
+M CMP32VV @PUSH %2 @PUSH %1 @CALL CMP32VV
+M CMP32VI @PUSHI %2 @PUSH %1 @CALL CMP32VV
+M CMP32IV @PUSH %2 @PUSHI %1 @CALL CMP32VV
+M CMP32II @PUSHI %2 @PUSHI %1 @CALL CMP32VV
+#
+# Function CMP32VV(A_Var, B_Var)
 # CMP32(A,B) Pops A and B from stack, replaces with -1,0,1
 :CMP32
+:CMP32VV
 @POPI C32Return
 @PUSH C32Result
 @CALL SUB32   # We are Using SUB32 to Subtract A - B > Temp Result
@@ -241,9 +274,15 @@ G PRT32HEX
 :C32Return 0
 :C32Result 0 0
 #
-# RTR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to C
+M RTR32VV @PUSH %2 @PUSH %1 @CALL RTR32VV
+M RTR32VI @PUSHI %2 @PUSH %1 @CALL RTR32VV
+M RTR32IV @PUSH %2 @PUSHI %1 @CALL RTR32VV
+M RTR32II @PUSHI %2 @PUSHI %1 @CALL RTR32VV
+# Function RTR32
+# RTR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to B
 # Call RTR32(A,B) Rotats A saves to B
 :RTR32
+:RTR32VV
 @POPI ReturnAdr
 @POPI B_PTR
 @POPI A_PTR
@@ -259,9 +298,15 @@ G PRT32HEX
 @PUSHI ReturnAdr
 @RET
 #
+M INV32VV @PUSH %2 @PUSH %1 @CALL INV32VV
+M INV32VI @PUSHI %2 @PUSH %1 @CALL INV32VV
+M INV32IV @PUSH %2 @PUSHI %1 @CALL INV32VV
+M INV32II @PUSHI %2 @PUSHI %1 @CALL INV32VV
 # Invert Bits
+# Function INV32(A_Var,B_Var)
 # INV32(A,B) Inverts A saves to B
 :INV32
+:INV32VV
 @POPI IVReturnAdr
 @POPI IV32Bval
 @POPI IV32Aval
@@ -274,14 +319,20 @@ G PRT32HEX
 :IVReturnAdr 0
 :IV32Aval 0
 :IV32Bval 0
-#
+
+M RTL32VV @PUSH %2 @PUSH %1 @CALL RTL32VV
+M RTL32VI @PUSHI %2 @PUSH %1 @CALL RTL32VV
+M RTL32IV @PUSH %2 @PUSHI %1 @CALL RTL32VV
+M RTL32II @PUSHI %2 @PUSHI %1 @CALL RTL32VV
+# Function RTL32(Var_A,Var_B)
 # RTL32 Rotate Left RTL32(A,B) rotates A saves to B
 :RTL32
 @POPI ReturnAdr
 @POPI B_PTR
 @POPI A_PTR
 @PUSHI A_PTR @ADD 2    # We precalc the High Part of A to avoid the Add 2 when Carry Flag is set.
-@PUSH 1 @CMP 0 @POPNULL    # Clear Carry
+#@PUSH 1 @CMP 0 @POPNULL    # Clear Carry
+@FCLR
 @PUSHII A_PTR              # Do the Low Part of A
 @RTL
 @POPII B_PTR
@@ -308,6 +359,7 @@ G PRT32HEX
 # Following are 32bit buffers that act as variables, but we have to deal with both high and low words
 :isA32 0 0
 :IsLocalR1 0 0
+# Function i32tos(str_var,base_var,A_var)
 # Start of procedure
 :i32tos
 @POPI isReturn1
@@ -391,6 +443,7 @@ G PRT32HEX
   @PUSHI isReturn1
   @RET
 #
+# Funtion stoi32(str_var, A_Var)
 # stoi32 takes a stringptr and turns it into a 32 bit Ineger
 # stoi32(string, ptrto32)
 :stoi32
@@ -503,8 +556,20 @@ G PRT32HEX
 :B32CHARSI 0 0
 :L32RegSI 0 0
 
+M AND32VVV @PUSH %3 @PUSH %2 @PUSH %1 @CALL AND32VVV
+M AND32III @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL AND32VVV
+M AND32IIV @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL AND32VVV
+M AND32IVI @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL AND32VVV
+M AND32IVV @PUSH %3 @PUSH %2 @PUSHI %1 @CALL AND32VVV
+M AND32VII @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL AND32VVV
+M AND32VIV @PUSH %3 @PUSHI %2 @PUSH %1 @CALL AND32VVV
+M AND32VVI @PUSHI %3 @PUSH %2 @PUSH %1 @CALL AND32VVV
+
+
+# Function AND32(A_Var,B_Var,C_Var)
 # AND function AND bits in A and B and returns result to C. A&B not modified.
 :AND32
+:AND32VVV
 @POPI ReturnAdr
 @POPI ADC_PTR       # Return Result
 @INC2I ADC_PTR       # Set C to the High part of itself
@@ -523,8 +588,18 @@ G PRT32HEX
 :ADB_PTR 0 0
 :ADC_PTR 0 0
 
+M OR32VVV @PUSH %3 @PUSH %2 @PUSH %1 @CALL OR32VVV
+M OR32III @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL OR32VVV
+M OR32IIV @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL OR32VVV
+M OR32IVI @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL OR32VVV
+M OR32IVV @PUSH %3 @PUSH %2 @PUSHI %1 @CALL OR32VVV
+M OR32VII @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL OR32VVV
+M OR32VIV @PUSH %3 @PUSHI %2 @PUSH %1 @CALL OR32VVV
+M OR32VVI @PUSHI %3 @PUSH %2 @PUSH %1 @CALL OR32VVV
 # OR function ORs bits in A and B and returns result to C. A&B not modified.
+# Function OR32(A_Var,B_Var, C_Var)
 :OR32
+:OR32VVV
 @POPI ReturnAdr
 @POPI ORC_PTR       # Return Result
 @INC2I ORC_PTR       # Set C to the High part of itself
@@ -545,11 +620,31 @@ G PRT32HEX
 
 # End of i32tos
 
+# Division (both Unsigned and signed) are the only functions that have 4 paramters. So the macros are a bit more complex
+M DIVU32VVVV @PUSH %4 @PUSH %3 @PUSH %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VVVI @PUSHI %4 @PUSH %3 @PUSH %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VVIV @PUSH %4 @PUSHI %3 @PUSH %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VVII @PUSHI %4 @PUSHI %3 @PUSH %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VIVV @PUSH %4 @PUSH %3 @PUSHI %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VIVI @PUSHI %4 @PUSH %3 @PUSHI %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VIIV @PUSH %4 @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32VIII @PUSHI %4 @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL DIVU32VVVV
+M DIVU32IVVV @PUSH %4 @PUSH %3 @PUSH %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IVVI @PUSHI %4 @PUSH %3 @PUSH %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IVIV @PUSH %4 @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IVII @PUSHI %4 @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IIVV @PUSH %4 @PUSH %3 @PUSHI %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IIVI @PUSHI %4 @PUSH %3 @PUSHI %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IIIV @PUSH %4 @PUSHI %3 @PUSHO %2 @PUSHI %1 @CALL DIVU32VVVV
+M DIVU32IIII @PUSHI %4 @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL DIVU32VVVV
+
+# Function Unsided DIV
 # Division for 32 Bit
 # DIVU(A,B,%Result,%Remainder)
 :LocalA 0 0
 :LocalB 0 0 
 :DIV32U
+:DIV32UVVVV
 @POPI DUReturn
 @POPI DUResult
 @POPI DUReturnRemain
@@ -612,11 +707,31 @@ G PRT32HEX
 :DUMask 0 0
 :DUTemp1 0 0
 
+# Division (both Unsigned and signed) are the only functions that have 4 paramters. So the macros are a bit more complex
+M DIV32VVVV @PUSH %4 @PUSH %3 @PUSH %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VVVI @PUSHI %4 @PUSH %3 @PUSH %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VVIV @PUSH %4 @PUSHI %3 @PUSH %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VVII @PUSHI %4 @PUSHI %3 @PUSH %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VIVV @PUSH %4 @PUSH %3 @PUSHI %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VIVI @PUSHI %4 @PUSH %3 @PUSHI %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VIIV @PUSH %4 @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32VIII @PUSHI %4 @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL DIV32VVVV
+M DIV32IVVV @PUSH %4 @PUSH %3 @PUSH %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IVVI @PUSHI %4 @PUSH %3 @PUSH %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IVIV @PUSH %4 @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IVII @PUSHI %4 @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IIVV @PUSH %4 @PUSH %3 @PUSHI %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IIVI @PUSHI %4 @PUSH %3 @PUSHI %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IIIV @PUSH %4 @PUSHI %3 @PUSHO %2 @PUSHI %1 @CALL DIV32VVVV
+M DIV32IIII @PUSHI %4 @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL DIV32VVVV
+
+
 
 #
 # The Signed DIV32 just calls the unsigned one but keeps track if the result should be signed.
 #
 :DIV32
+:DIV32VVVV
 @POPI DSReturn
 @POPI DSRemain1
 @POPI DSResult
@@ -666,10 +781,16 @@ G PRT32HEX
 
 
 
+M INT2LONGVV @PUSH %1 @PUSH %1 @CALL INT2LONGVV
+M INT2LONGVI @PUSHI %1 @PUSH %1 @CALL INT2LONGVV
+M INT2LONGIV @PUSH %1 @PUSHI %1 @CALL INT2LONGVV
+M INT2LONGII @PUSHI %1 @PUSHI %1 @CALL INT2LONGVV
 
+# Function INT2LONG(A_Var, B_Var)
 # INT2LONG function(A,B)
 #   A=Ptr to 16b data, B=Ptr to 32b destination
 :INT2LONG
+:INT2LONGVV
   @POPI I2LReturn
   @POPI I2LB
   @POPI I2LA
@@ -692,8 +813,18 @@ G PRT32HEX
 :I2LB 0
 :I2LReturn 0
 
+M MUL32VVV @PUSH %3 @PUSH %2 @PUSH %1 @CALL MUL32VVV
+M MUL32III @PUSHI %3 @PUSHI %2 @PUSHI %1 @CALL MUL32VVV
+M MUL32IIV @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL MUL32VVV
+M MUL32IVI @PUSHI %3 @PUSH %2 @PUSHI %1 @CALL MUL32VVV
+M MUL32IVV @PUSH %3 @PUSH %2 @PUSHI %1 @CALL MUL32VVV
+M MUL32VII @PUSHI %3 @PUSHI %2 @PUSH %1 @CALL MUL32VVV
+M MUL32VIV @PUSH %3 @PUSHI %2 @PUSH %1 @CALL MUL32VVV
+M MUL32VVI @PUSHI %3 @PUSH %2 @PUSH %1 @CALL MUL32VVV
+
 # MUL32(multiplierA, multiplierB, Result) pointers to 32b data
 :MUL32
+:MUL32VVV
 @POPI MReturn
 @POPI MResultPtr
 @POPI MMPtr
@@ -762,11 +893,15 @@ G PRT32HEX
 :M_ZERO $$$0
 :M_ONE $$$1
 
-   
+M LONG2INTVV @PUSH %2 @PUSH %1 @CALL LONG2INTVV
+M LONG2INTVI @PUSHI %2 @PUSH %1 @CALL LONG2INTVV
+M LONG2INTIV @PUSH %2 @PUSHI %1 @CALL LONG2INTVV
+M LONG2INTII @PUSHI %2 @PUSHI %1 @CALL LONG2INTVV
 
-
+# Function LONG2INT(Var_A, Var_B) A==always 32, B=Always 16
 # LONG2INT funciton(A,B) a 32b(A) into a 16b(B) with some for negative values
 :LONG2INT
+:LONG2INTVV
    @POPI L2IReturn
    @POPI L2IB
    @POPI L2IA
@@ -801,9 +936,13 @@ G PRT32HEX
 :L2IOne $$$01
 :L2IM1 0 0
 
+M PRT32HEXV @PUSH %1 @CALL PRT32HEX
+M PRT32HEXI @PUSHI %1 @CALL PRT32HEX
 # Some debug print tools
+# Function PRT32HEXV
 # Print32Hex(ptr)
 :PRT32HEX
+:PRT32HEXV
 @POPI PHReturn
 @DUP
 @ADD 2

@@ -5,7 +5,7 @@ L div.ld
 L mul.ld
 L softstack.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
-G ISAlphaNum G IsAlpha G ISNumeric
+G ISAlphaNum G IsAlpha G ISNumeric G strncat
 
 #
 # Soem 'String' Macros

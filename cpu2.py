@@ -18,10 +18,10 @@ import readchar
 import cProfile
 import pstats
 import io
-import time
 
 import sys
 import os
+import cpuCfunc
 
 
 # Constants
@@ -133,6 +133,8 @@ ActiveFile = ""
 EchoFlag = False
 UniqueID = 0
 SkipBlock = 0
+DataSegment = 0   # In cases where data and code are in seperate spaces, these are used
+dataaddress = 0 
 
 GLOBALFLAG = 1
 LOCALFLAG = 2
@@ -140,13 +142,14 @@ watchwords = []
 MAXMEMSP = 0xffff
 MAXHWSTACK = 0xff - 2
 Debug = 0
+DataSegment=-1      # if DataSegment is -1 then Data and Address overlap.
 
 InDebugger = False
 RunMode = False
 GPC = 0
 LineAddrList = [[0, 0], [0, 0]]
 
-
+OPTDICTFUNC = {}
 CPUPATH = os.getenv('CPUPATH')
 JSONFNAME = "CPU.json"
 if CPUPATH is None:
@@ -168,7 +171,6 @@ for i in SymToValMap:
                         i[1].encode('ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
     OPTDICT[str(i[0])] = [i[0], i[1].encode(
         'ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
-
 
 
 def shandler(signum, frame):
@@ -228,10 +230,16 @@ class microcpu:
     DiskPtr = -1
     OPTDICTFUNC={}
     
-   
+
     def switcher(self, optcall, argument):
+        func = OPTDICTFUNC.get(optcall, lambda arg: "Invalid call")
+        return func(argument)
+
+    
+#    def switcher(self, optcall, argument):
 #        return self.OPTDICTFUNC.get(optcall, lambda arg: "Invalid call")(argument)
-        return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)        
+#        return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)
+
                                      
 
     def __init__(self, origin, memsize):
@@ -246,6 +254,15 @@ class microcpu:
         self.mb[0xff] = 0
         self.simtime = False
         self.clocksec = 1000
+        for i in SymToValMap:
+            func_name = f"opt{OPTSYM[i[0]]}"
+            if hasattr(self, func_name):
+                OPTDICTFUNC[i[0]] = getattr(self, func_name)
+            else:
+                print("Warning %s not found." % func_name)
+                OPTDICTFUNC[i[0]] = lambda arg: "Invalid call"            
+
+
         
 
     def insertbyte(self, location, value):
@@ -374,13 +391,13 @@ class microcpu:
         self.mb[address+1] = self.highbyte(value)
 
     def getwordat(self, address):
-        a = 0
         if address >= MAXMEMSP:
-            #            print("Invalid address %s" % address)
-            self.raiseerror("003 Invalid Address: %d, getwordat" % (address))
+            self.raiseerror("003 Invalid Address: %d, getwordat" % address)
             return 0
-        a = self.memspace[address] + (self.memspace[address+1] << 8)
-        return a
+
+        # Combine the two bytes into a 16-bit word
+        word = (self.memspace[address+1] << 8) | self.memspace[address]
+        return word
 
     def putwordat(self, address, value):
         address = int(address)
@@ -923,7 +940,6 @@ class microcpu:
         # 4         Set TTY no-echo
         # 5         Set TTY ech
         # 22        Requires Disk Device already initilized. Reads 512 Byte block from [address]
-        # 25        Reads system time as seconds since 1970
         #
         if address >= (MAXMEMSP-11):
             self.raiseerror(
@@ -1044,7 +1060,7 @@ class microcpu:
             v2=v32 >> 16
             self.optPUSH(v1)
             self.optPUSH(v2)
-            
+        
                 
     def optRRTC(self, unused):
         # RRTC mean Rotate Right Through Carry
@@ -1301,7 +1317,7 @@ def Str32Word(instr):
                 # that a fixed storage as that result may not occupy any spot in memory, that we can 'fix' in
                 # a second pass.
                 CPU.raiseerror(
-                    "047 Use of fixed value as label before defined.")
+                    "047 Use of fixed value (%s) as label before defined." % instr )
         else:
             valid = True
             for i in instr:
@@ -1552,6 +1568,23 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
             newline = newline + c
     return newline
 
+def FirstPassVal(instr, address, FileLables, LocalID, LORGFLAG,GlobalOptCnt):
+    (value, size) = nextword(instr[1:])
+    firstch=value[0:1]
+    if firstch == "$":
+        value=address
+    elif firstch.upper() >= "A" and firstch.upper() <= "Z" and firstch != "b":        
+        if value[0:] in FileLables.keys():
+            value=Str2Word(FileLables[IsLocalVar(value[0:], LocalID, LORGFLAG)])
+        else:
+            CPU.raiseerror("055 Line %s, Can not use lable that is yet definied in first pass of assembler." %
+                           (GlobalOptCnt, value))
+    else:
+        value=Str2Word(value)
+    return (value, size)
+            
+
+
 
 def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
     global FileLabels, FWORDLIST, FBYTELIST, GlobeLabels, GlobalLineNum, ActiveFile
@@ -1584,8 +1617,6 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
         stopi = len(instr)
         if working[stopi - 1] == '"':
             stopi -= 1
-        if starti < 100 and CPU.pc != 0:
-            print("DEBUG: mem add %s at pc %s\n" % (starti, CPU.pc),file=DebugOut)
         for c in working[starti:stopi]:
             StoreMem[int(curaddress)] = ord(c)
             curaddress += 1
@@ -1611,7 +1642,7 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
             starti += 2
         Result = int(working[starti:], BaseNum)
     else:
-        # Here be text lables, look them up, but also look for post modifiers
+        # Here be declared lables, look them up, but also look for post modifiers
         stopi = starti + 1
         modval = 0
         while working[stopi].isalnum() or working[stopi] == "_" or working[stopi] == ".":
@@ -1668,7 +1699,7 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
 
 
 def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
-    global GlobalLineNum, GlobalOptCnt, Debug, MacroData, MacroPCount, FileLabels, Entry, ActiveFile, FWORDLIST, FBYTELIST, GlobeLabels, SkipBlock
+    global GlobalLineNum, GlobalOptCnt, Debug, MacroData, MacroPCount, FileLabels, Entry, ActiveFile, FWORDLIST, FBYTELIST, GlobeLabels, SkipBlock, dataaddress
     if Debug > 1:
         print("FileLoad Start: %s Addr: %04x" % (filename, offset),file=DebugOut)
     ActiveFile = filename
@@ -1677,6 +1708,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
     line = "#Start"
     backfill = ""
     highaddress = offset
+    ExpectData = 0                   # Used as flag and counter when seperate datasegment is in use.
     wfilename = fileonpath(filename)
     with open(wfilename, "r") as infile:
         if address > highaddress:
@@ -1861,6 +1893,24 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     FileLabels.update(newitem)
                     line = line[size+1:]
                     continue
+                elif line[0] == ";":
+                    (key, size) = nextword(line[1:])
+                    line = line[size+1:]
+                    (dsize,size) = nextword(line)
+                    line = line[size:]
+                    if DataSegment != -1:
+                        # If DataSegment was defined, the we use a seperate dataaddress counter
+                        workingaddress=dataaddress
+                        ExpectData=Str2Word(dsize)   # Defines how many bytes to expect goes into the dataaddress
+                    else:
+                        ExpectData=0
+                    if ("F."+filename+":"+str(GlobalLineNum) in FileLabels):
+                        # We are creating an internal 'lable' for each line number.
+                        # This will allow us to print in dissassembly mode approximate src line numbers.
+                        del FileLabels["F."+filename+":"+str(GlobalLineNum)]
+                    newitem = {IsLocalVar(key, LocalID, LORGFLAG): workingaddress}
+                    FileLabels.update(newitem)
+                        
                 elif line[0] == "=":
                     (key, size) = nextword(line[1:]) 
                     line = line[size+1:]
@@ -1872,29 +1922,16 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         {IsLocalVar(key, LocalID, LORGFLAG): value})
                     line = line[size:]
                     continue
-                elif line[0] == "." and IsOneChar:
-                    (value, size) = nextword(line[1:])
-                    firstch=value[0:1]
-                    if firstch.upper() >= "A" and firstch.upper() <= "Z" and firstch != "b":
-                        if value[0:] in FileLabels.keys():
-                            value=FileLabels[IsLocalVar(
-                                value[0:], LocalID, LORGFLAG)]
-                        else:
-                            CPU.raiseerror("055 Line %s, Can not set Memory Point %s to lable that not yet defined." %
-                                           (GlobalOptCnt, value))
+                elif ( line[0] == "." and IsOneChar) or line[:4].upper() == ".ORG":
+                    if line[:4].upper() == ".ORG":
+                        line=line[4:]
                     else:
-                        value=Str2Word(value)
+                        line=line[1:]
+                    (value, size) = FirstPassVal(line, address, FileLabels, LocalID, LORGFLAG, GlobalOptCnt)
                     line = line[size+1:] # at this point value is #val of 1st lable or constant.
                     # We should also allow labled or constant values be modified with +/- another lable or constant
                     if line[0:1] == "+" or line[0:1] == "-":
-                        (modvalue,size) = nextword(line[1:])
-                        # Now see if the modifier is a lable or a constant.
-                        if (modvalue[0:1] == '$' or ( not modvalue[0:1].isdigit)):
-                            if modvalue[0:] in FileLables.keys():
-                                modvalue=FileLabels[IsLocalVar(
-                                    modvalue[1:], LocalID, LORGFLAG)]
-                            else:
-                                CPU.raiseerror("056 Line %s, Can not modify Memory Point by lable that not yet defined." %(GlobalOptCnt, modvalue))
+                        (modvalue,size) = FirstPassVal(line, address, FileLabels, LocalID, LORGFLAG, GlobalOptCnt)
                         if (line[0:1] == "+"):
                             value = Str2Word(value) + Str2Word(modvalue)
                         else:
@@ -1902,6 +1939,13 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         line = line[size+1:]    # if there was a second lable or constant bump up line past it.
                     address = Str2Word(value)
                     Entry = address
+                    continue
+                elif ( line[:5].upper() == ".DATA" ):
+                    line=line[5:]
+                    (value, size) = FirstPassVal(line, address, FileLabels, LocalID, LORGFLAG, GlobalOptCnt)
+                    DataSegment = value
+                    dataaddress = DataSegment
+                    line=line[size+1:]
                     continue
                 elif line[0] == "L" and IsOneChar:
                     # Load a file into memory as a library, enable 'local' variables.
@@ -1978,16 +2022,22 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     continue
                 else:
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
-#                    if ( GlobalLineNum >= 130 and GlobalLineNum <=135):
-#                        print("break here:%s" % line)
                     LineAddrList.append([address, GlobalLineNum, filename])
                     (key, size) = nextwordplus(line)
                     line = line[size:]
                     if address > highaddress:
                         highaddress = address
                     if len(key) > 0:
-                        address = DecodeStr(
-                            key, address, CPU,  LocalID, LORGFLAG, False)
+                        if ExpectData > 0:
+                            # We do this because after we define a custom dataaddress constant
+                            # we may have a mix of values that will act as the initialization fill
+                            # for that defined space. It might be made of more than one word
+                            # do we keep subtracting from ExpectData until we've filled it all.
+                            prevval=dataaddress
+                            dataaddress = DecodeStr(key, dataaddress, CPU,  LocalID, LORGFLAG, False)
+                            ExpectData -= (dataaddress - prevval)
+                        else:
+                            address = DecodeStr(key, address, CPU,  LocalID, LORGFLAG, False)
         for store in FWORDLIST:
             key = store[0]
             vaddress = store[1]
@@ -2009,6 +2059,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
 #        print("----------------END OF DUMP ---------------")
     if address > highaddress:
         highaddress = address
+    if dataaddress > highaddress:
+        highaddress = dataaddress
     return highaddress
 
 
@@ -2021,6 +2073,7 @@ def debugger(FileLabels,passline):
     size = 0
     cmdword = ""
     while True:
+        cpuCfunc.prtexample_arrays(CPU.memspace,CPU.mb,CPU.pc, 1)
         sys.stdout.write("%04x> " % CPU.pc)
         fd = sys.stdin.fileno()
         if EchoFlag:
