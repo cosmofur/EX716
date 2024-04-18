@@ -459,4 +459,5 @@ G GetObjectRealSize
 @POPLOCAL ObjectID
 @POPRETURN
 @RET
+ENDBLOCK
 

@@ -37,7 +37,10 @@
 # __MOVE_HW_SS   - Hardware Stack to Soft Stack
 #
 # The global variables __SS_TOP __SS_SP __SS_BOTTOM can be queried but should be treated as read only
-# To change them use the globale funciton
+# To change them use the SaveSSStack and RestoreSSStack functions.
+#
+# The three SSS function SetSSStack, SaveSSStack and RestoreSSStack are for managing whre
+# stacks are stored in memory, and offers a way to manage multiple stacks. 
 #
 #  SetSSStack(TopAddress,BottomAddress)
 ! SOFTSTACK_DONE
@@ -54,6 +57,8 @@ G __MOVE_HW_SS
 G __MOVE_SS_HW
 G SetSSStack
 G __SS_StackError
+G SaveSSStack
+G RestoreSSStack
 
 
 :__SS_TOP 0xfff0   # Default stack is top of mem 0xff00 to 0xfff0 about 240 bytes
@@ -123,6 +128,71 @@ M TOPLOCAL @PUSHII __SS_SP
 @MV2V __SS_TOP __SS_SP
 @INC2I __SS_SP
 @RET
+#
+# Function
+# SaveSSStack(IDStore)
+# With an eye on managing multiple stacks, this function will save
+# the TOP,BOTTOM and SP to a 6 byte strutucture pointed to by IDStore.
+:SaveStack
+@SWP       # It would be self defeating if SaveStack used the stack for temp storage.
+# Top of Stack holds address of IDStore, we'll need it three times.
+@DUP @DUP
+# [return, IDStore,IDStore,IDStore]
+@PUSHI __SS_TOP
+@SWP      # Poiunt to where we store 'TOP'
+@POPS
+# [return, IDStore, IDStore]
+@ADD 2    # Point to where we store 'Bottom'
+@PUSHI __SS_BOTTOM
+@SWP
+@POPS
+# [ return, IDStore]
+@ADD 4   # Point to where we store 'SP'
+@PUSHI __SS_SP
+@SWP
+@POPS
+# [return]
+@RET
+#
+# Function
+# RestoreSSStack(IDStore)
+# With an eye on managing multiple stacks, this funciton will restore from
+# previous 'SAVE' TOP, BOTTOM and SP from a 6 byte structure pointed to by IDSTORE
+:RestoreStack
+@SWP
+# We'll need IDStore 3 times.
+@DUP @DUP
+# [return, IDStore IDStore, IDStore]
+@PUSHS
+@POPI __SS_TOP
+# [return, IDStore IDStore]
+@ADD 2
+@PUSHS
+@POPI __SS_BOTTOM
+# [return, IDStore ]
+@ADD 4
+@PUSHS
+@POPI __SS_SP
+# [return]
+@RET
+# The Following macros are to make the Stack manipulation functions follow I and A rules.
+#
+# 1) @SetSStackAB Lable1(Highval) Label2(LowVal)
+M SetSSStackAB @PUSH %1 @PUSH %2 @CALL SetSSStack
+# 2) @SetSStackAS Label1 INT_SIZE_In_Bytes
+M SetSSStackAS @PUSH %1+%2 @PUSH %1 @CALL SetSSStack
+# 3) @SetSStackIS Label-Pointer INT_SIZE_IN_Bytes
+M SetSSStackIS @PUSHI %1 @ADD %2 @PUSHI %1 @CALL SetSSStack
+# 3) @SaveSSStackA Label(6 bytes storage)
+M SaveSSStackA @PUSH %1 @CALL SaveSSStack
+# 4) @SaveSSStackI Lable-Pointer (ptr to 6 bytes storage)
+M SaveSSStackI @PUSHI %1 @CALL SaveSSStack
+# 5) @RestoreSSStackA Label (6 bytes storage)
+M RestoreSSStackA @PUSH %1 @CALL RestoreSSStack
+# 6) @RestoreSSStackI Label-Pointer (6 bytes storage)
+M RestoreSSStackI @PUSHI %1 @CALL RestoreSSStack
+
+
 #
 # Standard Stack Error handler, exits on any error
 # 

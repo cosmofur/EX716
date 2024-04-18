@@ -59,6 +59,7 @@ PollReadTapeI=23
 PollRewindTape=24
 PollReadTime=25
 DebugOut=sys.stderr
+PrevPC=0
 
 if sys.platform == 'win32':
     import msvcrt
@@ -283,17 +284,23 @@ class microcpu:
         new[3] = new[3] | termios.ECHO          # lflags
         print("CPU State: ",file=DebugOut)
         i=CPU.pc
-        optcode = StoreMem[i]
-        P1 = CPU.getwordat(i+1)
-        PI = CPU.getwordat(P1)
-        PII = CPU.getwordat(PI)
-        ZF = 1 if CPU.flags & 1 else 0
-        NF = 1 if CPU.flags & 2 else 0
-        CF = 1 if CPU.flags & 4 else 0
-        OF = 1 if CPU.flags & 8 else 0
-        OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%1d N%1d C%1d O%1d" % \
+        if ( i+1 < 0xffff ):            
+           optcode = StoreMem[i]        
+           P1 = CPU.getwordat(i+1)
+           if (P1 > 0xfffe):
+               OUTLINE="Invalide number at address %04x[%06x] " % (i,P1)
+               P1=P1 & 0xfffe
+           PI = CPU.getwordat(P1)
+           PII = CPU.getwordat(PI)
+           ZF = 1 if CPU.flags & 1 else 0
+           NF = 1 if CPU.flags & 2 else 0
+           CF = 1 if CPU.flags & 4 else 0
+           OF = 1 if CPU.flags & 8 else 0      
+           OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%1d N%1d C%1d O%1d" % \
                 (i, OPTSYM[optcode], P1, PI, PII,
                  ZF, NF, CF, OF)
+        else:
+            OUTLINE="Invalid PC ( %06x ) " % i
         print(OUTLINE, file=DebugOut)
         try:
             if (self.mb[0xff]-1 > 0):
@@ -375,6 +382,8 @@ class microcpu:
 
     def getwordat(self, address):
         a = 0
+        if address == MAXMEMSP:
+            return 0        
         if address >= MAXMEMSP:
             #            print("Invalid address %s" % address)
             self.raiseerror("003 Invalid Address: %d, getwordat" % (address))
@@ -492,56 +501,63 @@ class microcpu:
         self.putwordat(newaddress, A1)
         self.mb[0xff] -= 2
 
-    def SetFlags(self, A1):
+    def SetFlags(self, A1, WasSubt):
+        global ZF,NF,CF,OF
         # The Basic SetFlags only works for fixed numbers so we'll only look at
         # Zero, Negative and Carry.
         # Overflow requires us to know if we are adding or subtracting so we'll do
         # That inside the add/sub/cmp operations
         ZF = 0
         NF = 0
-        CF = 0
+        OF = 0
         B2 = abs(A1) & 0xffff
         ZF = 1 if (B2 == 0) else 0
         NF = 1 if (((A1 & 0xffff) & 0x8000) != 0) else 0
-        CF = 1 if (A1 & 0xffff0000) > 0 else 0
-        self.flags = ZF+(NF << 1)+(CF << 2)
+        self.flags = 0
+        self.flags = (ZF+(NF << 1))
+#        if ( A1 > 3 and A1 < 5 ):
+#            print("Break here\n")        
+#        print("A1=%x Flags Z%1x N%1x\n" % (A1,ZF,NF))        
 
-    def OverFlowTest(self, a, b, c, IsSubStraction):
-        a = -1 if ((a & 0xffff) > 0x8000) else 1
-        b = -1 if ((b & 0xffff) > 0x8000) else 1
-        c = -1 if ((c & 0xffff) > 0x8000) else 1
-        if (IsSubStraction == 0):
-            if (((a > 0) and (b > 0) and (c < 0)) or ((a < 0) and (b < 0) and (c >= 0))):
+    def OverCarryTest(self, a, b, c, IsSubStraction):
+        global OF,CF
+        OF=0
+        CF=0
+# Check for overflow in signed subtraction
+        if (IsSubStraction != 0):
+            if (((a & 0x8000) != 0 and (b & 0x8000) == 0 and (c & 0x8000) == 0)
+                or ((a & 0x8000) == 0 and (b & 0x8000) != 0 and (c & 0x8000) != 0)):
                 OF = 1
-            else:
-                OF = 0
         else:
-            if (((a > 0) and (b < 0) and (c < 0)) or ((a < 0) and (b > 0) and (c >= 0))):
+            if (((a & 0x8000) != 0 and (b & 0x8000) != 0 and (c & 0x8000) == 0) or
+                ((a & 0x8000) == 0 and (b & 0x8000) == 0 and (c & 0x8000) != 0)):
                 OF = 1
-            else:
-                OF = 0
-        self.flags = (self.flags & 0x37) | (OF << 3)
+        if ( c & 0xffff0000 ) > 0:
+            CF=1
+        self.flags=self.flags | (CF << 2 | OF << 3)
+
+        
 
     def optCMP(self, asvalue):
         R1 = asvalue
         R2 = self.fetchAcum(0)
         A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
+        self.SetFlags(A1,1)
+        self.OverCarryTest(R2, R1, A1, 1)
 
     def optCMPS(self, address):
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
+        self.SetFlags(A1,1)
+        self.OverCarryTest(R2, R1, A1, 1)
 
     def optCMPI(self, address):
         R1 = self.getwordat(address)
         R2 = self.fetchAcum(0)
         A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
+        self.SetFlags(A1,1)
+        self.OverCarryTest(R2, R1, A1, 1)
 
     def optCMPII(self, address):
         if address >= MAXMEMSP:
@@ -556,8 +572,8 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = invalue
         A1 = R1 + R2
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 0)
+        self.SetFlags(A1,0)
+        self.OverCarryTest(R1, R2, A1, 0)
         self.StoreAcum(0, A1)
 
     def optADDS(self, invalue):
@@ -566,8 +582,8 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R1 + R2
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 0)
+        self.SetFlags(A1,0)
+        self.OverCarryTest(R1, R2, A1, 0)
         self.mb[0xff] -= 1
         self.StoreAcum(0, A1)
 
@@ -591,8 +607,8 @@ class microcpu:
         R2 = self.fetchAcum(0)
         R1 = invalue
         A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
+        self.SetFlags(A1,1)
+        self.OverCarryTest(R2, R1, A1, 1)
         A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
 
@@ -600,8 +616,8 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 1)
+        self.SetFlags(A1,1)
+        self.OverCarryTest(R1, R2, A1, 1)
         self.mb[0xff] -= 1
         self.StoreAcum(0, A1)
 
@@ -611,8 +627,8 @@ class microcpu:
         R1 = self.getwordat(address)
         R2 = self.fetchAcum(0)
         A1 = (R2 - R1) & 0xffff
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 1)
+        self.SetFlags(A1,1)
+        self.OverCarryTest(R1, R2, A1, 1)
         self.StoreAcum(0, A1)
 
     def optSUBII(self, address):
@@ -627,7 +643,7 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = ivalue
         A1 = R1 | R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
 
@@ -635,7 +651,7 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R1 | R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         A1 = A1 & 0xffff
         self.mb[0xff] -= 1
         self.StoreAcum(1, A1)
@@ -658,7 +674,7 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = ivalue
         A1 = R1 & R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
 
@@ -666,7 +682,7 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R1 & R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         A1 = A1 & 0xffff
         self.mb[0xff] -= 1
         self.StoreAcum(0, A1)
@@ -688,7 +704,7 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = ivalue
         A1 = R1 ^ R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
 
@@ -696,7 +712,7 @@ class microcpu:
         R1 = self.fetchAcum(0)
         R2 = self.fetchAcum(1)
         A1 = R1 ^ R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         A1 = A1 & 0xffff
         self.mb[0xff] -= 1
         self.StoreAcum(1, A1)
@@ -705,7 +721,7 @@ class microcpu:
         if address >= MAXMEMSP:
             self.raiseerror("025 Invalid Address: %d, optORI" % (address))
         newaddress = self.getwordat(address)
-        self.optOR(newaddress)
+        self.optXOR(newaddress)
 
     def optXORII(self, address):
         if address >= MAXMEMSP:
@@ -713,7 +729,7 @@ class microcpu:
         newaddress = self.getwordat(address)
         if (newaddress > MAXMEMSP):
             self.raiseerror("027 Invalid Address %d, optORII" % (address))
-        self.optORI(newaddress)
+        self.optXORI(newaddress)
 
     def optJMPZ(self, address):
         if address >= MAXMEMSP:
@@ -759,7 +775,7 @@ class microcpu:
         self.pc = newaddress
         
     def optCAST(self, address):
-        global Debug, DeviceHandle, DeviceFile
+        global Debug, DeviceHandle, DeviceFile, PrevPC
         # In the future 'CAST' will related to networking, for now it will just write to stdout
         # for now it acts as the stdout write tool
         # if Acum is 0, it will print a small dump of the memory of address and the current Stack
@@ -804,13 +820,16 @@ class microcpu:
                     sys.stdout.write(chr(c))
                 i += 1
         if cmd == CastPrintInt:
-            sys.stdout.write("%d" % address)
+            sys.stdout.write("%d" % (address & 0xffff) )
         if cmd == CastPrintIntI:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%d" % v)
+            sys.stdout.write("%d" % (v & 0xffff))
         if cmd == CastPrintSignI:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%d" % (self.twos_compFrom(v, 16)))
+            v = v & 0xffff
+            if ( v & 0x8000):
+                v = -((v - 1) ^ 0xffff)
+            sys.stdout.write("%d" % v)
         if cmd == CastPrintBinI:
             v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%s" % format(v, "016b"))
@@ -893,12 +912,12 @@ class microcpu:
         if cmd == CastDebugToggle:
             Debug = 0 if Debug else 1
         if cmd == CastStackDump:
-            print(" %04x:Stack ( %d):" %
-                             (self.pc, self.mb[0xff]-1), file=DebugOut,end="")
+            print(" %04x:Stack:(%d)" %
+                             (PrevPC,self.mb[0xff]-1), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
-                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
+                val = self.mb[i*2]+((self.mb[i*2+1])<<8)
                 print(" %04x" % (val),file=DebugOut,end="")
-            print(" ",file=DebugOut)
+            print("",file=DebugOut)
         if cmd == CastTapeWriteI:
             if DeviceHandle != None:
                 v=address
@@ -1089,7 +1108,7 @@ class microcpu:
     def optINV(self, address):
         R2 = self.fetchAcum(0)
         A1 = ~R2
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         self.flags = self.flags & 0x3      # Only care about NF or ZF
         A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
@@ -1097,7 +1116,7 @@ class microcpu:
     def optCOMP2(self, address):
         R2 = self.fetchAcum(0)
         A1 = ~R2 + 1
-        self.SetFlags(A1)
+        self.SetFlags(A1,0)
         self.flags = self.flags & 0x3      # Only care about NF or ZF
         A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
@@ -1120,9 +1139,10 @@ class microcpu:
         self.mb[0xff] -= 1
 
     def evalpc(self):  # main evaluate current instruction at memeory[pc]
-        global GPC, GlobalOptCnt
+        global GPC, GlobalOptCnt, PrevPC
         pc = self.pc
         GPC = pc
+        PrevPC=pc
         optcode = self.memspace[pc]
         GlobalOptCnt += 1
         if not (optcode in OPTLIST):

@@ -59,6 +59,7 @@ PollReadTapeI=23
 PollRewindTape=24
 PollReadTime=25
 DebugOut=sys.stderr
+PrevPC=0
 
 if sys.platform == 'win32':
     import msvcrt
@@ -391,13 +392,15 @@ class microcpu:
         self.mb[address+1] = self.highbyte(value)
 
     def getwordat(self, address):
+        a = 0
+        if address == MAXMEMSP:
+            return 0        
         if address >= MAXMEMSP:
-            self.raiseerror("003 Invalid Address: %d, getwordat" % address)
+            #            print("Invalid address %s" % address)
+            self.raiseerror("003 Invalid Address: %d, getwordat" % (address))
             return 0
-
-        # Combine the two bytes into a 16-bit word
-        word = (self.memspace[address+1] << 8) | self.memspace[address]
-        return word
+        a = self.memspace[address] + (self.memspace[address+1] << 8)
+        return a
 
     def putwordat(self, address, value):
         address = int(address)
@@ -776,7 +779,7 @@ class microcpu:
         self.pc = newaddress
         
     def optCAST(self, address):
-        global Debug, DeviceHandle, DeviceFile
+        global Debug, DeviceHandle, DeviceFile, PrevPC
         # In the future 'CAST' will related to networking, for now it will just write to stdout
         # for now it acts as the stdout write tool
         # if Acum is 0, it will print a small dump of the memory of address and the current Stack
@@ -911,9 +914,9 @@ class microcpu:
             Debug = 0 if Debug else 1
         if cmd == CastStackDump:
             print(" %04x:Stack ( %d):" %
-                             (self.pc, self.mb[0xff]-1), file=DebugOut,end="")
+                             (PrevPC, self.mb[0xff]-1), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
-                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
+                val = self.mb[i*2]+((self.mb[(i*2)+1])<<8)
                 print(" %04x" % (val),file=DebugOut,end="")
             print(" ",file=DebugOut)
         if cmd == CastTapeWriteI:
@@ -1135,7 +1138,7 @@ class microcpu:
         self.flags = self.mb[sp]
         self.mb[0xff] -= 1
 
-    def evalpc(self):  # main evaluate current instruction at memeory[pc]
+    def evalpc(self,dosteps):  # main evaluate current instruction at memeory[pc]
         global GPC, GlobalOptCnt
         pc = self.pc
         GPC = pc
@@ -1145,7 +1148,7 @@ class microcpu:
             print(OPTLIST)
             self.raiseerror(
                 "046 Optcode %s at File %s, Address( %04x ), is invalid:" % (optcode,self.FindWhatLine(pc),pc))
-        if Debug > 0:
+        if dosteps > 3:
             DissAsm(pc, 1, self)
             watchfield = ""
             if watchwords:
@@ -1156,15 +1159,21 @@ class microcpu:
                                   self.getwordat(nv))
                     wfcomma = ","
                 watchfield = "Watch[" + watchfield + "]"
-        # In HW this would be when we know if we read 3 bytes or 1
-        if (OPTDICT[str(optcode)][2] == 3):
-            argument = self.getwordat(pc + 1)
+        ReturnCode=0
+        if (dosteps == -1 ):
+            Debug=-1
         else:
-            argument = 0
-        pc += OPTDICT[str(optcode)][2]
-
-        self.pc = pc
-        self.switcher(optcode, argument)
+            Debug=dosteps
+        (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(self.memspace,self.mb, self.pc, self.flags, Debug  , ReturnCode)
+        if ( ReturnCode != 0 ):
+            if ( ReturnCode == -1):
+                print("Normal Exit:")
+            elif ( ReturnCode == -2):
+                print("Stack Underflow: %04x" % self.pc)
+            elif ( ReturnCode == -3):
+                print("Stack Overflow: %04x" % self.pc)
+            else:
+                print("Return Code: ", ReturnCode)
 
 
 def removecomments(inline):
@@ -1387,7 +1396,7 @@ def DissAsm(start, length, CPU):
         MaybeLabel = removecomments(getkeyfromval(PI, FileLabels)).strip()
         if MaybeLabel != "":
             FoundLabels += " "+MaybeLabel
-        if optcode < len(OPTSYM) and optcode >= 0:    # This is making the assumption that value OptCodes are in the range 0 to len(OPTSYM), which really only valid in our speical case. 
+        if optcode <= 52  and optcode >= 0:   
             OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)" % \
                 (i, OPTSYM[optcode], P1, PI, PII,
                  tos, sft, ZF, NF, CF, OF, addr)
@@ -2073,7 +2082,6 @@ def debugger(FileLabels,passline):
     size = 0
     cmdword = ""
     while True:
-        cpuCfunc.prtexample_arrays(CPU.memspace,CPU.mb,CPU.pc, 1)
         sys.stdout.write("%04x> " % CPU.pc)
         fd = sys.stdin.fileno()
         if EchoFlag:
@@ -2364,7 +2372,7 @@ def debugger(FileLabels,passline):
             if argcnt > 0:
                 stepcnt = arglist[0]
             for i in range(stepcnt):
-                CPU.evalpc()
+                ReturnCode=CPU.evalpc(1)
                 DissAsm(CPU.pc, 1, CPU)
                 if CPU.pc in breakpoints or CPU.pc in tempbreakpoints:
                     print("Break Point %04x" % CPU.pc)
@@ -2397,7 +2405,7 @@ def debugger(FileLabels,passline):
                     break
                 AtLeastOne = 0
                 GlobalOptCnt += 1
-                CPU.evalpc()
+                ReturnCode=CPU.evalpc(1)
         if cmdword == "r":
             if argcnt < 1:
                 CPU.pc = Entry
@@ -2667,9 +2675,17 @@ def main():
         DissAsm(0, maxusedmem, CPU)
     elif UseDebugger:
         debugger(FileLabels,firstcmd)
+    elif Debug > 0:
+        ReturnCode=0
+        while (ReturnCode == 0):
+            ReturnCode=CPU.evalpc(1)
+        if (ReturnCode != -1 ):
+            debugger(FileLabels,"")
     else:
-        while True:
-            CPU.evalpc()
+        ReturnCode=0
+        while (ReturnCode == 0):            
+             ReturnCode=CPU.evalpc(-1)
+             print("RC: ",ReturnCode)
 
 
 if __name__ == '__main__':

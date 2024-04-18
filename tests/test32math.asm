@@ -1,0 +1,41 @@
+I common.mc
+L lmath.ld
+:Var1 0 0
+:Var1Ptr Var1
+:Var2 0 0
+:Var2Ptr Var2
+:Var3 0 0
+:Var3Ptr Var3
+:Var4 0 0
+:Var4Ptr Var4
+
+:Main . Main
+#
+#
+@PRT " 100,000 + 200,000 = "
+@MOVE32AV $$$100000 Var1
+@MOVE32AI $$$200000 Var2Ptr
+#
+@ADD32VVV Var1 Var2 Var3
+@PRT32I Var3Ptr @PRTNL
+#
+@PRT " 23,123,512 - -100 = "
+@MOVE32AV $$$23123512 Var1
+@MOVE32AV $$$-100  Var2
+@SUB32VVV Var1 Var2 Var3
+@PRT32 Var3 @PRTNL
+#
+@PRT "123,000 * 15 = "
+@MOVE32AV $$$123000 Var1
+@MOVE32AV $$$15  Var2
+@MUL32VVV Var1 Var2 Var3
+@PRT32 Var3 @PRTNL
+#
+@PRT "2,000,000,000 / 75 = "
+@MOVE32AV $$$2000000000 Var1
+@MOVE32AV $$$75  Var2
+@DIV32VVVV Var1 Var2 Var3 Var4
+@PRT32 Var3 @PRT " Remainder " @PRT32 Var4 @PRTNL
+@END
+
+

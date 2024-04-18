@@ -39,10 +39,10 @@ A Physical description of a non existent CPU:
               for the manipulation of one or two 16 bit numbers. For example adding is by default, adding two 16 bit
               numbers together, while logical jumps can change the PC to a given 16 bit address. Addressing modes is the
               different ways you tell the current OPCODE where that 16b number is in memory.
-             For Instructions that require two numbers, the first number will be on the HW stack as
+              For Instructions that require two numbers, the first number will be on the HW stack as
               the  'Accumulator'.
               Instructions that do not have an explicit destination for its results will default to
-              saving the result in the Accumulator which is also the top of HW stack.
+              saving the result in the Accumulator which is also the top of HW stack.(TOS)
 
               The Majority of the instructions are a 8 bit opcode (OPT) followed by a 16 bit
               parameter.(PRM) (For efficiency a read cycle that reads 24 bits as the Instruction Load
@@ -61,12 +61,9 @@ A Physical description of a non existent CPU:
                         that is the Address where the value is stored or written to.  Require 2 additional read/write
                         cycles to fetch or put value.
 
-                        Stack: The top two numbers on the stack will
-                        both be used as values and for OPTs that
-                        return a numeric result, they will normally
-                        both be replaced by a single number. PRM is
-                        not read or used.  If determined early enough
-                        could skip the PRM read, otherwise takes same
+                        Stack: The top two numbers on the stack will both be used as values and for OPTs that
+                        return a numeric result, they will normally both be replaced by a single number. PRM is
+                        not read or used.  If determined early enough could skip the PRM read, otherwise takes same
                         number of cycles as Direct.
 
               Instruction 'Groups' Most instructions are in groups where the names of otherwise
@@ -97,7 +94,7 @@ A Physical description of a non existent CPU:
                 POPI, POPII, POPS
 
                 Removes top of HW stack and stores it at target address (POPS uses top of stack
-                as address and second item on stack as value to be POP'ed both are removed from stack)
+                as address and second item on stack (SFT) as value to be POP'ed both are removed from stack)
 
               CMP
                 CMP, CMPI, CMPII, CMPS
@@ -116,7 +113,7 @@ A Physical description of a non existent CPU:
                 SUB, SUBI, SUBII, SUBS
 
                 Subtracts two values, sets logic flags, and saves result to top of stack. Destructive of
-                current top of stack, and in case of ADDS, destructive top two stack values. Order of paramters
+                current top of stack, and in case of SUBS, destructive top two stack values. Order of paramters
 		matter in subtraction, so the rule is, the first paramater(A) is what is on the stack first, then
 		the second parameter(B) is based on the operator mode. Order is A-B and stored on replacing
 		original stack value. To Be Clear, SUBS means subtrace Top of Stack FROM Second From Top Of Stack.
@@ -126,14 +123,21 @@ A Physical description of a non existent CPU:
                 OR, ORI, ORII, ORS
 
                 bitwise OR function on  two values, sets logic flags, and saves result to top of
-                stack. Destructive of current top of stack, and in case of ADDS, destructive top two
+                stack. Destructive of current top of stack, and in case of ORS, destructive top two
+                stack values.
+
+             XOR
+               XOR, XORI, XORII, XORS
+
+                bitwise XOR function on  two values, sets logic flags, and saves result to top of
+                stack. Destructive of current top of stack, and in case of XORS, destructive top two
                 stack values.
 
              AND
                 AND, ANDI, ANDII, ANDS
 
                 bitwise AND function on  two values, sets logic flags, and saves result to top of
-                stack. Destructive of current top of stack, and in case of ADDS, destructive top two
+                stack. Destructive of current top of stack, and in case of ANDS, destructive top two
                 stack values.
 
        The following groups are more specialized and do not follow the same addressing pattern.
@@ -187,7 +191,7 @@ A Physical description of a non existent CPU:
                 application of multi-core version of the CPU. The names stuck, but the multi-core version is left as a
                 future project)
 
-             Bit Rotate Commands, 1 byte opcode, No PRM, affects just top of stack
+             Bit Rotate(Shift) Commands, 1 byte opcode, No PRM, affects just top of stack
 
                 RRTC: Rotate Right Through Carry
                 RLTC: Rotate Left Through Carry
@@ -199,6 +203,11 @@ A Physical description of a non existent CPU:
                 copied into the first bit of the rotation. (Highest or lowest depending on direction)
                 Through Carry: ==   CF > ROTATE > CF
                 Normal Rotate: ==   0 > ROTATE > CF
+
+                There is a bit of a misnomer in the naming of RTL and RTR, and they probably should have been named
+                SHR and SHL for Shift rather than rotate. To create a true rotatat you have to prep the Carry flag with
+                the value of the current 0th bit and then use RdTC, where RTR and RTL really are just shifts with
+                a flag preserving just one bit.
 
              INV, 1 byte opcode, No PRM affects just top of stack
 
@@ -216,7 +225,7 @@ A Physical description of a non existent CPU:
              FSAV, Pushes to the stack, a compact version of the condiitonal flags. Useful for preserving
 	        a conditional state before doing addional calculations before restorting it.
 
-             FLOD, Restors the Flag state from the previous FSAV. Need to make sure stack is clear back to
+             FLOD, Restores the Flag state from the previous FSAV. Need to make sure stack is clear back to
 	     what it was after FSAV or may result in unwanted flag states.
 
 
@@ -239,16 +248,16 @@ The main logic loop of the assembler is:
 
           strip line of unnecessary white space and comments.
           Parse the line, split it into words and look for:
-                'Letter' Codes that define assembler directions or definitions.
+                'Command' Codes that define assembler directions or definitions.
                 If word starts with a '@' macro, put it into the Macro Queue and loop back to beginning.
                 If word is a label or number string, turn into value and store in current memory pointer.
                 Numeric data, in decimal, octal, hex or binary formats.
                 Quoted text is saved as bytes with some support for common \'s codes like \n for newline.
 
-                Big part of the work is handled by the 'Letter' codes, These codes act as reserved words
+                Big part of the work is handled by the 'Command' codes, These codes act as reserved words
 		so avoid using single letters for Labels or variables:
 
-                    '.' number    :  Sets the active address to number, also sets start address. You can have multiple
+                    '.' number    :  Sets the active address to number, also sets entry address. You can have multiple
                                      '.' entries in a source file to mark off different blocks of memory. If you use any
                                      '.' numbers, you should always add one at the end of your source file to identify
                                      the program entry point.
@@ -257,38 +266,72 @@ The main logic loop of the assembler is:
 				     Which will make 'Main' the entry point for the program.
                                      But remember to not put any addtional '.' markers as the lastone becomes the entry point.
 
+                     .ORG         :  An Alias for simple "." it makes clear the fact that "." sets both the entry point
+                                     and the current insertion point
+
+                     .DATA        :  Sets an address to start a seperate 'data' segment, required if you want to make 'ROM'able code.
+                                     This mostly effects the 'alternative' Lable funciton named ';' (semicolon) which is sperate
+                                     form the main lable command of ':'(colon)
+
                     'I' filename  :  Imports a file as if it was part of the current input stream.
+
                     'L' filename  :  Loads a Library, all local labels are hidden, see 'G' command
+                    
                     ':' Label     :  Unlike others assemblers labels are identified with a proceeding ":"
+                                     With the introduction of the .DATA command, we also got a new alternative lable ';' (semicolon)
+                                     Normally a label defines a symbolic lable, but does not change the program insertion point.
+                                     
+                    ';' size val..:  An alternatie to ':' it behavior changes slightly if .DATA has been defined. If no .DATA has been
+                                     defined then ';' is more like Lable, in that it's value is the current insertion point, and the 'size'
+                                     parameter is used to incrment the insertion point. If a .DATA has been used (before ';' in the source
+                                     file) then a seperate 'data' inseration point is used.
+                                     The size value is in bytes and must be equal to the size of the values that follow. (There an excaption
+                                     for strings and extra large values, which must be 'larger' than size. The real size of the values will
+                                     be used to adjust the DATA or Code insertion points.
+                                     
                     '@' Macro     :  Executes Macro, %1-%9 (max) are the arguments, %0 is unique ID
+                    
                     '=' Label Val :  Assigns a fixed 16b numeric value to a label.
                                      Labels and Macros do not share dictionary space, so you
                                      can reuse a Label and Macro with the same names, but mean different things.
+                                     
                     'P' Print line:  Print rest of line for logging or debugging, at assembly time.
+                    
                     '!' Macro     :  Conditional logic for the Macro system, if the named
                                      Macro is already defined, then skip forward until ENDBLOCK, meant
                                      as a way to keep from loading a given Library file more than
                                      once. Read as If Macro does NOT exist, do this block
+                                     
 	            '?' Macro     :  Conditional logic for Macro system, if the name Macro is NOT defined
 		                     then skip forward until matching ENDBLOCK. Reverse logic of '!' Best use
 				     case testing to see if some macro action has already taken place. Might
 				     also be useful in flow control logic.
+                                     
                     'M' Macro line:  Define a new named Macro, line can be extended by ending with
                                      '\' and can contain variables based on parameters %1 to %9 You
                                      can use %0 adjacent with other text to create local unique
                                      variables for each instance of the Macro called.
+                                     
                     'G' Label        Defines a Label as Global, All the callable addresses defined
                                      inside a library file, need to be declared with 'G'.
 				     'G' declarations should be made near top of the file, before the Label is used.
+                                     
                     Number           16 bit number, save to current working address.
+                    
                     0xNumber         Hex number
+                    
                     0oNumber         Octal number
+                    
                     0bNumber         Binary (01) number
+                    
                     bNumber          Forces number to be treated as 8bit byte rather than 16 bit word
 		    		    (This also means that lower case 'b' can
                                      not be used as start of any label, use uppercase 'B' where you need them)
-                    $$Number         Another way to treat a number as a byte. 
+                                     
+                    $$Number         Another way to treat a number as a byte.
+                    
                     $Number          Treat Number as 16b word, (default)
+                    
                     $$$Number        32bit number, Purely for storing assembly time values into memory.
                                      Labels CAN NOT hold a full 32 bit number. But a 16b label can point to where in
                                      memory a 32b number is stored.
@@ -302,10 +345,6 @@ And that's it! All the opcodes along with basic common quality of life macros, a
 
 In the common.mc are some extra Macros that make programming easier. All the following are simple Macros and it maybe
 worth some time reading through common.mc to see how they are implemented.
-
-@MMI2M %1 %2 : Move word stored at address THAT address [[%1]] points to address [%2]
-
-@MM2IM %1 %2 : Move word stored at address [%1] to be stored at address THAT address [[%2]] points to
 
 @JMPNZ %1    : Inverse logic of JMPZ
 
@@ -400,6 +439,13 @@ Worth nothing that in several macros the following notation is used:
 
 You willl also see this use of 'A' 'B' and 'V' in some of the structured programing macros like @ForIA2B
 
+For some special purposes it usesful to move the data that pointers point to.
+
+@MMI2M %1 %2 : Moves value indexed by pointer to variable (@PUSHII %1 @POPI %2)
+
+@MM2IM %1 %2 : Move value of variable to where index pointer is pointing to. (@PUSHI %1 @POPII %2)
+
+
     
 @DEBUGTOGGLE     : A macro that directs the emulator to start/stop printing out each instruction as it
 is executed. The output of the debug, Output of debug listed is in format
@@ -421,7 +467,8 @@ Hex Address Opcode HW mini Stack Dump
 The Macros above are all 'simple' combining several normal operations in some sequence. The most complex
 part of them is the idea of local storage or branching lables within a macro.
 What follows is a much more complex set of macros that almost emulate mid level language structures
-One feature of these macros is they invoke a concept of a Macro Stack, which is a simulated stack that
+
+One feature of the followng macros is they invoke a concept of a Macro Stack, which is a simulated stack that
 only has meaning durring the assembly stage of a program and does not 'exist' durring the execution of the
 program, but can have major effect on the flow control The main purpose of these stacks is to allow the
 Macro system to keep track of 'nested' loops and if blocks.
@@ -446,7 +493,8 @@ IF_EQ_A    : True if TOS and Constant A are equal
 IF_EQ_V    : True if TOS and value stored at address V are equal
 IF_EQ_VV   : True if value stored at address V1 is equal to value at address V2
 IF_EQ_VA   : True if value stores at Address V is equal to Constant value A
-IF_LT_S    : True if SFT < TOS
+IF_EQ_AV   : True if value stores at Address V is equal to Constant value A (same as VA)
+IF_LT_S    : True if SFT < TOS (what get pushed on stack first plays role of left side of test)
 IF_LT_A    : True if TOS < Constant A
 IF_LT_V    : True if TOS < value stored at address V
 IF_LE_S    : True if SFT <= TOS
@@ -463,7 +511,8 @@ IF_GT_V    : True if TOS > value stored at address V
 Now the WHILE group:
 The WHILE group tests for the condition only at the 'top' of the loop.
 So you should prepare the state before the while loop starts and refresh
-it towards the bottom of the loop. 
+it towards the bottom of the loop.
+Also always remember to pop off the test value when no longer needed.
 WHILE_ZERO       : Continue Loop if TOS == Zero
 WHILE_NOTZERO    : Continue Loop if TOS does not equal Zero
 WHILE_EQ_A       : Continue Loop if TOS equals constant A
@@ -490,7 +539,7 @@ Use like
      @SWITCH
      @CASE 1
           code
-	  @CBREAK      (required fall though not allowed)
+	  @CBREAK      (required, fall though not allowed)
      @CASE_RANGE 2 6
           code
 	  @CBREAK
@@ -513,7 +562,7 @@ The FOR loop Macors.
 One change from typical 'FOR' loops in higher level languages, is that the loop will exit
 immediaatly from the top of the loop, once the ending state is reached, so a loop from 1 to 10 will
 only run the code block from 1 to 9 and exit on 10.
-Also the Index is a SIGNED number, so rangnes over 0x7fff will require starting with a negative value.
+Also the Index is a SIGNED number, so ranges over 0x7fff will require starting with a negative value.
 Typical use
   @ForIA2V Index 1 TopValue
      code
