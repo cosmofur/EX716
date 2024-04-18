@@ -1,21 +1,35 @@
-=JMP 35
-=CAST 37
-=PUSH 1
-=POPNULL 6
-=CastPrintStrI 1
-M JMP b$JMP %1
-M CAST b$CAST %1
-M PUSH b$PUSH %1
-M POPNULL b$POPNULL
-M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
-M END @PUSH 99 @CAST 0
-
-
-
-:DS
-. DS+0x100
-:Main . Main
-@PRT "Hello World"
+I common.mc
+@PUSH 0x100
+@SUB 0x200
+@PRTTOP
 @END
 
+@PUSH 0x7ffe
+@PUSH 2
+@ADDS     # Expect Overflow
+@POPNULL
+@PUSH 0xffff
+@PUSH 0xffff
+@ADDS     # Expect Overflow
+@POPNULL
+@PUSH 0xffff
+@PUSH 0x7fff
+@ADDS     # No further overflows expected.
+@POPNULL
+@PUSH 0x7fff
+@PUSH 0xffff
+@ADDS
+@POPNULL
+@PUSH 0x7ffe
+@PUSH 0xfffe
+@ADDS
+@POPNULL
+@END
+:TwoHundred 0x200
+:Fifty 0x50
+:OneHundred 0x100
+:one 1
+:largepos 32767
+:largeneg -32768
+:negone -1
 

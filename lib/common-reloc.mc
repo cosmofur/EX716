@@ -1,4 +1,15 @@
 # Setup Library
+#
+# This version of the 'common.mc' for for 'ROMable' Code.
+# It assumes seperate data and code segments, this will save some minor jumps as we don't have to 'jump' over internal macro storage.
+#
+# On entry if you have allready defined a DATA segment also set the Maco "UseDataSegment"
+# If you don't a default data segment of 0xf000 will be chosen. You can override but be carefull un unexpected behavior.
+?UseDataSegment
+.DATA 0xf000
+M UseDataSegment 1
+ENDBLOCK
+#
 # Values which make up opcodes
 #
 # The '!' code marks a block to skip if already defined. 
@@ -93,7 +104,6 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollRewindTape 24
 =PollReadTime 25
 
-
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
 # When executing a macro, the rule is one macro per line.
@@ -141,7 +151,7 @@ M JMPI b$JMPI %1
 M JMPS b$JMPS
 M CAST b$CAST %1
 M POLL b$POLL %1
-M RRTC b$RRTC
+  M RRTC b$RRTC
 M RLTC b$RLTC
 M RTR b$RTR
 M RTL b$RTL
@@ -150,7 +160,6 @@ M COMP2 b$COMP2
 M FCLR b$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
 M FSAV b$FSAV
 M FLOD b$FLOD
-
 
 # For compleatness we can proview VV VA AV versions of major math functions.
 
@@ -172,6 +181,7 @@ M ANDAV @PUSH %1 @PUSHI %2 @ANDS
 M XORVV @PUSHI %1 @PUSHI %2 @XORS
 M XORVA @PUSHI %1 @PUSH %2 @XORS
 M XORAV @PUSH %1 @PUSHI %2 @XORS
+
 
 
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
@@ -201,9 +211,9 @@ M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-M PRTLN @JMP %01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST %0M @CAST %0NL @POPNULL
+M PRTLN ;%0M 1 %1 ;%TERM 3 "\0\n\0" @PUSH CastPrintStrI @CAST %0M @POPNULL
 # Print simple test message with no variables no linefeed
-M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
+M PRT @JMP ;%0M1 1 %1 ;%0TR 1 b0 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
 # Print value of variable
 M PRTI @PUSH CastPrintIntI @CAST %1 @POPNULL
 # Print value of variable in Hex
@@ -226,25 +236,21 @@ M PRTSGNI @PUSH CastPrintSignI @CAST %1 @POPNULL
 # Print value in binary
 M PRTBINI @PUSH CastPrintBinI @CAST %1 @POPNULL
 # Print Line feed
-M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0NL @POPNULL
+M PRTNL @PRT "\n"
 # Print a space by itself
-M PRTSP @JMP $%01J :%0M " " b0 :%01J @PUSH CastPrintStrI @CAST $%0M @POPNULL
+M PRTSP @PRT " \0"
 # Print string start at address
 M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print immediate value (usefull to print value of pointer)
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
-M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
+M PRTTOP @DUP ;%0M1 2 0 @POPI %0M1 @PRTI %0M1
 # Print Top valine in Hex
-M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
+M PRTHEXTOP @DUP  ;%0M1 2 0  @POPI %0M1 @PRTHEXI %0M1
 # Print Top with Sign
-M PRTSGNTOP @DUP @POPI %0Store @PRTSGNI %0Store @JMP %0Skip :%0Store 0 :%0Skip
+M PRTSGNTOP @DUP @POPI %0Store @PRTSGNI %0Store ;%0Store 2 0
 # Print 32bit number starting at address
-M PRT32 @PUSH CastPrint32Int @CAST %1 @POPNULL
-M PRT32I @JMP %0Jmp :%0store1 0 :%0store2 0 \
-   :%0Jmp @PUSHII %1 @POPI %0store1 \
-   @PUSHI %1 @ADD 2 @PUSHS @POPI %0store2 \
-   @PUSH CastPrint32Int @CAST %0store1 @POPNULL
+M PRT32I @PUSH CastPrint32Int @CAST %1 @POPNULL
 #
 M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
 # Read an Integer from keyboard
@@ -255,7 +261,7 @@ M PROMPT @PRT %1 @READI %2
 # Param of READS is lable of the buffer
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
 # Param of READSI is lable that contains pointer to buffer
-M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL :%0ADDR 0xffff @POPNULL
+M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL ;%0ADDR 2 0xffff @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
 # Read character from keyboard with no wait if none ready.
@@ -269,7 +275,7 @@ M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack
 M TOP @DUP @POPI %1
 # Print a debug dump of the stack
-M StackDump @JMP %0J :%0J @PUSH 102 @CAST 0 @POPNULL
+M StackDump @PUSH 102 @CAST 0 @POPNULL
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
@@ -283,19 +289,19 @@ M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
 # Disk IO Group
 M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST ;%0_LOC 2 0 @POPNULL
 M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST ;%0_LOC 2 0 @POPNULL
 M DISKWRITE @PUSH CastWriteSector @CAST %1 @POPNULL
-M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST :%0_LOC 0 @POPNULL
+M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST ;%0_LOC 2 0 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
 M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
-M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL :%0_LOC 0 @POPNULL
+M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL ;%0_LOC 2 0 @POPNULL
 # We use the same logic for both Tape and Disk Select.
 M TAPESEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M TAPESELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
-M TAPEWRITE @PUSH CastTapeWriteI @PUSHI %1 @POPI %0_LOC @CAST :%0_LOC 0 @POPNULL
-M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI %0_LOC @POLL :%0_LOC 0 @POPNULL
+M TAPESELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST ;%0_LOC 2 0 @POPNULL
+M TAPEWRITE @PUSH CastTapeWriteI @PUSHI %1 @POPI %0_LOC @CAST ;%0_LOC 2 0 @POPNULL
+M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI %0_LOC @POLL ;%0_LOC 2 0 @POPNULL
 M TAPEREAD @PUSH PollReadTapeI @POLL %1 0 @POPNULL
 M TAPEREWIND @PUSH PollRewindTape @POLL 0 @POPNULL
 

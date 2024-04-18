@@ -20,6 +20,7 @@ G DIVU G DIV
 @MA2V 0 Remainder
 @MA2V 0x8000 MASK   # For the ith bit tests MASK will be bit at ith location of 16 bits
 @ForIA2B Index 0 16
+    :BreakK
     @PUSHI Remainder @RTL @POPI Remainder        # Remainder << 1
     @PUSHI MASK @PUSHI A_VAL @ANDS
     @IF_NOTZERO
@@ -31,7 +32,7 @@ G DIVU G DIV
     @ELSE
        @POPNULL
     @ENDIF
-    @PUSHI Remainder @PUSHI B_VAL
+    @PUSHI Remainder @PUSHI B_VAL 
     @IF_GE_S
        @POPNULL @POPNULL
        @PUSHI Remainder @PUSHI B_VAL @SUBS @POPI Remainder

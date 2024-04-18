@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "fcpu.h"
 
@@ -347,6 +348,9 @@ void handleCast(int Param, int ParamI, int ParamII) {
 void handlePoll(int Param,int ParamI,int ParamII) {
   int a,i,pc,c;
   char inlines[255];
+  time_t seconds;
+  
+   seconds = time(NULL);  
   #define PollReadIntI 1
   #define PollReadStrI 2
   #define PollReadCharI 3
@@ -356,6 +360,7 @@ void handlePoll(int Param,int ParamI,int ParamII) {
   #define PollReadSector 22
   #define PollReadTapeI 23
   #define PollRewindTape 24
+  #define PollReadTime 25
   switch (topstack(PC)) {
   case PollReadIntI:
     scanf("%d",&a);
@@ -390,6 +395,12 @@ void handlePoll(int Param,int ParamI,int ParamII) {
       put16atmem(Param,(int)c);
       break;
   case PollReadTapeI:
+    break;
+  case PollReadTime:
+    seconds = time(NULL);
+    pushstack(seconds & 0xffff, Param);
+    pushstack(seconds >> 16, Param);
+    break;
     
   default:
     printf("Poll Code not implmented");
@@ -648,7 +659,40 @@ int doeval(int startpc) {
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
-	 
+       case OptValXOR:
+	 B1=popstack(OptCode);
+	 A1=Param ^ B1;
+	 SetFlags(A1);
+	 pushstack(A1,OptCode);
+	 Opsize=3;
+	 PC=PC+Opsize;
+	 break;	 
+       case OptValXORI:
+	 B1=popstack(OptCode);
+	 A1=ParamI ^ B1;
+	 SetFlags(A1);
+	 pushstack(A1,OptCode);
+	 Opsize=3;
+	 PC=PC+Opsize;
+	 break;
+       case OptValXORII:
+	 B1=popstack(OptCode);
+	 A1=ParamII ^ B1;
+	 SetFlags(A1);
+	 pushstack(A1,OptCode);
+	 Opsize=3;
+	 PC=PC+Opsize;
+	 break;
+       case OptValXORS:
+	 A2=popstack(OptCode);
+	 B1=popstack(OptCode);
+	 A1=A2 ^ B1;
+	 SetFlags(A1);
+	 pushstack(A1,OptCode);
+	 Opsize=1;
+	 PC=PC+Opsize;
+	 break;
+         
        case OptValOR:
 	 B1=popstack(OptCode);
 	 A1=Param | B1;

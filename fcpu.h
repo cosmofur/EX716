@@ -29,24 +29,28 @@
 #define OptValANDS 28
 #define OptValANDI 29
 #define OptValANDII 30
-#define OptValJMPZ 31
-#define OptValJMPN 32
-#define OptValJMPC 33
-#define OptValJMPO 34
-#define OptValJMP 35
-#define OptValJMPI 36
-#define OptValJMPS 37
-#define OptValCAST 38
-#define OptValPOLL 39
-#define OptValRRTC 40
-#define OptValRLTC 41
-#define OptValRTR 42
-#define OptValRTL 43
-#define OptValINV 44
-#define OptValCOMP2 45
-#define OptValFCLR 46
-#define OptValFSAV 47
-#define OptValFLOD 48
+#define OptValXOR 31
+#define OptValXORS 32
+#define OptValXORI 33
+#define OptValXORII 34
+#define OptValJMPZ 35
+#define OptValJMPN 36
+#define OptValJMPC 37
+#define OptValJMPO 38
+#define OptValJMP 39
+#define OptValJMPI 40
+#define OptValJMPS 41
+#define OptValCAST 42
+#define OptValPOLL 43
+#define OptValRRTC 44
+#define OptValRLTC 45
+#define OptValRTR 46
+#define OptValRTL 47
+#define OptValINV 48
+#define OptValCOMP2 49
+#define OptValFCLR 50
+#define OptValFSAV 51
+#define OptValFLOD 52
 char *optcnames[] = {
 "NOP",
 "PUSH",
@@ -79,6 +83,10 @@ char *optcnames[] = {
 "ANDS",
 "ANDI",
 "ANDII",
+"XOR",
+"XORS",
+"XORI",
+"XORII",
 "JMPZ",
 "JMPN",
 "JMPC",
