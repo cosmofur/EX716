@@ -27,13 +27,13 @@ import cpuCfunc
 # Constants
 
 
-CastPrintStrI=1
+CastPrintStr=1
 CastPrintInt=2
 CastPrintIntI=3
 CastPrintSignI=4
 CastPrintBinI=5
 CastPrintChar=6
-CastPrintStrII=11
+CastPrintStrI=11
 CastPrintCharI=16
 CastPrintHexI=17
 CastPrintHexII=18
@@ -812,7 +812,7 @@ class microcpu:
                 print("Stack: \n".join('%02x ' %
                       item for item in self.mb[0:self.mb[0xff]]))
             DissAsm(self.pc, 3, self)
-        if cmd == CastPrintStrI:
+        if cmd == CastPrintStr:
             i = address
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
@@ -840,13 +840,12 @@ class microcpu:
                 print("%c" % v)
             else:
                 sys.stdout.write(chr(v))
-        if cmd == CastPrintStrII:
-            i = self.getwordat(self.getwordat(address))
+        if cmd == CastPrintStrI:
+            i = self.getwordat(address)
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
-                print("ORD-C: %02x" % c)
                 if c == 0:
-                    print("Odd C is zero")
+                    print("0.0")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
                     sys.stdout.write("\%02x" % c)
                 else:
@@ -1168,6 +1167,7 @@ class microcpu:
         if ( ReturnCode != 0 ):
             if ( ReturnCode == -1):
                 print("Normal Exit:")
+                sys.exit(0)                
             elif ( ReturnCode == -2):
                 print("Stack Underflow: %04x" % self.pc)
             elif ( ReturnCode == -3):
@@ -1386,7 +1386,7 @@ def DissAsm(start, length, CPU):
         else:
             addr = CPU.mb[0xff]
         DispRef = False
-        # We are trying to find if the Direct value, Indirect and double indirect values are Labled
+        # We are trying to find if the Direct value, Indirect and double indirect values are Labeled
         MaybeLabel = removecomments(getkeyfromval(i, FileLabels)).strip()
         if MaybeLabel != "":
             FoundLabels += " "+MaybeLabel
@@ -1577,14 +1577,14 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
             newline = newline + c
     return newline
 
-def FirstPassVal(instr, address, FileLables, LocalID, LORGFLAG,GlobalOptCnt):
+def FirstPassVal(instr, address, FileLabels, LocalID, LORGFLAG,GlobalOptCnt):
     (value, size) = nextword(instr[1:])
     firstch=value[0:1]
     if firstch == "$":
         value=address
     elif firstch.upper() >= "A" and firstch.upper() <= "Z" and firstch != "b":        
-        if value[0:] in FileLables.keys():
-            value=Str2Word(FileLables[IsLocalVar(value[0:], LocalID, LORGFLAG)])
+        if value[0:] in FileLabels.keys():
+            value=Str2Word(FileLabels[IsLocalVar(value[0:], LocalID, LORGFLAG)])
         else:
             CPU.raiseerror("055 Line %s, Can not use lable that is yet definied in first pass of assembler." %
                            (GlobalOptCnt, value))
@@ -1675,11 +1675,13 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
             modstop=modstop + 1
         if working[starti:stopi] in FileLabels.keys():
             Result = Str2Word(FileLabels[working[starti:stopi]]) + modval
+        elif IsLocalVar(working[starti:stopi], LocalID, LORGFLAG) in FileLabels.keys():
+            # Now existing Local Labels
+            Result = Str2Word(FileLabels[IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)]) + modval
         else:
             # This is case where the lable has not yet been defined, we will save it in FWORDLIST for 2nd pass.
             Result = 0
-            newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)            
-#            print("At %s adding key(%s)%s" % (GlobalLineNum,ActiveFile,newkey))
+            newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)
             FWORDLIST.append([newkey, curaddress, modval, "%s:%s"%(ActiveFile,GlobalLineNum)])
             # Lables that are not yet defined HAVE to be 16b
             ByteFlag = False
@@ -1914,12 +1916,11 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     else:
                         ExpectData=0
                     if ("F."+filename+":"+str(GlobalLineNum) in FileLabels):
-                        # We are creating an internal 'lable' for each line number.
-                        # This will allow us to print in dissassembly mode approximate src line numbers.
+                        # We created an internal lable for each line number, but this lable will replace it.
                         del FileLabels["F."+filename+":"+str(GlobalLineNum)]
                     newitem = {IsLocalVar(key, LocalID, LORGFLAG): workingaddress}
                     FileLabels.update(newitem)
-                        
+
                 elif line[0] == "=":
                     (key, size) = nextword(line[1:]) 
                     line = line[size+1:]
@@ -1981,6 +1982,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 elif line[0] == "P" and IsOneChar:
+                    # "P" Print debug messages durring assembly.
                     print("%04x: %s" % (address, line),file=DebugOut)
                     line = ""
                     continue
@@ -2025,12 +2027,16 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = ""
                     continue
                 elif line[0] == "G" and IsOneChar:
+                    # Globale lables are and override of 'Local' Lables by 'pre-defining them. 
                     (key, size) = nextword(line[1:])
                     GlobeLabels.update({key: address})
                     line = line[size+1:]
                     continue
                 else:
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
+                    # Note than nearly everything here will take up some sort of storage, so address will
+                    # be incremented. This is where lables become 'variables'                    
+                    
                     LineAddrList.append([address, GlobalLineNum, filename])
                     (key, size) = nextwordplus(line)
                     line = line[size:]
@@ -2175,10 +2181,7 @@ def debugger(FileLabels,passline):
                 startrange = int(arglist[0])
                 stoprange = startrange+3
             if argcnt > 1:
-                if int(arglist[1]) < 0x100:
-                    stoprange = startrange = int(arglist[1])
-                else:
-                    stoprange=int(arglist[1])
+                stoprange = int(arglist[1])
             if argcnt == 0:
                 if stoprange != 0:
                     startrange = stoprange
@@ -2513,7 +2516,7 @@ def debugger(FileLabels,passline):
 def main():
     global Debug, CPU, GlobeLabels, watchwords, DebugOut, SkipBlock
 
-    # Setup some test filelables
+    # Setup some test filelabels
     DEFMEMSIZE = 0x10000
     Remote = False
     SkipBlock = 0    
@@ -2685,7 +2688,6 @@ def main():
         ReturnCode=0
         while (ReturnCode == 0):            
              ReturnCode=CPU.evalpc(-1)
-             print("RC: ",ReturnCode)
 
 
 if __name__ == '__main__':

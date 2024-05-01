@@ -113,30 +113,30 @@ A Physical description of a non existent CPU:
                 SUB, SUBI, SUBII, SUBS
 
                 Subtracts two values, sets logic flags, and saves result to top of stack. Destructive of
-                current top of stack, and in case of SUBS, destructive top two stack values. Order of paramters
-		matter in subtraction, so the rule is, the first paramater(A) is what is on the stack first, then
+                current top of stack, and in case of SUBS, destructive top two stack values. Order of parameters
+		matter in subtraction, so the rule is, the first parameter(A) is what is on the stack first, then
 		the second parameter(B) is based on the operator mode. Order is A-B and stored on replacing
-		original stack value. To Be Clear, SUBS means subtrace Top of Stack FROM Second From Top Of Stack.
+		original stack value. To Be Clear, SUBS means subtract Top of Stack FROM Second From Top Of Stack.
 		Pop both off and save result to stack. PUSH 11 PUSH 3 SUBS results in 4 on stack, not -8.
 
               OR
                 OR, ORI, ORII, ORS
 
-                bitwise OR function on  two values, sets logic flags, and saves result to top of
+                bit-wise OR function on  two values, sets logic flags, and saves result to top of
                 stack. Destructive of current top of stack, and in case of ORS, destructive top two
                 stack values.
 
              XOR
                XOR, XORI, XORII, XORS
 
-                bitwise XOR function on  two values, sets logic flags, and saves result to top of
+                bit-wise XOR function on  two values, sets logic flags, and saves result to top of
                 stack. Destructive of current top of stack, and in case of XORS, destructive top two
                 stack values.
 
              AND
                 AND, ANDI, ANDII, ANDS
 
-                bitwise AND function on  two values, sets logic flags, and saves result to top of
+                bit-wise AND function on  two values, sets logic flags, and saves result to top of
                 stack. Destructive of current top of stack, and in case of ANDS, destructive top two
                 stack values.
 
@@ -205,7 +205,7 @@ A Physical description of a non existent CPU:
                 Normal Rotate: ==   0 > ROTATE > CF
 
                 There is a bit of a misnomer in the naming of RTL and RTR, and they probably should have been named
-                SHR and SHL for Shift rather than rotate. To create a true rotatat you have to prep the Carry flag with
+                SHR and SHL for Shift rather than rotate. To create a true rotate you have to prep the Carry flag with
                 the value of the current 0th bit and then use RdTC, where RTR and RTL really are just shifts with
                 a flag preserving just one bit.
 
@@ -220,10 +220,10 @@ A Physical description of a non existent CPU:
                 2' compliment is applied to a number, negative numbers have a natural format that
                 works with positive numbers without additional hardware logic required.
 
-             FCLR, Clears Flags. Mostly ment as a way to issolate CMP from previous math.
+             FCLR, Clears Flags. Mostly meant as a way to isolate CMP from previous math.
 
-             FSAV, Pushes to the stack, a compact version of the condiitonal flags. Useful for preserving
-	        a conditional state before doing addional calculations before restorting it.
+             FSAV, Pushes to the stack, a compact version of the conditional flags. Useful for preserving
+	        a conditional state before doing additional calculations before restoring it.
 
              FLOD, Restores the Flag state from the previous FSAV. Need to make sure stack is clear back to
 	     what it was after FSAV or may result in unwanted flag states.
@@ -240,11 +240,11 @@ The main logic loop of the assembler is:
     Until End of File:
           If processing a macro:
              scan it for % variables not in quotes and replace them with text from parameters.
-	     There is specail meaning for variables %S, %V and %P used for stack logic.
+	     There is special meaning for variables %S, %V and %P used for stack logic.
              make it the current 'line'
           else
              read in one or more lines from input (if line ends with \ append following line)
-             If you use \ you can not mix comments on any but the last line.
+             If you use \ you can not append comments on any but the last line.
 
           strip line of unnecessary white space and comments.
           Parse the line, split it into words and look for:
@@ -252,7 +252,7 @@ The main logic loop of the assembler is:
                 If word starts with a '@' macro, put it into the Macro Queue and loop back to beginning.
                 If word is a label or number string, turn into value and store in current memory pointer.
                 Numeric data, in decimal, octal, hex or binary formats.
-                Quoted text is saved as bytes with some support for common \'s codes like \n for newline.
+                Quoted text is saved as 8bit ASCII bytes with some support for common \'s codes like \n for newline.
 
                 Big part of the work is handled by the 'Command' codes, These codes act as reserved words
 		so avoid using single letters for Labels or variables:
@@ -261,39 +261,49 @@ The main logic loop of the assembler is:
                                      '.' entries in a source file to mark off different blocks of memory. If you use any
                                      '.' numbers, you should always add one at the end of your source file to identify
                                      the program entry point.
+                                     The number if of the type 'first pass value', see bellow.
 				     A common notation to use is:
 				     :Main . Main
 				     Which will make 'Main' the entry point for the program.
-                                     But remember to not put any addtional '.' markers as the lastone becomes the entry point.
+                                     But remember to not put any additional '.' markers as the last one becomes the
+                                     new entry point.
 
                      .ORG         :  An Alias for simple "." it makes clear the fact that "." sets both the entry point
                                      and the current insertion point
 
-                     .DATA        :  Sets an address to start a seperate 'data' segment, required if you want to make 'ROM'able code.
-                                     This mostly effects the 'alternative' Lable funciton named ';' (semicolon) which is sperate
-                                     form the main lable command of ':'(colon)
+                     .DATA        :  Sets an address to start a separate 'data' segment, required if you want to
+                                     make 'ROM'able code. This mostly effects the 'alternative' Label function
+                                     named ';' (semicolon) which is separate
+                                     form the main label command of ':'(colon)
 
                     'I' filename  :  Imports a file as if it was part of the current input stream.
 
                     'L' filename  :  Loads a Library, all local labels are hidden, see 'G' command
                     
                     ':' Label     :  Unlike others assemblers labels are identified with a proceeding ":"
-                                     With the introduction of the .DATA command, we also got a new alternative lable ';' (semicolon)
-                                     Normally a label defines a symbolic lable, but does not change the program insertion point.
+                                     With the introduction of the .DATA command, we also got a new alternative
+                                     label ';' (semicolon)
+                                     Normally a label defines a symbolic label, but does not change the
+                                     program insertion point.
                                      
-                    ';' size val..:  An alternatie to ':' it behavior changes slightly if .DATA has been defined. If no .DATA has been
-                                     defined then ';' is more like Lable, in that it's value is the current insertion point, and the 'size'
-                                     parameter is used to incrment the insertion point. If a .DATA has been used (before ';' in the source
-                                     file) then a seperate 'data' inseration point is used.
-                                     The size value is in bytes and must be equal to the size of the values that follow. (There an excaption
-                                     for strings and extra large values, which must be 'larger' than size. The real size of the values will
-                                     be used to adjust the DATA or Code insertion points.
+                    ';' size val..:  An alternative to ':' it behavior changes slightly if .DATA has been
+                                     defined. If no .DATA has been defined then ';' is more like Label,
+                                     in that it's value is the current insertion point, and the 'size'
+                                     parameter is used to increment the insertion point.
+                                     If a .DATA has been used (before ';' in the source
+                                     file) then a separate 'data' insertion point is used.
+                                     The size value is in bytes and must be equal to the size of the
+                                     values that follow. (There an exception: for strings and extra
+                                     large values, which must be 'larger' than size. The real size of
+                                     the values will be used to adjust the DATA or Code insertion points.)
                                      
                     '@' Macro     :  Executes Macro, %1-%9 (max) are the arguments, %0 is unique ID
                     
                     '=' Label Val :  Assigns a fixed 16b numeric value to a label.
                                      Labels and Macros do not share dictionary space, so you
                                      can reuse a Label and Macro with the same names, but mean different things.
+                                     The 'Val' part is of the type 'first pass value', see bellow.
+                                     The Labels will hold the value, until end of file or another '=' re-assigned it.
                                      
                     'P' Print line:  Print rest of line for logging or debugging, at assembly time.
                     
@@ -314,7 +324,8 @@ The main logic loop of the assembler is:
                                      
                     'G' Label        Defines a Label as Global, All the callable addresses defined
                                      inside a library file, need to be declared with 'G'.
-				     'G' declarations should be made near top of the file, before the Label is used.
+				     'G' declarations should be made near top of the file,
+                                     before the Label is used.
                                      
                     Number           16 bit number, save to current working address.
                     
@@ -339,6 +350,22 @@ The main logic loop of the assembler is:
                     "text"           ASCII text will be copied to memory as bytes, 
                                      you have to add a b0 or include '\0' to NULL terminate.
 
+                    label[+/-Val]    In most cases anywhere a number can be put, you can put a label. You can also
+                                     use a fixed 'Val' to be added to that current value of label. Val can even
+                                     be another label, but if used Val must be a 'first pass value' see bellow.
+
+Meaning of 'first pass value'
+        The assembler reads the combination of source files from top to bottom, and a given label may take on
+        several values over the range of the source file. Labels are 'defined' by either the '=' or ':' commands
+        You 'can' use a label before you define it, but this is mostly meant for variables  and forward moving
+        jumps. This type of label value is a 'second pass value' as it is calculated later in the reading of the
+        input and you need to take a second pass to fix the final value into previously used locations.
+        If you use a label as a pure number that modifies a macro/command like '.ORG' or +/-Val then
+        that label must have it's 'final' value already determined before it is used that way, that is a
+        'first pass value'
+        There are techniques that will allow you to re-use labels at different points in the source file with
+        different 'meanings' this is a sort of pseudo 'local variables' Examples can be found in the 'tests' folder.
+
 
 And that's it! All the opcodes along with basic common quality of life macros, are defined in
  the Include file named common.mc combined with  CPU.json
@@ -348,7 +375,7 @@ worth some time reading through common.mc to see how they are implemented.
 
 @JMPNZ %1    : Inverse logic of JMPZ
 
-@JNZ %1      : Slightly more readable than JMPNZ
+@JNZ %1      : Alternative spelling for JMPNZ
 
 @JMPZI %1    : Jumps to an Indirect address [%1] if Z flag is set
 
@@ -385,9 +412,13 @@ The following Macros are in commmon.mc and provide basic IO, but this is the emu
 
 @PRTIC %1    : Like PRTI but padded with a space before and after the number.
 
-@PRTS %1     : Print the null terminated ASCII string starting at address 
+@PRTS %1     : Print the null terminated ASCII string starting at address
+@PRTSTR %1   : Alternative spelling
 
 @PRTSI %1    : Print the null terminated ASCII script starting at [address]
+@PRTSTRI %1  : Alternative spelling.
+
+@PRTSS       : Print the null terminated ASCII string starting at address at tos
 
 @PRTSGN %1   : Print the Signed decimal the value stored at address [%1] no spaces added.
 
@@ -412,7 +443,7 @@ The following Macros are in commmon.mc and provide basic IO, but this is the emu
 @READS %1    : Reads ASCII string from keyboard save it to null terminated buffer starting at %1, LF changed to NULL
 
 @READC %1    : Read one character from keyboard saves it at buffer starting at %1.
-               2 or 3 bytes are possible for speical keys, does not echo.
+               2 or 3 bytes are possible for special keys, does not echo.
 
 @END         : Tells the emulator to exit
 
@@ -437,9 +468,9 @@ Worth nothing that in several macros the following notation is used:
 
 @MV2V %1 %2  : Move word stored at address [%1] to be stored at address [%2]
 
-You willl also see this use of 'A' 'B' and 'V' in some of the structured programing macros like @ForIA2B
+You Will also see this use of 'A' 'B' and 'V' in some of the structured programming macros like @ForIA2B
 
-For some special purposes it usesful to move the data that pointers point to.
+For some special purposes it useful to move the data that pointers point to.
 
 @MMI2M %1 %2 : Moves value indexed by pointer to variable (@PUSHII %1 @POPI %2)
 
@@ -465,16 +496,16 @@ Hex Address Opcode HW mini Stack Dump
 ---------------------------The Structure Macros--------------------
 
 The Macros above are all 'simple' combining several normal operations in some sequence. The most complex
-part of them is the idea of local storage or branching lables within a macro.
+part of them is the idea of local storage or branching labels within a macro.
 What follows is a much more complex set of macros that almost emulate mid level language structures
 
-One feature of the followng macros is they invoke a concept of a Macro Stack, which is a simulated stack that
-only has meaning durring the assembly stage of a program and does not 'exist' durring the execution of the
+One feature of the following macros is they invoke a concept of a Macro Stack, which is a simulated stack that
+only has meaning during the assembly stage of a program and does not 'exist' during the execution of the
 program, but can have major effect on the flow control The main purpose of these stacks is to allow the
 Macro system to keep track of 'nested' loops and if blocks.
 
-Unlike 'higher' level languages when these Macros present a condition statment like an IF or a WHILE it
-can only perform an elemntry test, not a compond test like you can do in a higher level language. So a
+Unlike 'higher' level languages when these Macros present a condition statement like an IF or a WHILE it
+can only perform an elementary test, not a compound test like you can do in a higher level language. So a
 concept like 'IF FLAG=True' is possible, but something like 'IF FLAG=True AND Index>100' To do something like
 this, you would have to use two IF Macros, one for the FLAG test and another for the Index test.
 
@@ -526,7 +557,7 @@ WHILE_GT_V       : Continue Loop if TOS if V is GT TOS
 
 The LOOP group:
 The LOOP group tests for the condition at the END of the loop (so it will do it at least once)
-As DO LOOP is less frequently than WHILE DO, we only supor the ZERO and NOTZERO tests
+As DO LOOP is less frequently than WHILE DO, we only support the ZERO and NOTZERO tests
 @LOOP
   code
 @UNTIL_ZERO      : Exits the Loop if TOS equals Zero
@@ -558,9 +589,9 @@ CDEFAULT        : REQUIRED what to do if no Case matches.
 @ENDCASE        : Exit point of all blocks.
 
 
-The FOR loop Macors.
+The FOR loop Macros.
 One change from typical 'FOR' loops in higher level languages, is that the loop will exit
-immediaatly from the top of the loop, once the ending state is reached, so a loop from 1 to 10 will
+immediately from the top of the loop, once the ending state is reached, so a loop from 1 to 10 will
 only run the code block from 1 to 9 and exit on 10.
 Also the Index is a SIGNED number, so ranges over 0x7fff will require starting with a negative value.
 Typical use
@@ -597,10 +628,10 @@ sub-directories in the current working directory ./lib/ and ./test/
 
 Optional Command Line Arguments:
 
--c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There is no runtime performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might  compress better and certainly would hide the program logic for 'security though obscurity' type distribution.
+-c       Will output as a new file named 'filename'.o a 'pre-compiled' object version of the current source file. There is no run-time performance benefit to this 'compilation' but the output will be just spaces and hex digits so it might  compress better and certainly would hide the program logic for 'security though obscurity' type distribution.
  Lastly, this output format is what the fcpu emulator uses as input. fcpu is a stripped down version of the emulator that written in C and runs many times faster than the python version.
 
--d       Debug mode, one -d will print out each optcode as its executed, two -d's will also step though the expansion of macros durring the assembly stage.
+-d       Debug mode, one -d will print out each opcode as its executed, two -d's will also step though the expansion of macros during the assembly stage.
 
 -g       Enter the interactive debugger. (See Below)
 
@@ -615,7 +646,7 @@ There is a built in debugger which lets you set breakpoints, single step though 
 ways. It is inspired by, but not compatible with the classic GDB debugger of gnu tools.
 
 b       Break
-        Set a breakpoint, can use 'labels' as targets
+        Set a breakpoints, can use 'labels' as targets
 	Print existing breakpoints if no parameters given.
 
 c       Continue
@@ -656,10 +687,10 @@ m       Modify Memory
 n       Next step
             Execute an instruction, optionally add a count to execute a number of instructions. Will show
 	    the disassembly of each instruction before it is executed. (so any values shown will be the 'before'
-	    state before the optcode is executed)
+	    state before the opcode is executed)
 
 s       Step Over
-	    Will set a temporary break point at the instruction 'just beyond' the current instruction. Most usefull when calling a sub-routine and want to skip over it without stepping though it one instruction at a time. 
+	    Will set a temporary break point at the instruction 'just beyond' the current instruction. Most useful when calling a sub-routine and want to skip over it without stepping though it one instruction at a time. 
    	     
 
 p       Print Address
@@ -674,20 +705,20 @@ q       Quit debugger
             Exits the emulator.
 
 r       Reset
-            Resets the PC and stops current state. Might be usefull for restarting debugging, but does NOT reset all memory to its original state, just the PC and flags.
+            Resets the PC and stops current state. Might be useful for restarting debugging, but does NOT reset all memory to its original state, just the PC and flags.
 
-w       Set a memory watchpoints, when disassemble is used, it will also print values at any watch points.
+w       Set a memory watch-points, when disassemble is used, it will also print values at any watch points.
 
 --------------------------------------
 Disk IO
 
-The CPU is too primative to directly work with a real disk or filesystem, but we do provide some very basic
+The CPU is too primitive to directly work with a real disk or file system, but we do provide some very basic
 disk IO tools. In the validate folder are some code examples that use this.
 
-We have to imagine the hard disks attacheed to this CPU are primative 1970's disk packs. Each disk in the
-pack holds a max of 32MB of data, broken up in 64K of 512 byte Sectors. All read and wrires are directly
-at the Sector level, so to something like apppending a variable length string to a text file will require some
-addditional string processing as well as buffering the Sector being written to.
+We have to imagine the hard disks attached to this CPU are primitive 1970's disk packs. Each disk in the
+pack holds a max of 32MB of data, broken up in 64K of 512 byte Sectors. All read and writes are directly
+at the Sector level, so to something like appending a variable length string to a text file will require some
+additional string processing as well as buffering the Sector being written to.
 
 Code Macros
 @DISKSEL  A  Selects which disk to use with a constant number.

@@ -52,11 +52,14 @@ L string.ld
 #
 ! MATH32DEFINE
 M MATH32DEFINE 1
+@PRTLN "Invalid Entry:"
+@END
 # Define the globals
 G ADD32 G SUB32 G CMP32 G AND32 G OR32 G RTR32 G RTL32 G INV32
 G DIV32 G DIV32U G MUL32 G i32tos G stoi32 G INT2LONG G LONG2INT
 G PRT32BIN G PRT32HEX G DIV32VVVV G MUL32VVV
 G ADD32VVV G SUB32VVV G CMP32VVV G AND32VVV G OR32VVV G RTR32VV G RTL32VV G INV32VV
+G INT2LONGVV
 
 @JMP ENDLMATH
 # Global Variables
@@ -94,12 +97,6 @@ M ADD32VIV @PUSH %1 @PUSHI %2 @PUSH %3 @CALL ADD32VVV
 M ADD32VVI @PUSH %1 @PUSH %2 @PUSHI %3 @CALL ADD32VVV
 
 
-M INT2LONGVV @PUSH %1 @PUSH %2 @CALL INT2LONGVV
-M INT2LONGVI @PUSH %1 @PUSHI %2 @CALL INT2LONGVV
-M INT2LONGIV @PUSHI %1 @PUSH %2 @CALL INT2LONGVV
-M INT2LONGII @PUSHI %1 @PUSHI %2 @CALL INT2LONGVV
-M INT2LONG @PUSH %1 @PUSH %2 @CALL INT2LONGVV
-
 # The Nameing convention was changed, so the original explaination that was here, is now deprecated
 #
 # New syntax means
@@ -107,6 +104,18 @@ M INT2LONG @PUSH %1 @PUSH %2 @CALL INT2LONGVV
 #      V - value passed is the direct address where the 32 bit value starts
 #      I - value passed is a 16b pointer to where the 32 bit value starts
 #      A - is used when an direct constant will be the value stored.
+#
+# Because the following are a mix of 16 and 32 bit values, the rules are a bit diffrence.
+# For 16 bit number part
+#    V means pass the lable where the data is stored
+#    I points pointer that points to the data
+M INT2LONGVV @PUSH %1 @PUSH %2 @CALL INT2LONGVV
+M INT2LONGVI @PUSH %1 @PUSHI %2 @CALL INT2LONGVV
+M INT2LONGIV @PUSHI %1 @PUSH %2 @CALL INT2LONGVV
+M INT2LONGII @PUSHI %1 @PUSHI %2 @CALL INT2LONGVV
+M INT2LONG @PUSH %1 @PUSH %2 @CALL INT2LONGVV
+
+
 #
 # V -> V
 M COPY32VV \

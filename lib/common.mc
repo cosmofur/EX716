@@ -64,13 +64,13 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =FLOD 52
 
 # Cast and Poll Codes
-=CastPrintStrI 1
+=CastPrintStr 1
 =CastPrintInt 2
 =CastPrintIntI 3
 =CastPrintSignI 4
 =CastPrintBinI 5
 =CastPrintChar 6
-=CastPrintStrII 11
+=CastPrintStrI 11
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
@@ -201,9 +201,10 @@ M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-M PRTLN @JMP %01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST %0M @CAST %0NL @POPNULL
+#M PRTLN @JMP %01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStr @CAST %0M @CAST %0NL @POPNULL
+M PRTLN @JMP J%0J1 :%0M1 %1 "\n\0" :J%0J1 @PUSH CastPrintStr @CAST $%0M1 @POPNULL
 # Print simple test message with no variables no linefeed
-M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
+M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStr @CAST $%0M1 @POPNULL
 # Print value of variable
 M PRTI @PUSH CastPrintIntI @CAST %1 @POPNULL
 # Print value of variable in Hex
@@ -213,11 +214,15 @@ M PRTHEXII @PUSH CastPrintHexII @CAST %1 @POPNULL
 # Print value of variable but surrounded with spaces for readability
 M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 # Print string starting at address
-M PRTS @PUSH CastPrintStrI @CAST %1 @POPNULL
+# Print string start at address
+M PRTSTR @PUSH CastPrintStr @CAST %1 @POPNULL
+M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
+M PRTS @PUSH CastPrintStr @CAST %1 @POPNULL
+M PRTSI @PUSH CastPrintStrI @CAST %1 @POPNULL
 # Print string starting at the address that is stored AT the given pointer.
-M PRTSI @PUSHI %1 @POPI %0ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+
 # Print string whos address is on the stack
-M PRTSS @POPI %0Ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+M PRTSS @JMP %0Skip :%0ptr 0 :%0Skip @POPI %0Ptr @PUSH CastPrintStrI @CAST %0ptr 0 @POPNULL
 # Print value Pointer is pointing at.
 M PRTII @PUSHII %1 @POPI %0Store \
         @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
@@ -226,11 +231,9 @@ M PRTSGNI @PUSH CastPrintSignI @CAST %1 @POPNULL
 # Print value in binary
 M PRTBINI @PUSH CastPrintBinI @CAST %1 @POPNULL
 # Print Line feed
-M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0NL @POPNULL
+M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStr @CAST $%0NL @POPNULL
 # Print a space by itself
-M PRTSP @JMP $%01J :%0M " " b0 :%01J @PUSH CastPrintStrI @CAST $%0M @POPNULL
-# Print string start at address
-M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
+M PRTSP @JMP $%01J :%0M " " b0 :%01J @PUSH CastPrintStr @CAST $%0M @POPNULL
 # Print immediate value (usefull to print value of pointer)
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.

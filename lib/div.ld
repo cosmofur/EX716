@@ -2,25 +2,47 @@
 # Requires common.mc
 ! DEFINEDDIV
 M DEFINEDDIV 0
+# Define Local storage (Registers)
+:Var01 0
+:Var02 0
+:Var03 0
+:Var04 0
+:Var05 0
+:Var06 0
+I common.mc
+L softstack.ld
 G DIVU G DIV
 @JMP DIVINIT
+# Function DIVU unsigned Divide.
 :DIVU
-@POPI RETURN
+# Local Variable Names
+=B_VAL Var01
+=A_VAL Var02
+=QVal Var03
+=Remainder Var04
+=MASK Var05
+=Index Var06
+#
+@PUSHRETURN
+@PUSHLOCALI A_VAL
+@PUSHLOCALI B_VAL
+@PUSHLOCALI QVal
+@PUSHLOCALI Remainder
+@PUSHLOCALI MASK
+#
 @POPI B_VAL
 @POPI A_VAL
 @PUSHI B_VAL
 @IF_ZERO
    @PRTLN "Divide by Zero error:"
-   @PUSH 0 @PUSH 0
-   @PUSHI RETURN
-   @RET
+   @JMP DIVUEXIT
+
 @ENDIF
 @POPNULL
 @MA2V 0 QVal
 @MA2V 0 Remainder
 @MA2V 0x8000 MASK   # For the ith bit tests MASK will be bit at ith location of 16 bits
 @ForIA2B Index 0 16
-    :BreakK
     @PUSHI Remainder @RTL @POPI Remainder        # Remainder << 1
     @PUSHI MASK @PUSHI A_VAL @ANDS
     @IF_NOTZERO
@@ -44,21 +66,28 @@ G DIVU G DIV
 @Next Index
 @PUSHI Remainder
 @PUSHI QVal
-@PUSHI RETURN
+
+:DIVUEXIT
+@POPLOCAL MASK
+@POPLOCAL Remainder
+@POPLOCAL QVal
+@POPLOCAL B_VAL
+@POPLOCAL A_VAL
+@POPRETURN
 @RET
-:RETURN 0
-:RETURN2 0
-:A_VAL 0
-:B_VAL 0
-:QVal 0
-:Remainder 0
-:MASK 0
-:Index 0
-:SIGN 0
 #
-# Now handle case for Signed DIV
+# Function DIV, this version knows about Signs, but uses the DIVU version to do the main work.
 :DIV
-@POPI RETURN2
+# Define local names
+=A_VAL Var01
+=B_VAL Var02
+=SIGN Var03
+#
+@PUSHRETURN
+@PUSHLOCALI A_VAL
+@PUSHLOCALI B_VAL
+@PUSHLOCALI SIGN
+#
 @POPI B_VAL
 @POPI A_VAL
 @MA2V 0 SIGN
@@ -76,10 +105,7 @@ G DIVU G DIV
 @ENDIF
 @IF_EQ_S
    # IF they are equal, save time and just return '1'
-   @POPNULL @POPNULL
-   @PUSH 0 @PUSH 1
-   @PUSHI RETURN2
-   @RET
+   @JMP DIVEXIT
 @ENDIF
 @POPNULL @POPNULL
 @PUSHI A_VAL @PUSHI B_VAL
@@ -88,11 +114,15 @@ G DIVU G DIV
 @POPI B_VAL
 @PUSHI SIGN
 @IF_NOTZERO
-   @PUSHI A_VAL @COMP2 @POPI A_VAL
+   @PUSHI A_VAL @COMP2 @POPI A_VAL   # If Signed use 2s compliment
 @ENDIF
 @POPNULL
 @PUSHI B_VAL
 @PUSHI A_VAL
+:DIVEXIT
+@POPLOCAL SIGN
+@POPLOCAL B_VAL
+@POPLOCAL A_VAL
 @PUSHI RETURN2
 @RET
 :DIVINIT

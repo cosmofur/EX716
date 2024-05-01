@@ -110,10 +110,10 @@ L lmath.ld
    @POPNULL
    @PUSHI DataListPtr
    @CALL FindFirstDigit
+   @RTL @DUP @RTL @RTL @ADDS   # Mul x 10   
    @POPI FirstDigit
    @PUSHI DataListPtr
    @CALL FindLastDigit
-   @RTL @DUP @RTL @RTL @ADDS   # Mul x 10
    @POPI SecondDigit
    # Print Results
 #   @PUSHI SecondDigit @ADDI FirstDigit @PRTTOP @PRTNL @POPNULL
@@ -124,7 +124,8 @@ L lmath.ld
    @PRTI Result1 @PRT " "
    @INT2LONGVV Result1 Working32
    @ADD32VVV SumCount Working32 SumCount
-   @PRT32 SumCount @PRTNL      
+#   @PRT32 SumCount
+   @PRTNL      
 
 
 
@@ -144,6 +145,9 @@ L lmath.ld
 @PRTLN "End of Job"
 @END
 :DataList
+
+# The Input changes with each user of this so
+# You'll have to edit these strings if using your own account.
 "sixsrvldfour4seven\0"
 "53hvhgchljnlxqjsgrhxgf1zfoureightmlhvvv\0"
 "fives2dznl\0"
@@ -1145,3 +1149,9 @@ L lmath.ld
 "72mmjrfjvlzone3threethreesix\0"
 "fiveonecfsfsix74twocllbfnptkgttf\0"
 :DataListEnd
+:DataList2
+"1abc2\0"
+"pqr3stu8vwx\0"
+"a1b2c3d4e5f\0"
+"treb7uchet\0"
+:DataListEnd2

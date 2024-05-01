@@ -138,7 +138,7 @@ void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUF
       /* Loop until normal exit */
       EvalOne(CPUMemData,CPUStackData, CPUPC, CPUFlags, index1);
     }
-    printf("OpCount: %d\n",opcount);
+    printf("\nOpt Count: %d\n",opcount);
   } else {
     /* loop controled by index1 flag */
       EvalOne(CPUMemData,CPUStackData, CPUPC, CPUFlags, index1);
@@ -784,6 +784,7 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
     i=ParamI;
     while (memory[i] != 0 && i < 0xffff) {
       c=memory[i];
+      i++;
       if ((c<32 || c> 127) && ( c !=0 && c != 7 && c != 27 && c != 30)) {
 	printf("%02x",c);
       } else {
@@ -822,7 +823,6 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
     printf("%d",i32);
     break;
   case 99:
-    printf("END\n");
     returncode=-1;
     break;
   case 102:

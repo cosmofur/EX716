@@ -27,13 +27,13 @@ import os
 # Constants
 
 
-CastPrintStrI=1
+CastPrintStr=1
 CastPrintInt=2
 CastPrintIntI=3
 CastPrintSignI=4
 CastPrintBinI=5
 CastPrintChar=6
-CastPrintStrII=11
+CastPrintStrI=11
 CastPrintCharI=16
 CastPrintHexI=17
 CastPrintHexII=18
@@ -385,7 +385,6 @@ class microcpu:
         if address == MAXMEMSP:
             return 0        
         if address >= MAXMEMSP:
-            #            print("Invalid address %s" % address)
             self.raiseerror("003 Invalid Address: %d, getwordat" % (address))
             return 0
         a = self.memspace[address] + (self.memspace[address+1] << 8)
@@ -515,10 +514,6 @@ class microcpu:
         NF = 1 if (((A1 & 0xffff) & 0x8000) != 0) else 0
         self.flags = 0
         self.flags = (ZF+(NF << 1))
-#        if ( A1 > 3 and A1 < 5 ):
-#            print("Break here\n")        
-#        print("A1=%x Flags Z%1x N%1x\n" % (A1,ZF,NF))        
-
     def OverCarryTest(self, a, b, c, IsSubStraction):
         global OF,CF
         OF=0
@@ -808,7 +803,7 @@ class microcpu:
                 print("Stack: \n".join('%02x ' %
                       item for item in self.mb[0:self.mb[0xff]]))
             DissAsm(self.pc, 3, self)
-        if cmd == CastPrintStrI:
+        if cmd == CastPrintStr:
             i = address
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
@@ -839,13 +834,12 @@ class microcpu:
                 print("%c" % v)
             else:
                 sys.stdout.write(chr(v))
-        if cmd == CastPrintStrII:
-            i = self.getwordat(self.getwordat(address))
+        if cmd == CastPrintStrI:
+            i = self.getwordat(address)
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
-                print("ORD-C: %02x" % c)
                 if c == 0:
-                    print("Odd C is zero")
+                    print("0x0")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
                     sys.stdout.write("\%02x" % c)
                 else:
@@ -1381,7 +1375,7 @@ def DissAsm(start, length, CPU):
         else:
             addr = CPU.mb[0xff]
         DispRef = False
-        # We are trying to find if the Direct value, Indirect and double indirect values are Labled
+        # We are trying to find if the Direct value, Indirect and double indirect values are Labeled
         MaybeLabel = removecomments(getkeyfromval(i, FileLabels)).strip()
         if MaybeLabel != "":
             FoundLabels += " "+MaybeLabel
@@ -1494,6 +1488,9 @@ def fileonpath(filename):
 
 # This is how we tell if a lable been defined as global for local for library inserts.
 def IsLocalVar(inlable, LocalID, LORGFLAG):
+    # The structure is that GlobeLabels if they match inlable will always override the dynamic locallables.
+    # So to define a Globale, just add it to GlobeLables, but it should become part of FileLabels until
+    # really defined...ie with an '=' or a ':' code.
     global GlobeLabels
     if inlable in GlobeLabels or LORGFLAG == GLOBALFLAG or inlable in FileLabels:
         return inlable
@@ -1528,7 +1525,6 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 if Debug > 1:
                     print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 if (not MacroStack):
-#                    print("Break Here")
                     CPU.raiseerror(
                         "049 Macro Refrence Stack Underflow: %s" % line)
                 i += 1
@@ -1604,8 +1600,6 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
         stopi = len(instr)
         if working[stopi - 1] == '"':
             stopi -= 1
-        if starti < 100 and CPU.pc != 0:
-            print("DEBUG: mem add %s at pc %s\n" % (starti, CPU.pc),file=DebugOut)
         for c in working[starti:stopi]:
             StoreMem[int(curaddress)] = ord(c)
             curaddress += 1
@@ -1654,12 +1648,15 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
             modstart=modstop
             modstop=modstop + 1
         if working[starti:stopi] in FileLabels.keys():
+            # First test for Global Labels
             Result = Str2Word(FileLabels[working[starti:stopi]]) + modval
-        else:
+        elif IsLocalVar(working[starti:stopi], LocalID, LORGFLAG) in FileLabels.keys():
+            # Now existing Local Labels
+            Result = Str2Word(FileLabels[IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)]) + modval            
+        else: 
             # This is case where the lable has not yet been defined, we will save it in FWORDLIST for 2nd pass.
             Result = 0
-            newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)            
-#            print("At %s adding key(%s)%s" % (GlobalLineNum,ActiveFile,newkey))
+            newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)
             FWORDLIST.append([newkey, curaddress, modval, "%s:%s"%(ActiveFile,GlobalLineNum)])
             # Lables that are not yet defined HAVE to be 16b
             ByteFlag = False
@@ -1667,8 +1664,6 @@ def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
     if JUSTRESULT:
         # This is for cases were the assembler is not to save it into memory.
         return Result
-    if curaddress < 100 and CPU.pc != 0:
-        print("DEBUG: mem add %s at pc %s\n" % (curaddress, CPU.pc),file=DebugOut)
     if ByteFlag:
         StoreMem[curaddress] = (Result & 0xff)
         curaddress += 1
@@ -1867,15 +1862,15 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         CPU.raiseerror(
                             "054  Macro %s is not defined" % (macname))
                 # Here is were we start the 'switch case' looking for commands.
-                elif line[0] == ":":                    
+                elif line[0] == ":":
+                    # The ":" is a lable whos value is current address
                     (key, size) = nextword(line[1:])
                     if Debug > 1:
                         print(">>> adding %s at location %s" %
-                              (key, hex(address)),file=DebugOut)
-                            
+                              (key, hex(address)),file=DebugOut)                    
                     if ("F."+filename+":"+str(GlobalLineNum) in FileLabels):
-                        # We are creating an internal 'lable' for each line number.
-                        # This will allow us to print in dissassembly mode approximate src line numbers.
+                        # Normally each line get a unique lable in F.filename:linenum format
+                        # But as we are defining a real lable here, delete the F. one as un-needed.
                         del FileLabels["F."+filename+":"+str(GlobalLineNum)]
                     newitem = {IsLocalVar(key, LocalID, LORGFLAG): address}
                     FileLabels.update(newitem)
@@ -1910,9 +1905,8 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                         (modvalue,size) = nextword(line[1:])
                         # Now see if the modifier is a lable or a constant.
                         if (modvalue[0:1] == '$' or ( not modvalue[0:1].isdigit)):
-                            if modvalue[0:] in FileLables.keys():
-                                modvalue=FileLabels[IsLocalVar(
-                                    modvalue[1:], LocalID, LORGFLAG)]
+                            if modvalue[0:] in FileLabels.keys():
+                                modvalue=FileLabels[IsLocalVar(modvalue[1:], LocalID, LORGFLAG)]
                             else:
                                 CPU.raiseerror("056 Line %s, Can not modify Memory Point by lable that not yet defined." %(GlobalOptCnt, modvalue))
                         if (line[0:1] == "+"):
@@ -1948,6 +1942,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = line[size+1:]
                     continue
                 elif line[0] == "P" and IsOneChar:
+                    # "P" Print a message when we reach this point in the assembly process.
                     print("%04x: %s" % (address, line),file=DebugOut)
                     line = ""
                     continue
@@ -1992,22 +1987,22 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line = ""
                     continue
                 elif line[0] == "G" and IsOneChar:
+                    # Structurely global lables are an override of 'Local' lables by 'pre-defining' them.
                     (key, size) = nextword(line[1:])
                     GlobeLabels.update({key: address})
                     line = line[size+1:]
                     continue
                 else:
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
-#                    if ( GlobalLineNum >= 130 and GlobalLineNum <=135):
-#                        print("break here:%s" % line)
+                    # Note than nearly everything here will take up some sort of storage, so address will
+                    # be incremented. This is where lables become 'variables'
                     LineAddrList.append([address, GlobalLineNum, filename])
                     (key, size) = nextwordplus(line)
                     line = line[size:]
                     if address > highaddress:
                         highaddress = address
                     if len(key) > 0:
-                        address = DecodeStr(
-                            key, address, CPU,  LocalID, LORGFLAG, False)
+                        address = DecodeStr(key, address, CPU,  LocalID, LORGFLAG, False)
         for store in FWORDLIST:
             key = store[0]
             vaddress = store[1]
@@ -2023,10 +2018,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                 print(key, " is missing (SYM,ADDR,Delta,LineNum)", store,file=DebugOut)
     if Debug > 1:
         i = 0
-#        print("Pre-Run Memory Dump:")
-#        hexdump(i+offset, highaddress, CPU)
-#        DissAsm(i, highaddress, CPU)
-#        print("----------------END OF DUMP ---------------")
     if address > highaddress:
         highaddress = address
     return highaddress
@@ -2134,10 +2125,7 @@ def debugger(FileLabels,passline):
                 startrange = int(arglist[0])
                 stoprange = startrange+3
             if argcnt > 1:
-                if int(arglist[1]) < 0x100:
-                    stoprange = startrange = int(arglist[1])
-                else:
-                    stoprange=int(arglist[1])
+                stoprange = int(arglist[1])
             if argcnt == 0:
                 if stoprange != 0:
                     startrange = stoprange
@@ -2472,7 +2460,7 @@ def debugger(FileLabels,passline):
 def main():
     global Debug, CPU, GlobeLabels, watchwords, DebugOut, SkipBlock
 
-    # Setup some test filelables
+    # Setup some test filelabels
     DEFMEMSIZE = 0x10000
     Remote = False
     SkipBlock = 0    

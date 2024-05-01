@@ -5,10 +5,10 @@ L div.ld
 L mul.ld
 L softstack.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
-G ISAlphaNum G IsAlpha G ISNumeric G strncat
+G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst
 
 #
-# Soem 'String' Macros
+# Some 'String' Macros
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
 G STRSET G STRSETI
 M STRSET \
@@ -321,6 +321,15 @@ M STRSETI \
 
 :stoi
 @PUSHRETURN
+@PUSHLOCALI StrPtr
+@PUSHLOCALI NegFlag
+@PUSHLOCALI Base
+@PUSHLOCALI Invalue
+@PUSHLOCALI Multiplier
+@PUSHLOCALI Length
+
+#
+
 @POPI StrPtr
 @MA2V 0 NegFlag
 @MA2V 10 Base     # Default Base is ten
@@ -396,6 +405,100 @@ M STRSETI \
 @ELSE
    @POPNULL
 @ENDIF
+@POPLOCAL Length
+@POPLOCAL Multiplier
+@POPLOCAL Invalue
+@POPLOCAL Base
+@POPLOCAL NegFlag
+@POPLOCAL StrPtr
+@POPRETURN
+@RET
+#
+#
+# Function stoifirst(strptr) is very  much like stoi but does not require the string to terminat on a null
+# Which in practical data processing is most of the cases where numbers are enbeded into text.
+:stoifirst
+@PUSHRETURN
+@PUSHLOCALI StrPtrA
+@PUSHLOCALI StrPtrB
+@PUSHLOCALI SrcPtr
+@PUSHLOCALI DstPtr
+@POPI StrPtrA
+# Move StrPtrA until nul, or '-' or '+' or digit
+@MA2V 0 StrPtrB      # Mark this so we know if none found
+@MA2V 0 DstPtr       # Will hold final result
+@PUSH 1
+@WHILE_NOTZERO
+   @POPNULL
+   @PUSHII StrPtrA @AND 0xff
+   @IF_EQ_A "-\0"
+      @PUSH 1
+   @ELSE
+      @IF_EQ_A "+\0"
+         @PUSH 1
+      @ELSE
+         @IF_GE_A "0\0"
+            @IF_LE_A "9\0"
+               @PUSH 1
+            @ENDIF
+         @ELSE
+            @IF_EQ_A 0
+               @PRT "Warning: String did not countain any digits"            
+               @PUSH 1
+            @ENDIF
+         @ENDIF
+      @ENDIF
+   @ENDIF
+   @IF_EQ_A 1
+      @MV2V StrPtrA StrPtrB # Save start position of number
+      @POPNULL
+      @PUSH 0   # Exit While Loop
+   @ELSE
+      @POPNULL
+      @INCI StrPtrA
+      @PUSH 1   # Continue While Loop
+   @ENDIF
+@ENDWHILE
+@POPNULL
+@IF_EQ_AV 0 StrPtrB
+   # No numbers found in string. Return zero
+   @PRT "Warning: String did not countain any digits"
+@ELSE
+   @INCI StrPtrA # If first character had been + or - this will skip it.
+   @PUSHII StrPtrA @AND 0xff
+   @WHILE_NOTZERO
+      @IF_GE_A "0\0"
+          @IF_LE_A "9\0"
+             @POPNULL
+             @PUSH 0  # Was a digit, continue
+          @ENDIF
+      @ENDIF
+      @IF_EQ_A 0
+         #Digit found just continue.
+         @INCI StrPtrA
+         @POPNULL
+         @PUSHII StrPtrA @AND 0xff
+      @ELSE
+         @POPNULL
+         @PUSH 0
+         #Non Digit found, end of number found.
+      @ENDIF
+   @ENDWHILE
+   # Save what ever word was at StrPtrA and replace will Null
+   @POPNULL
+   @PUSHII StrPtrA @POPI SrcPtr
+   @PUSH 0 @POPII StrPtrA
+   @PUSHI StrPtrB
+   @CALL stoi
+   @POPI DstPtr
+   @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed         
+@ENDIF
+@POPNULL
+@PUSHI DstPtr     # Result
+@POPLOCAL DstPtr
+@POPLOCAL SrcPtr
+@POPLOCAL StrPtrB
+@POPLOCAL StrPtrA
 @POPRETURN
 @RET
 #
