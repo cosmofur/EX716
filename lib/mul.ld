@@ -6,12 +6,9 @@ G MUL
 G MULU
 
 # Define local storage (Registers)
-:Var01
-0
-:Var02
-0
-:Var03
-0
+:Var01 0
+:Var02 0
+:Var03 0
 I common.mc
 L softstack.ld
 :MULU

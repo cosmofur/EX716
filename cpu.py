@@ -872,9 +872,13 @@ class microcpu:
                 self.raiseerror(
                     "037 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSeekDisk:
+            if DeviceHandle == None:
+                self.raiseerror("038 Attempted to Seek without selecting Disk")
             self.DiskPtr = address*0x200
             DeviceFile.seek(self.DiskPtr, 0)
         if cmd == CastWriteSector:
+            if DeviceHandle == None:
+                self.raiseerror("038 Attempted to write without selecting Disk")
             v = address
             if v < MAXMEMSP-0x1ff:
                 block = self.memspace[v:v+512]
@@ -888,8 +892,7 @@ class microcpu:
         if cmd == CastSyncDisk:
             if DeviceHandle != None:
                 DeviceFile.close()
-                self.DiskPtr = -1
-                DeviceHandle = None
+                DeviceFile = open(DeviceHandle, "r+b")
         if cmd == CastPrint32I:
             iaddr = address
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)

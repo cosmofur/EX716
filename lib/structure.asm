@@ -394,6 +394,33 @@ M WHILE_ULT_V \
   @JMPC %0_True \
   @JMP %V_ExitLoop \
   :%0_True
+#
+# When Do Loop are very much like While Loops but have a fixed place for a multi
+# line conditional logic. WHEN Code DO_ZERO or DO_NOTZERO ENDWHEN
+# Code can be multiple lines, just it leaves a 0 or a non-zero to contol
+# execution between Do and ENDWHEN
+# WHEN is good for cases where there no existing WHILE condition prewired.
+# Its important to remember the condition block will leave a condition value
+# on the stack, that will need to be POPNULL'ed to keep the stack from growing.
+#
+M WHEN \
+  %S \
+  :%V_LoopTop
+#
+M DO_ZERO \
+  @CMP 0 \
+  @JMPZ %V_True \
+  @JMP %V_ENDWHEN \
+  :%V_True
+#
+M DO_NOTZERO \
+  @CMP 0 \
+  @JMPZ %V_ENDWHEN
+#
+M ENDWHEN \
+  @JMP %V_LoopTop \
+  :%V_ENDWHEN \
+  %P
 
 
 # Note the %P in both the Continue and Break Macros

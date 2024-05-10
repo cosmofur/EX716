@@ -1,5 +1,4 @@
 ! SCREEN_DONE
-L io.ld
 L heapmgr.ld
 M SCREEN_DONE 1
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot

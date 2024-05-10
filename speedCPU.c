@@ -10,6 +10,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 #define HWSPIDX 0xff
+#define CastSelectDisk 20
 
 
 //
@@ -110,7 +111,8 @@ void handleCast(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t
 void handlePoll(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData);
 int returncode;
 int16_t ZF,NF,CF,OF, PC; /* Global values */
-
+FILE* DeviceHandle = NULL;
+int DiskPtr = 0;
 
 void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUFlags, int* index1, int* returnval) {
   int opcount;
@@ -735,6 +737,7 @@ void OverCarryTest(int a, int b, int c, int IsSubtraction) {
 void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HWStack, int CPC) {
   int16_t i,c,a, tos, sft;
   int i32, TSP;
+
   // printf("Cast Codes Mode %04x: %04x - %04x - %04x\n",topstack(PC),Param,ParamI,ParamII);
   tos=topstack(HWStack,0);
   sft=sftstack(HWStack);
@@ -812,16 +815,32 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
     printf("%04x",a);
     break;    
   case 32:
-    i32=ParamI+(get16memat(Param+2, memory) << 16);
+    // Print 32bit number Param points to.    
+    i32=get16memat(Param,memory)+(get16memat(Param+2,memory) << 16);
     if ( (i32 & ( 1 << 31)) != 0) {
       i32= ~(i32) + 1;
-    }      
-    printf("%d",i32);
+    }
+    printf("%d",i32);    
     break;
   case 33:
-    i32=tos + (sft<<16);
+    // Print 32bit number that top of stack points to.    
+    i32=get16memat(tos,memory)+(get16memat(sft,memory)<<16);
     printf("%d",i32);
     break;
+  case CastSelectDisk:
+    char filename[20];
+    if (DeviceHandle != NULL ) {
+      fclose(DeviceHandle);
+    }
+    snprintf(filename,sizeof(filename), "DISK%02d.disk", Param);
+    DeviceHandle = fopen(filename, "r+b");
+    if (DeviceHandle != NULL) {
+      DiskPtr = 0;
+      fseek(DeviceHandle, 0, SEEK_SET);
+    } else {
+      printf("Error accessing DISK device: %d",Param);
+        }
+
   case 99:
     returncode=-1;
     break;

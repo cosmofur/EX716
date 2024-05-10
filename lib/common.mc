@@ -74,12 +74,11 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
-=CastPrint32Int 32
+=CastPrint32I 32
 =CastSelectDisk 20
 =CastSeekDisk 21
 =CastWriteSector 22
 =CastSyncDisk 23
-=CastPrint32I 32
 =CastPrint32S 33
 =CastTapeWriteI 34
 =PollReadIntI 1
@@ -243,12 +242,12 @@ M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
 # Print Top with Sign
 M PRTSGNTOP @DUP @POPI %0Store @PRTSGNI %0Store @JMP %0Skip :%0Store 0 :%0Skip
 # Print 32bit number starting at address
-M PRT32 @PUSH CastPrint32Int @CAST %1 @POPNULL
+M PRT32 @PUSH CastPrint32I @CAST %1 @POPNULL
 M PRT32I @JMP %0Jmp :%0store1 0 :%0store2 0 \
    :%0Jmp @PUSHII %1 @POPI %0store1 \
    @PUSHI %1 @ADD 2 @PUSHS @POPI %0store2 \
-   @PUSH CastPrint32Int @CAST %0store1 @POPNULL
-#
+   @PUSH CastPrint32I @CAST %0store1 @POPNULL
+# Print 32bit number that tos is pointing to.
 M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL

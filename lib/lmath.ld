@@ -58,7 +58,7 @@ M MATH32DEFINE 1
 G ADD32 G SUB32 G CMP32 G AND32 G OR32 G RTR32 G RTL32 G INV32
 G DIV32 G DIV32U G MUL32 G i32tos G stoi32 G INT2LONG G LONG2INT
 G PRT32BIN G PRT32HEX G DIV32VVVV G MUL32VVV
-G ADD32VVV G SUB32VVV G CMP32VVV G AND32VVV G OR32VVV G RTR32VV G RTL32VV G INV32VV
+G ADD32VVV G SUB32VVV G CMP32VV G AND32VVV G OR32VVV G RTR32VV G RTL32VV G INV32VV
 G INT2LONGVV
 
 @JMP ENDLMATH
@@ -153,6 +153,78 @@ M MOVE32AI @JMP %0SkipF :%0C1 $$$%1 \
 	   @PUSHI %0C1+2 @PUSHI %2 @ADD 2 @POPS
 M MOVE32AVI @MOVE32AI %1 %2
 
+#
+# Common 16to32 bit functions for common operations.
+#
+# These are functions which take one 16 bit number and one 32 bit acumulator and
+# lets you do the most common functions to them. 
+#
+# Pattern is take 16 %1 turn into 32 bit %0LW1 and then apply function of 
+M ADDWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @ADD32VVV %2 %0LW1 %2
+M ADDWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @ADD32VVV %2 %0LW1 %2
+M ADDWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @ADD32IVI %2 %0LW1 %2
+M ADDWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @ADD32IVI %2 %0LW1 %2
+#########
+M SUBWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @SUB32VVV %2 %0LW1 %2
+M SUBWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @SUB32VVV %2 %0LW1 %2
+M SUBWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @SUB32IVI %2 %0LW1 %2
+M SUBWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @SUB32IVI %2 %0LW1 %2
+###################
+M MULWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @MUL32VVV %2 %0LW1 %2
+M MULWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @MUL32VVV %2 %0LW1 %2
+M MULWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @MUL32IVI %2 %0LW1 %2
+M MULWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @MUL32IVI %2 %0LW1 %2
+####################
+# The DIVision requires 3 parameters 1 Word and 2 Longs, Extra long is for remainder, and must be of type 'V' rather than 'I'
+# Which just means the remainder must point directly to address of unique 32 store, not a pointer.
+M DIVWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @DIV32VVVV %2 %0LW1 %2 %3
+M DIVWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @DIV32VVVV %2 %0LW1 %2 %3
+M DIVWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @DIV32IVIV %2 %0LW1 %2 %3
+M DIVWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @DIV32IVIV %2 %0LW1 %2 %3
+          
+
+
+
 
 
 # Function ADD32VVV(A_Var,B_Var,C_Var)
@@ -242,6 +314,7 @@ M CMP32II @PUSHI %1 @PUSHI %2 @CALL CMP32VV
 @PUSH C32Result
 @CALL SUB32   # We are Using SUB32 to Subtract A - B > Temp Result
 #  Test if High Worked Highest Bit is set, if so, it's negative.
+
 @PUSHI C32Result+2
 @AND 0x8000
 @IF_NOTZERO      # Sign bit is set
@@ -658,7 +731,7 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
 @COPY32IVV DUB_ValPtr LocalB
 @MOVE32AV $$$0 DUZero
 @MOVE32AV $$$1 DUOne
-@CMP32IV DUB_ValPtr DUZero
+@CMP32VV DUB_ValPtr DUZero
 @IF_ZERO
    @PRTLN "Divide by Zero Error:"
    @POPNULL
@@ -672,7 +745,6 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
 @MOVE32AV $$$0x80000000 DUMask
 
 @ForIA2B DUIndex 0 32
-   :Break1
    @RTL32VV DURemainder DURemainder  # Remainder << 1
    @AND32VIV DUMask DUA_ValPtr DUTemp1
    @CMP32VV DUTemp1 DUZero

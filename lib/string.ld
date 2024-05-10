@@ -22,27 +22,20 @@ M STRSETI \
 # Function strlen
 # strlen(str_var) returns length of string
 # Vars
-:StrPtrA 0
-:StrPtrB 0
-:len_strptr 0
-:len_size 0
-:Length 0
-:MaxLength 0
-:SrcPtr 0
-:DstPtr 0
-:StrPtr 0
-:Index 0
-:Base 0
-:Invalue 0
-:NegFlag 0
-:RevIndex 0
-:Multiplier 0
+:Var01 0
+:Var02 0
+:Var03 0
+:Var04 0
+:Var05 0
+:Var06 0
 :WorkBuff "00000000" b0       # Long enough for -32000 to +32000
 
 #
 # Function
 :strlen
 @PUSHRETURN
+=len_strptr Var01
+=len_size Var02
 @PUSHLOCALI len_strptr
 @PUSHLOCALI len_size
 @POPI len_strptr
@@ -68,6 +61,10 @@ M STRSETI \
 # Concats strB to strA (modifies StrA which must already be large enough to handle both)
 :strcat
 @PUSHRETURN
+=StrPtrA Var01
+=StrPtrB Var02
+@PUSHLOCALI StrPtrA
+@PUSHLOCALI StrPtrB
 @POPI StrPtrB
 @POPI StrPtrA
 @PUSHI StrPtrA
@@ -83,7 +80,9 @@ M STRSETI \
    @PUSHII StrPtrB
    @AND 0xff
 @ENDWHILE
-@POPNULL   
+@POPNULL
+@POPLOCAL StrPtrB
+@POPLOCAL StrPtrA
 @POPRETURN
 @RET
 #
@@ -93,6 +92,12 @@ M STRSETI \
 #         StrA must still have sufficent space for combined length of both strings.
 :strncat
 @PUSHRETURN
+=Length Var01
+=StrPtrB Var02
+=StrPtrA Var03
+@PUSHLOCALI StrPtrA
+@PUSHLOCALI StrPtrB
+@PUSHLOCALI Length
 @POPI Length
 @POPI StrPtrB
 @POPI StrPtrA
@@ -121,7 +126,10 @@ M STRSETI \
      @ENDIF
   @ENDWHILE
 @ENDIF
-@POPNULL   
+@POPNULL
+@POPLOCAL Length
+@POPLOCAL StrPtrB
+@POPLOCAL StrPtrA
 @POPRETURN
 @RET
 
@@ -132,6 +140,14 @@ M STRSETI \
 #
 :strncpy
 @PUSHRETURN
+=Length Var01
+=SrcPtr Var02
+=DstPtr Var03
+=Index Var04
+@PUSHLOCALI Length
+@PUSHLOCALI SrcPtr
+@PUSHLOCALI DstPtr
+@PUSHLOCALI Index
 @POPI Length
 @POPI SrcPtr
 @POPI DstPtr
@@ -159,6 +175,10 @@ M STRSETI \
    @INCI SrcPtr
    @INCI DstPtr
 @Next Index
+@POPLOCAL Index
+@POPLOCAL DstPtr
+@POPLOCAL SrcPtr
+@POPLOCAL Length
 @POPRETURN
 @RET
 #
@@ -167,6 +187,10 @@ M STRSETI \
 # StrA must be at least as large as the maxsize of StrB
 :strcpy
 @PUSHRETURN
+=SrcPtr Var01
+=DstPtr Var02
+@PUSHLOCALI SrcPtr
+@PUSHLOCALI DstPtr
 @POPI SrcPtr
 @POPI DstPtr
 # Setup for first pass of while loop
@@ -180,15 +204,28 @@ M STRSETI \
    @AND 0x00ff
 @ENDWHILE
 @POPNULL
+@POPLOCAL DstPtr
+@POPLOCAL SrcPtr
 @POPRETURN
 @RET
 #
-# strncmp(StrA,StrB)  compairs two string and returns -1,0 or 1
+# strncmp(StrA,StrB,MaxChars)  compairs two string and returns -1,0 or 1
 # based on their relationship. -1 if str1 lexicongraphically < str2
 #                              +1 if str1 > str2
 #                               0 if str1 == str2
 :strncmp
 @PUSHRETURN
+=MaxLength Var01
+=DstPtr Var02
+=SrcPtr Var03
+=Length Var04
+=Index Var05
+@PUSHLOCALI MaxLength
+@PUSHLOCALI DstPtr
+@PUSHLOCALI SrcPtr
+@PUSHLOCALI Length
+@PUSHLOCALI Index
+#
 @POPI MaxLength
 @POPI DstPtr
 @POPI SrcPtr
@@ -206,14 +243,14 @@ M STRSETI \
       @POPNULL
       @POPNULL
       @PUSH -1
+      @JMP strncmpExit
       @POPRETURN
       @RET
    @ELSE
       @POPNULL  # If both are zero legnth, result is still 0
       @POPNULL
       @PUSH 0
-      @POPRETURN
-      @RET
+      @JMP strncmpExit
    @ENDIF
 @ENDIF
 @POPI Length   # Length of Src, must be > 0
@@ -233,16 +270,14 @@ M STRSETI \
       @POPNULL
       @POPNULL
       @PUSH -1
-      @POPRETURN
-      @RET
+      @JMP strncmpExit
    @ENDIF
    @IF_GT_S
       # Src[index]>Dst[index]
       @POPNULL
       @POPNULL
       @PUSH 1
-      @POPRETURN
-      @RET
+      @JMP strncmpExit
    @ENDIF
    @INCI SrcPtr
    @INCI DstPtr
@@ -251,6 +286,12 @@ M STRSETI \
 @Next Index
 # We only get here if both are the same
 @PUSH 0
+:strncmpExit
+@POPLOCAL Index
+@POPLOCAL Length
+@POPLOCAL SrcPtr
+@POPLOCAL DstPtr
+@POPLOCAL MaxLength
 @POPRETURN
 @RET
 #
@@ -261,6 +302,19 @@ M STRSETI \
 
 :itos
 @PUSHRETURN
+=Base Var01
+=Invalue Var02
+=StrPtr Var03
+=Invalue Var04
+=NegFlag Var05
+=RevIndex Var06
+#
+@PUSHLOCALI Base
+@PUSHLOCALI Invalue
+@PUSHLOCALI StrPtr
+@PUSHLOCALI Invalue
+@PUSHLOCALI NegFlag
+@PUSHLOCALI RevIndex
 @POPI Base
 @POPI Invalue
 @POPI StrPtr
@@ -312,6 +366,12 @@ M STRSETI \
    @JMP ReverseLoop
 @ENDIF
 @POPNULL
+@POPLOCAL RevIndex
+@POPLOCAL NegFlag
+@POPLOCAL Invalue
+@POPLOCAL StrPtr
+@POPLOCAL Invalue
+@POPLOCAL Base
 @POPRETURN
 @RET
 #
@@ -321,6 +381,14 @@ M STRSETI \
 
 :stoi
 @PUSHRETURN
+#
+=StrPtr Var01
+=NegFlag Var02
+=Base Var03
+=Invalue Var04
+=Multiplier Var05
+=Length Var06
+#
 @PUSHLOCALI StrPtr
 @PUSHLOCALI NegFlag
 @PUSHLOCALI Base
@@ -337,7 +405,7 @@ M STRSETI \
 @MA2V 1 Multiplier
 @PUSHI StrPtr @CALL strlen @POPI Length
 @PUSHII StrPtr @AND 0xff
-@IF_EQ_A 0x002d      # Negative Sige in ASCII code
+@IF_EQ_A "-\0"      # Negative Sige in ASCII code
    @POPNULL
    @MA2V 1 NegFlag
    @INCI StrPtr
@@ -355,17 +423,17 @@ M STRSETI \
       @INCI StrPtr
       @PUSHII StrPtr @AND 0xff   # Get second character like for 0xHHHH
       @SWITCH
-         @CASE 0x78      # Lower case 'x' for hex
+         @CASE "x\0"      # Lower case 'x' for hex
             @MA2V 16 Base
             @INCI StrPtr
 	    @DEC2I Length
             @CBREAK
-         @CASE 0x6F      # Lower case 'o' for octal
+         @CASE "o\0"      # Lower case 'o' for octal
             @MA2V 8 Base
             @INCI StrPtr
 	    @DEC2I Length
             @CBREAK
-         @CASE 0x62      # Lower case 'b' for binary
+         @CASE "b\0"     # Lower case 'b' for binary
             @MA2V 2 Base
             @INCI StrPtr
 	    @DEC2I Length
@@ -383,7 +451,7 @@ M STRSETI \
    @DECI Length
    @POPNULL
    @PUSHI StrPtr @ADDI Length @PUSHS @AND 0xff  # Fetches StrPtr[Length]
-   @SUB 0x30
+   @SUB "0\0"
    @IF_EQ_VA Base 16  # Are we dealign with Hex numbers?
       @POPNULL
       @IF_GE_A 10    # Was it > 10
@@ -515,6 +583,16 @@ M STRSETI \
 # 
 :memcpy
 @PUSHRETURN
+=Length Var01
+=SrcPtr Var02
+=DstPtr Var03
+=Index Var04
+=Base Var05
+@PUSHLOCALI Length
+@PUSHLOCALI SrcPtr
+@PUSHLOCALI DstPtr
+@PUSHLOCALI Index
+@PUSHLOCALI Base
 @POPI Length
 @POPI SrcPtr
 @POPI DstPtr
@@ -546,6 +624,7 @@ M STRSETI \
       @POPNULL
   @ELSE            # Hande case where moving backworks is better.
       @POPNULL
+      :Break1
       @PUSHI Length @RTR @POPI Base  # Length/2 (round down)
       @PUSHI SrcPtr @ADDI Length @SUB 1 @POPI SrcPtr
       @PUSHI DstPtr @ADDI Length @SUB 1 @POPI DstPtr
@@ -569,12 +648,23 @@ M STRSETI \
       @NextBy Index -1
   @ENDIF
 @ENDIF
+@POPLOCAL Base
+@POPLOCAL Index
+@POPLOCAL DstPtr
+@POPLOCAL SrcPtr
+@POPLOCAL Length
 @POPRETURN
 @RET
 #
 # strchr(string,word) finds character (lower 8 bits) from word in string, returns pointer to occurance, 0 is not found
 :strchr
 @PUSHRETURN
+=Invalue Var01
+=DstPtr Var02
+=StrPtr Var03
+@PUSHLOCALI StrPtr
+@PUSHLOCALI DstPtr
+@PUSHLOCALI Invalue
 @ADD 0xff             # We only care about the low order byte
 @POPI Invalue
 @POPI StrPtr
@@ -592,14 +682,24 @@ M STRSETI \
    @PUSHII StrPtr
    @AND 0xff
 @ENDWHILE
+@POPNULL
 :BreakWhile
 @PUSHI DstPtr
+@POPLOCAL StrPtr
+@POPLOCAL DstPtr
+@POPLOCAL Invalue
 @POPRETURN
 @RET
 #
 # strrchr(string,word) Returns pointer to 'last' instance of character in string, null it not found.
 :strrchr
 @PUSHRETURN
+=Invalue Var01
+=StrPtr Var02
+=DstPtr Var03
+@PUSHLOCALI Invalue
+@PUSHLOCALI StrPtr
+@PUSHLOCALI DstPtr
 @ADD 0xff
 @POPI Invalue
 @POPI StrPtr
@@ -623,19 +723,29 @@ M STRSETI \
 @ENDWHILE
 :BreakWhileRev
 @PUSHI DstPtr
+@POPLOCAL DstPtr
+@POPLOCAL StrPtr
+@POPLOCAL Invalue
 @POPRETURN
 @RET
 #
 # strstr(string,substring) Return pointer in string, where substring can be found. NULL if no match
 # Extra Local Variables
-:ssStrB 0
-:ssStrA 0
-:ssDstPtr 0
-:ssMaxLength 0
-:ssLength 0
-:ssIndex 0
 :strstr
 @PUSHRETURN
+=ssStrA Var01
+=ssStrB Var02
+=ssMaxLength Var03
+=ssIndex Var04
+=ssLength Var05
+=ssDstPtr Var06
+@PUSHLOCALI ssStrA
+@PUSHLOCALI ssStrB
+@PUSHLOCALI ssMaxLength
+@PUSHLOCALI ssIndex
+@PUSHLOCALI ssLength
+@PUSHLOCALI ssDstPtr
+#
 @POPI ssStrB         # SrtB is the SubString
 @POPI ssStrA         # StrA is the Source String
 @PUSHI ssStrB
@@ -671,6 +781,12 @@ M STRSETI \
     @PUSH 0
 @ENDIF
 :Endstrstr
+@POPLOCAL ssDstPtr
+@POPLOCAL ssLength
+@POPLOCAL ssIndex
+@POPLOCAL ssMaxLength
+@POPLOCAL ssStrB
+@POPLOCAL ssStrA
 @POPRETURN
 @RET
 

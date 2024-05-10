@@ -1,6 +1,6 @@
 I common.mc
 L softstack.ld
-L random2.ld
+L random.ld
 # This test is to see how 'random' the random number generator is.
 :Main . Main
 
