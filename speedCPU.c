@@ -6,11 +6,24 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdint.h>
+#include <signal.h>
+
 #include "fcpu.h"
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 #define HWSPIDX 0xff
 #define CastSelectDisk 20
+#define MAXMEMP 0xfffe
+#define BLOCK_SIZE 512
+
+
+
+int returncode;
+void handle_ctrl_c(int sig) {
+  printf("\nCaught SIGINT (Ctrl-C). Exiting...\n");
+  returncode=-4;
+}
+
 
 
 //
@@ -109,10 +122,13 @@ void SetZNFlags(int testval);
 void OverCarryTest(int a, int b, int c, int IsSubtraction);
 void handleCast(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData, int CPC);
 void handlePoll(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData);
-int returncode;
 int16_t ZF,NF,CF,OF, PC; /* Global values */
-FILE* DeviceHandle = NULL;
+char DiskName[17] = {'\0'}; /* Allocat 16 bytes for temporary filenames and null the first character */
+FILE* DiskHandle = NULL;
 int DiskPtr = 0;
+
+
+
 
 void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUFlags, int* index1, int* returnval) {
   int opcount;
@@ -131,6 +147,7 @@ void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUF
   uint8_t* CPUMemData = (uint8_t*)PyArray_DATA(np_array1);
   uint8_t* CPUStackData = (uint8_t*)PyArray_DATA(np_array2);
   //  uint8_t* CPURegData = (uint8_t*)PyArray_DATA(np_array3);
+  signal(SIGINT, handle_ctrl_c);
   returncode=0;
   if (*index1 == -1){
     opcount=0;
@@ -205,6 +222,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
   ParamI=get16memat(Param, CPUMemData);
   ParamII=get16memat(ParamI, CPUMemData);
   OptCode=CPUMemData[PC];
+  //  printf("At %04x Param=%04x, ParamI=%04x, ParamII=%04x OPCODE=%02x\n",PC,Param,ParamI,ParamII,OptCode);  
   TSP=CPUStackData[HWSPIDX];
   tos = -1;
   sft = -1;
@@ -591,7 +609,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     Opsize=1;
     break;
   default:
-    printf("Unknown OptCode %d at address %0x04\n",OptCode,PC);
+    printf("Unknown OptCode %d at address %04x\n",OptCode,PC);
     PC++;
     break;
   }
@@ -749,7 +767,7 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
       printf("%04x ",HWStack[i<<1]+(HWStack[(i<<1)+1]));
     }
     printf("\n");
-  case 1:
+  case 1:           // CastPrintStr 1
     i=Param;
     while (memory[i] != 0 && i < 0xffff) {
       c=memory[i]; i++;
@@ -760,61 +778,153 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
       }
     }
     break;
-  case 2:
+  case 2:           // CastPrintInt 2
     a=Param & 0xffff;
-    printf("%u",a);
+    printf("%d",(short)a);
     break;
-  case 3:
+  case 3:          // CastPrintIntI
     a=ParamI & 0xffff;
-    printf("%u", a);
+    printf("%d", (unsigned short)a);
     break;
-  case 4:
+  case 4:          // CastPrintSignI
     a=ParamI & 0xffff;
-    printf("%d", a);
+    printf("%d", (short)a);
     break;
-  case 5:
+  case 5:          // CastPrintBinI
     a=ParamI & 0xffff;
-    printf("%x", a);
+    printf("%x", (unsigned short)a);
     break;    
-  case 6:
+  case 6:          // CastPrintChar
     if ( ParamI < 32 || ParamI > 128 ) {
-      printf("%02x", ParamI);
+      printf("%02x", (unsigned short)ParamI);
     } else {
       printf("%c",ParamI);
     }
     break;
-  case 11:
+  case 11:         // CastPrintStrI
     i=ParamI;
     while (memory[i] != 0 && i < 0xffff) {
       c=memory[i];
       i++;
-      if ((c<32 || c> 127) && ( c !=0 && c != 7 && c != 27 && c != 30)) {
+      if ((c< 32 || c > 127) && ( c !=0 && c != 7 && c != 27 && c != 30)) {
 	printf("%02x",c);
       } else {
 	printf("%c",c);
       }
     }
     break;
-  case 12:
+  case 12:         // CastPrintIntUI
     a=ParamI & 0xffff;
-    printf("%u",a);
+    printf("%u",(unsigned short)a);
     break;
-  case 16:
+  case 16:         // CastPrintCharI
     if ( ParamII < 32 || ParamII > 128 ) {
       printf("%02x", ParamII);
     } else {
       printf("%c",ParamII);
     }
     break;    
-  case 17:
+  case 17:         // CastPrintHexI
     a=ParamI & 0xffff;
-    printf("%04x",a);
+    printf("%04x",(unsigned short)a);
     break;
-  case 18:
+  case 18:        // CastPrintHexII
     a=ParamII & 0xffff;
     printf("%04x",a);
+    break;
+  case 20:   // CastSelectDisk
+    if (DiskHandle != NULL ) {
+      fclose(DiskHandle);
+    }
+    snprintf(DiskName,sizeof(DiskName), "DISK%02d.disk", Param);
+    DiskHandle = fopen(DiskName, "r+b");
+    if (DiskHandle != NULL) {
+      DiskPtr = 0;
+      fseek(DiskHandle, 0, SEEK_SET);
+    } else {
+      fprintf(stderr,"Error accessing DISK device: %d\n",Param);
+        }
+    break;
+  case 21:   //CastSeekDisk
+    if (DiskHandle == NULL) {
+      fprintf(stderr,"Error, Attempted to Seek before selecting Disk.\n");
+    }
+    DiskPtr = Param * BLOCK_SIZE;
+    if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0){
+      fprintf(stderr,"Erorr seeking block %d on disk.\n",DiskPtr);
+    }
+    break;
+  case 22:   //CastWriteSector
+    if (DiskHandle == NULL) {
+      fprintf(stderr,"038 Attempted to write to disk without selecting Disk\n");
+    }
+    if ( Param < MAXMEMP - BLOCK_SIZE+1) {
+      unsigned char block[BLOCK_SIZE];
+      memcpy(block, &memory[Param], BLOCK_SIZE);
+      if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking disk sector %d\n",DiskPtr);
+      }
+      if (fwrite(block,1,BLOCK_SIZE, DiskHandle) != BLOCK_SIZE) {
+        fprintf(stderr, "Error writing to Disk.");
+          }
+      DiskPtr += BLOCK_SIZE;
+      if (fflush(DiskHandle) != 0) {
+        fprintf(stderr, "Error flushing HW Disk Buffer\n");
+      }
+    } else {
+      fprintf(stderr, "038 Attempted to write to disk block larger than memory available\n");
+    }
+    break;
+  case 23:   // CastSyncDisk
+    if (fflush(DiskHandle) != 0) {
+      fprintf(stderr, "Error flushing HW Disk Buffer\n");
+    }
+    break;
+  case 24:   // CastSelectDiskI
+    if (DiskHandle != NULL ) {
+      fclose(DiskHandle);
+    }
+    snprintf(DiskName,sizeof(DiskName), "DISK%02d.disk", ParamI);
+    DiskHandle = fopen(DiskName, "r+b");
+    if (DiskHandle != NULL) {
+      DiskPtr = 0;
+      fseek(DiskHandle, 0, SEEK_SET);
+    } else {
+      fprintf(stderr,"Error accessing DISK device: %d",ParamI);
+        }
     break;    
-  case 32:
+    
+  case 25:   // CastSeekDiskI
+    if (DiskHandle == NULL) {
+      fprintf(stderr,"Error, Attempted to Seek before selecting Disk.\n");
+    }
+    DiskPtr = ParamI * BLOCK_SIZE;
+    if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0){
+      fprintf(stderr,"Erorr seeking block %d on disk.\n",DiskPtr);
+    }
+    break;        
+  case 26:   //CastWriteSectorI
+    if (DiskHandle == NULL) {
+      fprintf(stderr,"038 Attempted to write to disk without selecting Disk\n");
+    }
+    if ( ParamI < MAXMEMP - BLOCK_SIZE+1) {
+      unsigned char block[BLOCK_SIZE];
+      memcpy(block, &memory[ParamI], BLOCK_SIZE);
+      if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking disk sector %d\n",DiskPtr);
+      }
+      if (fwrite(block,1,BLOCK_SIZE, DiskHandle) != BLOCK_SIZE) {
+        fprintf(stderr, "Error writing to Disk.");
+          }
+      DiskPtr += BLOCK_SIZE;
+      if (fflush(DiskHandle) != 0) {
+        fprintf(stderr, "Error flusing HW Disk Buffer\n");
+      }
+    } else {
+      fprintf(stderr, "038 Attempted to write to disk block larger than memory available\n");
+    }  
+    break;
+  case 32:       // CastPrint32I
     // Print 32bit number Param points to.    
     i32=get16memat(Param,memory)+(get16memat(Param+2,memory) << 16);
     if ( (i32 & ( 1 << 31)) != 0) {
@@ -822,25 +932,12 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
     }
     printf("%d",i32);    
     break;
-  case 33:
+  case 33:        // CastPrint32II
     // Print 32bit number that top of stack points to.    
     i32=get16memat(tos,memory)+(get16memat(sft,memory)<<16);
     printf("%d",i32);
     break;
-  case CastSelectDisk:
-    char filename[20];
-    if (DeviceHandle != NULL ) {
-      fclose(DeviceHandle);
-    }
-    snprintf(filename,sizeof(filename), "DISK%02d.disk", Param);
-    DeviceHandle = fopen(filename, "r+b");
-    if (DeviceHandle != NULL) {
-      DiskPtr = 0;
-      fseek(DeviceHandle, 0, SEEK_SET);
-    } else {
-      printf("Error accessing DISK device: %d",Param);
-        }
-
+    
   case 99:
     returncode=-1;
     break;
@@ -879,9 +976,10 @@ void handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWS
   #define PollSetEcho 5
   #define PollReadCINoWait 6
   #define PollReadSector 22
+  #define PollReadSectorI 26
   #define PollReadTapeI 23
   #define PollRewindTape 24
-  #define PollReadTime 25
+  #define PollReadTime 25   
   switch (tos) {
   case PollReadIntI:
     scanf("%d",&a);
@@ -914,7 +1012,57 @@ void handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWS
       break;
     }
     put16atmem(Param,(int)c,memory);
-      break;
+    break;
+  case PollReadSector:
+    if (DiskHandle != NULL ) {
+      if ( Param <= MAXMEMP-0x200) {
+        if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+          fprintf(stderr, "Error Seeking in disk failed.\n");
+        }
+        unsigned char block[BLOCK_SIZE];
+        size_t bytesRead = fread(block, 1, BLOCK_SIZE, DiskHandle);
+        if (bytesRead != BLOCK_SIZE) {
+          fprintf(stderr, "Error reading from disk.\n");
+        }
+        unsigned int tidx = Param;
+        for(int i = 0; i < BLOCK_SIZE; ++i) {
+          memory[tidx] = block[i] & 0xff;
+          tidx += 1;
+        }
+      } else {
+        fprintf(stderr, "042 Attempted to read block with insufficen memory address %04x\n",Param);
+      }
+    } else {
+      fprintf(stderr, "Error, attempted to write to Disk without first selecting it.");
+    }
+    break;
+  case PollReadSectorI:
+    if (DiskHandle != NULL ) {
+      if ( ParamI <= MAXMEMP-0x200) {
+        if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+          fprintf(stderr, "Error Seeking in disk failed.\n");
+        }
+        unsigned char block[BLOCK_SIZE];
+        size_t bytesRead = fread(block, 1, BLOCK_SIZE, DiskHandle);
+        if (bytesRead != BLOCK_SIZE) {
+          fprintf(stderr, "Error reading from disk.\n");
+        }
+        unsigned int tidx = ParamI;
+        for(int i = 0; i < BLOCK_SIZE; ++i) {
+          memory[tidx] = block[i] & 0xff;
+          tidx += 1;
+        }
+      } else {
+        fprintf(stderr, "042 Attempted to read block with insufficen memory address %04x\n",Param);
+      }
+    } else {
+      fprintf(stderr, "Error, attempted to write to Disk without first selecting it.");
+    }
+    break;
+  
+           
+                
+            
   case PollReadTapeI:
     break;
   case PollReadTime:

@@ -59,8 +59,12 @@ M IF_EQ_VA \
   %S @JMP %V_ENDIF \
   :%0_True
 # Reverse for readability
-M IF_EQ_AV @IF_EQ_VA %2 %1
-
+M IF_EQ_AV \
+  @PUSH %1 @PUSHI %2 \
+  @CMPS @POPNULL @POPNULL \
+  @JMPZ %0_True \
+  %S @JMP %V_ENDIF \
+  :%0_True
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
    @CMPS \
@@ -276,14 +280,14 @@ M ELSE \
 #   @JMP %V_ElseBlock \
 #   :%V_JustEnd \
 #   %P
- M ENDIF \
-   @JMP %V_JustEnd \
-   :%V_ENDIF \
-   ? %V_ElseFlag \
-     @JMP %V_ElseBlock \
-   ENDBLOCK \
-   :%V_JustEnd \
-   %P
+M ENDIF \
+  @JMP %V_JustEnd \
+  :%V_ENDIF \
+  ? %V_ElseFlag \
+    @JMP %V_ElseBlock \
+  ENDBLOCK \
+:%V_JustEnd \
+%P
 
 #
 # Now this section is for simple While loop block structures.

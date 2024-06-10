@@ -5,7 +5,7 @@ L div.ld
 L mul.ld
 L softstack.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
-G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst
+G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok
 
 #
 # Some 'String' Macros
@@ -624,7 +624,6 @@ M STRSETI \
       @POPNULL
   @ELSE            # Hande case where moving backworks is better.
       @POPNULL
-      :Break1
       @PUSHI Length @RTR @POPI Base  # Length/2 (round down)
       @PUSHI SrcPtr @ADDI Length @SUB 1 @POPI SrcPtr
       @PUSHI DstPtr @ADDI Length @SUB 1 @POPI DstPtr
@@ -872,5 +871,82 @@ M STRSETI \
 @PUSH ShortString
 @CALL strstr
 @PUSHI sfReturn
+@RET
+
+# strtok(InString, Delim) searchs string and replaces delim(s) with null
+# keeps an internal pointer so when string is null it will continue from
+# where it last left off. When original string is complete, will also return null
+:int_sptr 0
+:strtok
+@PUSHRETURN
+=FoundFlag Var01
+=InString Var02
+=Delim Var03
+=Index1 Var04
+=TolkenHead Var05
+=DelimCurse Var06
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+@PUSHLOCALI Var05
+@PUSHLOCALI Var06
+#
+@POPI Delim
+@POPI InString
+@IF_EQ_AV 0 InString   # If Null, try to continue to use old int_sptr
+   @MV2V int_sptr InString
+@ENDIF
+#
+@PUSHII InString @AND 0xff
+
+@IF_ZERO
+   # No more tolkens left to parse.
+   # just leave the zero as the return value of NULL
+@ELSE
+   @MV2V InString TolkenHead
+   @WHILE_NOTZERO
+       @MA2V 0 FoundFlag
+       @MA2V 0 Index1
+       @MV2V Delim DelimCurse  # Set Cursor to loop though Delim
+       @PUSHII DelimCurse @AND 0xff
+       @WHILE_NOTZERO
+           @IF_EQ_S
+               # Found, replace with null and end loop
+               @POPNULL    # Pops off DelimCurse, but leaves Instring[x]
+               @PUSHII InString @AND 0xff00
+               @POPII InString
+               @PUSH 0
+               @MA2V 1 FoundFlag
+            @ELSE
+               @POPNULL
+               @INCI DelimCurse
+            @ENDIF
+            @PUSHII DelimCurse @AND 0xff    # Will exit inner loop when DelimCurse -> null            
+        @ENDWHILE
+        @POPNULL     # Pops off the 0 that terminate while
+        @POPNULL     # Pop off Instring[x]
+        @IF_EQ_AV 0 FoundFlag
+           # Did not find match, try next character
+           @INCI InString
+           @PUSHII InString @AND 0xff  # continue while (unless InString[x]==null)
+        @ELSE
+           # Found match. So end the outer while loop.
+           @INCI InString        # Move to the null.           
+           @PUSH 0
+        @ENDIF
+   @ENDWHILE
+   @POPNULL   # Pops off zero that ended while.
+   @POPNULL
+   @PUSHI TolkenHead    # We return the TolkenHead
+   @MV2V InString int_sptr   # Save for future calls with InString of NULL
+@ENDIF
+@POPLOCAL Var06
+@POPLOCAL Var05
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
 @RET
 ENDBLOCK

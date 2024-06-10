@@ -71,13 +71,18 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =CastPrintBinI 5
 =CastPrintChar 6
 =CastPrintStrI 11
+=CastPrintIntUI 12
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
 =CastPrint32I 32
+=CastPrint32II 33
 =CastSelectDisk 20
+=CastSelectDiskI 24
 =CastSeekDisk 21
+=CastSeekDiskI 25
 =CastWriteSector 22
+=CastWriteSectorI 26
 =CastSyncDisk 23
 =CastPrint32S 33
 =CastTapeWriteI 34
@@ -88,6 +93,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollSetEcho 5
 =PollReadCINoWait 6
 =PollReadSector 22
+=PollReadSectorI 26
 =PollReadTapeI 23
 =PollRewindTape 24
 =PollReadTime 25
@@ -194,7 +200,7 @@ M JLE @JMPN %0Skp @JMP %1 :%0Skp         # A=A-B, if B<=A or A>B JMP %1
 M CALL @PUSH $%01 @JMP %1 :%01
 M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
 M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
-#M RET @POPI $%0D @JMPI $%0D :%0D 0
+#M RET @POPI $com%0D @JMPI $%0D :%0D 0
 M RET @JMPS
 M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
@@ -206,6 +212,8 @@ M PRTLN @JMP J%0J1 :%0M1 %1 "\n\0" :J%0J1 @PUSH CastPrintStr @CAST $%0M1 @POPNUL
 M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStr @CAST $%0M1 @POPNULL
 # Print value of variable
 M PRTI @PUSH CastPrintIntI @CAST %1 @POPNULL
+# Print Value of unsigned variable
+M PRTUI @PUSH CastPrintIntUI @CAST %1 @POPNULL
 # Print value of variable in Hex
 M PRTHEXI @PUSH CastPrintHexI @CAST %1 @POPNULL
 # Print value Pointer is pointing at in Hex
@@ -213,15 +221,23 @@ M PRTHEXII @PUSH CastPrintHexII @CAST %1 @POPNULL
 # Print value of variable but surrounded with spaces for readability
 M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 # Print string starting at address
-# Print string start at address
 M PRTSTR @PUSH CastPrintStr @CAST %1 @POPNULL
+# Print string start at variable
 M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
+# Alternative name for PRTSTR
 M PRTS @PUSH CastPrintStr @CAST %1 @POPNULL
+# Alternative name for PRTSTRI
 M PRTSI @PUSH CastPrintStrI @CAST %1 @POPNULL
-# Print string starting at the address that is stored AT the given pointer.
-
+# Print given Character
+M PRTCH @PUSH CastPrintChar @CAST %1 @POPNULL
+# Print Character at Variable
+M PRTCHI @PUSH CastPrintCharI @CAST %1 @POPNULL
+# Print Character on Stack
+M PRTCHS @JMP %0SkipF \
+     :%0Data 0 \
+     :%0SkipF @DUP @AND 0xff @POPI %0Data @PUSH CastPrintChar @CAST %0Data @POPNULL 
 # Print string whos address is on the stack
-M PRTSS @JMP %0Skip :%0ptr 0 :%0Skip @POPI %0Ptr @PUSH CastPrintStrI @CAST %0ptr 0 @POPNULL
+M PRTSS @JMP %0Skip :%0ptr 0 :%0Skip @POPI %0Ptr @PUSH CastPrintCharI @CAST %0ptr 0
 # Print value Pointer is pointing at.
 M PRTII @PUSHII %1 @POPI %0Store \
         @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
@@ -243,10 +259,11 @@ M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
 M PRTSGNTOP @DUP @POPI %0Store @PRTSGNI %0Store @JMP %0Skip :%0Store 0 :%0Skip
 # Print 32bit number starting at address
 M PRT32 @PUSH CastPrint32I @CAST %1 @POPNULL
-M PRT32I @JMP %0Jmp :%0store1 0 :%0store2 0 \
-   :%0Jmp @PUSHII %1 @POPI %0store1 \
-   @PUSHI %1 @ADD 2 @PUSHS @POPI %0store2 \
-   @PUSH CastPrint32I @CAST %0store1 @POPNULL
+M PRT32I @PUSH CastPrint32II @CAST %1 @POPNULL
+#M PRT32I @JMP %0Jmp :%0store1 0 :%0store2 0 \
+#   :%0Jmp @PUSHII %1 @POPI %0store1 \
+#   @PUSHI %1 @ADD 2 @PUSHS @POPI %0store2 \
+#   @PUSH CastPrint32I @CAST %0store1 @POPNULL
 # Print 32bit number that tos is pointing to.
 M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
 # Read an Integer from keyboard
@@ -283,16 +300,19 @@ M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 
 # A way to impliment a 16 bit 2 comp ABS function
 M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
+# Time Fetch, puts on stack 32 bit time as two 16 bit PUSHes
+M GETTIME @PUSH PollReadTime @POLL 0
+
 # Disk IO Group
 M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSELI @PUSH CastSelectDiskI @CAST %1 @POPNULL
 M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSEEKI @PUSH CastSeekDiskI @CAST %1 @POPNULL
 M DISKWRITE @PUSH CastWriteSector @CAST %1 @POPNULL
-M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST :%0_LOC 0 @POPNULL
+M DISKWRITEI @PUSH CastWriteSectorI @CAST %1 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
 M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
-M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL :%0_LOC 0 @POPNULL
+M DISKREADI @PUSH PollReadSectorI @POLL %1 @POPNULL
 # We use the same logic for both Tape and Disk Select.
 M TAPESEL @PUSH CastSelectDisk @CAST %1 @POPNULL
 M TAPESELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL

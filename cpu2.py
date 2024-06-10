@@ -38,8 +38,11 @@ CastPrintCharI=16
 CastPrintHexI=17
 CastPrintHexII=18
 CastSelectDisk=20
+CastSelectDiskI=24
 CastSeekDisk=21
+CastSeekDiskI=25
 CastWriteSector=22
+CastWriteSectorI=26
 CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
@@ -55,6 +58,7 @@ PollSetNoEcho=4
 PollSetEcho=5
 PollReadCINoWait=6
 PollReadSector=22
+PollReadSectorI=26
 PollReadTapeI=23
 PollRewindTape=24
 PollReadTime=25
@@ -134,7 +138,7 @@ ActiveFile = ""
 EchoFlag = False
 UniqueID = 0
 SkipBlock = 0
-DataSegment = 0   # In cases where data and code are in seperate spaces, these are used
+DataSegment=-1      # if DataSegment is -1 then Data and Address overlap.
 dataaddress = 0 
 
 GLOBALFLAG = 1
@@ -143,7 +147,6 @@ watchwords = []
 MAXMEMSP = 0xffff
 MAXHWSTACK = 0xff - 2
 Debug = 0
-DataSegment=-1      # if DataSegment is -1 then Data and Address overlap.
 
 InDebugger = False
 RunMode = False
@@ -231,18 +234,6 @@ class microcpu:
     DiskPtr = -1
     OPTDICTFUNC={}
     
-
-    def switcher(self, optcall, argument):
-        func = OPTDICTFUNC.get(optcall, lambda arg: "Invalid call")
-        return func(argument)
-
-    
-#    def switcher(self, optcall, argument):
-#        return self.OPTDICTFUNC.get(optcall, lambda arg: "Invalid call")(argument)
-#        return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)
-
-                                     
-
     def __init__(self, origin, memsize):
         self.pc = origin
         self.flags = 0    # B0 = ZF, B1=NF, B2=CF, B3=OF
@@ -257,29 +248,14 @@ class microcpu:
         self.clocksec = 1000
         for i in SymToValMap:
             func_name = f"opt{OPTSYM[i[0]]}"
-            if hasattr(self, func_name):
-                OPTDICTFUNC[i[0]] = getattr(self, func_name)
-            else:
-                print("Warning %s not found." % func_name)
-                OPTDICTFUNC[i[0]] = lambda arg: "Invalid call"            
 
+    def lowbyte(self, invalue):
+        invalue = int(invalue)
+        return invalue & 0xff
 
-        
-
-    def insertbyte(self, location, value):
-        self.memspace[location] = value
-
-    def UNUSED_twos_compToo(self, val, bits):
-        # Convert an 'anysize' signed interget into 2comp bits size integer
-        if (val & (1 << (bit - 1))) != 0:
-            val = val - (1 << bits)
-        return val
-
-    def twos_compFrom(self, val, bits):
-        #        return val
-        if (val & (1 << (bits - 1))) != 0:    # Sign bit set
-            val = val - (2 ** bits)
-        return val
+    def highbyte(self, invalue):
+        invalue = int(invalue)
+        return ((invalue & 0xff00) >> 8)
 
     def FindWhatLine(self, address):
         global LineAddrList
@@ -341,804 +317,15 @@ class microcpu:
             print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
             debugger(FileLabels,"")
 
-    def UNUSED_loadat(self, location, values):
-        i = location
-        for val in values:
-            self.memspace[i] = val
-            i += 1
-
-    def UNUSED_readfrom(self, location, blocksize):
-        result = []
-        for i in range(blocksize):
-            result += self.memspace[i+location]
-        return result
-
-    def lowbyte(self, invalue):
-        invalue = int(invalue)
-        return invalue & 0xff
-
-    def highbyte(self, invalue):
-        invalue = int(invalue)
-        return ((invalue & 0xff00) >> 8)
-
-    def fetchAcum(self, address):
-        # Returns value at the top of stack.
-        # address zero is alwasy top of stack, other values will attempt to fetch from that stack depth.
-        CTPS = self.mb[0xff]
-        if address >= MAXHWSTACK:
-            self.raiseerror(
-                "001 Invalide Buffer Refrence %d. fetchAcum" % address)
-        if address == 0 and CTPS > 0:
-            address = (CTPS-1)*2
-        elif address != 0 and address <= CTPS:
-            address = CTPS * 2 - (address+1) * 2
-        else:
-            print("Stack Empty.",file=DebugOut)
-            return 0
-        return self.mb[address]+(self.mb[address+1] << 8)
-
-    def StoreAcum(self, address, value):
-        # Saves at top of stack the Acum value. Does not change stack.
-        # Address zero is always top, a given index >0 will try to save value at that stack depth
-        CTPS = self.mb[0xff]
-        if address > MAXHWSTACK:
-            self.raiseerror(
-                "002 Invalide Buffer Refrence %d, StoreAcum" % address)
-        if address == 0:
-            address = (CTPS-1)*2
-        else:
-            address = (CTPS * 2) - (address*2)
-        self.mb[address] = self.lowbyte(value)
-        self.mb[address+1] = self.highbyte(value)
-
-    def getwordat(self, address):
-        a = 0
+    def getwordat(self,address):
+        a=0
         if address == MAXMEMSP:
-            return 0        
+            return 0
         if address >= MAXMEMSP:
-            #            print("Invalid address %s" % address)
             self.raiseerror("003 Invalid Address: %d, getwordat" % (address))
             return 0
         a = self.memspace[address] + (self.memspace[address+1] << 8)
         return a
-
-    def putwordat(self, address, value):
-        address = int(address)
-        if address > MAXMEMSP:
-            self.raiseerror("004 Invalid Address: %d, putwordat" % (address))
-        self.insertbyte(address, self.lowbyte(value))
-        self.insertbyte(address + 1, self.highbyte(value))
-
-    def optNOP(self, count):
-        return
-
-    def optPUSH(self, invalue):
-        sp = self.mb[0xff]
-        if sp > (0xff/2 - 2):
-            self.raiseerror("005 MB Stack overflow, optpush")
-        sp *= 2
-        self.mb[sp] = self.lowbyte(invalue)
-        self.mb[sp + 1] = self.highbyte(invalue)
-        self.mb[0xff] += 1
-
-    def optDUP(self, address):
-        sp = self.mb[0xff]
-        if sp > (0xff/2 - 2):
-            self.raiseerror("006 MB Stack overflow, optpush")
-        sp *= 2
-        self.mb[sp] = self.lowbyte(self.mb[sp - 2])
-        self.mb[sp + 1] = self.lowbyte(self.mb[sp - 1])
-        self.mb[0xff] += 1
-
-    def optPUSHI(self, address):
-        sp = self.mb[0xff]
-        if sp > (0xff/2 - 2):
-            self.raiseerror("007 MB Stack overflow, optPUSHI")
-        sp *= 2
-        if (address+1 > MAXMEMSP):
-            self.raiseerror("008 Invalid Address: %d, optPUSHI" % (address))
-        self.mb[sp] = self.memspace[address]
-        address += 1
-        if (address <= MAXMEMSP):
-            self.mb[sp+1] = self.memspace[address]
-        self.mb[0xff] += 1
-
-    def optPUSHII(self, address):
-        sp = self.mb[0xff]
-        if sp > (0xff/2 - 2):
-            self.raiseerror("009 MB Stack overflow, optPUSHII")
-        sp *= 2
-        newaddress = self.getwordat(address)
-        if (newaddress+1 > MAXMEMSP):
-            self.raiseerror(
-                "010 Invalid Indirect Address: %d, optPUSHII" % (newaddress))
-        self.mb[sp] = self.memspace[newaddress]
-        newaddress += 1
-        if (newaddress <= MAXMEMSP):
-            self.mb[sp+1] = self.memspace[newaddress]
-        self.mb[0xff] += 1
-
-    def optPUSHS(self, address):
-        # Since we are storing the result in the same stack spot as the address was, no need for overflow checks
-        newaddress = self.fetchAcum(0)
-        self.StoreAcum(0, self.getwordat(newaddress))
-
-    def optPOPNULL(self, address):
-        if (address > MAXMEMSP):
-            self.raiseerror("011 Invalid Address: %d, optPOPI" % (address))
-        sp = self.mb[0xff]
-        if sp < 1:
-            self.raiseerror("012 Stack underflow, optPOPI")
-        self.mb[0xff] -= 1
-
-    def optSWP(self, address):
-        # We're not changing the sp level, so no need for tests.
-        sp = self.mb[0xff]
-        sp *= 2
-        # Pythonic swap
-        self.mb[sp - 2], self.mb[sp - 4] = self.mb[sp - 4], self.mb[sp - 2]
-        self.mb[sp - 1], self.mb[sp - 3] = self.mb[sp - 3], self.mb[sp - 1]
-
-    def optPOPI(self, address):
-        if (address > MAXMEMSP):
-            self.raiseerror("013 Invalid Address: %d, optPOPI" % (address))
-        sp = self.mb[0xff]
-        if sp < 1:
-            self.raiseerror("014 Stack underflow, optPOPI")
-        sp -= 1
-        sp *= 2
-        if sp > (0xff/2 - 2):
-            self.raiseerror("015 MB Stack overflow, optPOPI")
-        self.insertbyte(address, self.mb[sp])
-        if (address+1 <= MAXMEMSP):
-            self.insertbyte(address+1, self.mb[sp+1])
-        self.mb[0xff] -= 1
-
-    def optPOPII(self, firstaddress):
-        address = self.getwordat(firstaddress)
-        if (address+1 > MAXMEMSP):
-            self.raiseerror(
-                "016 Invalid Indirect Address: %d, optPOPII" % (address))
-        sp = self.mb[0xff]
-        if sp < 1:
-            self.raiseerror("017 Stack underflow, optPOPII")
-        self.optPOPI(address)
-
-    def optPOPS(self, notused):
-        if self.mb[0xff] < 2:
-            self.raiseerror("018 Stack underflow, OptPOPS")
-        newaddress = self.fetchAcum(0)
-        A1 = self.fetchAcum(1)
-        self.putwordat(newaddress, A1)
-        self.mb[0xff] -= 2
-
-    def SetFlags(self, A1):
-        # The Basic SetFlags only works for fixed numbers so we'll only look at
-        # Zero, Negative and Carry.
-        # Overflow requires us to know if we are adding or subtracting so we'll do
-        # That inside the add/sub/cmp operations
-        ZF = 0
-        NF = 0
-        CF = 0
-        B2 = abs(A1) & 0xffff
-        ZF = 1 if (B2 == 0) else 0
-        NF = 1 if (((A1 & 0xffff) & 0x8000) != 0) else 0
-        CF = 1 if (A1 & 0xffff0000) > 0 else 0
-        self.flags = ZF+(NF << 1)+(CF << 2)
-
-    def OverFlowTest(self, a, b, c, IsSubStraction):
-        a = -1 if ((a & 0xffff) > 0x8000) else 1
-        b = -1 if ((b & 0xffff) > 0x8000) else 1
-        c = -1 if ((c & 0xffff) > 0x8000) else 1
-        if (IsSubStraction == 0):
-            if (((a > 0) and (b > 0) and (c < 0)) or ((a < 0) and (b < 0) and (c >= 0))):
-                OF = 1
-            else:
-                OF = 0
-        else:
-            if (((a > 0) and (b < 0) and (c < 0)) or ((a < 0) and (b > 0) and (c >= 0))):
-                OF = 1
-            else:
-                OF = 0
-        self.flags = (self.flags & 0x37) | (OF << 3)
-
-    def optCMP(self, asvalue):
-        R1 = asvalue
-        R2 = self.fetchAcum(0)
-        A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
-
-    def optCMPS(self, address):
-        R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
-
-    def optCMPI(self, address):
-        R1 = self.getwordat(address)
-        R2 = self.fetchAcum(0)
-        A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
-
-    def optCMPII(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror(
-                "019 Invalid Address for CMP: %d, optCMPII" % (address))
-        newaddress = self.getwordat(address)
-        self.optCMPI(newaddress)
-
-    def optADD(self, invalue):
-        #        R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        #        R2 = self.twos_compFrom(invalue, 16)
-        R1 = self.fetchAcum(0)
-        R2 = invalue
-        A1 = R1 + R2
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 0)
-        self.StoreAcum(0, A1)
-
-    def optADDS(self, invalue):
-        #        R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        #        R2 = self.twos_compFrom(self.fetchAcum(1),16)
-        R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R1 + R2
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 0)
-        self.mb[0xff] -= 1
-        self.StoreAcum(0, A1)
-
-    def optADDI(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("020 Invalid Address: %d, optADDI" % (address))
-        newaddress = self.getwordat(address)
-        self.optADD(newaddress)
-
-    def optADDII(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("021 Invalid Address: %d, optANDII" % (address))
-        newaddress = self.getwordat(address)
-        if (newaddress > MAXMEMSP):
-            self.raiseerror("022 Invalid Address %d, optANDII" % (address))
-        self.optADDI(newaddress)
-
-    def optSUB(self, invalue):
-        #       R1 = self.twos_compFrom(self.fetchAcum(0),16)
-        #       R2 = self.twos_compFrom(invalue,16)
-        R2 = self.fetchAcum(0)
-        R1 = invalue
-        A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R2, R1, A1, 1)
-        A1 = A1 & 0xffff
-        self.StoreAcum(0, A1)
-
-    def optSUBS(self, invalue):
-        R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R2 - R1
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 1)
-        self.mb[0xff] -= 1
-        self.StoreAcum(0, A1)
-
-    def optSUBI(self, address):
-        #        R1 = self.twos_compFrom(self.getwordat(address),16)
-        #        R2 = self.twos_compFrom(self.fetchAcum(0),16)
-        R1 = self.getwordat(address)
-        R2 = self.fetchAcum(0)
-        A1 = (R2 - R1) & 0xffff
-        self.SetFlags(A1)
-        self.OverFlowTest(R1, R2, A1, 1)
-        self.StoreAcum(0, A1)
-
-    def optSUBII(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("023 Invalid Address: %d, optSUBII" % (address))
-        newaddress = self.getwordat(address)
-        if (newaddress > MAXMEMSP):
-            self.raiseerror("024 Invalid Address %d, optSUBII" % (address))
-        self.optSUBI(newaddress)
-
-    def optOR(self, ivalue):
-        R1 = self.fetchAcum(0)
-        R2 = ivalue
-        A1 = R1 | R2
-        self.SetFlags(A1)
-        A1 = A1 & 0xffff
-        self.StoreAcum(0, A1)
-
-    def optORS(self, ivalue):
-        R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R1 | R2
-        self.SetFlags(A1)
-        A1 = A1 & 0xffff
-        self.mb[0xff] -= 1
-        self.StoreAcum(1, A1)
-
-    def optORI(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("025 Invalid Address: %d, optORI" % (address))
-        newaddress = self.getwordat(address)
-        self.optOR(newaddress)
-
-    def optORII(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("026 Invalid Address: %d, optORII" % (address))
-        newaddress = self.getwordat(address)
-        if (newaddress > MAXMEMSP):
-            self.raiseerror("027 Invalid Address %d, optORII" % (address))
-        self.optORI(newaddress)
-
-    def optAND(self, ivalue):
-        R1 = self.fetchAcum(0)
-        R2 = ivalue
-        A1 = R1 & R2
-        self.SetFlags(A1)
-        A1 = A1 & 0xffff
-        self.StoreAcum(0, A1)
-
-    def optANDS(self, ivalue):
-        R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R1 & R2
-        self.SetFlags(A1)
-        A1 = A1 & 0xffff
-        self.mb[0xff] -= 1
-        self.StoreAcum(0, A1)
-
-    def optANDI(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("028 Invalid Address: %d, optANDI" % (address))
-        newaddress = self.getwordat(address)
-        self.optAND(newaddress)
-
-    def optANDII(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("029 Invalid Address: %d, optANDII" % (address))
-        newaddress = self.getwordat(address)
-        if (newaddress > MAXMEMSP):
-            self.raiseerror("030 Invalid Address %d, optANDII" % (address))
-        self.optANDI(newaddress)
-    def optXOR(self, ivalue):
-        R1 = self.fetchAcum(0)
-        R2 = ivalue
-        A1 = R1 ^ R2
-        self.SetFlags(A1)
-        A1 = A1 & 0xffff
-        self.StoreAcum(0, A1)
-
-    def optXORS(self, ivalue):
-        R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R1 ^ R2
-        self.SetFlags(A1)
-        A1 = A1 & 0xffff
-        self.mb[0xff] -= 1
-        self.StoreAcum(1, A1)
-
-    def optXORI(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("025 Invalid Address: %d, optORI" % (address))
-        newaddress = self.getwordat(address)
-        self.optOR(newaddress)
-
-    def optXORII(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror("026 Invalid Address: %d, optORII" % (address))
-        newaddress = self.getwordat(address)
-        if (newaddress > MAXMEMSP):
-            self.raiseerror("027 Invalid Address %d, optORII" % (address))
-        self.optORI(newaddress)
-
-    def optJMPZ(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror(
-                "031 Invalid Address for Jump: %d, optJMPZ" % (address))
-        if ((self.flags & 0x1) != 0):
-            self.pc = address
-
-    def optJMPN(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror(
-                "032 Invalid Address for Jump: %d, optJMPN" % (address))
-        if ((self.flags & 0x2) != 0):
-            self.pc = address
-
-    def optJMPC(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror(
-                "033 Invalid Address for Jump: %d, optJMPC" % (address))
-        if ((self.flags & 0x4) != 0):
-            self.pc = address
-
-    def optJMPO(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror(
-                "034 Invalid Address for Jump: %d, optJMPO" % (address))
-        if ((self.flags & 0x8) != 0):
-            self.pc = address
-
-    def optJMP(self, address):
-        if address >= MAXMEMSP:
-            self.raiseerror(
-                "035 Invalid Address for Jump: %d, optJMP" % (address))
-        self.pc = address
-
-    def optJMPI(self, address):
-        newaddress = self.getwordat(address)
-        self.pc = newaddress
-
-    def optJMPS(self,address):
-        newaddress = self.fetchAcum(0)
-        self.mb[0xff] -= 1
-        self.pc = newaddress
-        
-    def optCAST(self, address):
-        global Debug, DeviceHandle, DeviceFile, PrevPC
-        # In the future 'CAST' will related to networking, for now it will just write to stdout
-        # for now it acts as the stdout write tool
-        # if Acum is 0, it will print a small dump of the memory of address and the current Stack
-        # if 1, it will print the null terminated string starting at address
-        # if 2 it will print the 16bit integer value
-        # if 3 it will print the value at the address given
-        # if 4 it will print the signed value at the address given.
-        # if 5 it will print the binary at the address given.
-        # if 6 it will print just ascii code of lower byte of operand
-        # 11 is like 1, but using indirect address [address]
-        # 12 is like 2, but using indirect address [address]
-        # 16 is like 6, but will priunt lower byte of value at [address]
-        # 17 print 16b hex value at address
-        # 18 print 16b hex value at [address]
-        # 19 print 32bit int stored at 4 bytes starting at address
-        # Disk Hardware Codes: A very primitive 'random IO Block' device, no filesystem, just addresses of 512 byte blocks.
-        # 20 is selects Random Access storage device (disk) address is the ID of the device (disk 0 , disk 1 etc)
-        # 21 is 'seek' identifies the record in the current disk.
-        # 22 is 'write block' address points to a block of memory (512 bytes) that will be written to disk
-        # 23 is sync, closes the device until the next write.
-        # if 32 it will print the 32 bit integer value stored AT location of address
-        # if 33 if will print the 32 bit integer value stored At location on Stack
-
-        if address >= (MAXMEMSP-11):
-            self.raiseerror(
-                "036 Insufficent space for Message Address at %d, optCAST" % (address))
-        cmd = self.fetchAcum(0)
-        if cmd == 0:
-            if self.mb[0xff] > 0:
-                print("Stack: \n".join('%02x ' %
-                      item for item in self.mb[0:self.mb[0xff]]))
-            DissAsm(self.pc, 3, self)
-        if cmd == CastPrintStr:
-            i = address
-            while self.memspace[i] != 0 and i < MAXMEMSP:
-                c = self.memspace[i]
-                if c == 0:
-                    print("Odd C is zero")
-                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30):
-                    sys.stdout.write("\%02x" % c)
-                else:
-                    sys.stdout.write(chr(c))
-                i += 1
-        if cmd == CastPrintInt:
-            sys.stdout.write("%d" % address)
-        if cmd == CastPrintIntI:
-            v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%d" % v)
-        if cmd == CastPrintSignI:
-            v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%d" % (self.twos_compFrom(v, 16)))
-        if cmd == CastPrintBinI:
-            v = self.memspace[address]+(self.memspace[address+1] << 8)
-            sys.stdout.write("%s" % format(v, "016b"))
-        if cmd == CastPrintChar:
-            v = self.memspace[address]
-            if (v < 31):
-                print("%c" % v)
-            else:
-                sys.stdout.write(chr(v))
-        if cmd == CastPrintStrI:
-            i = self.getwordat(address)
-            while self.memspace[i] != 0 and i < MAXMEMSP:
-                c = self.memspace[i]
-                if c == 0:
-                    print("0.0")
-                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
-                    sys.stdout.write("\%02x" % c)
-                else:
-                    sys.stdout.write(chr(c))
-                i += 1
-            sys.stdout.write("%d" % address)
-        if cmd == 12:
-            sys.stdout.write("%d" % self.getwordat(address))
-        if cmd == CastPrintCharI:
-            v = self.memspace[self.getwordat(address)]
-            sys.stdout.write("%c" % chr(v))
-        if cmd == CastPrintHexI:
-            v = self.getwordat(address)
-            sys.stdout.write("%04x" % (v))
-        if cmd == CastPrintHexII:
-            v = self.getwordat(self.getwordat(address))
-            sys.stdout.write("%04x" % v)
-        if cmd == 19:
-            v = self.getwordat(address)
-            v = v + (self.getwordat(address+2) << 16)
-            sys.stdout.write("%s" % v)
-        if cmd == CastSelectDisk:
-            if DeviceHandle == None:
-                DeviceHandle = "DISK%02d.disk" % address
-            try:
-                DeviceFile = open(DeviceHandle, "r+b")
-                self.DiskPtr = 0
-                DeviceFile.seek(0,0)
-            except IOError:
-                self.raiseerror(
-                    "037 Error tying to open Random Device: %s" % DeviceHandle)
-        if cmd == CastSeekDisk:
-            if DeviceHandle == None:
-                self.raiseerror("038 Attempted to Seek without selecting Disk")
-            self.DiskPtr = address*0x200
-            DeviceFile.seek(self.DiskPtr, 0)
-        if cmd == CastWriteSector:
-            if DeviceHandle == None:
-                self.raiseerror("038 Attempted to write without selecting Disk")
-            v = address
-            if v < MAXMEMSP-0x1ff:
-                block = self.memspace[v:v+512]
-                DeviceFile.seek(self.DiskPtr)
-                DeviceFile.write(bytes(block))
-                self.DiskPtr =+ 0x200
-                DeviceFile.flush()
-            else:
-                self.raiseerror(
-                    "038 Attempted to write block larger than memory to storage")
-        if cmd == CastSyncDisk:
-            if DeviceHandle != None:
-                DeviceFile.close()
-                DeviceFile = open(DeviceHandle, "r+b")                
-        if cmd == CastPrint32I:
-            iaddr = address
-            v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
-            if (v & (1 << 31) != 0):
-                v = v - (1 << 32)
-            sys.stdout.write("%s" % v)
-        if cmd == CastPrint32S:
-            iaddr = self.fetchAcum(1)
-            v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
-            sys.stdout.write("%d" % v)
-        if cmd == CastEnd:
-            print("\nEND of Run:(%d Opts)" % GlobalOptCnt)
-            sys.exit(address)
-        if cmd == CastDebugToggle:
-            Debug = 0 if Debug else 1
-        if cmd == CastStackDump:
-            print(" %04x:Stack ( %d):" %
-                             (PrevPC, self.mb[0xff]-1), file=DebugOut,end="")
-            for i in range(self.mb[0xff]-1):
-                val = self.mb[i*2]+((self.mb[(i*2)+1])<<8)
-                print(" %04x" % (val),file=DebugOut,end="")
-            print(" ",file=DebugOut)
-        if cmd == CastTapeWriteI:
-            if DeviceHandle != None:
-                v=address
-                if v < MAXMEMSP-0x1ff:
-                    block=self.memspace[v:v+512]
-                    DeviceFile.write(bytes(block))
-                    DeviceFile.flust()
-                else:
-                    self.raiseerror(
-                        "039 Attempt to write from source memory past available memory")
-                        
-        sys.stdout.flush()
-
-    def optPOLL(self, address):
-        global Debug, EchoFlag
-        # POLL is the Input funciton
-        # Acum holds the funciton and parm holds either value or address
-        # Acum,            Action
-        # 1         Read in just digts or '-' for signed integer. Store at address
-        # 2         Read line of text, linefeed replaced by null
-        # 3         Read keybord character saved it as 16 bit value at address, no echo. Some See list for 'special' keys
-        # 4         Set TTY no-echo
-        # 5         Set TTY ech
-        # 22        Requires Disk Device already initilized. Reads 512 Byte block from [address]
-        #
-        if address >= (MAXMEMSP-11):
-            self.raiseerror(
-                "040 Insufficent space for Message Address at %d, optPOLL" % (address))
-        cmd = self.fetchAcum(0)
-        if cmd == PollReadIntI:
-            sys.stdout.flush()
-            rawdata = sys.stdin.readline(256)
-            justnum = "0"
-            for c in rawdata:
-                if (c >= '0' and c <= '9') or (c == '-'):
-                    justnum = justnum + c
-            if int(justnum) < 65535 and int(justnum) >= -32767:
-                CPU.putwordat(address, int(justnum))
-            else:
-                print("Error: %s is not valid 16 bit number" % justnum,file=DebugOut)
-                CPU.putwordat(address, 0)
-        if cmd == PollReadStrI:
-            sys.stdout.flush()
-            rawdata = sys.stdin.readline(256)
-            i = address
-            for c in rawdata:
-                if ord(c) > 31:
-                    c = ord(c)
-#                    c = ( ord(c) << 8  & 0xff00 )
-                    self.putwordat(i, c)
-                    i += 1
-                    if (i > (MAXMEMSP-11)):
-                        self.raiseerror(
-                            "041 Insufficent space for Message Address at %d, optPOLL" % (i))
-        if cmd == PollReadCharI:
-            # Address must be at least 4 bytes for special code strings.
-            c = readchar.readkey()
-            if not (c):
-                c = ""
-#            c = keyboard.read_key()
-#            c = raw_input("")
-#            c = readchar.readkey()
-
-            if len(c) == 1:
-                self.putwordat(address, ord(c))
-            elif len(c) == 2:
-                self.putwordat(address, (ord(c[0])) << 8 + (ord(c[1])))
-                self.putwordat(address+2, 0)
-            elif len(c) == 3:
-                self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
-                # This will create a 3 char string null terminated
-                self.putwordat(address+2, (ord(c[2])))
-        if cmd == PollSetNoEcho:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] & ~termios.ECHO          # lflags
-            EchoFlag = True
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                print("TTY Error: On No Echo",file=DebugOut)
-        if cmd == PollSetEcho:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] | termios.ECHO          # lflags
-            EchoFlag = False
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                print("TTY Error: On Echo",file=DebugOut)
-        if cmd == PollReadCINoWait:
-            c='\0'
-            while True:
-                c=get_key()
-                if len(c) != '\0':
-                    break
-            if len(c)==1:
-                self.putwordat(address,ord(c))
-            elif len(c)==2:
-                self.putwordat(address, (ord(c[0])) << 8 + (ord(c[1])))
-                self.putwordat(address+2, 0)
-            elif len(c) == 3:
-                self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
-                # This will create a 3 char string null terminated
-                self.putwordat(address+2, (ord(c[2])))            
-        if cmd == PollReadSector:
-            if DeviceHandle != None:
-                v=address
-                if v <= MAXMEMSP-0x1ff:
-                    DeviceFile.seek(self.DiskPtr,0)
-                    block = DeviceFile.read(512)
-                    tidx = v
-                    j=0
-                    for i in block:
-                        self.memspace[tidx] = int(i) & 0xff
-                        tidx += 1
-                        j += 1
-                        if ( j > 16):
-                            j=0
-                else:
-                    self.raiseerror(
-                        "042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
-        if cmd == PollReadTapeI:
-            if DeviceHandle != None:
-                v=address
-                block=DeviceFile.read(512)
-                tidx=v
-                if v<= MAXMEMSP-0x1ff:
-                    for i in block:
-                        self.memspace[tidx] = int(i) & 0xff
-                        tidx += 1
-                else:
-                    self.raiseerror(
-                        "043 Attempt to read Tape Block with insufficent memory")
-        if cmd == PollRewindTape:
-            if DeviceHandle != None:
-                DeviceFile.seek(0)
-
-        if cmd == PollReadTime:
-            v32=int(time.time())
-            v1=v32 & 0xffff
-            v2=v32 >> 16
-            self.optPUSH(v1)
-            self.optPUSH(v2)
-        
-                
-    def optRRTC(self, unused):
-        # RRTC mean Rotate Right Through Carry
-        # Means after rotation current CF becomes high bit, and previous low bit saves to CF
-        R1 = self.fetchAcum(0)
-        # New Carry Flag from Right most bit
-        NCF = (1 if (R1 & 1 != 0) else 0) << 2
-        # Pull CF from flags and make it 1 | 0
-        OCF = (1 if (self.flags & 0x04 != 0) else 0) << 15
-        R1 = R1 >> 1 | OCF
-        self.flags = (self.flags & 0xfffb) | NCF
-        self.StoreAcum(0, R1)
-
-    def optRLTC(self, unused):
-        # RLTC means Rotate Left Through Carry
-        # After rotation current CF becomes low bit, and previous high bit saves to CF
-        R1 = self.fetchAcum(0)
-        # New Carry Flag from Left Most bit
-        NCF = (1 if (R1 & 0x08000 != 0) else 0) << 2
-        # Pull CF from flags and make 1 | 0
-        OCF = (1 if (self.flags & 0x04 != 0) else 0)
-        R1 = (R1 << 1) | OCF
-        self.flags = (self.flags & 0xfffb) | NCF
-        self.StoreAcum(0, R1)
-
-    def optRTR(self, unused):
-        # RTR mean rotat Right and set carry CF to equal current lowest bit
-        R1 = self.fetchAcum(0)
-        NCF = (1 if (R1 & 0x1 != 0) else 0) << 2
-        R1 = R1 >> 1
-        self.flags = (self.flags & 0xfffb) | NCF
-        self.StoreAcum(0, R1)
-
-    def optRTL(self, unused):
-        # RTL mean rotat Left and set carry CF to equal current Highest bit
-        R1 = self.fetchAcum(0)
-        NCF = (1 if (R1 & 0x8000 != 0) else 0) << 2
-        R1 = R1 << 1
-        self.flags = (self.flags & 0xfffb) | NCF
-        self.StoreAcum(0, R1)
-
-    def optINV(self, address):
-        R2 = self.fetchAcum(0)
-        A1 = ~R2
-        self.SetFlags(A1)
-        self.flags = self.flags & 0x3      # Only care about NF or ZF
-        A1 = A1 & 0xffff
-        self.StoreAcum(0, A1)
-
-    def optCOMP2(self, address):
-        R2 = self.fetchAcum(0)
-        A1 = ~R2 + 1
-        self.SetFlags(A1)
-        self.flags = self.flags & 0x3      # Only care about NF or ZF
-        A1 = A1 & 0xffff
-        self.StoreAcum(0, A1)
-
-    def optFCLR(self, address):
-        self.flags = 0
-
-    def optFSAV(self, address):
-        CPU.optPUSH( self.flags)
-
-    def optFLOD(self, address):
-        sp = self.mb[0xff]        
-        if sp < 1:
-            self.raiseerror("044 Stack underflow, OptFLOD")
-        sp -= 1
-        sp *= 2
-        if sp > (0xff/2-2):
-            self.raiseerror("045 Stack overflow, optFLOD")
-        self.flags = self.mb[sp]
-        self.mb[0xff] -= 1
 
     def evalpc(self,dosteps):  # main evaluate current instruction at memeory[pc]
         global GPC, GlobalOptCnt
@@ -1175,8 +362,13 @@ class microcpu:
                 print("Stack Underflow: %04x" % self.pc)
             elif ( ReturnCode == -3):
                 print("Stack Overflow: %04x" % self.pc)
+            elif ( ReturnCode == -4 ):
+                print("^C at %04x" % self.pc)
+                debugger(FileLabels,"")
             else:
                 print("Return Code: ", ReturnCode)
+        else:
+            return ReturnCode
 
 
 def removecomments(inline):
@@ -1329,7 +521,7 @@ def Str32Word(instr):
                 # that a fixed storage as that result may not occupy any spot in memory, that we can 'fix' in
                 # a second pass.
                 CPU.raiseerror(
-                    "047 Use of fixed value (%s) as label before defined." % instr )
+                    "047 Use of fixed value (%s) as label before defined." % instr)
         else:
             valid = True
             for i in instr:
@@ -1536,7 +728,6 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 if Debug > 1:
                     print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 if (not MacroStack):
-#                    print("Break Here")
                     CPU.raiseerror(
                         "049 Macro Refrence Stack Underflow: %s" % line)
                 i += 1
@@ -1551,7 +742,7 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
                 i += 1
                 continue
             elif (line[i:i+1] == "V"):
-                # Insert into newline value that top if refrence stack...do not pop it
+                # Insert into newline value that top of refrence stack...do not pop it
                 if Debug > 1:
                     print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
@@ -1580,6 +771,11 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP):
             newline = newline + c
     return newline
 
+# Our two pass assembly is very limited on what it can handle on the 2nd pass.
+# Basicly, if a value (with possible +/- modifier) does NOT take up a word of memory in the final
+# code, and only is a 'value' used by the assembler. Then it CAN NOT be defered for a second pass.
+# We need that 'word' of storage to hold temporary values that will later be replaed. All other
+# values (such as when lables are themselves used a +/- modifiers) must resolve durring 1st pass.
 def FirstPassVal(instr, address, FileLabels, LocalID, LORGFLAG,GlobalOptCnt):
     (value, size) = nextword(instr[1:])
     firstch=value[0:1]
@@ -1594,9 +790,6 @@ def FirstPassVal(instr, address, FileLabels, LocalID, LORGFLAG,GlobalOptCnt):
     else:
         value=Str2Word(value)
     return (value, size)
-            
-
-
 
 def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
     global FileLabels, FWORDLIST, FBYTELIST, GlobeLabels, GlobalLineNum, ActiveFile
@@ -2071,10 +1264,6 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                 print(key, " is missing (SYM,ADDR,Delta,LineNum)", store,file=DebugOut)
     if Debug > 1:
         i = 0
-#        print("Pre-Run Memory Dump:")
-#        hexdump(i+offset, highaddress, CPU)
-#        DissAsm(i, highaddress, CPU)
-#        print("----------------END OF DUMP ---------------")
     if address > highaddress:
         highaddress = address
     if dataaddress > highaddress:
@@ -2133,13 +1322,21 @@ def debugger(FileLabels,passline):
                 if thisword in FileLabels:
                     varval = FileLabels[thisword]
                 else:
-                    varval = ""
-                    for poskey in FileLabels:
-                        if poskey.startswith(thisword):
-                            varval = FileLabels[poskey]
-                            thisword = poskey
-                            break
-                    if varval == "":
+                    best_score = 0
+                    best_match = None
+                    for posKey in FileLabels:
+                        score=len(thisword)
+                        for i in range(min(len(thisword), len(posKey))):
+                            if thisword[i] != posKey[i]:
+                                score -= 1
+                                break
+
+                        if score > best_score:
+                            best_score = score
+                            best_match = posKey
+                    if best_score >= len(thisword)//2:
+                        varval=best_match
+                    else:
                         print("[%s] is not found in dictionary" % thisword)
                         (thisword, size) = nextword(cmdline)
                         continue
@@ -2684,6 +1881,7 @@ def main():
     elif Debug > 0:
         ReturnCode=0
         while (ReturnCode == 0):
+            DissAsm(CPU.pc, 1, CPU)            
             ReturnCode=CPU.evalpc(1)
         if (ReturnCode != -1 ):
             debugger(FileLabels,"")

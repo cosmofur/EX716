@@ -3,6 +3,7 @@ L heapmgr.ld
 M SCREEN_DONE 1
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot
 G WinHideCursor G WinShowCursor G ColorReset G ColorFGSet G ColorBGSet
+G CSICODE
 :WinWidth 80
 :WinHeight 24
 :CSICODE
