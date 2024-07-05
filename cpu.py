@@ -227,36 +227,37 @@ class FileLabelClass(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.history = {}
-        self.current_labels = {}
 
     def __setitem__(self, key, value):
-        if key in self.current_labels:
-            if key not in self.history:
-                self.history[key] = []
-            self.history[key].append(self.current_labels[key])
-        self.current_labels[key] = value
-        super().__setitem__(key, value)
-
-    def __getitem__(self, key):
-        return self.current_labels[key]
-        
-
+        if key not in self.history:
+            self.history[key] = []
+        if key in self:
+            workkey=self[key]
+            if not isinstance(workkey, tuple):
+                workkey=(workkey,CPU.pc)
+            print("Workkey: %s vs key: %s value: %s" % (workkey,key,value))
+            self.history[key].append(workkey)
+            super().__setitem__(workkey)
+        super().__setitem__(key,value)
+                                         
     def update(self, *args, **kwargs):
-        for key,value in kwargs.items():
-            self[key] = value
+            for key,value in dict(*args, **kwargs).items():
+                print("Key = %s and value = %s" % (key,value))
+                self.__setitem__(key,value)
+
 
     def get_historical_value(self, key, test_value):
         if key not in self.history:
             return None
-        all_values = self.history[key] + [self.current_labels[key]]
-        print(f"Key: {key} Matches: {' '.join(['%04x' % val for val in all_values])}")
-        for value,timestamp in reversed(all_values):
-            if timestamp <= test_value:
+        current_value = (self[key],99999999)
+        all_values = self.history[key] + [current_value] 
+        for value, address in reversed(all_values):
+            if address <= test_value:
                 return f"{key}:{value}"
         return None
 
     def find_partial_match(self, partial_key, time_value):
-        matches = [key for key in self.current_labels if partial_key in key]
+        matches = [key for key in self.keys() if partial_key in key]
         if len(matches) == 0:
             print("No Match:")
             return None
@@ -271,7 +272,7 @@ class FileLabelClass(dict):
             return matchgroup
         
 
-FileLabels = FileLabelClass()
+FileLabels = FileLabelClass()         
 
 
     
@@ -1960,9 +1961,11 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                 elif line[0] == ":":
                     # The ":" is a lable whos value is current address
                     (key, size) = nextword(line[1:])
-                    if Debug > 1:
-                        print(">>> adding %s at location %s" %
-                              (key, hex(address)),file=DebugOut)
+                    if (IsLocalVar(key, LocalID, LORGFLAG) == "ReadCluster"):
+                        print("Set Break Here")                    
+                    if Debug >1 or True:
+                        print(">>> adding %s at location %s with name: %s" %                              
+                              (key, hex(address),IsLocalVar(key, LocalID, LORGFLAG)),file=DebugOut)
                     if ("F."+filename+":"+str(GlobalLineNum) in FileLabels):
                         # Normally each line get a unique lable in F.filename:linenum format
                         # But as we are defining a real lable here, delete the F. one as un-needed.
