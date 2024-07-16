@@ -102,59 +102,59 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
 # When executing a macro, the rule is one macro per line.
-M NOP b$NOP
-M PUSH b$PUSH %1
-M DUP b$DUP
-M PUSHI b$PUSHI %1
-M PUSHII b$PUSHII %1
-M PUSHS b$PUSHS
-M POPNULL b$POPNULL
-M SWP b$SWP
-M POPI b$POPI %1
-M POPII b$POPII %1
-M POPS b$POPS
-M CMP b$CMP %1
-M CMPS b$CMPS
-M CMPI b$CMPI %1
-M CMPII b$CMPII %1
-M ADD b$ADD %1
-M ADDS b$ADDS
-M ADDI b$ADDI %1
-M ADDII b$ADDII %1
-M SUB b$SUB %1          # (updated SUB ~ TOS=(TOS-P1))
-M SUBS b$SUBS
-M SUBI b$SUBI %1
-M SUBII b$SUBII %1
-M OR b$OR %1
-M ORS b$ORS
-M ORI b$ORI %1
-M ORII b$ORII %1
-M AND b$AND %1
-M ANDS b$ANDS
-M ANDI b$ANDI %1
-M ANDII b$ANDII %1
-M XOR b$XOR %1
-M XORS b$XORS
-M XORI b$XORI %1
-M XORII b$XORII %1
-M JMPZ b$JMPZ %1
-M JMPN b$JMPN %1
-M JMPC b$JMPC %1
-M JMPO b$JMPO %1
-M JMP b$JMP %1
-M JMPI b$JMPI %1
-M JMPS b$JMPS
-M CAST b$CAST %1
-M POLL b$POLL %1
-M RRTC b$RRTC
-M RLTC b$RLTC
-M RTR b$RTR
-M RTL b$RTL
-M INV b$INV
-M COMP2 b$COMP2
-M FCLR b$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
-M FSAV b$FSAV
-M FLOD b$FLOD
+M NOP $$NOP
+M PUSH $$PUSH %1
+M DUP $$DUP
+M PUSHI $$PUSHI %1
+M PUSHII $$PUSHII %1
+M PUSHS $$PUSHS
+M POPNULL $$POPNULL
+M SWP $$SWP
+M POPI $$POPI %1
+M POPII $$POPII %1
+M POPS $$POPS
+M CMP $$CMP %1
+M CMPS $$CMPS
+M CMPI $$CMPI %1
+M CMPII $$CMPII %1
+M ADD $$ADD %1
+M ADDS $$ADDS
+M ADDI $$ADDI %1
+M ADDII $$ADDII %1
+M SUB $$SUB %1          # (updated SUB ~ TOS=(TOS-P1))
+M SUBS $$SUBS
+M SUBI $$SUBI %1
+M SUBII $$SUBII %1
+M OR $$OR %1
+M ORS $$ORS
+M ORI $$ORI %1
+M ORII $$ORII %1
+M AND $$AND %1
+M ANDS $$ANDS
+M ANDI $$ANDI %1
+M ANDII $$ANDII %1
+M XOR $$XOR %1
+M XORS $$XORS
+M XORI $$XORI %1
+M XORII $$XORII %1
+M JMPZ $$JMPZ %1
+M JMPN $$JMPN %1
+M JMPC $$JMPC %1
+M JMPO $$JMPO %1
+M JMP $$JMP %1
+M JMPI $$JMPI %1
+M JMPS $$JMPS
+M CAST $$CAST %1
+M POLL $$POLL %1
+M RRTC $$RRTC
+M RLTC $$RLTC
+M RTR $$RTR
+M RTL $$RTL
+M INV $$INV
+M COMP2 $$COMP2
+M FCLR $$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
+M FSAV $$FSAV
+M FLOD $$FLOD
 
 
 # For compleatness we can proview VV VA AV versions of major math functions.
@@ -206,7 +206,7 @@ M JNZ @JMPZ $%0J @JMP %1 :%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-#M PRTLN @JMP %01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStr @CAST %0M @CAST %0NL @POPNULL
+#M PRTLN @JMP %01 :%0M %1 $$0 :%0NL 10 $$0 :%01 @PUSH CastPrintStr @CAST %0M @CAST %0NL @POPNULL
 M PRTLN @JMP J%0J1 :%0M1 %1 "\n\0" :J%0J1 @PUSH CastPrintStr @CAST $%0M1 @POPNULL
 # Print simple test message with no variables no linefeed
 M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStr @CAST $%0M1 @POPNULL
@@ -246,9 +246,9 @@ M PRTSGNI @PUSH CastPrintSignI @CAST %1 @POPNULL
 # Print value in binary
 M PRTBINI @PUSH CastPrintBinI @CAST %1 @POPNULL
 # Print Line feed
-M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStr @CAST $%0NL @POPNULL
+M PRTNL @JMP $%01 :%0NL 10 $$0 :%01 @PUSH CastPrintStr @CAST $%0NL @POPNULL
 # Print a space by itself
-M PRTSP @JMP $%01J :%0M " " b0 :%01J @PUSH CastPrintStr @CAST $%0M @POPNULL
+M PRTSP @JMP $%01J :%0M " " $$0 :%01J @PUSH CastPrintStr @CAST $%0M @POPNULL
 # Print immediate value (usefull to print value of pointer)
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.

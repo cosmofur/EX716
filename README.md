@@ -335,9 +335,6 @@ The main logic loop of the assembler is:
                     
                     0bNumber         Binary (01) number
                     
-                    bNumber          Forces number to be treated as 8bit byte rather than 16 bit word
-		    		    (This also means that lower case 'b' can
-                                     not be used as start of any label, use uppercase 'B' where you need them)
                                      
                     $$Number         Another way to treat a number as a byte.
                     
@@ -348,7 +345,7 @@ The main logic loop of the assembler is:
                                      memory a 32b number is stored.
 
                     "text"           ASCII text will be copied to memory as bytes, 
-                                     you have to add a b0 or include '\0' to NULL terminate.
+                                     you have to add a $$0 or include '\0' to NULL terminate.
 
                     label[+/-Val]    In most cases anywhere a number can be put, you can put a label. You can also
                                      use a fixed 'Val' to be added to that current value of label. Val can even

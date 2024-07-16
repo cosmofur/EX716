@@ -10,8 +10,9 @@ L fat16lib.ld
 :Var07 0 :Var08 0 :Var09 0 :Var10 0 :Var11 0 :Var12 0
 # Static Variables
 :MainHeapID 0
-:RootObject 0
 :RootDirInfo 0
+:StringBuffer 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0   # 32 byte buffer for short strings
+:FormatStr "T1%50d T2%#d\0"
 #
 #############################################################################
 # Function Init, setup heap and memory
@@ -28,13 +29,6 @@ L fat16lib.ld
 @CALL SetSSStack
 #
 # The 'Root' Obejct will always just contain the ID of 0, and one pointer to first available room.
-@PUSHI MainHeapID @PUSH 4
-@CALL HeapNewObject @IF_ULT_A 100 @PUSH 2 @CALL ErrorExit @ENDIF   # Error code 2
-@POPI RootObject
-#
-@PUSH 0 @POPII RootObject                 # Zero the two words of RootObject.
-@PUSH 0 @PUSHI RootObject @ADD 2 @POPS
-#
 @CALL RunIntro
 @RET
 ###########################################################################
@@ -51,43 +45,49 @@ L fat16lib.ld
 ###########################################################################
 # Function RunIntro
 :RunIntro
+
 @PUSHRETURN
 #
 =UserKey Var01
 =SeedCount Var02
+=FileAttribute Var03
 @PUSHLOCALI UserKey
 @PUSHLOCALI SeedCount
+
 #
-@PRTLN "Intro:...."
 @PRT "Bla...Bla...Bla\n"
 @PRT "Bla...Bla...Bla\n"
 @PRT "Bla...Bla...Bla\n"
 @PRT "\n\nHit Any Key to Continue."
-@TTYNOECHO
-# First When is to 'drain' and keybuffer
-@WHEN
-   @READCNW UserKey
-   @PUSHI UserKey
-   @DO_NOTZERO
-      @POPNULL
-@ENDWHEN
+@PUSH 0   # Set this to 1 if we need a random seed
+@IF_NOTZERO
+   @TTYNOECHO
+   # First When is to 'drain' and keybuffer
+   @WHEN
+      @READCNW UserKey
+      @PUSHI UserKey
+      @DO_NOTZERO
+         @POPNULL
+   @ENDWHEN
+   @POPNULL
+   @WHEN
+      @READCNW UserKey
+      @PUSHI UserKey
+      @IF_EQ_AV 0 UserKey
+      @ELSE
+         @PRTSTR UserKey
+      @ENDIF
+      @DO_ZERO
+         @POPNULL
+         @INCI SeedCount
+   @ENDWHEN
+   @POPNULL
+   @TTYECHO
+   @PUSHI SeedCount @ADDI UserKey @AND 0x7fff
+   @PRT "Random Seed: " @PRTTOP @PRTNL
+   @CALL rndsetseed
+@ENDIF
 @POPNULL
-@WHEN
-   @READCNW UserKey
-   @PUSHI UserKey
-   @IF_EQ_AV 0 UserKey
-   @ELSE
-      @PRTSTR UserKey
-   @ENDIF
-   @DO_ZERO
-      @POPNULL
-      @INCI SeedCount
-@ENDWHEN
-@POPNULL
-@TTYECHO
-@PUSHI SeedCount @ADDI UserKey @AND 0x7fff
-@PRT "Random Seed: " @PRTTOP @PRTNL
-@CALL rndsetseed
 @POPLOCAL SeedCount
 @POPLOCAL UserKey
 @POPRETURN
@@ -97,18 +97,102 @@ L fat16lib.ld
 
 :Main . Main
 @CALL Init
-@PRTLN "Start:"
+#
+=BootSector Var01
+=rootBuffer Var02
+=rootCluster Var03
+=subdirCluster Var04
+=entry Var05
+=returnstr Var06
+@PRTLN "Initializing Filesystem.."
 @PUSH 0 @PUSHI MainHeapID
+@PRT "Before Select Disk:"
 @CALL SelectDisk
+@PRT "After Select Disk:"
 @POPI BufferPtr
+#
+# Test the formated string function.
+@PUSH 101
+@PUSH 202
+@PUSH FormatStr
+@PUSHI MainHeapID
+@CALL strFormat
+@POPI returnstr
+@PRT "String: "
+@PRTSI returnstr
+@END
+
+
+#
+@PUSH 0 @PUSH 0
+@CALL ReadSectorBuffer
+@POPI BootSector
+#
+@IF_EQ_AV 0 BootSector
+   @PRTLN "Failed to read boot sector\n"
+   @END
+@ENDIF
+#
+@PUSHI BootSector
+@CALL ParseBootSector
+#
 @CALL ReportParseBootSector
+#
+@PUSHI DiskHeapID @PUSHI BootSector @CALL HeapDeleteObject  # free(BootSector)
+#
+@PRTLN "Reading and listing root directory..."
+#
 @CALL ReadRootDir
+@POPI rootBuffer
+#
+@PUSHI rootBuffer
+@CALL ListDir
+@PUSHI DiskHeapID @PUSHI rootBuffer @CALL HeapDeleteObject  # free(rootBuffer)
+#
+@PRTLN "Changeing dir1..."
+# Root Dir starting cluster
+@MA2V 0 rootCluster
+#
+@PUSHI rootCluster
+@STRSET "/dir1\0" StringBuffer
+@PUSH StringBuffer
+@CALL GetDirectory   # (rootCluster, "subdir")
+@POPI subdirCluster
+@POPI FileAttribute
+#
+@IF_EQ_AV -1 subdirCluster
+   @PRTLN "dir1 not found."
+   @END
+@ENDIF
+
+@PRT "Successfully changed to /dir1 which points to cluster: " @PRTI subdirCluster
+@PRT " Attribute: " @PRTI FileAttribute
+@PRTNL
+#
+@PUSHI subdirCluster
+
+@CALL ReadDirBuffer
+
+@POPI entry
+#
+@IF_EQ_AV 0 entry
+   @PRTLN "Failed to read directory entry"
+   @END
+@ENDIF
+@PUSHI entry
+@CALL HexDumpMemory
+@PUSHI entry
+@CALL ListDir
+@END
+
+
+
+
 @POPI RootDirInfo
-:Break1
 @PUSHI RootDirInfo
-@CALL ListRootDir
+@CALL ListDir
 
-
+@CALL ReadRootDir
 
 @PRT "1 =" @PUSH 1 @CALL GetFatAddress @PRTTOP @POPNULL @PRTNL
 @PRT "2 =" @PUSH 2 @CALL GetFatAddress @PRTTOP @POPNULL @PRTNL
@@ -118,8 +202,48 @@ L fat16lib.ld
 @END
 
 
+:HexDumpMemory
+@PUSHRETURN
+=Index1 Var01
+=Index2 Var02
+=MemPtr Var03
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+#
+@POPI MemPtr
+@PRTLN  "ADDR 0001 0002 0003 0004 0005 0006 0007 0008 0009 000A 000B 000C 000D 000E 000F"
+@ForIA2B Index1 0 24
+    @PRTHEXI MemPtr @PRT ":"
+    @ForIA2B Index2 0 16
+       @PUSHII MemPtr
+       @PRTHEXTOP @PRT " "
+       @POPNULL
+       @INCI MemPtr
+    @Next Index2
+    @PRTNL
+@Next Index1
+@PRTLN
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+
+
 
 
 
 :ENDOFCODE
 
+#
+#  $ ls /mnt/DISK00/
+# dir1  test.txt  test2.txt
+#  $ ls /mnt/DISK00/dir1/
+# subfile.txt
+#
+
+
+#
+#
+#

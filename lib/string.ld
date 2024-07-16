@@ -12,10 +12,10 @@ G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
 G STRSET G STRSETI
 M STRSET \
-  @JMP %0_Skip :%0Store %1 b0 :%0_Skip @PUSH %2 @PUSH %0Store @CALL strcpy
+  @JMP %0_Skip :%0Store %1 $$0 :%0_Skip @PUSH %2 @PUSH %0Store @CALL strcpy
 # STRSETI same as STRSET but %2 is ptr to memory rather than the address itself.
 M STRSETI \
-  @JMP %0_Skip :%0Store %1 b0 :%0_Skip @PUSHI %2 @PUSH %0Store @CALL strcpy
+  @JMP %0_Skip :%0Store %1 $$0 :%0_Skip @PUSHI %2 @PUSH %0Store @CALL strcpy
 #
 
 
@@ -28,7 +28,7 @@ M STRSETI \
 :Var04 0
 :Var05 0
 :Var06 0
-:WorkBuff "00000000" b0       # Long enough for -32000 to +32000
+:WorkBuff "00000000" $$0       # Long enough for -32000 to +32000
 
 #
 # Function
@@ -144,10 +144,10 @@ M STRSETI \
 =SrcPtr Var02
 =DstPtr Var03
 =Index Var04
-@PUSHLOCALI Length
-@PUSHLOCALI SrcPtr
-@PUSHLOCALI DstPtr
-@PUSHLOCALI Index
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
 @POPI Length
 @POPI SrcPtr
 @POPI DstPtr
@@ -175,10 +175,10 @@ M STRSETI \
    @INCI SrcPtr
    @INCI DstPtr
 @Next Index
-@POPLOCAL Index
-@POPLOCAL DstPtr
-@POPLOCAL SrcPtr
-@POPLOCAL Length
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
 @POPRETURN
 @RET
 #
@@ -189,8 +189,8 @@ M STRSETI \
 @PUSHRETURN
 =SrcPtr Var01
 =DstPtr Var02
-@PUSHLOCALI SrcPtr
-@PUSHLOCALI DstPtr
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
 @POPI SrcPtr
 @POPI DstPtr
 # Setup for first pass of while loop
@@ -204,8 +204,8 @@ M STRSETI \
    @AND 0x00ff
 @ENDWHILE
 @POPNULL
-@POPLOCAL DstPtr
-@POPLOCAL SrcPtr
+@POPLOCAL Var02
+@POPLOCAL Var01
 @POPRETURN
 @RET
 #
@@ -220,11 +220,11 @@ M STRSETI \
 =SrcPtr Var03
 =Length Var04
 =Index Var05
-@PUSHLOCALI MaxLength
-@PUSHLOCALI DstPtr
-@PUSHLOCALI SrcPtr
-@PUSHLOCALI Length
-@PUSHLOCALI Index
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+@PUSHLOCALI Var05
 #
 @POPI MaxLength
 @POPI DstPtr
@@ -287,11 +287,11 @@ M STRSETI \
 # We only get here if both are the same
 @PUSH 0
 :strncmpExit
-@POPLOCAL Index
-@POPLOCAL Length
-@POPLOCAL SrcPtr
-@POPLOCAL DstPtr
-@POPLOCAL MaxLength
+@POPLOCAL Var05
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
 @POPRETURN
 @RET
 #
@@ -305,19 +305,19 @@ M STRSETI \
 =Base Var01
 =Invalue Var02
 =StrPtr Var03
-=Invalue Var04
 =NegFlag Var05
 =RevIndex Var06
 #
-@PUSHLOCALI Base
-@PUSHLOCALI Invalue
-@PUSHLOCALI StrPtr
-@PUSHLOCALI Invalue
-@PUSHLOCALI NegFlag
-@PUSHLOCALI RevIndex
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var05
+@PUSHLOCALI Var06
+#
 @POPI Base
 @POPI Invalue
 @POPI StrPtr
+
 @MA2V 0x3000 WorkBuff   # Preload Workbuf with zero and nulls
 @MA2V 0 WorkBuff+2
 @MA2V 0 WorkBuff+4
@@ -349,7 +349,7 @@ M STRSETI \
 @ENDIF
 @POPNULL
 @IF_EQ_VA NegFlag 1
-   @PUSH "-" b0     # Push '-' to result
+   @PUSH "-" $$0     # Push '-' to result
    @POPII StrPtr
    @INCI StrPtr
 @ENDIF
@@ -366,12 +366,11 @@ M STRSETI \
    @JMP ReverseLoop
 @ENDIF
 @POPNULL
-@POPLOCAL RevIndex
-@POPLOCAL NegFlag
-@POPLOCAL Invalue
-@POPLOCAL StrPtr
-@POPLOCAL Invalue
-@POPLOCAL Base
+@POPLOCAL Var06
+@POPLOCAL Var05
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
 @POPRETURN
 @RET
 #
@@ -487,10 +486,15 @@ M STRSETI \
 # Which in practical data processing is most of the cases where numbers are enbeded into text.
 :stoifirst
 @PUSHRETURN
-@PUSHLOCALI StrPtrA
-@PUSHLOCALI StrPtrB
-@PUSHLOCALI SrcPtr
-@PUSHLOCALI DstPtr
+=StrPtrA Var01
+=StrPtrB Var02
+=SrcPtr Var03
+=DstPtr Var04
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+
 @POPI StrPtrA
 # Move StrPtrA until nul, or '-' or '+' or digit
 @MA2V 0 StrPtrB      # Mark this so we know if none found
@@ -501,9 +505,11 @@ M STRSETI \
    @PUSHII StrPtrA @AND 0xff
    @IF_EQ_A "-\0"
       @PUSH 1
+      @INCI StrPtrA
    @ELSE
       @IF_EQ_A "+\0"
          @PUSH 1
+         @INCI StrPtrA         
       @ELSE
          @IF_GE_A "0\0"
             @IF_LE_A "9\0"
@@ -511,15 +517,15 @@ M STRSETI \
             @ENDIF
          @ELSE
             @IF_EQ_A 0
-               @PRT "Warning: String did not countain any digits"            
-               @PUSH 1
+               @PRT "Warning: String did not countain any digits"
+               @PUSH 0               
             @ENDIF
+            
          @ENDIF
       @ENDIF
    @ENDIF
    @IF_EQ_A 1
       @MV2V StrPtrA StrPtrB # Save start position of number
-      @POPNULL
       @PUSH 0   # Exit While Loop
    @ELSE
       @POPNULL
@@ -533,6 +539,7 @@ M STRSETI \
    @PRT "Warning: String did not countain any digits"
 @ELSE
    @INCI StrPtrA # If first character had been + or - this will skip it.
+   @POPNULL
    @PUSHII StrPtrA @AND 0xff
    @WHILE_NOTZERO
       @IF_GE_A "0\0"
@@ -549,7 +556,7 @@ M STRSETI \
       @ELSE
          @POPNULL
          @PUSH 0
-         #Non Digit found, end of number found.
+         #Non Digit found, or end of number found.
       @ENDIF
    @ENDWHILE
    # Save what ever word was at StrPtrA and replace will Null
@@ -557,16 +564,17 @@ M STRSETI \
    @PUSHII StrPtrA @POPI SrcPtr
    @PUSH 0 @POPII StrPtrA
    @PUSHI StrPtrB
+   :Break03
    @CALL stoi
    @POPI DstPtr
    @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed         
 @ENDIF
 @POPNULL
 @PUSHI DstPtr     # Result
-@POPLOCAL DstPtr
-@POPLOCAL SrcPtr
-@POPLOCAL StrPtrB
-@POPLOCAL StrPtrA
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
 @POPRETURN
 @RET
 #
@@ -845,6 +853,7 @@ M STRSETI \
 #
 # Function ISNumeric(String):T|F
 # Return T|F if first char in string is in set [0-9]
+:ISNumeric
 @PUSHRETURN
 @PUSHS
 @AND 0xff
@@ -949,4 +958,5 @@ M STRSETI \
 @POPLOCAL Var01
 @POPRETURN
 @RET
+
 ENDBLOCK

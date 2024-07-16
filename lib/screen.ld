@@ -7,8 +7,8 @@ G CSICODE
 :WinWidth 80
 :WinHeight 24
 :CSICODE
-#"<ESC>["b0
-b$27 "[" b0
+#"<ESC>["$$0
+$$27 "[" $$0
 # Windows Clear
 :WinClear
 @PRTS CSICODE @PRT "0m"
@@ -181,11 +181,11 @@ b$27 "[" b0
   @MA2V 50 WinHeight
 :NotTooTall
 @RET
-:TermInfoBuffer "                                                      " b0
+:TermInfoBuffer "                                                      " $$0
 :TIBIndex 0
 #
 # Function ColorBGSet(Color)
-:ANSICSI b$27 "[" b0
+:ANSICSI $$27 "[" $$0
 :ColorID 0
 :ColorBGSet
 @PUSHRETURN
