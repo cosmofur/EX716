@@ -12,7 +12,9 @@ L fat16lib.ld
 :MainHeapID 0
 :RootDirInfo 0
 :StringBuffer 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0   # 32 byte buffer for short strings
-:FormatStr "T1%50d T2%#d\0"
+:FormatStr1 "TA:%-5d TB:%#9d\0"
+:FormatStr2 "Words:%-15s\0"
+:TestOutStr "One Two\0"
 #
 #############################################################################
 # Function Init, setup heap and memory
@@ -93,8 +95,6 @@ L fat16lib.ld
 @POPRETURN
 @RET
 #
-:BufferPtr 0
-
 :Main . Main
 @CALL Init
 #
@@ -106,21 +106,28 @@ L fat16lib.ld
 =returnstr Var06
 @PRTLN "Initializing Filesystem.."
 @PUSH 0 @PUSHI MainHeapID
-@PRT "Before Select Disk:"
+@PRT "B-SelectDisk: " @StackDump
 @CALL SelectDisk
-@PRT "After Select Disk:"
-@POPI BufferPtr
+@PRT "A-SelectDisk: " @StackDump
 #
 # Test the formated string function.
+@PRT "Before Formated Prints" @StackDump
 @PUSH 101
 @PUSH 202
-@PUSH FormatStr
+@PUSH FormatStr1
+@PUSHI MainHeapID
+@CALL strFormat
+@POPI returnstr
+@PRT "Numbers: "
+@PRTSI returnstr @PRTNL
+@PUSHI MainHeapID @PUSHI returnstr @CALL HeapDeleteObject
+@PUSH TestOutStr
+@PUSH FormatStr2
 @PUSHI MainHeapID
 @CALL strFormat
 @POPI returnstr
 @PRT "String: "
-@PRTSI returnstr
-@END
+@PRTSI returnstr @PRTNL
 
 
 #
@@ -159,6 +166,7 @@ L fat16lib.ld
 @CALL GetDirectory   # (rootCluster, "subdir")
 @POPI subdirCluster
 @POPI FileAttribute
+@PRT "Dir Cluster:" @PRTI subdirCluster @PRTNL
 #
 @IF_EQ_AV -1 subdirCluster
    @PRTLN "dir1 not found."

@@ -340,7 +340,7 @@ void handleCast(int Param, int ParamI, int ParamII) {
     exit(0);
     break;  
   default:
-    printf("Error No such Cast Code.\n");
+    printf("Error No such Cast Code: %d\n", topstack(PC));
     break;
   }
   fflush(stdout);
@@ -403,7 +403,7 @@ void handlePoll(int Param,int ParamI,int ParamII) {
     break;
     
   default:
-    printf("Poll Code not implmented");
+    printf("Poll Code not implmented %d",topstack(PC));
   }
 }
   

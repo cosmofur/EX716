@@ -389,6 +389,7 @@ G HeapAppend
            @POPNULL
            @PUSH 0   # This will end the outter while loop.
         @ELSE
+           @POPNULL
            @PUSHI IndexY @SUB ObjectPtrLocation @PUSHS @POPI IndexX  # Set up for next outer while test
            @PUSHI IndexY
         @ENDIF        
@@ -446,6 +447,7 @@ G HeapAppend
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN
+@PRT "End Defrag: " @StackDump
 @RET
    
    

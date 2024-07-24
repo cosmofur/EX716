@@ -12,11 +12,14 @@ G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
 G STRSET G STRSETI
 M STRSET \
-  @JMP %0_Skip :%0Store %1 $$0 :%0_Skip @PUSH %2 @PUSH %0Store @CALL strcpy
+  @JMP _%0_Skip :_%0Store %1 $$0 :_%0_Skip @PUSH %2 @PUSH _%0Store @CALL strcpy
 # STRSETI same as STRSET but %2 is ptr to memory rather than the address itself.
 M STRSETI \
-  @JMP %0_Skip :%0Store %1 $$0 :%0_Skip @PUSHI %2 @PUSH %0Store @CALL strcpy
+  @JMP _%0_Skip :_%0Store %1 $$0 :_%0_Skip @PUSHI %2 @PUSH _%0Store @CALL strcpy
 #
+# STRSTACK saves imediate data in inline storage and leaves its address on the stack.
+M STRSTACK \
+   @JMP _%0_Skip :_%0Store %1 $$0 :_%0_Skip @PUSH _%0Store
 
 
 # Function strlen

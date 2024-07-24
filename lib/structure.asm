@@ -14,138 +14,138 @@
 # It does not pop the value off, so remove the zero when it's no longer needed
 M IF_ZERO \
     @PUSH 0 @CMPS @POPNULL \
-    @JMPZ %0_True \
-    %S @JMP %V_ENDIF \
-    :%0_True
+    @JMPZ _%0_True \
+    %S @JMP _%V_ENDIF \
+    :_%0_True
 # IF_NOTZERO is the reverse logic of the IF_ZERO, works with the same 'ending' blocks
 # and can be nested.
 M IF_NOTZERO \
     @PUSH 0 @CMPS @POPNULL \
-    @JNZ %0_True \
-    %S @JMP %V_ENDIF \
-    :%0_True
+    @JNZ _%0_True \
+    %S @JMP _%V_ENDIF \
+    :_%0_True
 # IF_EQ_S (A,B)=True if value at TOS is == value at TOS-1
 M IF_EQ_S \
   @CMPS \
-  @JMPZ %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # IF_EQ_A (A) = True if A == TOS
 M IF_EQ_A \
   @PUSH %1 \
   @CMPS @POPNULL \
-  @JMPZ %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # IF_EQ_V (V) = True if [V] == TOS
 M IF_EQ_V \
   @PUSHI %1 \
   @CMPS @POPNULL \
-  @JMPZ %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # If V1 == V2 True
 M IF_EQ_VV \
   @PUSHI %1 @PUSHI %2 \
   @CMPS @POPNULL @POPNULL \
-  @JMPZ %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True  
+  @JMPZ _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True  
 # If A == V1 True
 M IF_EQ_VA \
   @PUSHI %1 @PUSH %2 \
   @CMPS @POPNULL @POPNULL \
-  @JMPZ %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # Reverse for readability
 M IF_EQ_AV \
   @PUSH %1 @PUSHI %2 \
   @CMPS @POPNULL @POPNULL \
-  @JMPZ %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
    @CMPS \
-   @JMPN  %0_True \
-   %S @JMP %V_ENDIF \
-   :%0_True
+   @JMPN  _%0_True \
+   %S @JMP _%V_ENDIF \
+   :_%0_True
 # IF_LT_A (A) = True if TOS is < A
 M IF_LT_A \
    @CMP %1 \
-   @JMPN %0_True \
-    %S @JMP %V_ENDIF \
-   :%0_True
+   @JMPN _%0_True \
+    %S @JMP _%V_ENDIF \
+   :_%0_True
 #
 M IF_LT_V \
    @CMPI %1 \
-   @JMPN %0_True \
-   %S @JMP %V_ENDIF \
-   :%0_True
+   @JMPN _%0_True \
+   %S @JMP _%V_ENDIF \
+   :_%0_True
 #
 # IF_LE_S (A,B)=True if SFT(A) <= TOS(B)
 M IF_LE_S \
   @CMPS \
-  @JMPZ %0_True \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # IF_LE_A (A) = True if TOS is <=A
 M IF_LE_A \
   @CMP %1 \
-  @JMPZ %0_True \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # IF_LE_V V = True if TOS is <=V
 M IF_LE_V \
   @CMPI %1 \
-  @JMPZ %0_True \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # IF_GE_S will A(SFT) >= B(TOS)
 M IF_GE_S \
    @SWP @CMPS @SWP \
-   @JMPN  %0_True \
-   @JMPZ %0_True \
-   %S @JMP %V_ENDIF \
-   :%0_True
+   @JMPN  _%0_True \
+   @JMPZ _%0_True \
+   %S @JMP _%V_ENDIF \
+   :_%0_True
 # True if TOS >= A
 M IF_GE_A \
    @PUSH %1 @SWP @CMPS @SWP @POPNULL \
-   @JMPN %0_True \
-   @JMPZ %0_True \
-    %S @JMP %V_ENDIF \
-    :%0_True
+   @JMPN _%0_True \
+   @JMPZ _%0_True \
+    %S @JMP _%V_ENDIF \
+    :_%0_True
 # True if TOS >= V
 M IF_GE_V \
   @PUSHI %1 @CMPS @POPNULL \
   %S \
-  @JMPN %V_ENDIF
+  @JMPN _%V_ENDIF
 # True if (A,B) A>B
 M IF_GT_S \
   @SWP @CMPS @SWP \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 # True if TOP > A
 M IF_GT_A \
   @PUSH %1 @SWP @CMPS @SWP @POPNULL \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 M IF_GE_A \
   @PUSH %1 @CMPS @POPNULL \
   %S \
-  @JMPN %V_ENDIF
+  @JMPN _%V_ENDIF
 # True if TOP > V
 M IF_GT_V \
   @PUSHI %1 @SWP @CMPS @SWP @POPNULL \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 
 
 
@@ -155,103 +155,103 @@ M IF_GT_V \
 M IF_UGT_V \
    @CMPI %1 \
    %S \
-   @JMPC %V_ENDIF \
-   @JMPZ %V_ENDIF
+   @JMPC _%V_ENDIF \
+   @JMPZ _%V_ENDIF
 M IF_UGE_V \
    @CMPI %1 \
    %S \   
-   @JMPC %V_ENDIF
+   @JMPC _%V_ENDIF
 M IF_ULE_V \
    @CMPI %1 \
    %S \
-   @JMPC %0_True \
-   @JMPZ %0_True \
-   @JMP %V_ENDIF \
-   :%0_True
+   @JMPC _%0_True \
+   @JMPZ _%0_True \
+   @JMP _%V_ENDIF \
+   :_%0_True
 M IF_ULT_V \
     @CMPI %1 \
-    @JMPC %0_True \
-    %S @JMP %V_ENDIF \
-    :%0_True
+    @JMPC _%0_True \
+    %S @JMP _%V_ENDIF \
+    :_%0_True
 M IF_UGT_A \
    @CMP %1 \
    %S \
-   @JMPC %V_ENDIF \
-   @JMPZ %V_ENDIF
+   @JMPC _%V_ENDIF \
+   @JMPZ _%V_ENDIF
 M IF_UGE_A \
    @CMP %1 \
    %S \   
-   @JMPC %V_ENDIF
+   @JMPC _%V_ENDIF
 M IF_ULE_A \
    @CMP %1 \
-   @JMPC %0_True \
-   @JMPZ %0_True \
-   %S @JMP %V_ENDIF \
-   :%0_True
+   @JMPC _%0_True \
+   @JMPZ _%0_True \
+   %S @JMP _%V_ENDIF \
+   :_%0_True
 M IF_ULT_A \
     @CMP %1 \
-    @JMPC %0_True \
-    %S @JMP %V_ENDIF \
-    :%0_True
+    @JMPC _%0_True \
+    %S @JMP _%V_ENDIF \
+    :_%0_True
 M IF_UGT_S \
    @CMPS \
    %S \
-   @JMPC %V_ENDIF \
-   @JMPZ %V_ENDIF
+   @JMPC _%V_ENDIF \
+   @JMPZ _%V_ENDIF
 M IF_UGE_S \
    @CMPS \
    %S \   
-   @JMPC %V_ENDIF
+   @JMPC _%V_ENDIF
 M IF_ULE_S \
    @CMPS  \
    %S \   
-   @JMPC %0_True \
-   @JMPZ %0_True \
-   @JMP %V_ENDIF \
-   :%0_True
+   @JMPC _%0_True \
+   @JMPZ _%0_True \
+   @JMP _%V_ENDIF \
+   :_%0_True
 M IF_ULT_S \
     @CMPS \
     %S \    
-    @JMPC %0_True \
-    @JMP %V_ENDIF \
-    :%0_True
+    @JMPC _%0_True \
+    @JMP _%V_ENDIF \
+    :_%0_True
 # Here are a few of the IF structures based only on the existing flags
 # This way you can use the FLAG based CMP and still use the ease of the IF/ELSE/BLOCKs
 M IF_NEG \
-  @JMPN %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPN _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 #
 M IF_ZFLAG \
-  @JMPZ %0_True \  
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPZ _%0_True \  
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 #
 M IF_NOTZF \
   %S \
-  @JMPZ %V_ENDIF
+  @JMPZ _%V_ENDIF
 #
 M IF_POS \
   %S \
-  @JMPN %V_ENDIF
+  @JMPN _%V_ENDIF
 #
 M IF_OVERFLOW \
-  @JMPO %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPO _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 #
 M IF_NOTOVER \
   %S \
-  @JMPN %V_ENDIF
+  @JMPN _%V_ENDIF
 #
 M IF_CARRY \
-  @JMPC %0_True \
-  %S @JMP %V_ENDIF \
-  :%0_True
+  @JMPC _%0_True \
+  %S @JMP _%V_ENDIF \
+  :_%0_True
 #
 M IF_NOTCARRY \
   %S \
-  @JMPC %V_ENDIF
+  @JMPC _%V_ENDIF
 
 
  
@@ -260,9 +260,9 @@ M IF_NOTCARRY \
 # Note how if we fall into the ELSE block from the code right above.
 # It jumps right to the 'JustEnd' label. We do the same thing for ENDIF 
 M ELSE \
-  @JMP %V_JustEnd \
-  :%V_ElseBlock \
-  M %V_ElseFlag true
+  @JMP _%V_JustEnd \
+  :_%V_ElseBlock \
+  M _%V_ElseFlag true
 #
 # The Tricky part of ENDIF is determining if we used an ELSE block or not.
 # If no ELSE had been used the %V_ElseFlag will not exist.
@@ -271,22 +271,22 @@ M ELSE \
 # it had been indirectly referenced but not defined.
 
 # M ENDIF \
-#   @JMP %V_JustEnd \
-#   :%V_ENDIF \
-#   ! %V_ElseFlag \
-#      @JMP %V_JustEnd \
-#      =%V_ElseBlock 00 \
+#   @JMP _%V_JustEnd \
+#   :_%V_ENDIF \
+#   ! _%V_ElseFlag \
+#      @JMP _%V_JustEnd \
+#      =_%V_ElseBlock 00 \
 #   ENDBLOCK \
-#   @JMP %V_ElseBlock \
-#   :%V_JustEnd \
+#   @JMP _%V_ElseBlock \
+#   :_%V_JustEnd \
 #   %P
 M ENDIF \
-  @JMP %V_JustEnd \
-  :%V_ENDIF \
-  ? %V_ElseFlag \
-    @JMP %V_ElseBlock \
+  @JMP _%V_JustEnd \
+  :_%V_ENDIF \
+  ? _%V_ElseFlag \
+    @JMP _%V_ElseBlock \
   ENDBLOCK \
-:%V_JustEnd \
+:_%V_JustEnd \
 %P
 
 #
@@ -294,110 +294,110 @@ M ENDIF \
 #
 M WHILE_ZERO \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP 0 \
-  @JMPZ %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPZ _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_NOTZERO \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP 0 \
-  @JMPZ %V_ExitLoop \
-  :%0_True
+  @JMPZ _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_EQ_A \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP %1 \
-  @JMPZ %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPZ _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_NEQ_A \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP %1 \
-  @JMPZ %V_ExitLoop \
-  :%0_True
+  @JMPZ _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_EQ_V \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMPI %1 \
-  @JMPZ %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPZ _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_NEQ_V \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMPI %1 \
-  @JMPZ %V_ExitLoop \
-  :%0_True
+  @JMPZ _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_GT_A \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP %1 \
-  @JMPN %V_ExitLoop \
-  :%0_True
+  @JMPN _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_GT_V \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMPI %1 \
-  @JMPN %V_ExitLoop \
-  :%0_True
+  @JMPN _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_LT_A \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP %1 \
-  @JMPN %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPN _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_LT_V \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMPI %1 \
-  @JMPN %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPN _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_UGT_A \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP %1 \
-  @JMPC %V_ExitLoop \
-  @JMPZ %V_ExitLoop \  
-  :%0_True
+  @JMPC _%V_ExitLoop \
+  @JMPZ _%V_ExitLoop \  
+  :_%0_True
 
 M WHILE_UGT_V \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMPI %1 \
-  @JMPC %V_ExitLoop \
-  @JMPZ %V_ExitLoop \  
-  :%0_True
+  @JMPC _%V_ExitLoop \
+  @JMPZ _%V_ExitLoop \  
+  :_%0_True
 
 M WHILE_ULT_A \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMP %1 \
-  @JMPC %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPC _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
   
 M WHILE_ULT_V \
   %S \
-  :%V_LoopTop \
+  :_%V_LoopTop \
   @CMPI %1 \
-  @JMPC %0_True \
-  @JMP %V_ExitLoop \
-  :%0_True
+  @JMPC _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True
 #
 # When Do Loop are very much like While Loops but have a fixed place for a multi
 # line conditional logic. WHEN Code DO_ZERO or DO_NOTZERO ENDWHEN
@@ -409,21 +409,21 @@ M WHILE_ULT_V \
 #
 M WHEN \
   %S \
-  :%V_LoopTop
+  :_%V_LoopTop
 #
 M DO_ZERO \
   @CMP 0 \
-  @JMPZ %V_True \
-  @JMP %V_ENDWHEN \
-  :%V_True
+  @JMPZ _%V_True \
+  @JMP _%V_ENDWHEN \
+  :_%V_True
 #
 M DO_NOTZERO \
   @CMP 0 \
-  @JMPZ %V_ENDWHEN
+  @JMPZ _%V_ENDWHEN
 #
 M ENDWHEN \
-  @JMP %V_LoopTop \
-  :%V_ENDWHEN \
+  @JMP _%V_LoopTop \
+  :_%V_ENDWHEN \
   %P
 
 
@@ -433,20 +433,20 @@ M ENDWHEN \
 # This is Less flexable than full languages support.
 M WHILECONTINUE \
   %P \
-  @JMP %V_LoopTop
+  @JMP _%V_LoopTop
 
 M WHILEBREAK \
-  @JMP %W_ExitLoop
+  @JMP _%W_ExitLoop
 
 M FORBREAK \
-  @JMP %W_NextEnd
+  @JMP _%W_NextEnd
 
 M FORCONTINUE \
-  @JMP %W_
+  @JMP _%W_
 
 M ENDWHILE \
-  @JMP %V_LoopTop \
-  :%V_ExitLoop \
+  @JMP _%V_LoopTop \
+  :_%V_ExitLoop \
   %P
 #
 # LOOP/UNTIL is basicly a while loop that does the test at the end of the loop
@@ -454,19 +454,19 @@ M ENDWHILE \
 
 M LOOP \
   %S \
-  :%V_TopLoop
+  :_%V_TopLoop
 # Like for 'while' we'll only handle the TOS zero or notzero cases.
 # If you need a more complex test, manually do the test before UNTIL...
 # and leave either 0 or 1 on the stack.
 
 M UNTIL_NOTZERO \
   @CMP 0 \
-  @JMPZ %V_TopLoop \
+  @JMPZ _%V_TopLoop \
   %P
 
 M UNTIL_ZERO \
   @CMP 0 \
-  @JMPNZ %V_TopLoop \
+  @JMPNZ _%V_TopLoop \
   %P
 
 #
@@ -483,16 +483,16 @@ M SWITCH \
   %S
 #
 # Basic CASE takes 16b constant as test value against stack
-#    Worth Noting that we're using a mix of %0 and %V which a simple case like this
-#    are the same value, but for notation sense, use %V when you mean the lable you
-#    are preserving on the stack, and plan to use again, and %0 for lables that only
+#    Worth Noting that we're using a mix of _%0 and _%V which a simple case like this
+#    are the same value, but for notation sense, use _%V when you mean the lable you
+#    are preserving on the stack, and plan to use again, and _%0 for lables that only
 #    have value inside this same macro.
 M CASE \
   %S \
   @CMP %1 \
-  @JMPZ %V_DoCase1 \
-  @JMP %V_NextCase \
-  :%V_DoCase1
+  @JMPZ _%V_DoCase1 \
+  @JMP _%V_NextCase \
+  :_%V_DoCase1
 
 # Takes two constant params (low value then high value, can't be swaped)
 # What going on here, might seem complex, the key is we have and IF_GE but no IF_LE
@@ -501,46 +501,46 @@ M CASE \
 M CASE_RANGE \
   %S \
   @CMP %1 \
-  @JMPN %V_NextCase \
+  @JMPN _%V_NextCase \
   @CMP %2 \
-  @JMPN %V_InRange \
-  @JMPZ %V_InRange \
-  @JMP %V_NextCase \
-  :%V_InRange
+  @JMPN _%V_InRange \
+  @JMPZ _%V_InRange \
+  @JMP _%V_NextCase \
+  :_%V_InRange
 
 # Compares TOS with value at [%1] 
 M CASE_I \
    %S \
   @CMPI %1 \
-  @JMPNZ %V_NextCase
+  @JMPNZ _%V_NextCase
 
 # The only reason we need CDEFAULT is to balance the Macro Stack, which would underflow without.
 M CDEFAULT \
-  :%V_NextCase \
+  :_%V_NextCase \
   %S
   
 # Call the CASES need a matching CBREAK main things it does is pop the MacroStack
 #    There seems to be some odd jumping here. Just to keep track CBreak provides
 #    Two entry points. One is the 'fall through' from the previous CASE which means
-#    we want to jump to the ENDCASE BUT we don't have the right %V on the stack for that.
-#    We first have to deal with the top of stack %V which is the entry point for the next
+#    we want to jump to the ENDCASE BUT we don't have the right _%V on the stack for that.
+#    We first have to deal with the top of stack _%V which is the entry point for the next
 #    CASE statement, so we first 'jump over' the entry for the next CASE and then we can
-#    POP the %V stack, get the right %V for the endcase and jmp there, lastly we prepare
+#    POP the _%V stack, get the right _%V for the endcase and jmp there, lastly we prepare
 #    for the next CASE 
 M CBREAK \
-  @JMP %0_SkipHeadNextCase \
-     :%V_NextCase \
-     @JMP %0_RealHeadNextCase \
+  @JMP _%0_SkipHeadNextCase \
+     :_%V_NextCase \
+     @JMP _%0_RealHeadNextCase \
      %P \     
-  :%0_SkipHeadNextCase \
-     @JMP %V_EndCASE \
-  :%0_RealHeadNextCase
+  :_%0_SkipHeadNextCase \
+     @JMP _%V_EndCASE \
+  :_%0_RealHeadNextCase
 
 
 # End Case provides a target for, the %P is there to pop the %S from SWITCH
 
 M ENDCASE \
-  :%V_EndCASE \
+  :_%V_EndCASE \
   %P
 #
 #
@@ -577,91 +577,91 @@ M ENDCASE \
 M ForIA2B \
   %S \
   @MA2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPZ %V_NextEnd
+  @JMPZ _%V_NextEnd
 
 # For UP variation test for > end condition
 M ForIupA2B \
   %S \
   @MA2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPN %V_NextEnd
+  @JMPN _%V_NextEnd
 
 # for Index from constant to variable
 M ForIA2V \
   %S \
   @MA2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPZ %V_NextEnd
+  @JMPZ _%V_NextEnd
 
 # For Up variation to for > end condition
 M ForIupA2V \
   %S \
   @MA2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPN %V_NextEnd
+  @JMPN _%V_NextEnd
 
 # for Index from variable to constant
 M ForIV2A \
   %S \
   @MV2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPZ %V_NextEnd
+  @JMPZ _%V_NextEnd
 
 # For Up variation to for > end condition
 M ForIupV2A \
   %S \
   @MV2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPN %V_NextEnd
+  @JMPN _%V_NextEnd
 
 #for Index from variable to variable
 M ForIV2V \
   %S \
   @MV2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPZ %V_NextEnd
+  @JMPZ _%V_NextEnd
 
 M ForIupV2V \
   %S \
   @MV2V %2 %1 \
-  :%V_ForTop \
+  :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPN %V_NextEnd
+  @JMPN _%V_NextEnd
 
 M Next \
   @INCI %1 \
-  @JMP %V_ForTop \
-  :%V_NextEnd \
+  @JMP _%V_ForTop \
+  :_%V_NextEnd \
   %P
 M NextBy \
   @PUSH %2 \
   @ADDI %1 \
   @POPI %1 \
-  @JMP %V_ForTop \
-  :%V_NextEnd \
+  @JMP _%V_ForTop \
+  :_%V_NextEnd \
   %P
 M NextByI \
   @PUSHI %2 \
   @ADDI %1 \
   @POPI %1 \
-  @JMP %V_ForTop \
-  :%V_NextEnd \
+  @JMP _%V_ForTop \
+  :_%V_NextEnd \
   %P
 
   
