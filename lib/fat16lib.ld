@@ -1,6 +1,7 @@
 ! FAT16Seen
 M Fat16Seen 1
 I common.mc
+L heapmgr.ld
 L string.ld
 L lmath.ld
 #
@@ -8,7 +9,7 @@ L lmath.ld
 # BufferPtr is likely a HeapObheject but could also just be a fixed block of memory of size
 # DiskID, sector, cluster are all 16bit numbers
 # HeapID is a Heap Structure and make with the HeapDefineMemory call. But it an be inbeded in a heapobject
-# 
+#
 #
 G ReadSectorBuffer       # ReadSectorBuffer(DiskID, Sector):New HeapObject
 G ReadSector             # ReadSector(sector, BufferPtr):int (0==success else error code)
@@ -40,7 +41,7 @@ G strFormat
 #
 # Boot Record Offsets.
 =BytesPerSectorOffset 11          # word
-=SectorsPerClusterOffset 13       # Bytes 
+=SectorsPerClusterOffset 13       # Bytes
 =ReservedSectorsCountOffset 14    # Word
 =NumberOfFATCopiesOffset 16       # Byte
 =RootDirectoryEntriesOffset 17    # Word
@@ -65,7 +66,7 @@ G strFormat
 # While several of these fields are bytes, we store as words for simplicty with math.
 # Make these Global for easy refrence:
 G BytesPerSector G SectorsPerCluster G ReservedSectorsCount G NumberOfFATCopies
-G RootDirectoryEntries G TotalSectorsLow G TotalSectorsHigh G SectorsPerFat G DiskHeapID 
+G RootDirectoryEntries G TotalSectorsLow G TotalSectorsHigh G SectorsPerFat G DiskHeapID
 G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 
 
@@ -161,7 +162,6 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPI sector
 #
 @DISKSEEKI sector
-#@PRT "BufferPtr: " @PRTHEXI BufferPtr @PRTNL
 @DISKREADI BufferPtr
 #
 @POPLOCAL Var02
@@ -188,10 +188,12 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 =CurrentHandle Var02
 =DiskID Var03
 =Index1 Var04
+=HeapID Var05
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
 @PUSHLOCALI Var03
 @PUSHLOCALI Var04
+@PUSHLOCALI Var05
 #
 @POPI HeapID
 @POPI DiskID
@@ -243,7 +245,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @POPNULL
    @PUSHI HeapID
    @PUSH 0x200
-   @CALL HeapNewObject @IF_ULT_A 100 @PUSH 101 @CALL ErrorExit @ENDIF  # (HeapID, size)   
+   @CALL HeapNewObject @IF_ULT_A 100 @PUSH 101 @CALL ErrorExit @ENDIF  # (HeapID, size)
    @PUSHI CurrentHandle @ADD 2    # Save to Handle+2
    @POPS
    @PUSHI DiskID
@@ -256,7 +258,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
       # DiskID was already the active disk, no need to do anything.
    @ELSE
       @PUSHI CurrentHandle @ADD 2
-      @POPI ActiveBuffer   
+      @POPI ActiveBuffer
    @ENDIF
 @ENDIF
 @DISKSELI ActiveDisk
@@ -271,7 +273,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @IF_EQ_AV 0 CurrentWorkingDirectory
    # Space for CurrentWorkingDirectory
    @PUSHI HeapID @PUSH 256
-   @CALL HeapNewObject @IF_ULT_A 100 @CALL ErrorExit @ENDIF  # (HeapId, Size)   
+   @CALL HeapNewObject @IF_ULT_A 100 @CALL ErrorExit @ENDIF  # (HeapId, Size)
    @POPI CurrentWorkingDirectory
 @ENDIF
 # Caclulate the RootDirSector
@@ -292,6 +294,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @PUSHI HeapID
 @PUSHI ActiveBuffer
 @CALL HeapDeleteObject
+@POPLOCAL Var05
 @POPLOCAL Var04
 @POPLOCAL Var03
 @POPLOCAL Var02
@@ -395,7 +398,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 #    // First sector of the cluster
 #    int32 ClusterSector = ((cluster - 2) * SectorsPerCluster) + FirstDataSector;
 ###
- 
+
 
 ##################################################
 # Function ReadRootDir()
@@ -512,13 +515,16 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 =Day Var05
 =Minutes Var05
 =Year Var06
-=Hours Var06
+=Hours Var07
+=Object Var08
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
 @PUSHLOCALI Var03
 @PUSHLOCALI Var04
 @PUSHLOCALI Var05
 @PUSHLOCALI Var06
+@PUSHLOCALI Var07
+@PUSHLOCALI Var08
 
 #
 @POPI strptr
@@ -539,21 +545,18 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @ADD 1980
    @POPI Year
    # Format string
-   @STRSETI "    -  -  -  " strptr   #Blank out Date string.
-   @PUSHI strptr
-   @PUSHI Year
-   @PUSH 10
-   @CALL itos
-   @PUSHI strptr @ADD 6
-   @PUSHI Month
-   @PUSH 10
-   @CALL itos
-   @PUSH strptr @ADD 9
-   @PUSHI Day
-   @PUSH 10
-   @CALL itos
+    @PUSHI Year
+    @PUSHI Month
+    @PUSHI Day
+    @STRSTACK "%02d/%02d/%02d"
+    @PUSHI DiskHeapID
+    @CALL strFormat
+    @POPI Object
+    @PUSHI strptr
+    @PUSHI Object
+    @CALL strcpy
 @ELSE
-   # Time
+   # Time   
    @PUSHI Indata
    @AND 0x1f @RTL   # Seconds bits 0-4, *2 as range is only 0-31
    @POPI Seconds
@@ -567,21 +570,18 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @RTR @RTR @RTR     # >> 11
    @AND 0x1f
    @POPI Hours
-   # Format string
-   @STRSETI "  :  :  " strptr
-   @PUSHI strptr   
    @PUSHI Hours
-   @PUSH 10
-   @CALL itos
-   @PUSHI strptr @ADD 3
    @PUSHI Minutes
-   @PUSH 10
-   @CALL itos
-   @PUSHI strptr @ADD 6
    @PUSHI Seconds
-   @PUSH 10
-   @CALL itos
+   @STRSTACK "%02d:%02d:%02d"
+   @PUSHI DiskHeapID   
+   @CALL strFormat
+   @POPI Object
+   @PUSHI strptr
+   @PUSHI Object
+   @CALL strcpy
 @ENDIF
+@PUSHI DiskHeapID @PUSHI Object @CALL HeapDeleteObject
 @POPLOCAL Var06
 @POPLOCAL Var05
 @POPLOCAL Var04
@@ -592,7 +592,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @RET
 
 
-   
+
 
 ################################################
 # Function ListDir(DirBuffer)
@@ -614,7 +614,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPI dirEntry
 @MA2V 0 DirCount
 @ForIA2V Index1 0 RootDirectoryEntries
-    @PUSHI dirEntry @ADD 32 @POPI dirEntry    
+    @PUSHI dirEntry @ADD 32 @POPI dirEntry
     @PUSHII dirEntry
     @AND 0xff
     @IF_ZERO
@@ -652,13 +652,13 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
                         @MA2V 0 DoPrint
                      @ENDIF
                  @ENDIF
-              @ENDIF   
+              @ENDIF
            @ENDIF
         @ENDIF
         @POPNULL
         @IF_EQ_AV 1 DoPrint
            @INCI DirCount
-           @PRTI DirCount @PRT ": "        
+           @PRTI DirCount @PRT ": "
            @ForIA2B Index2 0 11
               @PUSHI dirEntry @ADDI Index2 @PUSHS @AND 0xff
               @PRTCHS
@@ -781,31 +781,34 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @MA2V 0 NextCluster
 @MA2V 0 BreakInner
 @MA2V 0 Index1
+@IF_EQ_AV 0 RootBuffer
+   #Is NOT a ROOT Dir, use the Cluster logic.
+   @PUSHI cluster
+   @PUSHI Index1
+   @CALL ReadDirectoryEntry
+   @POPI dirEntry
+@ELSE
+   # Is a ROOT dir, so we just need dirEntry to be the offset of the buffer.
+   @PUSHI RootBuffer
+   @POPI dirEntry
+@ENDIF
+
 @PUSHI BreakInner
 @WHILE_ZERO
-    @IF_EQ_AV 0 RootBuffer
-       #Is NOT a ROOT Dir, use the Cluster logic.
-        @PUSHI cluster
-        @PUSHI Index1
-        @CALL ReadDirectoryEntry
-        @POPI dirEntry
-    @ELSE
-        # Is a ROOT dir, so we just need dirEntry to be the offset of the buffer.
-        @PUSHI Index1 @RTL @RTL @RTL @RTL @RTL # Index1*32
-        @ADDI RootBuffer
-        @POPI dirEntry
-    @ENDIF
+    @POPNULL
     @PUSHI dirEntry
     @CALL PrintDirEntryInfo   ###
-    @MA2V 0 DoFNTest           # Default is to not test current against filename        
+    @MA2V 0 DoFNTest           # Default is to not test current against filename
     @PUSHII dirEntry   # Tests against the word at dirEntry[0]
     @IF_ZERO
+        @PRTLN "Reached End of DIR Listings"
         # Reached end of DIR without match, return -1 as error
         @POPNULL   # Pop 00
         @MA2V -1 NextCluster
         @MA2V 1 BreakInner
     @ELSE
         @IF_EQ_A 0xe5 # This is the Deleted File Mark. Skip it.
+           @PRTLN "Deleted Line Entry"
            @POPNULL
         @ELSE
            @POPNULL   # Pop Test on dirEntry[0]
@@ -816,31 +819,35 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
            @AND 0xff
            @POPI AttributeByte
            # We only want to check filename against DIR or normal files.
-           # Not Volumes, or long filenames.
-           @PUSHI AttributeByte @AND 0x8     # Volume
-           @IF_NOTZERO
+           # Not Volumes, or long filenames.           
+           @PUSHI AttributeByte @AND 0xf #long filename
+           @IF_EQ_A 0xf
+              @PRTLN "Was Long Filename, skip it."
               @POPNULL
            @ELSE
               @POPNULL
-              @PUSHI AttributeByte @AND 0x0f
-              @IF_NOTZERO    # Long Filename extention, we don't use.
+              @PUSHI AttributeByte @AND 0x08
+              @IF_NOTZERO    # Volume flag
+                 @PRTLN "Volume Flag"
                  @POPNULL
               @ELSE
-                 @POPNULL  # Remove the LongFile test
+                 @POPNULL  # Remove the test
+                 @PRT "Was File type: " @PRTI AttributeByte @PRTNL
                  # Passed all tests, so test against filename
                  @MA2V 1 DoFNTest
               @ENDIF
            @ENDIF
          @ENDIF
          @IF_EQ_AV 1 DoFNTest
-            # Here means that we do want to compair this directory to filename
+            # Here means that we do want to compare this directory to filename
             @PUSHI dirEntry
             @PUSH SpacePadded
             @PUSH 11
             @CALL strncmp
-            @IF_ZERO               
+            @IF_ZERO
+               @POPNULL            
                # String Matches Directory name.
-               @POPNULL
+               @PRTLN "Strings Match:"
                @PUSHI dirEntry
                @ADD Dir1stClusterOffset
                @PUSHS    # Result is new Cluster ID
@@ -851,20 +858,21 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
             @ENDIF
          @ENDIF
     @ENDIF
-    @POPNULL
 #
-    @INCI Index1      
-    @IF_EQ_AV 0 RootBuffer
-       # dirEntry is a heap object, clean it up
-       @PUSHI DiskHeapID
-       @PUSHI dirEntry
-       @CALL HeapDeleteObject     # (DiskHeapID,dirEntry) Free up the space used by dirEntry
+    @INCI Index1
+    @IF_EQ_AV 0 BreakInner
+       @PRTLN "Move to next DIR entry"
+       @PUSHI dirEntry @ADD 32 @POPI dirEntry
     @ENDIF
     @PUSHI BreakInner
 @ENDWHILE
 @POPNULL
 @IF_EQ_AV 0 RootBuffer
-   # Do Nothing, not root.
+   @PRTLN "Was Root Buffer, clear out heap object"
+   # dirEntry is a heap object, clean it up
+   @PUSHI DiskHeapID
+   @PUSHI dirEntry
+   @CALL HeapDeleteObject     # (DiskHeapID,dirEntry) Free up the space used by dirEntry
 @ELSE
    @PUSHI DiskHeapID
    @PUSHI RootBuffer
@@ -929,7 +937,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @ForIA2V Index1 0 clusterOffset
    @PUSHI currentCluster
    @CALL GetNextCluster      # Follow Fat to get the next cluster
-   @POPI currentCluster      
+   @POPI currentCluster
    @IF_EQ_AV -1 currentCluster
        @PRT "Entry out of bounds"
        @PUSHI DiskHeapID
@@ -1175,7 +1183,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @MA2V -1 ExitValue   # Set default value if no valid cluster can be found.
 @ForIV2V sector fatStart fatEnd
     # buffer = ReadSectorBuffer(DiskID,sector)
-    @PUSHI ActiveDisk    
+    @PUSHI ActiveDisk
     @PUSHI sector
     @CALL ReadSectorBuffer
     @POPI Buffer
@@ -1412,7 +1420,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @INCI ClusterCount
    @PUSHI currentCluster
 @ENDWHILE
-@POPNULL 
+@POPNULL
 @INT2LONGVI ClusterCount return32ptr  # Turn 16 bit count into 32b ptr var
 @MULWLII BytesPerCluster return32ptr   # ptrvar=BytesPerCluser * ptrvar
 @POPLOCAL Var05
@@ -1548,13 +1556,13 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
        @PUSHI Offset
     @ENDWHILE
     @POPNULL
-@ENDIF      
+@ENDIF
 #
 # now for NumToRead Clusters read file into buffer.
 @MV2V DestHeapBuffer MemPtr
 @ForIA2V Index1 0 NumToRead
    @PUSHI CurrentCluster
-   @PUSHI MemPtr   
+   @PUSHI MemPtr
    @CALL ReadCluster
    @PUSHI MemPtr      # Move MemPtr to next clustersize block.
    @ADDI ClusterSize
@@ -1564,7 +1572,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @IF_UGT_A 0xfff7   #Handle any non-zero end of cluster marker.
       @POPNULL
       @PUSH 0
-   @ENDIF   
+   @ENDIF
    @IF_ZERO
       # Force For Loop to exit early
       @MV2V NumToRead Index1
@@ -1595,17 +1603,18 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 =DirPtr Var01
 =Index1 Var02
 =CharCode Var03
+=Attribute Var04
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
 @PUSHLOCALI Var03
+@PUSHLOCALI Var04
 @POPI DirPtr
-@PRT "---------------------------------------\n"
-@PUSH 11 @ADDI DirPtr @PUSHS @AND 0xff
-@IF_EQ_A 0xf
-   @POPNULL
+@PUSH DirAttribOffset @ADDI DirPtr @PUSHS @AND 0xff
+@POPI Attribute
+@IF_EQ_AV 0xf Attribute
 #   @PRTLN "Long FileName Record: Skip"
 @ELSE
-   @POPNULL
+   @PRT "---------------------------------------\n"
    @PUSHII DirPtr
    @IF_ZERO
       @POPNULL
@@ -1616,41 +1625,58 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
       @ForIA2B Index1 0 8
          @PUSHI Index1 @ADDI DirPtr @PUSHS @AND 0xff
          @POPI PrtDirStrBuff
-         @IF_EQ_AV 0x20 PrtDirStrBuff
-         @ELSE
-            @PRTCH PrtDirStrBuff
+         @PUSHI PrtDirStrBuff
+         @IF_GE_A "!\0" # Valid between ! and z
+            @IF_LE_A "z\0"
+               @PRTCH PrtDirStrBuff
+            @ENDIF
          @ENDIF
+         @POPNULL
       @Next Index1
       @PRT "."
       @ForIA2B Index1 8 11
          @PUSHI Index1 @ADDI DirPtr @PUSHS @AND 0xff
          @POPI PrtDirStrBuff
-         @IF_EQ_AV 0x20 PrtDirStrBuff
-         @ELSE
-            @PRTCH PrtDirStrBuff
-         @ENDIF         
+         @PUSHI PrtDirStrBuff
+         @IF_GE_A "!\0"
+            @IF_LE_A "z\0"
+               @PRTCH PrtDirStrBuff
+            @ENDIF
+         @ENDIF
+         @POPNULL
       @Next Index1
-      @PRT "Atr:"
+      @PRT " Atr:"
+      @PUSHI Attribute
       @PUSH 11 @ADDI DirPtr @PUSHS @AND 0xff
-      @DUP @AND 0x1
+      @AND 0x1
       @IF_NOTZERO
          @PRT "RO"
       @ELSE
          @PRT "RW"
       @ENDIF
-      @POPNULL @DUP @AND 0x2
+      @POPNULL
+      @PUSHI Attribute
+      @AND 0x2
       @IF_NOTZERO @PRT ",H"
       @ENDIF
-      @POPNULL @DUP @AND 0x4
+      @POPNULL
+      @PUSHI Attribute      
+      @AND 0x4
       @IF_NOTZERO @PRT ",SYS"
       @ENDIF
-      @POPNULL @DUP @AND 0x8
+      @POPNULL
+      @PUSHI Attribute            
+      @AND 0x8
       @IF_NOTZERO @PRT ",VOL" @ENDIF
-      @POPNULL @DUP @AND 0x10
+      @POPNULL
+      @PUSHI Attribute      
+      @AND 0x10
       @IF_NOTZERO @PRT ",DIR" @ELSE @PRT ",F"
       @ENDIF
-      @POPNULL @AND 0x20
-      @IF_NOTZERO @PRT ",ARC" @ENDIF      
+      @POPNULL
+      @PUSHI Attribute            
+      @AND 0x20
+      @IF_NOTZERO @PRT ",ARC" @ENDIF
       @POPNULL
       #
       @PUSH 13 @ADDI DirPtr @PUSHS
@@ -1659,30 +1685,28 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
       @PUSH 2 @SWP
       @PUSH PrtDirStrBuff
       @CALL DateTimeFormat
-      @PRTSI PrtDirStrBuff @PRTSP
-
+      @PRTS PrtDirStrBuff @PRTSP
       #
       @PUSH 15 @ADDI DirPtr @PUSHS
       @PRT "C-Date: "
       @PUSH 1 @SWP
       @PUSH PrtDirStrBuff
       @CALL DateTimeFormat
-      @PRTSI PrtDirStrBuff @PRTSP
-      @POPNULL
+      @PRTS PrtDirStrBuff @PRTSP
       #
       @PUSH 21 @ADDI DirPtr @PUSHS
       @PRT "M-Time: "
       @PUSH 2 @SWP
       @PUSH PrtDirStrBuff
       @CALL DateTimeFormat
-      @PRTSI PrtDirStrBuff @PRTSP
+      @PRTS PrtDirStrBuff @PRTSP
       #
       @PUSH 13 @ADDI DirPtr @PUSHS
       @PRT "M-Date: "
       @PUSH 1 @SWP
       @PUSH PrtDirStrBuff
       @CALL DateTimeFormat
-      @PRTSI PrtDirStrBuff @PRTSP      #      
+      @PRTS PrtDirStrBuff @PRTSP      #
       #
       @PUSH 26 @ADDI DirPtr @PUSHS
       @PRT "Cluster: "
@@ -1698,11 +1722,14 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
       @POPNULL
    @ENDIF
 @ENDIF
+@POPLOCAL Var04
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN
 @RET
+
+
 #########################
 # Function strFormat(val1..valn,strptrin,HeapID):stringout(heap object, delete when done)
 # Max n == 9
@@ -1712,7 +1739,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 #  F=is 'fill' default is space.
 #  S=is size or length of field.
 #  d is for decimal (0-65535) (other options later)
-#  HeapID require an already initilized heap.
+#  MyHeap require an already initilized heap.
 :SFBuffer "          "
 :strFormat
 @PUSHRETURN
@@ -1823,7 +1850,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
           @ENDIF
        @ENDIF
        # Now see if there is a number before type code.
-       
+
        @SWITCH
        @CASE "d\0"
           # No number, just a type code.
@@ -1834,7 +1861,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
        @CASE_RANGE "0\0" "9\0"
           # a number between 1-99 is field width
           @SUB "0\0"
-          @POPI Size     # First Digit always Replaces Size               
+          @POPI Size     # First Digit always Replaces Size
           @INCI Char
           @PUSHII Char @AND 0xff
           @IF_GE_A "0\0"
@@ -1892,8 +1919,8 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
                 @ADDI CharOut
                 @SWP       # We want (CharOut+Size)-Len not Len-(CharOut+Size)
                 @SUBS
-                @POPI CharOut                
-             @ENDIF             
+                @POPI CharOut
+             @ENDIF
              @PUSHI CharOut
              @PUSHI SFBuffer
              @CALL strcpy
@@ -1902,7 +1929,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
              @ADDI CharOut
              @POPI CharOut
           @ENDIF
-          @CBREAK          
+          @CBREAK
        @CASE "d\0"
           # we replace the d with the number based on the formatting rules
           @POPNULL

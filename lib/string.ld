@@ -4,8 +4,9 @@ M STRING_DONE 1
 L div.ld
 L mul.ld
 L softstack.ld
+L heapmgr.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
-G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok
+G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok G strFormat
 
 #
 # Some 'String' Macros
@@ -31,6 +32,11 @@ M STRSTACK \
 :Var04 0
 :Var05 0
 :Var06 0
+:Var07 0
+:Var08 0
+:Var09 0
+:Var10 0
+:Var11 0
 :WorkBuff "00000000" $$0       # Long enough for -32000 to +32000
 
 #
@@ -567,7 +573,6 @@ M STRSTACK \
    @PUSHII StrPtrA @POPI SrcPtr
    @PUSH 0 @POPII StrPtrA
    @PUSHI StrPtrB
-   :Break03
    @CALL stoi
    @POPI DstPtr
    @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed         

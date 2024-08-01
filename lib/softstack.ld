@@ -73,6 +73,7 @@ M PUSHLOCAL @PUSH %1 @CALL __MOVE_HW_SS
 # Function __MOVE_HW_SS
 #  Pushes top of HW Stack to SoftStack
 :__MOVE_HW_SS
+@PRTHEXTOP @PRTSP
 @PUSHI __SS_SP
 @IF_ULT_V __SS_BOTTOM
    @POPNULL
