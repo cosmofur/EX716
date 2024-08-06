@@ -8,8 +8,8 @@ G CSICODE G WinNorth G WinSouth G WinEast G WinWest
 :WinWidth 80
 :WinHeight 24
 :CSICODE
-#"<ESC>["$$0
-$$27 "[" $$0
+"<ESC>["$$0
+#$$27 "[" $$0
 # Windows Clear
 :WinClear
 @PRTS CSICODE @PRT "0m"

@@ -191,6 +191,9 @@ def shandler(signum, frame):
 
 signal.signal(signal.SIGINT, shandler)
 
+def is_string_numeric(s):
+    return s.isdigit()
+
 
 def create_new_filename(original_filename, new_extension):
     # Get the base filename without the extension
@@ -340,10 +343,11 @@ class InputFileData:
     def get_nearest_address(self, filename, line_number):
         if filename not in self.file_data:
             if len(self.file_data) > 1:
-                print("Multiple Matches for (%04x) : " % line_number)
+                print("Multiple Matches for (%04x) : Re-enter with one of the following. " % line_number)
                 for afile in self.file_data:
                     Result1 = self.get_nearest_address(afile, line_number)
-                    print("%s:%d" % (afile, Result1))
+                    if Result1 != None:
+                        print("%s:%d:%04x" % (afile, line_number, Result1))
                 return None
             filename=self.file_data[0]
         lines=sorted(self.file_data[filename].keys())
@@ -370,7 +374,6 @@ class microcpu:
     cpu_id_iter = itertools.count()
     DiskPtr = -1
     OPTDICTFUNC={}
-    Last_Filename_used = None
 
     def switcher(self, optcall, argument):
         return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)
@@ -388,6 +391,7 @@ class microcpu:
         self.mb[0xff] = 0
         self.simtime = False
         self.clocksec = 1000
+        self.Last_Filename_used = None        
 
 
     def insertbyte(self, location, value):
@@ -414,7 +418,7 @@ class microcpu:
                 OutFile=None
             else:
                 self.Last_Filename_used = parts[0]
-                OutFile=FindAddressLine.Last_Filename_used
+                OutFile=self.Last_Filename_used
             OutLine=int(parts[1])
         else:
             OutFile=self.Last_Filename_used
@@ -457,10 +461,8 @@ class microcpu:
             sys.stdout.flush()
         else:
             print("Stack Empty",file=DebugOut)
-            CPU.raiseerror("Stack Empty at %04x" % i)
-        try:
-            print(i)
-        except:
+            print("Stack Empty at %04x" % i)
+        if self.mb[0xff] > 0 and self.mb[0xff] < 255:
             print("Invalid range for stack info: SP:%03x" % ( self.mb[0xff]-1))
             self.mb[0xff]=0xf0
         try:
@@ -469,7 +471,10 @@ class microcpu:
             print("TTY Error: On No Echo", file=DebugOut)
 
         print("Error Number: %s \n\tat PC:0x%04x " % (idcode, int(CPU.pc)),file=DebugOut)
-        valid = int(idcode[0:3])
+        if is_string_numeric(idcode[0:3]):
+            valid = int(idcode[0:3])
+        else:
+            valid=-1        
         if RunMode:
             print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
         print(new[3])
@@ -2531,8 +2536,8 @@ def debugger(FileLabels,passline):
         if cmdword == "l":
             startaddr = 0
             stopaddr = 30
-            if argcnt > 0:
-                print(arglist)
+            if argcnt > 0 or len(rawlist) > 0:
+                print(rawlist)
                 tresult = CPU.FindAddressLine(rawlist[0])
                 if tresult == None:
                     print("Range 1(%s) not valid:" % rawlist[0])

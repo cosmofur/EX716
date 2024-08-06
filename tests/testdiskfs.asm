@@ -106,9 +106,7 @@ L fat16lib.ld
 =returnstr Var06
 @PRTLN "Initializing Filesystem.."
 @PUSH 0 @PUSHI MainHeapID
-@PRT "B-SelectDisk: " @StackDump
 @CALL SelectDisk
-@PRT "A-SelectDisk: " @StackDump
 #
 # Test the formated string function.
 @PRT "Before Formated Prints" @StackDump
@@ -128,10 +126,11 @@ L fat16lib.ld
 @POPI returnstr
 @PRT "String: "
 @PRTSI returnstr @PRTNL
-
+@PRTLN "---------------------"
 
 #
 @PUSH 0 @PUSH 0
+@PRTLN "Calling Read Boot Sector"
 @CALL ReadSectorBuffer
 @POPI BootSector
 #
@@ -140,19 +139,23 @@ L fat16lib.ld
    @END
 @ENDIF
 #
+@PRTLN "Calling ParseBootSector"
 @PUSHI BootSector
 @CALL ParseBootSector
 #
+@PRTLN "Calling ReportParseBootSector"
 @CALL ReportParseBootSector
 #
 @PUSHI DiskHeapID @PUSHI BootSector @CALL HeapDeleteObject  # free(BootSector)
 #
 @PRTLN "Reading and listing root directory..."
 #
+@PRTLN "Calling ReadRootDir"
 @CALL ReadRootDir
 @POPI rootBuffer
 #
 @PUSHI rootBuffer
+@PRTLN "Calling ListDir"
 @CALL ListDir
 @PUSHI DiskHeapID @PUSHI rootBuffer @CALL HeapDeleteObject  # free(rootBuffer)
 #
@@ -163,6 +166,7 @@ L fat16lib.ld
 @PUSHI rootCluster
 @STRSET "/dir1\0" StringBuffer
 @PUSH StringBuffer
+@PRTLN "Calling GetDirectory"
 @CALL GetDirectory   # (rootCluster, "subdir")
 @POPI subdirCluster
 @POPI FileAttribute
@@ -178,7 +182,7 @@ L fat16lib.ld
 @PRTNL
 #
 @PUSHI subdirCluster
-
+@PRTLN "Calling ReadDirBuffer"
 @CALL ReadDirBuffer
 
 @POPI entry
@@ -188,6 +192,7 @@ L fat16lib.ld
    @END
 @ENDIF
 @PUSHI entry
+@PRTLN "Calling HexDumpMemory"
 @CALL HexDumpMemory
 @PUSHI entry
 @CALL ListDir
@@ -198,10 +203,12 @@ L fat16lib.ld
 
 @POPI RootDirInfo
 @PUSHI RootDirInfo
+@PRTLN "Calling ListDir"
 @CALL ListDir
-
+@PRTLN "Calling ReadRootDir"
 @CALL ReadRootDir
 
+@PRTLN "List first 5 Fat Addresses"
 @PRT "1 =" @PUSH 1 @CALL GetFatAddress @PRTTOP @POPNULL @PRTNL
 @PRT "2 =" @PUSH 2 @CALL GetFatAddress @PRTTOP @POPNULL @PRTNL
 @PRT "3 =" @PUSH 3 @CALL GetFatAddress @PRTTOP @POPNULL @PRTNL
@@ -220,7 +227,7 @@ L fat16lib.ld
 @PUSHLOCALI Var03
 #
 @POPI MemPtr
-@PRTLN  "ADDR 0001 0002 0003 0004 0005 0006 0007 0008 0009 000A 000B 000C 000D 000E 000F"
+@PRTLN  "ADDR 0000 0001 0002 0003 0004 0005 0006 0007 0008 0009 000A 000B 000C 000D 000E 000F"
 @ForIA2B Index1 0 24
     @PRTHEXI MemPtr @PRT ":"
     @ForIA2B Index2 0 16
@@ -232,6 +239,7 @@ L fat16lib.ld
     @PRTNL
 @Next Index1
 @PRTLN
+:Break02
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
