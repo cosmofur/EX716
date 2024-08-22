@@ -6,7 +6,7 @@ L mul.ld
 L softstack.ld
 L heapmgr.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
-G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok G strFormat
+G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok
 
 #
 # Some 'String' Macros

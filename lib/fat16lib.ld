@@ -158,11 +158,11 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
 #
-@POPI BufferPtr
+@POPI Bufferptr
 @POPI sector
 #
 @DISKSEEKI sector
-@DISKREADI BufferPtr
+@DISKREADI Bufferptr
 #
 @POPLOCAL Var02
 @POPLOCAL Var01
@@ -188,15 +188,18 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 =CurrentHandle Var02
 =DiskID Var03
 =Index1 Var04
-=HeapID Var05
+=InHeapID Var05
+=NewHeapID Var06
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
 @PUSHLOCALI Var03
 @PUSHLOCALI Var04
 @PUSHLOCALI Var05
+@PUSHLOCALI Var06
 #
-@POPI HeapID
+@POPI InHeapID
 @POPI DiskID
+@PRT "Passed in HeapID: " @PRTHEXI InHeapID @PRTNL
 #
 # Search for an open Handle
 @MA2V 0 Index1
@@ -225,25 +228,26 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPNULL
 
 # Check the HeapID's values.
-@IF_EQ_AV 0 HeapID    # We allow 'zero' to mean use the main heapid. But it must already been set once.
+@IF_EQ_AV 0 InHeapID    # We allow 'zero' to mean use the main heapid. But it must already been set once.
    @IF_EQ_AV 0 DiskHeapID
       @PRTLN "Error, Heap Storage never set for Disk System. First call to SelectDisk must include valid heap"
       @PUSH 101 @CALL ErrorExit
    @ENDIF
-   @MV2V DiskHeapID HeapID
+   @MV2V DiskHeapID InHeapID
 @ELSE
    # See if this is the first call with a HeapID, which makes it the 'Main' one.
    @IF_EQ_AV 0 DiskHeapID
-      @MV2V HeapID DiskHeapID
+      @MV2V InHeapID DiskHeapID
    @ENDIF
 @ENDIF
 #
 # Look in DiskHandles array for info about device.
 @PUSHII CurrentHandle
+@PRT "Mid1 HeapID: " @PRTREF InHeapID @PRTSP  @PRTHEXI InHeapID @PRTNL
 @IF_ZERO
    # Handle is 'new' so create it
    @POPNULL
-   @PUSHI HeapID
+   @PUSHI InHeapID
    @PUSH 0x200
    @CALL HeapNewObject @IF_ULT_A 100 @PUSH 101 @CALL ErrorExit @ENDIF  # (HeapID, size)
    @PUSHI CurrentHandle @ADD 2    # Save to Handle+2
@@ -253,6 +257,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @PUSHI CurrentHandle @ADD 2 @PUSHS
    @POPI ActiveBuffer
    @MV2V DiskID ActiveDisk
+@PRT "Mid2 HeapID: " @PRTREF InHeapID @PRTSP  @PRTHEXI InHeapID @PRTNL
 @ELSE
    @IF_EQ_VV ActiveDisk DiskID
       # DiskID was already the active disk, no need to do anything.
@@ -261,18 +266,30 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
       @POPI ActiveBuffer
    @ENDIF
 @ENDIF
+
+@PRT "Mid3 HeapID: " @PRTREF InHeapID @PRTSP  @PRTHEXI InHeapID @PRTNL
+:Break01
 @DISKSELI ActiveDisk
 @PUSHI ActiveDisk
 @PUSHI ActiveBuffer
+@PRT "Before ReadSector " @StackDump
+@PRT "Var01: " @PRTHEXI Var01 @PRT " Var02: " @PRTHEXI Var02 @PRT " Var03: " @PRTHEXI Var03 @PRT " Var04: " @PRTHEXI Var04
+@PRT " Var05: " @PRTHEXI Var05 @PRT " Var06: " @PRTHEXI Var06 @PRT " Var07: " @PRTHEXI Var07 @PRT " Var08: " @PRTHEXI Var08 @PRTNL
 @CALL ReadSector
+@PRT "Mid3a HeapID: " @PRTREF InHeapID @PRTSP  @PRTHEXI InHeapID @PRTNL
+@PRT "Var01: " @PRTHEXI Var01 @PRT " Var02: " @PRTHEXI Var02 @PRT " Var03: " @PRTHEXI Var03 @PRT " Var04: " @PRTHEXI Var04
+@PRT " Var05: " @PRTHEXI Var05 @PRT " Var06: " @PRTHEXI Var06 @PRT " Var07: " @PRTHEXI Var07 @PRT " Var08: " @PRTHEXI Var08 @PRTNL
 @PUSHI ActiveBuffer
 @CALL ParseBootSector         # ParseBootSector(buffer)
 @POPNULL
+@PRT "Mid4 HeapID: " @PRTREF InHeapID @PRTSP  @PRTHEXI InHeapID @PRTNL
+
 
 # We only need to create a CurrentWorkingDirectory once.
 @IF_EQ_AV 0 CurrentWorkingDirectory
    # Space for CurrentWorkingDirectory
-   @PUSHI HeapID @PUSH 256
+   @PRT "Heap Starts at: " @PRTHEXI InHeapID @PRTNL
+   @PUSHI InHeapID @PUSH 256
    @CALL HeapNewObject @IF_ULT_A 100 @CALL ErrorExit @ENDIF  # (HeapId, Size)
    @POPI CurrentWorkingDirectory
 @ENDIF
@@ -291,9 +308,10 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @ADDI RootDirSectors
 @POPI FirstDataSector
 #
-@PUSHI HeapID
+@PUSHI InHeapID
 @PUSHI ActiveBuffer
 @CALL HeapDeleteObject
+@POPLOCAL Var06
 @POPLOCAL Var05
 @POPLOCAL Var04
 @POPLOCAL Var03
@@ -967,7 +985,11 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 =Index1 Var04
 =BufferPtr Var05
 #
-@PUSHLOCALI  Var01 @PUSHLOCALI  Var02 @PUSHLOCALI  Var03 @PUSHLOCALI  Var03 @PUSHLOCALI  Var05
+@PUSHLOCALI  Var01
+@PUSHLOCALI  Var02
+@PUSHLOCALI  Var03
+@PUSHLOCALI  Var04
+@PUSHLOCALI  Var05
 @POPI Buffer
 @POPI cluster
 # Calculate Sector    (cluster -2 ) * 4 + FistDataSector
@@ -2002,3 +2024,169 @@ ENDBLOCK
 
 ####################### TO Be Written
 #
+# Core OS Service Calls, modeled after DOS INT calls
+#
+###########################
+# Function LLOpenFile(FileNanemPtr, AccessMode):FileHandle(CF!=0 error)
+:LLOpenFile
+@PUSHRETURN
+=FileNamePtr Var01
+=AccessMode Var02
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@POPI AccessMode
+@POPI FileNamePtr
+#
+# Code
+#
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+#######################################
+# Function LLCloseFile(FileHandle):(CF!=0 error)
+:LLCloseFile
+@PUSHRETURN
+=FileHandle Var01
+@PUSHLOCALI Var01
+@POPI FileHandle
+#
+# Code
+#
+@POPLOCAL Var01
+@POPRETURN
+#######################################
+# Function LLReadFile(FileHandle,BytesToRead):BytesRead (CF!=0 error)
+:LLReadFile
+@PUSHRETURN
+=FileHandle Var01
+=BytesToRead Var02
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@POPI BytesToRead
+@POPI FileHandle
+#
+# Code
+#
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+#######################################
+# Function LLWriteFile(FileHandle,BytesToWrite,BufferPtr):BytesRead (CF!=0 error)
+:LLReadFile
+@PUSHRETURN
+=FileHandle Var01
+=BytesToRead Var02
+=BufferPtr Var03
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@POPI BufferPtr
+@POPI BytesToRead
+@POPI FileHandle
+#
+# Code
+#
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+#######################################
+# Function LLDeleteFile(FileNamePtr):BytesRead (CF!=0 error)
+:LLReadFile
+@PUSHRETURN
+=FileNamePtr Var01
+@PUSHLOCALI Var01
+@POPI FileNamePtr
+#
+# Code
+#
+@POPLOCAL Var01
+@POPRETURN
+#######################################
+# Function LLMovePointerFile(FileHandle,Offset,Origin)(CF!=0 error)
+:LLReadFile
+@PUSHRETURN
+=FileHandle Var01
+=BytesToRead Var02
+=BufferPtr Var03
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@POPI BufferPtr
+@POPI BytesToRead
+@POPI FileHandle
+#
+# Code
+#
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+#######################################
+# Function LLFileAttribute(GetSet,FileName,Attribute):Attribute (CF!=0 error)
+#             GetSet=(1:Set value, 0: Get Value) Passed Attribute ignored if 'Get'
+:LLFileAttribute
+@PUSHRETURN
+=GetSet Var01
+=FileName Var02
+=Attribute Var03
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@POPI Attribute
+@POPI FileName
+@POPI GetSet
+#
+# Code
+#
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+#######################################
+# Function LLFileRename(OldFileName, NewFileName):(CF!=0 error)
+:LLFileRename
+@PUSHRETURN
+=OldFileName Var01
+=NewFileName Var02
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@POPI OldFileName
+@POPI NewFileName
+#
+# Code
+#
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+#####################################################
+# Here are the Service functions that LLfunctions will require
+#
+# Data Structure SystemFileTables
+:HeadSystemFileTables 0      #Ptr to first system File table.
+=SFTNextItem 0
+=SFTActiveFlag 2
+=SFTFileTablePtr 4
+#######
+# DataStructure FileTables
+:FileTablesHead 0
+=FTDirSector 0                   # Identify What Directory manages this file
+=FTDirOffset FTDirSector+2       # Offset within sector
+=FTFileSize  FTDirOffset+2       # 32 bit filesize
+=FTFilePosition FTFileSize+4     # 32 bit Cursor within file for next read/write
+=FTFileCache1 FTFilePosition+4   # Ptr to File IO Cache
+=FTFileCache2 FTFileCache1+2     # Ptr to low level (Dir/Fat table) Cache
+=FTFatHead FTFileCache2+2        # Startng Fattable entry for first cluster.
+=FTFatEntry FTFatHead+2          # Current Fattable entry for active cluster.
+=FTTableSize FTFatEntry+2
+
+
+
+
+
+
+
+
+

@@ -192,7 +192,12 @@ def shandler(signum, frame):
 signal.signal(signal.SIGINT, shandler)
 
 def is_string_numeric(s):
-    return s.isdigit()
+    return str(s).isdigit()
+
+def digitsonly(s):
+    s=str(s)
+    digits = ''.join(c for c in s if c.isdigit())
+    return digits if digits else "0"
 
 
 def create_new_filename(original_filename, new_extension):
@@ -245,7 +250,7 @@ def FindHistoricVal(varname, testaddress):
 
     matchkeys=[]
     bestmatch=0xffff
-    if varname in LocVarHist:           # exact match?        
+    if varname in LocVarHist:           # exact match?
         matchkeys.append(LocVarHist[varname])
         for item_name in LocVarHist.keys():
             if item_name.startswith(varname+"_"):
@@ -275,11 +280,14 @@ def FindLabelMatch(varname):
     if len(potential_matches) == 1:
         return FileLabels[potential_matches[0]]
     if len(potential_matches) > 1:
+        maxkeywidth=max(len(match) for match in potential_matches)
+        maxvaluewidth=max(len(f"{int(FileLabels[match]):04x}") for match in potential_matches)
         table = f"Multiple matches found for '{varname}:\n"
-        table += f"|Name | Value |\n"
-        table += f"|-----|-------|\n"
+        table += f"|{'Name':<{maxkeywidth}}|{'Value':<{maxvaluewidth}}|\n"
+        table += f"|{'-'*maxkeywidth}|{'-'*maxvaluewidth}|\n"
         for match in potential_matches:
-            table += f"\n|{match} | {int(FileLabels[match]):04x} |"
+            value = f"{int(FileLabels[match]):04x}"
+            table += f"|{match:<{maxkeywidth}}|{value:<{maxvaluewidth}}|\n"
         print(table)
     return None
 
@@ -329,7 +337,7 @@ class InputFileData:
         self.file_data[filename][line_number].append(memory_address)
         self.address_map[memory_address] = (filename, line_number)
         bisect.insort(self.sorted_addresses, memory_address)
-        
+
     def get_line_info(self, memory_address):
         if memory_address in self.address_map:
             return self.address_map[memory_address]
@@ -362,7 +370,7 @@ class InputFileData:
 
 FileLineData = InputFileData()
 
-                
+
 
 # I must admit it, I am not a 'natural' OO programmer.
 # I learned to code back in the 'waterfall' days and to me using 'class' here
@@ -391,14 +399,14 @@ class microcpu:
         self.mb[0xff] = 0
         self.simtime = False
         self.clocksec = 1000
-        self.Last_Filename_used = None        
+        self.Last_Filename_used = None
 
 
     def insertbyte(self, location, value):
         if location >= 65536:
             CPU.raiseerror("000 Address OverFlow %05x" % location)
         self.memspace[location] = value
-        
+
     def FindWhatLine(self, address):
         global FileLineData
 
@@ -419,12 +427,12 @@ class microcpu:
             else:
                 self.Last_Filename_used = parts[0]
                 OutFile=self.Last_Filename_used
-            OutLine=int(parts[1])
+            OutLine=int(digitsonly(parts[1]))
         else:
             OutFile=self.Last_Filename_used
-            OutLine = int(line_info)
+            OutLine = int(digitsonly(line_info))
         return FileLineData.get_nearest_address(OutFile, OutLine)
-        
+
     def raiseerror(self, idcode):
         global GPC, RunMode, FileLabels
         fd = sys.stdin.fileno()
@@ -474,7 +482,7 @@ class microcpu:
         if is_string_numeric(idcode[0:3]):
             valid = int(idcode[0:3])
         else:
-            valid=-1        
+            valid=-1
         if RunMode:
             print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
         print(new[3])
@@ -984,7 +992,7 @@ class microcpu:
         if cmd == 12:
             sys.stdout.write("%d" % self.getwordat(address))
         if cmd == CastPrintCharI:
-            v = self.memspace[self.getwordat(address)]
+            v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%c" % chr(v))
         if cmd == CastPrintHexI:
             v = self.getwordat(address)
@@ -1101,6 +1109,7 @@ class microcpu:
         # 3         Read keybord character saved it as 16 bit value at address, no echo. Some See list for 'special' keys
         # 4         Set TTY no-echo
         # 5         Set TTY ech
+        # 19        Read Time clock
         # 22        Requires Disk Device already initilized. Reads 512 Byte block from [address]
         # 25        Reads system time as seconds since 1970
         #
@@ -1241,7 +1250,6 @@ class microcpu:
             v2=v32 >> 16
             self.optPUSH(v1)
             self.optPUSH(v2)
-
 
     def optRRTC(self, unused):
         # RRTC mean Rotate Right Through Carry
@@ -1688,7 +1696,7 @@ def IsLocalVar(inlabel, LocalID, LORGFLAG):
     # So to define a Globale, just add it to GlobeLabels, but it should become part of FileLabels until
     # really defined...ie with an '=' or a ':' code.
     global GlobeLabels, UniqueLineNum
-    
+
     if inlabel in GlobeLabels:
         return inlabel
     else:
@@ -2094,7 +2102,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if Debug >1:
                         print(">>> adding %s at location %s with name: %s" %
                               (newitem, hex(address),IsLocalVar(newitem, LocalID, LORGFLAG)),file=DebugOut)
-                    
+
                     FileLabels.update({newitem:address})
                     UpdateVarHistory(newitem,address,address)
                     line = line[size+1:]
@@ -2332,7 +2340,7 @@ def debugger(FileLabels,passline):
         best_score = 0
         best_match = None
         while thisword != "":
-            rawlist.append(thisword)                
+            rawlist.append(thisword)
             if "A" <= thisword[0] <= "z":
                 if thisword in FileLabels:
                     varval = FindHistoricVal(thisword, CPU.pc)

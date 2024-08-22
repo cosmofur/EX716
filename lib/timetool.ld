@@ -19,7 +19,7 @@ L div.ld
 :LVar02 0 0
 :LVar03 0 0
 :ClockCalib 0
-G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep
+G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G SleepMilli
 #
 #
 # First some string processing functions to turn 32 bit time in seconds, into data/time string.
@@ -258,7 +258,6 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep
 # BUT we have to worry about if the count is close to an overflow
 # as we will be using a delta between being and end times and don't
 # want the begin to be higher than the end.
-
 @PUSH 1
 @LOOP
   @POPNULL
@@ -293,7 +292,6 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep
    @ENDIF
 @UNTIL_NOTZERO
 @POPNULL
-:Break2
 @PUSHI StartTime @ADD 1 @POPI TargetTime
 # Now we count, as this might be a large number, we use 32 bit math
 # BUT we don't want the overhead of the Libary, so we'll do it the old way.
@@ -325,9 +323,9 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep
    @POPI HighWord                       # 3
    @JMP CountLoop                       # 3
 :EndCountLoop
+@POPNULL
 #                          Total Cycles = Count*22+(Count/22)*12)
 # LCount is same as combined Low and HighWords
-:Break1
 @GETTIME @POPI LRemainder+2
 @POPI LRemainder
 #

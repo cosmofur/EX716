@@ -534,6 +534,7 @@ M SetVal @CALL SetVal
 @PRT " R1:" @PRTHEXI Ref1
 @PRT " R2:" @PRTHEXI Ref2
 @PRT " R3:" @PRTHEXI Ref3
+@PRT " ST:" @PRTHEXTOP
 @PRT " "
 @IF_ZFLAG
   @PRT "Z"
@@ -556,7 +557,6 @@ M SetVal @CALL SetVal
   @PRT "_"
 @ENDIF
 #@PRT " tos:" @SWP @PRTHEXTOP @SWP @PRTNL
-@StackDump
 @PUSHI ReturnVal
 @RET
 :ReturnVal 0

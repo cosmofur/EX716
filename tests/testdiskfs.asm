@@ -57,10 +57,6 @@ L fat16lib.ld
 @PUSHLOCALI SeedCount
 
 #
-@PRT "Bla...Bla...Bla\n"
-@PRT "Bla...Bla...Bla\n"
-@PRT "Bla...Bla...Bla\n"
-@PRT "\n\nHit Any Key to Continue."
 @PUSH 0   # Set this to 1 if we need a random seed
 @IF_NOTZERO
    @TTYNOECHO
@@ -96,7 +92,6 @@ L fat16lib.ld
 @RET
 #
 :Main . Main
-@CALL Init
 #
 =BootSector Var01
 =rootBuffer Var02
@@ -104,20 +99,12 @@ L fat16lib.ld
 =subdirCluster Var04
 =entry Var05
 =returnstr Var06
+@CALL Init
 @PRTLN "Initializing Filesystem.."
 @PUSH 0 @PUSHI MainHeapID
+@PRT "Main HeapID: " @PRTHEXI MainHeapID @PRTNL
 @CALL SelectDisk
 #
-# Test the formated string function.
-@PRT "Before Formated Prints" @StackDump
-@PUSH 101
-@PUSH 202
-@PUSH FormatStr1
-@PUSHI MainHeapID
-@CALL strFormat
-@POPI returnstr
-@PRT "Numbers: "
-@PRTSI returnstr @PRTNL
 @PUSHI MainHeapID @PUSHI returnstr @CALL HeapDeleteObject
 @PUSH TestOutStr
 @PUSH FormatStr2
@@ -130,7 +117,7 @@ L fat16lib.ld
 
 #
 @PUSH 0 @PUSH 0
-@PRTLN "Calling Read Boot Sector"
+@PRTLN "Calling Read Sector 0"
 @CALL ReadSectorBuffer
 @POPI BootSector
 #

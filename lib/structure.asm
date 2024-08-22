@@ -146,6 +146,48 @@ M IF_GT_V \
   @JMPN _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
+M IF_INRANGE_AB \
+  %S \
+  @PUSH %1 @CMPS @POPNULL \
+  @JMPN _%0_False \
+  @PUSH %2 @CMPS @POPNULL \
+  @JMPN _%0_True \
+  @JMPZ _%0_True \
+  :_%0_False \
+    @JMP _%V_ENDIF \
+  :_%0_True
+M IF_INRANGE_AV \
+  %S \
+  @PUSH %1 @CMPS @POPNULL \
+  @JMPN _%0_False \
+  @PUSHI %2 @CMPS @POPNULL \
+  @JMPN _%0_True \
+  @JMPZ _%0_True \
+  :_%0_False \
+    @JMP _%V_ENDIF \
+  :_%0_True
+M IF_INRANGE_VA \
+  %S \
+  @PUSHI %1 @CMPS @POPNULL \
+  @JMPN _%0_False \
+  @PUSH %2 @CMPS @POPNULL \
+  @JMPN _%0_True \
+  @JMPZ _%0_True \
+  :_%0_False \
+    @JMP _%V_ENDIF \
+  :_%0_True
+M IF_INRANGE_VV \
+  %S \
+  @PUSHI %1 @CMPS @POPNULL \
+  @JMPN _%0_False \
+  @PUSHI %2 @CMPS @POPNULL \
+  @JMPN _%0_True \
+  @JMPZ _%0_True \
+  :_%0_False \
+    @JMP _%V_ENDIF \
+  :_%0_True
+  
+  
 
 
 

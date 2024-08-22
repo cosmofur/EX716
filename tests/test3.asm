@@ -1,32 +1,24 @@
 I common.mc
-@JMP Start
-# Data Segment
-:Val32one
-$$$0x01020304
-:Val16one
-$0x0FF0
-:Val8one
-$$0xF0
-b0
-:R1
-0
-:Start
-@PRT "Values: (v16)"
-@MA2V Val16one R1
-@PRTHEXII R1
-@PRTSP
-@MA2V Val8one R1
-@PRT " (v8)"
-@PRTHEXII R1
-@PRTSP
-@MA2V Val32one R1
-@INCI R1
-@INCI R1
-@PRT " (v32)"
-@PRTHEXII R1
-@DECI R1
-@DECI R1
-@PRTHEXII R1
-@PRTNL
+L mul.ld
+:Main . Main
+@PRTLN "-*- | 0000,0001,0002,0003,0004,0005,0006,0007,0008,0009,000A,000B,000C,000D,000E,000F"
+@ForIA2B Index1 0 16
+  @PRTHEXI Index1 @PRT "|"
+  @ForIA2B Index2 0 16
+     @IF_EQ_AV 0 Index2
+        @PRT " "
+     @ELSE
+        @PRT ","
+     @ENDIF
+     @PUSHI Index1 @PUSHI Index2 @CALL MUL
+     @PRTHEXTOP
+     @POPNULL
+  @Next Index2
+  @PRTNL
+@Next Index1
 @END
+:Index1 0
+:Index2 0
+
+  
 
