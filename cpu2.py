@@ -231,7 +231,7 @@ def validatestr(instr, typecode):
             print("String %s is not valid for base %d" % (instr, typecode))
         else:
             newstr += cc
-    return (newstr, typecode)
+    return (int(newstr, typecode))
 
 LocVarHist = {}
 
@@ -1376,7 +1376,14 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     continue
                 elif line[0] == "P" and IsOneChar:
                     # "P" Print debug messages durring assembly.
-                    print("%04x: %s" % (address, line),file=DebugOut)
+                    nline=""
+                    for word in line[2:].split(" "):
+                        PosVar=FindLabelMatch(word.strip())
+                        if (PosVar != None):
+                            nline=f"{nline} {word.strip()}:{PosVar} "
+                        else:
+                            nline=f"{nline} {word.strip()} "
+                    print("%04x: %s" % (address, nline),file=DebugOut)
                     line = ""
                     continue
                 elif line[0] == "!" and IsOneChar:    # If Macro does NOT exist, then eval until matching ENDBLOCK
@@ -1419,6 +1426,18 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     MacroPCount.update({key: pcount})
                     line = ""
                     continue
+                elif line[0:2] == "MF" and not(IsOneChar):
+                    # MF Macro is for setting, or freeing single value macros. For use as flags
+                    (key,size) = nextword(line[2:])
+                    line=line[size+1:]
+                    (value,size) = nextword(line)
+                    line=line[size+1:]                    
+                    if (value == ""):
+                        # empty string, erase existing macro named key, if any
+                        MacroData.pop(key,None)
+                    else:
+                        # Otherwise inerset a simple one word or value to enable the MacroKey
+                        MacroData.update({key: value})                
                 elif line[0] == "G" and IsOneChar:
                     # Globale labels are an override of 'Local' Labels by 'pre-defining them.
                     (key, size) = nextword(line[1:])
@@ -1595,10 +1614,12 @@ def debugger(FileLabels,passline):
                     SInfo = SInfo+"[%02x]" % CPU.getwordat(v)
                     SInfo = SInfo+"[[%02x]]" % CPU.getwordat(CPU.getwordat(v))
                     SInfo += "  "
-                    for c in ( v & 0xff, (v >> 8) &0xff,
+                    for c in ("[", v & 0xff, (v >> 8) &0xff,
                                CPU.getwordat(v) & 0xff,(CPU.getwordat(v) >> 8) & 0xff,
+                              "]","[","[",
                                CPU.getwordat(CPU.getwordat(v)) & 0xff,
-                               (CPU.getwordat(CPU.getwordat(v))>>8) & 0xff):
+                               (CPU.getwordat(CPU.getwordat(v))>>8) & 0xff,
+                              "]","]"):
                         if ((c != 0x7f) & (((c & 0xc0) == 0x40) | ((c & 0xe0) == 0x20))):
                             SInfo += "%c " % c
                         else:
@@ -2004,6 +2025,9 @@ def main():
     for curfile in files:
         maxusedmem = loadfile(curfile, maxusedmem, CPU, GLOBALFLAG, 0)
     GlobalOptCnt = 0
+    (key,size) = nextword("ENDOFCODE")
+    GlobeLabels.update({key: maxusedmem})    
+    
     if len(files) == 0:
         # if no files given then drop to debugger for machine lang tests.
         # Default to common.mc to provide base macros

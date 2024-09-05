@@ -304,7 +304,7 @@ M IF_NOTCARRY \
 M ELSE \
   @JMP _%V_JustEnd \
   :_%V_ElseBlock \
-  M _%V_ElseFlag true
+  MF _%V_ElseFlag true
 #
 # The Tricky part of ENDIF is determining if we used an ELSE block or not.
 # If no ELSE had been used the %V_ElseFlag will not exist.
