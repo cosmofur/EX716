@@ -396,6 +396,7 @@ G HeapAppend
      @ENDIF
 @ENDWHILE
 @POPNULL
+@PUSH 0   # Will be the return value.
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
@@ -447,7 +448,6 @@ G HeapAppend
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN
-@PRT "End Defrag: " @StackDump
 @RET
    
    

@@ -1431,13 +1431,13 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     (key,size) = nextword(line[2:])
                     line=line[size+1:]
                     (value,size) = nextword(line)
-                    line=line[size+1:]                    
+                    line=line[size+1:]
                     if (value == ""):
                         # empty string, erase existing macro named key, if any
                         MacroData.pop(key,None)
                     else:
                         # Otherwise inerset a simple one word or value to enable the MacroKey
-                        MacroData.update({key: value})                
+                        MacroData.update({key: value})
                 elif line[0] == "G" and IsOneChar:
                     # Globale labels are an override of 'Local' Labels by 'pre-defining them.
                     (key, size) = nextword(line[1:])
@@ -1524,14 +1524,14 @@ def debugger(FileLabels,passline):
         else:
             cmdline = input()
         if EchoFlag:
-            # If tty operations have disabled echo, which is needed by interactive prompts of the debugger            
+            # If tty operations have disabled echo, which is needed by interactive prompts of the debugger
             new[3] = new[3] & ~termios.ECHO
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
                 print("TTY Error: On Echo On")
         cmdline = removecomments(cmdline).strip()
-        # To file redirection from 'scipted debug files' we also allow possible comments in those files.        
+        # To file redirection from 'scipted debug files' we also allow possible comments in those files.
         if cmdline != "":
             (cmdword, size) = nextword(cmdline)
         cmdline = cmdline[size:]
@@ -1609,21 +1609,33 @@ def debugger(FileLabels,passline):
                     stopv = int(arglist[1]) + 1
                 if stopv < startv:
                     stopv = startv + stopv + 1
+
+
+
                 for v in range(startv, stopv):
                     SInfo = "%04x:" % v
                     SInfo = SInfo+"[%02x]" % CPU.getwordat(v)
                     SInfo = SInfo+"[[%02x]]" % CPU.getwordat(CPU.getwordat(v))
                     SInfo += "  "
-                    for c in ("[", v & 0xff, (v >> 8) &0xff,
-                               CPU.getwordat(v) & 0xff,(CPU.getwordat(v) >> 8) & 0xff,
-                              "]","[","[",
+                    for ci in ("'",
+                               v & 0xff,
+                               (v >> 8) &0xff,
+
+                               "'","[","'",
+                               CPU.getwordat(v) & 0xff,
+                               (CPU.getwordat(v) >> 8) & 0xff,
+                               "'","]","[","[","'",
                                CPU.getwordat(CPU.getwordat(v)) & 0xff,
                                (CPU.getwordat(CPU.getwordat(v))>>8) & 0xff,
-                              "]","]"):
-                        if ((c != 0x7f) & (((c & 0xc0) == 0x40) | ((c & 0xe0) == 0x20))):
-                            SInfo += "%c " % c
+                               "'","]","]"):
+                        if isinstance(ci, int) or isinstance(ci, np.int64):
+                            c=ci
                         else:
-                            SInfo += "_ "
+                            c=ord(ci)
+                        if ((c != 0x7f) & (((c & 0xc0) == 0x40) | ((c & 0xe0) == 0x20))):
+                            SInfo += "%c" % c
+                        else:
+                            SInfo += "_"
                     print(SInfo)
             else:
                 print("ERR: Need to specify what to print")
@@ -2025,9 +2037,7 @@ def main():
     for curfile in files:
         maxusedmem = loadfile(curfile, maxusedmem, CPU, GLOBALFLAG, 0)
     GlobalOptCnt = 0
-    (key,size) = nextword("ENDOFCODE")
-    GlobeLabels.update({key: maxusedmem})    
-    
+
     if len(files) == 0:
         # if no files given then drop to debugger for machine lang tests.
         # Default to common.mc to provide base macros

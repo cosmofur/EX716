@@ -1080,8 +1080,8 @@ class microcpu:
         if cmd == CastDebugToggle:
             Debug = 0 if Debug else 1
         if cmd == CastStackDump:
-            print(" %04x:Stack:(%d)" %
-                             (PrevPC,self.mb[0xff]-1), file=DebugOut,end="")
+            print(" %04x:Stack:(%d):%s" %
+                             (PrevPC,self.mb[0xff]-1,CPU.FindWhatLine(PrevPC)), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+((self.mb[i*2+1])<<8)
                 print(" %04x" % (val),file=DebugOut,end="")
@@ -1555,7 +1555,7 @@ def DissAsm(start, length, CPU):
         tos = -1
         sft = -1
         addr = 0 if CPU.mb[0xff] < 1 else (CPU.mb[0xff]-1)*2
-        if CPU.mb[0xff] > 0:
+        if CPU.mb[0xff] > 0 and addr <= 0xfffe:
             tos = CPU.mb[addr]+(CPU.mb[addr+1] << 8)
         if CPU.mb[0xff] > 1:
             sft = CPU.mb[addr-2]+(CPU.mb[addr-1] << 8)
@@ -2213,7 +2213,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     else:
                         SkipBlock += 1
                     line = line[size+1:]
-                elif line[0] == "M" and IsOneChar:                    
+                elif line[0] == "M" and IsOneChar:
                     # Macros
                     # name word word %v word
                     (key, size) = nextword(line[1:])
@@ -2372,10 +2372,23 @@ def debugger(FileLabels,passline):
                         arglist.append(varval)
                         argcnt += 1
             else:
+                Signval=0
+                if (thisword[0] if thisword and len(thisword) > 0 else "Invalid") in [ "+", "-"]:
+                    # Handle case where user did label+/-value
+                    Signval=1 if thisword[0]=="+" else -1
+                    thisword=thisword[1:]                
                 # Convert to 16 bit number allow 0x formats
                 thisword = Str2Word(thisword)
-                arglist.append(thisword)
-                argcnt += 1
+                if Signval != 0:
+                    if arglist: # check to make sure arglist is not empty (args start with +/- value)
+                        arglist[argcnt - 1]=arglist[argcnt - 1]+(Signval*thisword)
+                    else:
+                        # Handle the odd case where first argument is +/- value
+                        arglist.append(thisword * Signval)
+                        argcnt += 1                        
+                else:
+                    arglist.append(thisword)
+                    argcnt += 1
             (thisword, size) = nextword(cmdline)
             cmdline = cmdline[size:]
 # at this point cmdword == a possible comand and arglist is a group of 16b numbers if any given.
@@ -2423,21 +2436,29 @@ def debugger(FileLabels,passline):
                 if stopv < startv:
                     stopv = startv + stopv + 1
                 for v in range(startv, stopv):
-                    SInfo = "%04x:" % v
-                    SInfo = SInfo+"[%02x]" % CPU.getwordat(v)
-                    SInfo = SInfo+"[[%02x]]" % CPU.getwordat(CPU.getwordat(v))
-                    SInfo += "  "
-                    for c in ("[", v & 0xff, (v >> 8) &0xff,
-                               CPU.getwordat(v) & 0xff,(CPU.getwordat(v) >> 8) & 0xff,
-                              "]","[","[",
-                               CPU.getwordat(CPU.getwordat(v)) & 0xff,
-                               (CPU.getwordat(CPU.getwordat(v))>>8) & 0xff,
-                              "]","]"):
-                        if ((c != 0x7f) & (((c & 0xc0) == 0x40) | ((c & 0xe0) == 0x20))):
-                            SInfo += "%c " % c
-                        else:
-                            SInfo += "_ "
-                    print(SInfo)
+                   SInfo = "%04x:" % v
+                   SInfo = SInfo+"[%02x]" % CPU.getwordat(v)
+                   SInfo = SInfo+"[[%02x]]" % CPU.getwordat(CPU.getwordat(v))
+                   SInfo += "  "
+                   for ci in ("'",
+                           v & 0xff,
+                           (v >> 8) &0xff,
+                           "'","[","'",
+                           CPU.getwordat(v) & 0xff,
+                           (CPU.getwordat(v) >> 8) & 0xff,
+                           "'","]","[","[","'",
+                           CPU.getwordat(CPU.getwordat(v)) & 0xff,
+                           (CPU.getwordat(CPU.getwordat(v))>>8) & 0xff,
+                           "'","]","]"):
+                       if isinstance(ci, int) or isinstance(ci, np.int64):
+                           c=ci
+                       else:
+                           c=ord(ci)
+                       if ((c != 0x7f) & (((c & 0xc0) == 0x40) | ((c & 0xe0) == 0x20))):
+                           SInfo += "%c" % c
+                       else:
+                           SInfo += "_"
+                   print(SInfo)
             else:
                 print("ERR: Need to specify what to print")
                 continue
