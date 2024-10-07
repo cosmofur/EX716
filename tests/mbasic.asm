@@ -33,7 +33,7 @@ L screen.ld
 =CMDLOAD CMDSAVE+1
 =CMDDIR CMDLOAD+1
 =CMDDELETE CMDDIR+1
-=CMDRENAME CMDDIR+1
+=CMDRENAME CMDDELETE+1
 =CMDCOPY CMDRENAME+1
 =CMDCLS CMDCOPY+1
 =CMDCLEAR CMDCLS+1
@@ -368,6 +368,7 @@ WC_J_CMDRETURN
 @PRTLN "CMD Print:"
 @IF_EQ_AV 0 P1
    #Nothing to Print
+   @PUSH 0
    @JMP  ExitHandleCommand
 @ENDIF
 @PUSHI P1
@@ -382,28 +383,37 @@ WC_J_CMDRETURN
 @JMP ExitHandleCommand
 #
 :WC_J_CMDSAVE
+@PRTLN "CMD-Save"
 :WC_J_CMDLOAD
+@PRTLN "CMD-Load"
 :WC_J_CMDDIR
+@PRTLN "CMD-Dir"
 :WC_J_CMDDELETE
+@PRTLN "CMD-Delete"
 :WC_J_CMDRENAME
+@PRTLN "CMD-Rename"
 :WC_J_CMDCOPY
+@PRTLN "CMD-Copy"
 @PUSH 0
 @PRTLN "File Commands not yet implimented."
+:Debug02
 @JMP ExitHandleCommand
 #
 :WC_J_CMDCLS
+@PRTLN "CMD-CLS"
 @CALL WinClear
 @PUSH 0
 @JMP ExitHandleCommand
 #
 :WC_J_CMDCLEAR
 # Erase the current program source buffer
+@PRT "CMd-Clear"
 @CALL ClearProgram
 @PUSH 0
 @JMP ExitHandleCommand
 #
 :WC_J_CMDIF
-@PRT "CMD CMDIF"
+@PRTLN "CMD-CLEAR"
 @PUSH 0
 @JMP ExitHandleCommand
 :WC_J_CMDTHEN
@@ -505,7 +515,7 @@ WC_J_CMDRETURN
    # Empty String
    @POPNULL
    @PRT "Empty String: Null Return:" @StackDump
-   @PUSH 0 @PUSH 0
+   @PUSHI inString @PUSH 0
 @ELSE
    @POPNULL
    @PUSHI inMode
@@ -871,8 +881,18 @@ CMDRENAME "RENAME\0"
 CMDCOPY "COPY\0"
 CMDCLS "CLS\0"
 CMDCLEAR "CLEAR\0"
+CMDIF "IF\0"
+CMDTHEN "THEN\0"
+CMDELSE "ELSE\0"
+CMDFOR "FOR\0"
+CMDTO "TO\0"
+CMDNEXT "NEXT\0"
+CMDINPUT "INPUT\0"
+CMDGOTO "GOTO\0"
+CMDGOSUB "GOSUB\0"
 CMDHELP "HELP\0"
 CMDHELP "?\0"
+CMDRETURN "RETURN\0"
 # End of list
 0 0
 #
@@ -903,7 +923,6 @@ CMDHELP "?\0"
 #
 @PRT "Start TextEditor: " @StackDump
 @PRTLN "Text Editor"
-:Debug01
 @MA2V EDITCMDMODE InputMode       # EditCMD Mode
 @MA2V 1 CurrentLine
 @PUSH 1
@@ -923,10 +942,9 @@ CMDHELP "?\0"
       @CALL GetEditRange        # parces cmd line for optional pattern match or numbers(possible a range)
       @POPI InputLinePtr
       @POPI RangeStop
-      @IF_GT_A 0
-         @SUB 1   # User input starts at 1, but for memory refrences start at zero.
-      @ENDIF
       @POPI RangeStart
+      @PRT "CMD: " @PRTSI InputLinePtr @PRT " Range " @PRTI RangeStart @PRT " - " @PRTI RangeStop @PRTNL
+      
       #
       @IF_EQ_AV 0 InputLinePtr    # Return zero here if line wasn't parceable
          @PRT "?\n"
@@ -978,7 +996,7 @@ CMDHELP "?\0"
 	       @POPI CurrentLine
             @ELSE
                # Range Given.
-               @PUSHI RangeStart
+               @PUSHI RangeStart @SUB 1
 	       @PUSHI RangeStop
 	       @CALL PrintLines
 	       @MV2V RangeStop CurrentLine
@@ -1053,7 +1071,10 @@ CMDHELP "?\0"
              @PUSH 1
              @CBREAK
 	 @CDEFAULT
+            @PRT "Not Parsed: " @StackDump
+            @PRT "( " @PRTSI InputLinePtr @PRT " )" @PRTTOP 
 	    @PRTLN "Command Not Understood"
+            @PRTLN "Try h for help."
 	    @CBREAK
 	 @ENDCASE
       @ENDIF
@@ -1064,9 +1085,17 @@ CMDHELP "?\0"
 	 @IF_EQ_A ".\0"        #Note we didn't 'AND 0xff' so only tue if . on line by itself.
            @MA2V EDITCMDMODE InputMode
          @ELSE
+           @PRTI CurrentLine @PRT ": "
            @PUSHI CurrentLine
            @PUSHI InputLinePtr
            @CALL InsertEditLine
+           @PUSHI CurrentLine
+           @ADD 1
+           @IF_GT_V SRCMaxLines
+              @DUP
+              @POPI SRCMaxLines
+           @ENDIF
+           @POPI CurrentLine           
          @ENDIF
       @ELSE
          # Somehow InputMode became invalid, move back to CMDMODE
@@ -1337,12 +1366,13 @@ CMDHELP "?\0"
 =instring Var01
 @PUSHLOCALI Var01
 @POPI instring
-@PUSHII instring
+@PUSHII instring @AND 0xff
 @WHILE_NOTZERO
    @IF_GE_A "0\0"
       @IF_LE_A "9\0"
+          @POPNULL
           @INCI instring
-          @PUSHII instring
+          @PUSHII instring @AND 0xff
       @ELSE
           @POPNULL
           @PUSH 0
@@ -1433,7 +1463,7 @@ CMDHELP "?\0"
 
 #
 @POPI linenum
-@PUSH MainHeapID
+@PUSHI MainHeapID
 @PUSH 81
 @CALL HeapNewObject @IF_ULT_A 100 @PUSH 1 @CALL ErrorExit @ENDIF   # Error code 1
 @POPI NewObject
@@ -1445,13 +1475,13 @@ CMDHELP "?\0"
 @CALL strncpy
 #
 @PUSHI NewObject
-@ADD 8
+@ADD 7
 @PUSHI linenum
 @PUSH 10
 @CALL itos
 #
 @PUSHI NewObject
-@ADD 13
+#@ADD 13
 @STRSTACK " Rest of the line....\0"
 @CALL strcat
 @PUSHI NewObject

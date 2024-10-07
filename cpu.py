@@ -1080,12 +1080,12 @@ class microcpu:
         if cmd == CastDebugToggle:
             Debug = 0 if Debug else 1
         if cmd == CastStackDump:
-            print(" %04x:Stack:(%d):%s" %
+            print(" %04x:Stack:(%d):%s [" %
                              (PrevPC,self.mb[0xff]-1,CPU.FindWhatLine(PrevPC)), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+((self.mb[i*2+1])<<8)
                 print(" %04x" % (val),file=DebugOut,end="")
-            print("",file=DebugOut)
+            print(" ]",file=DebugOut)
         if cmd == CastTapeWriteI:
             if DeviceHandle != None:
                 v=address

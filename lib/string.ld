@@ -357,6 +357,10 @@ M STRSTACK \
    @JMP isMainLoop
 @ENDIF
 @POPNULL
+@IF_EQ_AV 0 Invalue   #Handle the zero case
+   @PUSH "0\0"
+   @POPII StrPtr
+@ENDIF
 @IF_EQ_VA NegFlag 1
    @PUSH "-" $$0     # Push '-' to result
    @POPII StrPtr
