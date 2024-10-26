@@ -1555,7 +1555,7 @@ def DissAsm(start, length, CPU):
         tos = -1
         sft = -1
         addr = 0 if CPU.mb[0xff] < 1 else (CPU.mb[0xff]-1)*2
-        if CPU.mb[0xff] > 0 and addr <= 0xfffe:
+        if CPU.mb[0xff] > 0 and addr <= 0xfe:
             tos = CPU.mb[addr]+(CPU.mb[addr+1] << 8)
         if CPU.mb[0xff] > 1:
             sft = CPU.mb[addr-2]+(CPU.mb[addr-1] << 8)

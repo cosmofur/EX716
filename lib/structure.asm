@@ -357,6 +357,28 @@ M WHILE_EQ_A \
   @JMP _%V_ExitLoop \
   :_%0_True
 
+M WHILE_EQ_AV \
+  %S \
+  :_%V_LoopTop \
+  @PUSH %1 \
+  @PUSHI %2 \
+  @CMPS \
+  @POPNULL @POPNULL \
+  @JMPZ _%0_True \
+  @JMP _%V_ExitLoop \
+  :_%0_True  
+
+M WHILE_NEQ_AV \
+  %S \
+  :_%V_LoopTop \
+  @PUSH %1 \
+  @PUSHI %2 \
+  @CMPS \
+  @POPNULL @POPNULL \  
+  @JMPZ _%V_ExitLoop \
+  :_%0_True
+
+
 M WHILE_NEQ_A \
   %S \
   :_%V_LoopTop \

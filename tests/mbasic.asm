@@ -13,16 +13,18 @@ L screen.ld
 :SRCBuffer 0
 :SRCIndex 0
 :SRCBufferCnt 0
-:SRCIndexCnt 0
-:SRCMaxLines 0
+:SRCAllocCnt 0       # Max numbers that heap has been allocated for.
+:SRCMaxLines 0       # Highest line number acutually used. 0 means none are in use.
 :CurrentLine 0
+:CMDCurrentLine 0
+# SRCIndexCnt
 
 ## Constants
-=COMMANDMODE 0
-=EDITMODE 1
-=EDITCMDMODE 0
-=EDITINSERTMODE 1
+=COMMANDMODE 1
+=EDITCMDMODE 2
+=EDITINSERTMODE 3
 =CMDUNKNOWN 0
+=ENDMODE 4
 =CMDEDIT 1
 =CMDRUN CMDEDIT+1
 =CMDLIST CMDRUN+1
@@ -48,14 +50,15 @@ L screen.ld
 =CMDGOSUB CMDGOTO+1
 =CMDHELP CMDGOSUB+1
 =CMDRETURN CMDHELP+1
-=CMDMAXVAL CMDRETURN
+=CMDMEM CMDRETURN+1
+=CMDMAXVAL CMDMEM
 
 
 #############################
 # Function Init
 :Init
-# Defined memory between endofcode and 0xf000 as available
-@PUSH ENDOFCODE @PUSH 0xf000 @SUB ENDOFCODE
+# Defined memory between endofcode and 0xf800 as available
+@PUSH ENDOFCODE @PUSH 0xf800 @SUB ENDOFCODE
 @CALL HeapDefineMemory   #0
 @POPI MainHeapID
 #
@@ -72,13 +75,8 @@ L screen.ld
 @PUSHI MainHeapID @PUSH 200
 @CALL HeapNewObject @IF_ULT_A 100 @PUSH 1 @CALL ErrorExit @ENDIF   # Error code 1  #0
 @POPI SRCIndex
-@MA2V 0 SRCIndexCnt
-# Assign 4K for source code. Expand as needed.
-@PUSHI MainHeapID @PUSH 4096
-@CALL HeapNewObject @IF_ULT_A 100 @PUSH 1 @CALL ErrorExit @ENDIF   # Error code 1  #0
-@POPI SRCBuffer
-@MA2V 0 SRCBufferCnt
-
+@MA2V 0 SRCMaxLines
+@MA2V 100 SRCAllocCnt      # 100 lines, 2 bytes per line
 @RET
 ###########################################################################
 # Function ErrorExit
@@ -142,9 +140,7 @@ L screen.ld
 :Main . Main
 #@ENABLETRACE
 #@ENABLERETTRACE
-@PRT "Before Init:" @StackDump
 @CALL Init           # 1
-@PRT "After Init:" @StackDump
 =InputStrPtr Var01
 @PUSHLOCALI Var01
 #
@@ -152,17 +148,13 @@ L screen.ld
 @PUSH 0
 @WHILE_ZERO
    @POPNULL
-   @PRT "Top Main WhileLoop: " @StackDump
-   @PUSH 0     # Command Mode
+   @PUSH COMMANDMODE     # Command Mode
    @CALL CommandPrompt     # 1
    @POPI InputStrPtr
    #
    @PUSHI InputStrPtr
-   @PRTLN "1"
    @CALL HandleCommand     # 1
-   @PRTLN "2"
    @PUSHI InputStrPtr
-   @PRTLN "3"
    @CALL FreeStringMem     # 1
 @ENDWHILE
 @POPLOCAL Var01
@@ -174,21 +166,20 @@ L screen.ld
 =NewCmdLinePtr Var01
 @PUSHLOCALI Var01
 @SWITCH
-   @CASE 0
-     @PRT ">"
+   @CASE COMMANDMODE
+     @PRT "C> "
      @CBREAK
-   @CASE 1
-     @PRT "Editor>"
+   @CASE EDITCMDMODE
+     @PRT "E> "
      @CBREAK
-   @CASE 2
-     @PRT "Input: "
+   @CASE EDITINSERTMODE
+     @PRT "I: "
      @CBREAK
    @CDEFAULT
      @PRTLN "Unknown Mode:"
      @CBREAK
-   @ENDCASE
+@ENDCASE
 @POPNULL
-
 @PUSHI MainHeapID
 @PUSH 255
 @CALL HeapNewObject         #0
@@ -214,7 +205,6 @@ L screen.ld
 @PUSHLOCALI Var04
 @PUSHLOCALI Var05
 @POPI instring
-@PRT "Start HandleCommand " @StackDump
 #
 # GetNextWord(instring, mode):(CommandWord,instring)
 @PUSHI instring @PUSH 1 @CALL GetNextWord
@@ -251,12 +241,12 @@ L screen.ld
 @POPI P1 @POPI instring # The acutual P1 (if any)
 @PUSHI instring @PUSH 1 @CALL GetNextWord
 @POPI P2 @POPI instring # P2 (if any)
-@PRT "Command Val: " @PRTI CommandVal @PRT " P1: " @PRTI P1 @PRT ":" @PRTSI P1 @PRT " P2: " @PRTI P2 @PRT ":" @PRTSI P2 @PRTNL
+#@PRT "Command Val: " @PRTI CommandVal @PRT " P1: " @PRTI P1 @PRT ":" @PRTSI P1 @PRT " P2: " @PRTI P2 @PRT ":" @PRTSI P2 @PRTNL
 
 # Rather than use nested IF's or CASE we'll use index based Jmp table
 # But first makes sure CommandVal is in range.
 @PUSHI CommandVal
-@IF_GE_A CMDMAXVAL
+@IF_GT_A CMDMAXVAL
    # Not a valid command code
    @PRTLN "Error Command was not understood."
    @JMP ExitHandleCommand
@@ -321,6 +311,8 @@ WC_J_CMDGOSUB
 WC_J_CMDHELP
 #                      CMDRETURN
 WC_J_CMDRETURN
+#                      CMDMEM
+WC_J_CMDMEM
 
 #   END of Command Lookup table:
 #
@@ -330,7 +322,6 @@ WC_J_CMDRETURN
 @JMP ExitHandleCommand
 #
 :WC_J_CMDEDIT
-@PRTLN "CMD Edit:"
 @CALL TextEdit
 @PUSH 0
 @JMP ExitHandleCommand
@@ -343,8 +334,17 @@ WC_J_CMDRETURN
 @JMP ExitHandleCommand
 #
 :WC_J_CMDLIST
-@PRTLN "CMD List:"
-@PUSHI P1 @PUSHI P2
+# P1 and P2 are string pointers, so change them into numeric values for listing ranges.
+@IF_EQ_AV 0 P1
+   @PUSH 0
+@ELSE
+   @PUSHI P1 @CALL stoifirst
+@ENDIF
+@IF_EQ_AV 0 P2
+   @PUSH 0
+@ELSE
+   @PUSHI P2 @CALL stoifirst
+@ENDIF
 @CALL ListBuffer
 @PUSH 0
 @JMP ExitHandleCommand
@@ -360,7 +360,7 @@ WC_J_CMDRETURN
 @PRTLN "CMD Quit:"
 # Simple Quit
 @PRT "Bye."
-@PUSH 1
+
 @END
 #
 :WC_J_CMDPRINT
@@ -396,7 +396,6 @@ WC_J_CMDRETURN
 @PRTLN "CMD-Copy"
 @PUSH 0
 @PRTLN "File Commands not yet implimented."
-:Debug02
 @JMP ExitHandleCommand
 #
 :WC_J_CMDCLS
@@ -449,11 +448,24 @@ WC_J_CMDRETURN
 @PUSH 0
 @JMP ExitHandleCommand
 :WC_J_CMDHELP
-@PRT "CMD CMDHELP"
+@PRTLN "CMD CMDHELP"
+@PRTLN "------Command Mode-------"
+@PRTLN "CLEAR: Empty Memory"
+@PRTLN "CLS: Clear screen."
+@PRTLN "CONT: Continue already stopped code"
+@PRTLN "EDIT: Start Editor"
+@PRTLN "LIST range: List code in memory"
+@PRTLN "QUIT: Exit mbasic"
+@PRTLN "RUN (lable): Run current program"
+@PRTLN "SAVE\LOAD\DIR\DELETERENAME: FileSystem commands"
 @PUSH 0
 @JMP ExitHandleCommand
 :WC_J_CMDRETURN
 @PRT "CMD CMDRETURN"
+@PUSH 0
+@JMP ExitHandleCommand
+:WC_J_CMDMEM
+@CALL MemReport
 @PUSH 0
 @JMP ExitHandleCommand
 
@@ -508,13 +520,11 @@ WC_J_CMDRETURN
 #
 @POPI inMode
 @POPI inString
-@PRT "Enter GetNextWord: " @StackDump
 # Test for End of string
 @PUSHII inString @AND 0xff
 @IF_ZERO
    # Empty String
    @POPNULL
-   @PRT "Empty String: Null Return:" @StackDump
    @PUSHI inString @PUSH 0
 @ELSE
    @POPNULL
@@ -665,7 +675,6 @@ WC_J_CMDRETURN
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
-@PRT "Exit GetNextWord: " @StackDump
 @POPRETURN
 @RET
 #####################################################
@@ -807,7 +816,6 @@ WC_J_CMDRETURN
 #
 @POPI instring
 @POPI CmdWord
-@PRT "Start ParseCommand: " @StackDump
 
 #@PRT "Entry ParseCommand: " @PRTSI CmdWord  @PRTNL
 @PUSHI CmdWord
@@ -861,7 +869,6 @@ WC_J_CMDRETURN
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
-@PRT "End Parse Word: " @StackDump
 @POPRETURN
 @RET
 #
@@ -893,6 +900,7 @@ CMDGOSUB "GOSUB\0"
 CMDHELP "HELP\0"
 CMDHELP "?\0"
 CMDRETURN "RETURN\0"
+CMDMEM "MEM\0"
 # End of list
 0 0
 #
@@ -921,16 +929,17 @@ CMDRETURN "RETURN\0"
 @PUSHLOCALI Var09
 @PUSHLOCALI Var10
 #
-@PRT "Start TextEditor: " @StackDump
 @PRTLN "Text Editor"
 @MA2V EDITCMDMODE InputMode       # EditCMD Mode
-@MA2V 1 CurrentLine
-@PUSH 1
-@WHILE_NOTZERO             # Repeat until exit mode command
-   @PRT "Top TextEdit While:" @StackDump
+@MA2V 0 CurrentLine
+@WHILE_NEQ_AV ENDMODE InputMode         # Repeat until ENDMODE comOPOPmand
    # Get line from Keyboard
-   @PRTI CurrentLine @PRT ":"
-   @PUSHI InputMode @ADD 1
+   @IF_EQ_AV 0 CurrentLine
+      @PRT "():"
+   @ELSE
+      @PUSHI CurrentLine @ADD 1 @PRTTOP @PRT ":" @POPNULL
+   @ENDIF
+   @PUSHI InputMode
    @CALL CommandPrompt
    @POPI InputLinePtr
    @MV2V InputLinePtr SaveInput
@@ -943,8 +952,14 @@ CMDRETURN "RETURN\0"
       @POPI InputLinePtr
       @POPI RangeStop
       @POPI RangeStart
-      @PRT "CMD: " @PRTSI InputLinePtr @PRT " Range " @PRTI RangeStart @PRT " - " @PRTI RangeStop @PRTNL
-      
+      @PUSHI RangeStop
+      @IF_GT_A 0
+         @SUB 1
+         @POPI CurrentLine
+      @ELSE
+         @POPNULL
+      @ENDIF
+#      @PRT "CMD: " @PRTSI InputLinePtr @PRT " Range " @PRTI RangeStart @PRT " - " @PRTI RangeStop @PRTNL      
       #
       @IF_EQ_AV 0 InputLinePtr    # Return zero here if line wasn't parceable
          @PRT "?\n"
@@ -953,12 +968,12 @@ CMDRETURN "RETURN\0"
 	 @SWITCH
 	 @CASE "q\0"
 	     # Quit Editor command.
-	     @POPNULL
-	     @PUSH 1    # Put Exit code for while loop on stack
+	     @POPNULL   # Renove Key 
+	     @MA2V ENDMODE InputMode   # Put Exit code for while loop on stack
              @CBREAK
 	 @CASE "a\0"
 	     # Enter Insert Mode at CurrentLine
-	     @POPNULL             
+	     @POPNULL
 	     @MA2V EDITINSERTMODE InputMode
 	     @IF_EQ_AV 0 RangeStart
 	     @ELSE
@@ -970,23 +985,19 @@ CMDRETURN "RETURN\0"
 	 @CASE "i\0"
 	     # Enter InsertMode at CurrentLine-1 (if valid)
              @POPNULL
+             @MA2V EDITINSERTMODE InputMode
 	     @IF_EQ_AV 0 CurrentLine
-	        # We can't insert above 0th line
-		@POPNULL
-		@PRT "Line Range?\n"
-		@POPNULL
-		@PUSH 1
+	        # Line 0 insert is same as append.
+                @MA2V EDITINSERTMODE InputMode
 	     @ELSE
-	        @POPNULL
 	        @PRT "Insert At : " @PRTI CurrentLine @PRT "( . to end )\n"
 		@DECI CurrentLine
                 @MA2V EDITINSERTMODE InputMode
-	        @PUSH 1
              @ENDIF
 	     @CBREAK
 	 @CASE "p\0"
 	    #Print Range
-            @POPNULL
+            @POPNULL    # Just remove Key, we'll remain in CMDMODE
 	    @IF_EQ_AV 0 RangeStart
 	       # No Range given, print currentline + 10, set currentline to end of listing.
 	       @PUSHI CurrentLine
@@ -996,16 +1007,16 @@ CMDRETURN "RETURN\0"
 	       @POPI CurrentLine
             @ELSE
                # Range Given.
+#               @PRT "Function PrintLines"
                @PUSHI RangeStart @SUB 1
 	       @PUSHI RangeStop
 	       @CALL PrintLines
 	       @MV2V RangeStop CurrentLine
 	    @ENDIF
-	    @PUSH 1
 	    @CBREAK
 	 @CASE "d\0"
 	    #Delete Range
-            @POPNULL
+            @POPNULL    # Just remove Key, we'll remain in CMDMODE
 	    @IF_EQ_AV 0 RangeStart
 	       # No Range given, delete just current line
 	       @PUSHI CurrentLine
@@ -1017,11 +1028,10 @@ CMDRETURN "RETURN\0"
 	       @PUSHI RangeStop
 	       @CALL DeleteLines
             @ENDIF
-	    @PUSH 1
 	    @CBREAK
          @CASE "c\0"
             # Copy Range to target
-            @POPNULL
+            @POPNULL    # Just remove Key, we'll remain in CMDMODE
             @IF_EQ_AV 0 RangeStart
                # No Range given, tell user error
                @PRTLN "Need to specify src lines"
@@ -1029,7 +1039,7 @@ CMDRETURN "RETURN\0"
                @PUSHI InputLinePtr @ADD 1     # To get past the key-letter
                @CALL stoifirst
                @POPI LineDest
-               @IF_EQ_AV 0 LineDest     # No desk, then user current line number.
+               @IF_EQ_AV 0 LineDest     # No dest, then user current line number.
                   @MV2V CurrentLine LineDest
                @ENDIF
                @MA2V 0 Offset1
@@ -1054,10 +1064,9 @@ CMDRETURN "RETURN\0"
                   @POPNULL
                @Next Index1
             @ENDIF
-            @PUSH 1
             @CBREAK
-         @CASE "h\0"
-             @POPNULL
+         @CASE "h\0" 
+             @POPNULL   # Just remove Key, we'll remain in CMDMODE
              @PRTLN "HELP---"
              @PRTLN "range[,range]CMD[dest]"
              @PRTLN "range = { Line Number | /text/ } text will search from current line number down."
@@ -1068,10 +1077,11 @@ CMDRETURN "RETURN\0"
              @PRTLN "p: Print range of lines"
              @PRTLN "q: quit back to cmd mode."
              @PRTNL
-             @PUSH 1
              @CBREAK
+         @CASE "m\0"
+            @CALL MemReport
+            @CBREAK
 	 @CDEFAULT
-            @PRT "Not Parsed: " @StackDump
             @PRT "( " @PRTSI InputLinePtr @PRT " )" @PRTTOP 
 	    @PRTLN "Command Not Understood"
             @PRTLN "Try h for help."
@@ -1081,11 +1091,16 @@ CMDRETURN "RETURN\0"
    @ELSE
       @IF_EQ_AV EDITINSERTMODE InputMode
          # Handle Insert Mode
+#         @PRT "EDIT: " @PRTSI InputLinePtr @PRT " Range " @PRTI RangeStart @PRT " - " @PRTI RangeStop @PRTNL
 	 @PUSHII InputLinePtr
 	 @IF_EQ_A ".\0"        #Note we didn't 'AND 0xff' so only tue if . on line by itself.
+           @POPNULL
+           @PRTLN "End Input Mode."
            @MA2V EDITCMDMODE InputMode
          @ELSE
-           @PRTI CurrentLine @PRT ": "
+           @POPNULL
+           @PUSHI CurrentLine
+           @CALL InsertIndexSpace
            @PUSHI CurrentLine
            @PUSHI InputLinePtr
            @CALL InsertEditLine
@@ -1112,17 +1127,17 @@ CMDRETURN "RETURN\0"
    @ENDIF
    @POPNULL
 # Get rid of temporary string.
-@PRT "Bottom TextEdit While:" @StackDump
 @ENDWHILE
+@POPLOCAL Var10
 @POPLOCAL Var09
 @POPLOCAL Var08
 @POPLOCAL Var07
 @POPLOCAL Var06
 @POPLOCAL Var05
 @POPLOCAL Var04
+@POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
-@PRT "End TextEditor: " @StackDump
 @POPRETURN
 @RET
 #####################################
@@ -1136,7 +1151,7 @@ CMDRETURN "RETURN\0"
 # If first character is '0-9' or '$' or '.' it will be a line number
 # Otherwise return the original string unchanged.
 #
-:LastSearch 0
+:LastSearch 0     # If line with just '/' then repeat last search, if any.
 :GetEditRange
 @PUSHRETURN
 =instring Var01
@@ -1157,13 +1172,19 @@ CMDRETURN "RETURN\0"
 @PUSHLOCALI Var07
 #
 @POPI instring
-@PRT "Start GetEditRange: " @StackDump
+#@PRT "Start Edit Range:" @StackDump
+# Default values for range will always be current line
+@MV2V CurrentLine OutStart
+@MV2V CurrentLine OutStop
+#
 @MA2V 0 IsRepeat
 @ForIA2B VarIndex 0 2        # Loop 0 and 1, 2 is exit.
    # Test if first character is '/'
    @PUSHII instring @AND 0xff
    @IF_EQ_A "/\0"
+       @PRT "Doing Itteration: " @PRTI VarIndex @StackDump
        # Handle Text search.
+       @POPNULL
        @INCI instring
        @PUSHII instring @AND 0xff
        @IF_ZERO    #this is the case where line is '/' by itself
@@ -1175,105 +1196,115 @@ CMDRETURN "RETURN\0"
           @ELSE
              # There was a valid last search, use it.
              @MA2V 1 IsRepeat
+             @PRTLN "Repeat Search: " @PRTSI LastSearch             
           @ENDIF
        @ELSE
           # Start of a new search.
           # First delete any older LastSeach to save memory.
           @IF_EQ_AV 0 LastSearch
+              # Do nothing.
           @ELSE
               @PUSHI MainHeapID
               @PUSHI LastSearch
               @CALL HeapDeleteObject @IF_NOTZERO @PRT "Error Clearing Memory: Code:" @PRTTOP @PRTNL @ENDIF
               @POPNULL
-             # Search for the ending '/'
-             @MV2V instring Index1
-             @INCI Index1
-             @PUSH 0
-             @WHILE_ZERO
-                @POPNULL
-                @PUSHII Index1 @AND 0xff
-                @IF_ZERO
-                   # End of String before finding '/'
-                   @INCI Index1 # we later expect there to be 2'/'s so simulate the second.
-                   @PUSH 1
+          @ENDIF
+          # Search for the ending '/'
+          @MV2V instring Index1
+          @INCI Index1
+          @PUSH 0
+          @WHILE_ZERO
+             @POPNULL
+             @PUSHII Index1 @AND 0xff
+             @IF_ZERO
+                # End of String before finding '/'
+                @INCI Index1 # we later expect there to be 2'/'s so simulate the second.
+                @PUSH 1
+             @ELSE
+                @IF_EQ_A "/\0"
+                 # Found the ending '/'
+                  @PUSH 1
                 @ELSE
-                   @IF_EQ_A "/\0"
-                   # Found the ending '/'
-                      @PUSH 1
-                   @ELSE
-                      # Part of the Search String.
-                      @INCI Index1
-                      @PUSH 0
-                   @ENDIF
+                  # Part of the Search String.
+                  @INCI Index1
+                  @PUSH 0
                 @ENDIF
-              @ENDWHILE
-              # Lenth of the new Search String will be Index1-instring
-              @PUSHI MainHeapID
-              @PUSHI Index1
-              @SUBI instring
-              @CALL HeapNewObject
-              @POPI LastSearch
-              # Now Copy instring[1:length] to LastSearch
-              @PUSHI LastSearch        # Destination
-              @PUSHI instring @ADD 1   # Start right after the '/'
-              @PUSHI Index1
-              @SUBI instring
-              @SUB 2                   # Lenth of string (subtract the '/'s)
-              @CALL strncpy
-           @ENDIF
-           # At this point LastSearch will have the correct Search Pattern
-           #
-           # Now we do the search
-           #
-           @PUSH 0
-           @MV2V CurrentLine Index1
-           @IF_EQ_AV 1 IsRepeat
-              # This is to make sure that when calling for a repeated search, it starts at the next line.
-              @INCI Index1     # Is a repeat search so start at next line.
-              @IF_EQ_VV Index1 SRCMaxLines
-                 @MA2V 0 Index1        # Roll back to top line
-              @ENDIF
-           @ENDIF
-           # This While loop will cycle though entire buffer, exiting on match or full buffer tested.
-           @WHILE_ZERO
+             @ENDIF
+          @ENDWHILE
+          # Lenth of the new Search String will be Index1-instring
+          @PUSHI MainHeapID
+          @PUSHI Index1
+          @SUBI instring
+          @CALL HeapNewObject
+          @POPI LastSearch
+          # Now Copy instring[1:length] to LastSearch
+          @PUSHI LastSearch        # Destination
+          @PUSHI instring   # Start right after the '/'
+          @PUSHI Index1
+          @SUBI instring
+          @SUB 2                   # Lenth of string (subtract the '/'s)
+          @CALL strncpy
+       @ENDIF
+       # At this point LastSearch will have the correct Search Pattern
+       #
+       # Now we do the search
+       #
+       @PUSH 0
+       @MV2V CurrentLine Index1
+       @IF_EQ_AV 1 IsRepeat
+          # This is to make sure that when calling for a repeated search, it starts at the next line.
+          @INCI Index1     # Is a repeat search so start at next line.
+          @IF_EQ_VV Index1 SRCMaxLines
+             @MA2V 0 Index1        # Roll back to top line
+          @ENDIF
+       @ENDIF
+       # This While loop will cycle though entire buffer, exiting on match or full buffer tested.
+       @WHILE_ZERO
+          @POPNULL
+          @PUSHI Index1
+          @CALL GetEditLine
+          :Debug01
+          @POPI linestring
+          @PUSHI LastSearch
+          @PUSHI linestring          
+#          @PRTSI linestring @PRT " vs " @PRTSI LastSearch          
+          @CALL strstr       # Returns 0 if no match
+#          @PRT " = " @PRTTOP
+           :Debug02
+          @IF_ZERO
               @POPNULL
-              @PUSHI Index1
-              @CALL GetEditLine
-              @POPI linestring
-              @PUSHI linestring
-              @PUSHI LastSearch
-              @CALL strstr       # Returns 0 if no match
-              @IF_ZERO
-                 @POPNULL
-                 @INCI Index1
-                 @IF_EQ_VV Index1 CurrentLine  # This means search wrapped around all lines.
-                     @PUSH 2                   # 2 Will means full search, no match.
-                 @ELSE
-                     @IF_EQ_VV Index1 SRCMaxLines
-                         @MA2V 0 Index1        # Roll back to top line
-                         @PRTLN "Reached EOF Search rolling up to top."
-                     @ENDIF
-                     @PUSH 0      # Continue the loop for next line.
-                 @ENDIF
+              @INCI Index1
+              @IF_EQ_VV Index1 CurrentLine  # This means search wrapped around all lines.
+                 @PUSH 2                   # 2 Will means full search, no match.
               @ELSE
-                 # strstr > 0 so there was a match, make this the new CurrentLine
-                 @PUSH 1          # 1 means found item and exit.
-              @ENDIF
-           @ENDWHILE
-           @IF_EQ_A 2
-              @PRTLN "No Match"
+                 @PUSHI Index1
+                 @IF_GE_V SRCMaxLines
+                    @POPNULL
+                    @MA2V 0 Index1        # Roll back to top line
+                    @PRTLN "Reached EOF Search rolling up to top."
+                 @ELSE
+                    @POPNULL
+                 @ENDIF
+              @PUSH 0      # Continue the loop for next line.
+              @ENDIF              
            @ELSE
-              @MV2V Index1 CurrentLine
+              # strstr > 0 so there was a match, make this the new CurrentLine
+              @PUSH 1          # 1 means found item and exit.
            @ENDIF
-           @IF_EQ_AV 0 VarIndex
-              @MV2V CurrentLine OutStart
-           @ELSE
-              @MV2V CurrentLine OutStop
-           @ENDIF
-       @ENDIF   # This was the IF block starting at if '/' on line by itself
-    @ELSE
+       @ENDWHILE
+       @IF_EQ_A 2
+          @PRTLN "No Match"
+       @ELSE
+          @MV2V Index1 CurrentLine
+       @ENDIF
+       @IF_EQ_AV 0 VarIndex
+          @MV2V CurrentLine OutStart
+       @ELSE
+          @MV2V CurrentLine OutStop
+       @ENDIF
+   @ELSE
        # Test now if first character is one of the following
-       # 0-9 '$' or '.'
+       # 0-9 '$' or '.' or '^'
        @IF_EQ_A ".\0"
           @POPNULL
           @PUSH 1
@@ -1284,18 +1315,23 @@ CMDRETURN "RETURN\0"
           @PUSH 2
           @INCI instring
        @ENDIF   # Code 2 means Last Line
+       @IF_EQ_A ".\0"
+          @POPNULL
+          @PUSH 3
+          @INCI instring
+       @ENDIF
        @IF_GE_A "0\0"
           @IF_LE_A "9\0"
-              @POPNULL @PUSH 3
+              @POPNULL @PUSH 4
           @ENDIF
        @ENDIF
        # TOS will be # 1-3 or we we've reach end of the range info.
        @SWITCH
        @CASE 1
           # Was . so range is CurrentLine
-          @POPNULL
           @IF_EQ_AV 0 VarIndex
              @MV2V CurrentLine OutStart
+             @MV2V OutStart OutStop
              @PUSHII instring @AND 0xff
              @IF_EQ_A ",\0"
                 @INCI instring # Setup for second range value if any.
@@ -1304,12 +1340,13 @@ CMDRETURN "RETURN\0"
           @ELSE
              @MV2V CurrentLine OutStop
           @ENDIF
+          # Leaves 1 on stack
           @CBREAK
        @CASE 2
           # Was $ so range is SRCMaxLines
-          @POPNULL
           @IF_EQ_AV 0 VarIndex
              @MV2V SRCMaxLines OutStart
+             @MV2V OutStart OutStop
              @PUSHII instring @AND 0xff
              @IF_EQ_A ",\0"
                 @INCI instring # Setup for second range value if any.
@@ -1318,23 +1355,38 @@ CMDRETURN "RETURN\0"
           @ELSE
              @MV2V SRCMaxLines OutStop
           @ENDIF
+          # Leaves 2 on stack
           @CBREAK
        @CASE 3
+          # Start at first line. (basicly same as 1)
+          @IF_EQ_AV 0 VarIndex
+             @MA2V 1 OutStart
+             @MV2V OutStart OutStop
+             @IF_EQ_A ",\0"
+                @INCI instring # Setup for second range value if any.
+             @ENDIF
+             @POPNULL
+          @ELSE
+             @MA2V 1 OutStop
+          @ENDIF
+          @CBREAK
+       @CASE 4
           # It was a number.
-          @POPNULL
           @PUSHI instring
           @CALL stoifirst
           @PUSHI instring
           @CALL FirstNonDigit
           @POPI instring
-          @IF_EQ_AV 0 VarIndex
+          @IF_EQ_AV 0 VarIndex          
              @POPI OutStart
+             @MV2V OutStart OutStop    # Cases when only one number given.
              @PUSHII instring @AND 0xff
              @IF_EQ_A ",\0"
                 @INCI instring # Setup for second range value if any.
              @ENDIF
+             @POPNULL
           @ELSE
-             @POPI OutStop
+             @POPI OutStop             
           @ENDIF
           @CBREAK
         @CDEFAULT
@@ -1345,6 +1397,7 @@ CMDRETURN "RETURN\0"
    @POPNULL
 @Next VarIndex
 @PUSHI OutStart @PUSHI OutStop @PUSHI instring
+#@PRT "Range : " @PRTI OutStart @PRT " to " @PRTI OutStop @PRTNL
 :GERFastExit     #This exit point is for the error cases
 @POPLOCAL Var07
 @POPLOCAL Var06
@@ -1353,7 +1406,6 @@ CMDRETURN "RETURN\0"
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
-@PRT "End GetEditRange: " @StackDump
 @POPRETURN
 @RET
 
@@ -1401,21 +1453,29 @@ CMDRETURN "RETURN\0"
 @PUSHLOCALI Var04
 @POPI StopLine
 @POPI StartLine
+#@PRT "Start Print Lines:" @StackDump
+@PUSHI StopLine
+@IF_UGE_V SRCMaxLines
+   @MV2V SRCMaxLines StopLine
+@ENDIF
+@POPNULL
 #
-@PRT "List Lines " @PRTI StartLine @PRT " To " @PRTI StopLine @PRTNL
 @ForIV2V Index1 StartLine StopLine
     @PUSHI Index1
     @CALL GetEditLine
-    @POPI StringLine
-    @PRTI Index1 @PRT ": " @PRTSI StringLine @PRTNL
+    @POPI StringLine    
+    @PUSHI Index1 @ADD 1 @PRTTOP @POPNULL # Print Index1+1 (so lines appear to start at 1 not zero)
+    @PRT ": " @PRTSI StringLine @PRTNL
     @PUSHI MainHeapID
     @PUSHI StringLine
     @CALL HeapDeleteObject @IF_NOTZERO @PRT "Error Clearing Memory: Code:" @PRTTOP @PRTNL @ENDIF
+    @POPNULL
 @Next Index1
 @POPLOCAL Var04
 @POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
+#@PRT "Stop Print Lines:" @StackDump
 @POPRETURN
 @RET
 
@@ -1440,10 +1500,6 @@ CMDRETURN "RETURN\0"
     @CALL GetEditLine
     @POPI StringLine
     @PRTI Index1 @PRT ": " @PRTSI StringLine @PRTNL
-    @PUSHI MainHeapID
-    @PUSHI StringLine
-    @CALL HeapDeleteObject @IF_NOTZERO @PRT "Error Clearing Memory: Code:" @PRTTOP @PRTNL @ENDIF
-    @POPNULL
 @Next Index1
 @POPLOCAL Var04
 @POPLOCAL Var03
@@ -1457,73 +1513,218 @@ CMDRETURN "RETURN\0"
 :GetEditLine
 @PUSHRETURN
 =linenum Var01
-=NewObject Var02
+=TempObject Var02
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
+#
+@IF_UGT_V SRCMaxLines
+   @PRTTOP @PRT " is not a valid line number"
+   @POPNULL
+   @PUSH BlankLine
+@ELSE
+   # Get line string pointer
+   @POPI linenum
+   @PUSHI linenum @RTL
+   @ADDI SRCIndex
+   @PUSHS
+   @DUP
+   @POPI TempObject
+@ENDIF
 
-#
-@POPI linenum
-@PUSHI MainHeapID
-@PUSH 81
-@CALL HeapNewObject @IF_ULT_A 100 @PUSH 1 @CALL ErrorExit @ENDIF   # Error code 1
-@POPI NewObject
-# Format the line with some junk
-@PUSHI NewObject
-#          01234567
-@STRSTACK "Line - \0"
-@PUSH 8
-@CALL strncpy
-#
-@PUSHI NewObject
-@ADD 7
-@PUSHI linenum
-@PUSH 10
-@CALL itos
-#
-@PUSHI NewObject
-#@ADD 13
-@STRSTACK " Rest of the line....\0"
-@CALL strcat
-@PUSHI NewObject
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN
 @RET
+:BlankLine 0 0
+
 ###################################
 # Function InsertEditLine(linenum, instring)
 :InsertEditLine
 @PUSHRETURN
 =linenum Var01
 =instring Var02
+=acutualsize Var03
+=Index01 Var04
+=Index02 Var05
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+@PUSHLOCALI Var05
 @POPI instring
 @POPI linenum
-@PRT "Would Insert at line: " @PRTI linenum @PRT ": " @PRTSI instring @PRTNL
+#
 @PUSHI linenum
-@IF_GT_V SRCMaxLines
-   @POPI SRCMaxLines
-@ELSE
-   @POPNULL
+@IF_UGT_V SRCAllocCnt
+   # Line number if > allocated lines.
+   # First make sure the line number is 'reasonable'
+   @ADD 100
+   @IF_UGT_V SRCAllocCnt
+       # User ented some number > 100 lines past End of buffer.
+       @PRT "Are you sure " @PRTI linenum @PRT " is where you want to insert text?"
+       @PRT "Please enter lower numbered lines first to allocate space."
+       @POPNULL
+       @PUSH -1
+   @ELSE
+       @POPNULL @PUSHI linenum
+       # Allocate new space for lines past current end
+       @PUSHI MainHeapID @PUSHI SRCIndex
+       @PUSHI SRCAllocCnt @ADD 200
+       @CALL HeapResizeObject
+       @PUSHI SRCAllocCnt @ADD 100 @POPI Index01
+       @ForIV2V Index02 SRCAllocCnt Index01
+           # Fill new space with 0's
+           @PUSH 0
+           @PUSHI SRCIndex @ADDI Index02 @ADDI Index02
+           @POPS
+       @Next Index02
+   @ENDIF
 @ENDIF
+# IF block exits with -1 on error, else still has linenum at TOS
+@IF_EQ_A -1
+   @POPNULL
+@ELSE
+   # Check to see if we need to delete old string at this index.
+   @RTL @ADDI SRCIndex
+   @POPI Index01   # Is address where ptr to string will be saved.   
+   @PUSHII Index01
+   @IF_ZERO
+      @POPNULL      # index not allocated to line string.
+   @ELSE
+      # Index was allocated to line string, so delete heap of that string.
+      @PUSHI MainHeapID
+      @SWP
+      @CALL HeapDeleteObject @IF_NOTZERO @PRT "Error Clearing Memory: Code:" @PRTTOP @PRTNL @ENDIF
+   @ENDIF
+   # Now create new empty string for Index01
+   @PUSHI MainHeapID
+   @PUSHI instring
+   @CALL strlen @ADD 2     # add a few bytes for padding around new string.
+   @CALL HeapNewObject
+   @POPII Index01           # Save pointer at spot
+   # Now copy instring to that new space.
+   @PUSHII Index01
+   @PUSHI instring
+   @CALL strcpy
+   # Now if linenum is a new high mark for used line, move the high mark.
+   @PUSHI linenum
+   @IF_GT_V SRCMaxLines
+      @POPI SRCMaxLines
+   @ELSE
+      @POPNULL
+   @ENDIF
+@ENDIF
+@POPLOCAL Var05
+@POPLOCAL Var04
+@POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN
 @RET
+#############################################
+# Function InsertIndexSpace(currentline)
+# Moves and expands Index List to make currentline available
+:InsertIndexSpace
+@PUSHRETURN
+=CurrentLine Var01
+=Index01 Var02
+=Index02 Var03
+=MaxLines Var04
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+@POPI CurrentLine
+@INCI SRCMaxLines
+@PUSHI SRCAllocCnt
+@IF_LE_V CurrentLine
+    # Allocated space for  SRCIndex is too small expand it by 25 lines.
+    @ADD 25
+    @POPI MaxLines
+    @PUSHI MainHeapID
+    @PUSHI SRCIndex
+    @PUSHI MaxLines @RTL
+    @CALL HeapResizeObject @IF_LT_A 100 @PRTLN "Failed to resize Index." @END @ENDIF
+    @POPI SRCIndex
+    @MV2V MaxLines SRCAllocCnt
+@ENDIF
+# SRCMaxLines should always be smaller than SRCAllocCnt and >= CurrentLine
+@ForIV2V Index01 SRCMaxLines CurrentLine
+   # Copy from SRCMaxLines downto CurrentLine
+   @PUSHI SRCIndex
+   @ADDI Index01
+   @ADD 1 @RTL
+   @PUSHS        # Val of mem[i+1]
+   @PUSHI SRCIndex
+   @ADDI Index01 @RTL
+   @POPS         # pop to mem[i]
+@NextBy Index01 -1
+@POPNULL
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+######################################
+# Function MemReport
+# Called to print how memory is being used.
+:MemReport
+@PRTLN "Memory Info:"
+@PUSHI MainHeapID
+@CALL HeapListMap
+@PRTLN "-------------------------"
+@PRT "Current Line: " @PRTI CurrentLine
+@PRT " SRCMaxLines: " @PRTI SRCMaxLines
+@PRT "\n---------------------------"
+@ForIA2V Index1 0 SRCMaxLines
+   @PRTNL            
+   @PUSHI Index1 @ADD 1 @PRTTOP @PRT ":" @POPNULL
+   @PUSHI SRCIndex @ADDI Index1 @ADDI Index1 @PUSHS @PRTHEXTOP @PRT ":" @POPI LineDest
+   @PRTSI LineDest
+@Next Index1
+@PRT "\n___________________________\n"
+@StackDump
+@RET
 
-
-
-
-
-
-
-
-
-
-
-
-
+####################################
+# Function ListBuffer
+# Command Mode list Buffer function
 :ListBuffer
+@PUSHRETURN
+=RangeStart Var01
+=RangeStop Var02
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@POPI RangeStop
+@POPI RangeStart
+@IF_EQ_AV 0 RangeStart
+   @PUSHI CMDCurrentLine
+   @PUSHI CMDCurrentLine @ADD 10
+   @CALL PrintLines
+   @PUSHI CMDCurrentLine @ADD 10
+   @POPI CMDCurrentLine
+@ELSE
+   @PUSHI RangeStart
+   @IF_GE_V SRCMaxLines
+       @POPNULL
+       @PUSHI SRCMaxLines
+   @ENDIF   
+   @SUB 1
+   @PUSHI RangeStop
+   @IF_GE_V SRCMaxLines
+       @POPNULL
+       @PUSHI SRCMaxLines
+   @ENDIF
+   @IF_GT_S
+      @SWP
+   @ENDIF
+   @CALL PrintLines
+   @MV2V RangeStop CMDCurrentLine
+@ENDIF
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
 @RET
 :RunBuffer
 @RET
