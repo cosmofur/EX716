@@ -494,7 +494,8 @@ M ENDWHEN \
 # Note the %P in both the Continue and Break Macros
 # is there because we expect (demand) that the Break/Continue
 # be part of an IF Block and we need to pop out of the Block first.
-# This is Less flexable than full languages support.
+# This is Less flexable than full languages support as it supports only
+# one level of enbeding (So it can't be a 2nd or deeper IF block)
 M WHILECONTINUE \
   %P \
   @JMP _%V_LoopTop
@@ -623,6 +624,11 @@ M ENDCASE \
 #  The Test logic requires that the Index will increment from start to stop and must Exactly
 #  equal the stop value to end the loop. If index increments by larger than 1 steps, it might
 #  miss the Stop value and loop forever.
+#
+# For cases where there may not be an exact match for the stop value, you can use the ForIup## variant
+# But this version can not work with negative 'NextBy' only possitive the test is valid only from
+# A Up To B, not B down to A
+#
 # 
 # The For Loops come in the following types
 #  ForIA2B     : 3 Args For from constant A to Constant B
@@ -653,7 +659,8 @@ M ForIupA2B \
   :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPN _%V_NextEnd
+  @JMPC _%V_NextEnd
+  
 
 # for Index from constant to variable
 M ForIA2V \
@@ -671,7 +678,29 @@ M ForIupA2V \
   :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPN _%V_NextEnd
+  @JMPC _%V_NextEnd
+
+# For Index from constant to current TOS
+M ForIA2S \
+  %S \
+  @POPI _%V_EndVal \
+  @JMP _%V_ForTop \
+  :_%V_EndVal 0 \
+  :_%V_ForTop \
+  @PUSHI _%V_EndVal \
+  @CMPI %1 @POPNULL \
+  @JMPZ _%V_NextEnd
+
+# Forup Up variation test for > end condition
+M ForIupA2S \
+  %S \
+  @POPI _%V_EndVal \
+  @JMP _%V_ForTop \
+  :_%V_EndVal 0 \
+  :_%V_ForTop \
+  @PUSHI _%V_EndVal \
+  @CMPI %1 @POPNULL \
+  @JMPC _%V_NextEnd
 
 # for Index from variable to constant
 M ForIV2A \
@@ -689,8 +718,8 @@ M ForIupV2A \
   :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPN _%V_NextEnd
-
+  @JMPC _%V_NextEnd
+  
 #for Index from variable to variable
 M ForIV2V \
   %S \
@@ -706,7 +735,7 @@ M ForIupV2V \
   :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPN _%V_NextEnd
+  @JMPC _%V_NextEnd
 
 M Next \
   @INCI %1 \

@@ -6,7 +6,8 @@ L mul.ld
 L softstack.ld
 L heapmgr.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
-G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok
+G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok G splitstr G SplitDelete
+G strUpCase G strLowCase
 
 #
 # Some 'String' Macros
@@ -603,75 +604,69 @@ M STRSTACK \
 # 
 :memcpy
 @PUSHRETURN
-=Length Var01
+=DstPtr Var01
 =SrcPtr Var02
-=DstPtr Var03
-=Index Var04
-=Base Var05
-@PUSHLOCALI Length
-@PUSHLOCALI SrcPtr
-@PUSHLOCALI DstPtr
-@PUSHLOCALI Index
-@PUSHLOCALI Base
+=Length Var03
+=Index01 Var04
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+#
 @POPI Length
 @POPI SrcPtr
 @POPI DstPtr
-@PUSHI DstPtr
-@IF_EQ_V SrcPtr
-   @POPNULL
-   # Do Nothing
+
+# Default is to copy from 0 to length
+# but if DstPtr falls in range srcptr to srcptr+length, then use reverse copy.
+@IF_EQ_AV 0 Length
+   # zero length? Just exit.
 @ELSE
-   @IF_LT_V SrcPtr
-      @POPNULL
-      # For efficency we'll copy whole words rather than bytes
-      # But we also must account for the odd number case and
-      # copy just the edge byte preserving the High Order byte in that word.
-      @PUSHI Length @RTR @POPI Base  # Length/2 (round down)
-      @ForIA2V Index 0 Base
-         @PUSHII SrcPtr @POPII DstPtr
-	 @INC2I SrcPtr
-	 @INC2I DstPtr
-      @Next Index
-      @PUSHI Length @AND 1
-      @IF_NOTZERO
-         @PUSHII SrcPtr
-	 @AND 0xff
-	 @PUSHII DstPtr
-	 @AND 0xff00
-	 @ORS
-	 @POPII DstPtr
-      @ENDIF
-      @POPNULL
-  @ELSE            # Hande case where moving backworks is better.
-      @POPNULL
-      @PUSHI Length @RTR @POPI Base  # Length/2 (round down)
-      @PUSHI SrcPtr @ADDI Length @SUB 1 @POPI SrcPtr
-      @PUSHI DstPtr @ADDI Length @SUB 1 @POPI DstPtr
-      @PUSHI Length @AND 1
-      @IF_NOTZERO
+   @IF_EQ_VV SrcPtr DstPtr
+       # Src == Dst, just exit.
+   @ELSE
+       # And logic test requires nesting two IF blocks
+       @PUSH 1     # Default is loop forward
+       @PUSHI DstPtr
+       @IF_GT_V SrcPtr
+          # dstptr > strptr
+          @PUSHI SrcPtr
+          @ADDI Length
+          @IF_LT_S
+             # AND dstptr < (srcptr+length)
+             @POPNULL @POPNULL @POPNULL
+             @PUSH 0   # Reverse Order
+          @ELSE
+             @POPNULL @POPNULL
+          @ENDIF
+       @ELSE
+          @POPNULL
+       @ENDIF
+       #
+       @IF_NOTZERO
+         @ForIA2V Index01 0 Length
+             @PUSHI DstPtr @ADDI Index01 @PUSHS @AND 0xff00
+             @PUSHI SrcPtr @ADDI Index01 @PUSHS @AND 0xff
+             @ORS
+             @PUSHI DstPtr @ADDI Index01 @POPS
+         @Next Index01
          @POPNULL
-         @PUSHII SrcPtr
-	 @AND 0xff
-	 @PUSHII DstPtr
-	 @AND 0xff00
-	 @ORS
-	 @POPII DstPtr
-	 @DEC2I SrcPtr
-	 @DEC2I DstPtr
-      @ENDIF
-      @ForIV2A Index Base 0
-         @PUSHII SrcPtr
-	 @POPII DstPtr
-	 @DEC2I SrcPtr
-	 @DEC2I DstPtr
-      @NextBy Index -1
-  @ENDIF
+       @ELSE
+         # Reverse order.
+         @ForIV2A Index01 Length 0
+             @PUSHI DstPtr @ADDI Index01 @PUSHS @AND 0xff00
+             @PUSHI SrcPtr @ADDI Index01 @PUSHS @AND 0xff
+             @ORS
+             @PUSHI DstPtr @ADDI Index01 @POPS
+         @NextBy Index01 -1
+         @POPNULL
+       @ENDIF
+   @ENDIF
 @ENDIF
-@POPLOCAL Base
-@POPLOCAL Index
-@POPLOCAL DstPtr
-@POPLOCAL SrcPtr
-@POPLOCAL Length
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
 @POPRETURN
 @RET
 #
@@ -966,6 +961,236 @@ M STRSTACK \
 @POPLOCAL Var05
 @POPLOCAL Var04
 @POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+#
+# This string split returns from an input string a HeapManager array of strings
+# Function splitstr(instring,splitlist,heapid):(heaparray,size_array)
+:splitstr
+@PUSHRETURN
+=instring Var01
+=splitlist Var02
+=HeapIn Var03
+=SSCount Var04
+=Index1 Var05
+=Index2 Var06
+=SplitLen Var07
+=NewArray Var08
+
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+@PUSHLOCALI Var05
+@PUSHLOCALI Var06
+@PUSHLOCALI Var07
+@PUSHLOCALI Var08
+#
+@POPI HeapIn
+@POPI splitlist
+@POPI instring
+#
+# First figure out how many substrings will be needed to be created.
+@PUSHI splitlist @CALL strlen @POPI SplitLen  # SplitLen=length(splitlist)
+@MA2V 0 SSCount
+@PUSHI instring
+@CALL strlen
+@ForIupA2S Index1 0     # A2S means 0 to current value on stack, which is poped off at the start.
+   @PUSHI instring
+   @ADDI Index1
+   @PUSHS @AND 0xff
+   @ForIupA2V Index2 0 SplitLen
+      @PUSHI splitlist
+      @ADDI Index2
+      @PUSHS @AND 0xff
+      @IF_EQ_S
+         @INCI SSCount       # If  == then SSCOunt++
+      @ENDIF
+      @POPNULL
+   @Next Index2
+   @POPNULL
+@Next Index1
+# Have to consider what to do if the deliminator is also the first character as that would make
+# the first substring a null lenth string. Better to drop it.
+@ForIupA2V Index2 0 SplitLen
+   @PUSHII instring @AND 0xff
+   @PUSHI splitlist
+   @ADDI Index2
+   @PUSHS @AND 0xff      # Just look at 1st character.
+   @IF_EQ_S
+      # Match, so move start of instring past the split character.
+      @INCI instring   # This will make instring start at first non split character.
+      @POPNULL @POPNULL
+      @DECI Index2     # We do this as we're not seeing if next instring is also a split character.
+      @DECI SSCount    # If this happens then our SSCount will be off.
+   @ELSE
+      @POPNULL @POPNULL        # Remove the failed match characters
+   @ENDIF
+@Next Index2
+#
+@IF_EQ_AV 0 SSCount
+   # Just one long string, no sub strings.
+   @INCI SSCount
+@ENDIF
+#
+
+#
+#
+# Create an array of SSCount*2 in length
+@PUSHI HeapIn
+@PUSHI SSCount @ADD 1 @RTL
+@CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error, while creating split string list." @END @ENDIF
+@POPI NewArray
+# Make sure the END of Heap Marker is set to 0
+@PUSH 0
+@PUSHI SSCount @ADD 1 @RTL @ADDI NewArray
+@POPS
+#
+# Now use the strtolk function to split and copy the strings into their array location
+@PUSH 1
+@MA2V 0 Index1       # This will be array index.
+@PUSHI instring
+@PUSHI splitlist
+@CALL strtok
+# Save where the next instring will be for next loop
+@WHILE_NOTZERO
+    @IF_NOTZERO
+       # Create a new heap string of len first token
+       @POPI Index2
+       @PUSHI HeapIn
+       @PUSHI Index2
+       @CALL strlen @ADD 1     # extra space for null termination
+       @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 1065, while creating split string list." @END @ENDIF       
+       @PUSHI NewArray @ADDI Index1
+       @POPS               # Array[Index1] == ^newstring
+       # Now copy the old Index2 tolk into the newstring space
+       @PUSHI NewArray @ADDI Index1 @PUSHS
+       @PUSHI Index2
+       @CALL strcpy
+       #
+       # Now inc for next entry.
+       @INC2I Index1
+       @PUSH 0
+       @PUSHI splitlist
+       @CALL strtok
+    @ENDIF
+@ENDWHILE
+@POPNULL
+
+@PUSHI NewArray
+@PUSHI SSCount
+@POPLOCAL Var08
+@POPLOCAL Var07
+@POPLOCAL Var06
+@POPLOCAL Var05
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+###############################################
+# Function SplitDeltete(object,heapid)
+# Deletes the object which is a list created by splitstr
+# (object is an null terminated array of pointers to heap strings)
+:SplitDelete
+@PUSHRETURN
+=Object Var01
+=HeapID Var02
+=Index1 Var03
+=HeapLen Var04
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@PUSHLOCALI Var03
+@PUSHLOCALI Var04
+#
+@POPI HeapID
+@POPI Object
+#
+@MA2V 0 Index1
+@PUSHI Index1 @RTL @ADDI Object
+@PUSHS
+@WHILE_NOTZERO
+   @PUSHI HeapID
+   @SWP
+   @CALL HeapDeleteObject @IF_GT_A 0 @PRT "Error Deleteing Heap Object: " @PRTTOP @ENDIF
+   @POPNULL
+   @INCI Index1
+   @PUSHI Index1 @RTL @ADDI Object @PUSHS
+@ENDWHILE
+@POPNULL
+@PUSHI HeapID
+@PUSHI Object
+@CALL HeapDeleteObject @IF_GT_A 0 @PRT "Error Deleteing Heap Object: " @PRTTOP @ENDIF
+@POPNULL
+@POPLOCAL Var04
+@POPLOCAL Var03
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+###################################################
+# Function strUpCase(instring)
+# Changes all lowercase letters instring to uppercase
+:strUpCase
+@PUSHRETURN
+=instring Var01
+=Index1 Var02
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@POPI instring
+@PUSHI instring
+@CALL strlen
+@WHILE_NOTZERO
+   @PUSHII instring
+   @AND 0xff
+   @IF_GE_A "a\0"
+      @IF_LE_A "z\0"
+         @SUB 32
+      @ENDIF
+   @ENDIF
+   @PUSHII instring
+   @AND 0xff00
+   @ADDS
+   @POPII instring
+   @INCI instring
+   @SUB 1
+@ENDWHILE
+@POPNULL
+@POPLOCAL Var02
+@POPLOCAL Var01
+@POPRETURN
+@RET
+###################################################
+# Function strLowCase(instring)
+# Changes all Uppercase letters instring to lowercase
+:strLowCase
+@PUSHRETURN
+=instring Var01
+=Index1 Var02
+@PUSHLOCALI Var01
+@PUSHLOCALI Var02
+@POPI instring
+@PUSHI instring
+@CALL strlen
+@WHILE_NOTZERO
+   @PUSHII instring
+   @AND 0xff
+   @IF_GE_A "A\0"
+      @IF_LE_A "Z\0"
+         @ADD 32
+      @ENDIF
+   @ENDIF
+   @PUSHII instring
+   @AND 0xff00
+   @ADDS
+   @POPII instring
+   @INCI instring
+   @SUB 1
+@ENDWHILE
+@POPNULL
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN

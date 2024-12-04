@@ -182,7 +182,7 @@ L screen.ld
 @POPNULL
 @PUSHI MainHeapID
 @PUSH 255
-@CALL HeapNewObject         #0
+@CALL HeapNewObject  @IF_ULT_A 100 @PRT "Heap error 185" @END @ENDIF       #0
 @POPI NewCmdLinePtr
 @READSI NewCmdLinePtr
 @PUSHI NewCmdLinePtr
@@ -544,7 +544,7 @@ WC_J_CMDMEM
      @POPI Wordlen
      @PUSHI MainHeapID
      @PUSHI Wordlen @ADD 1       # The extra bytes for the EOS null
-     @CALL HeapNewObject         #0
+     @CALL HeapNewObject   @IF_ULT_A 100 @PRT "Heap error 547" @END @ENDIF      #0
      @POPI newword
      @ForIA2V index1 0 Wordlen
         @PUSHI inString
@@ -639,7 +639,7 @@ WC_J_CMDMEM
       # Now create a new small string sized for the word.
       @PUSHI MainHeapID
       @PUSHI Wordlen @ADD 1       # The extra bytes for the EOS null
-      @CALL HeapNewObject         #0
+      @CALL HeapNewObject  @IF_ULT_A 100 @PRT "Heap error 642" @END @ENDIF       #0
       @POPI newword
       @ForIA2V index1 0 Wordlen
          @PUSHI inString
@@ -1235,7 +1235,7 @@ CMDMEM "MEM\0"
           @PUSHI MainHeapID
           @PUSHI Index1
           @SUBI instring
-          @CALL HeapNewObject
+          @CALL HeapNewObject  @IF_ULT_A 100 @PRT "Heap error 1238" @END @ENDIF
           @POPI LastSearch
           # Now Copy instring[1:length] to LastSearch
           @PUSHI LastSearch        # Destination
@@ -1600,7 +1600,7 @@ CMDMEM "MEM\0"
    @PUSHI MainHeapID
    @PUSHI instring
    @CALL strlen @ADD 2     # add a few bytes for padding around new string.
-   @CALL HeapNewObject
+   @CALL HeapNewObject     @IF_ULT_A 100 @PRT "Heap error 1603" @END @ENDIF
    @POPII Index01           # Save pointer at spot
    # Now copy instring to that new space.
    @PUSHII Index01

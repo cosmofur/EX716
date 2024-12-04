@@ -1029,7 +1029,7 @@ class microcpu:
             DeviceFile.seek(self.DiskPtr, 0)
         if cmd == CastSeekDiskI:
             v = self.getwordat(address)
-#            print("Debug: Seeking Disk Value: %04x" % v)
+            print("Debug: Seeking Disk Value: %04x" % v)
             if DeviceHandle == None:
                 self.raiseerror("038 Attempted to Seek without selecting Disk")
             self.DiskPtr = v*0x200
@@ -1120,10 +1120,12 @@ class microcpu:
         if cmd == PollReadIntI:
             sys.stdout.flush()
             rawdata = sys.stdin.readline(256)
-            justnum = "0"
+            justnum = ""
             for c in rawdata:
                 if (c >= '0' and c <= '9') or (c == '-'):
                     justnum = justnum + c
+            if (len(justnum) == 0):
+                justnum="0"
             if int(justnum) < 65535 and int(justnum) >= -32767:
                 CPU.putwordat(address, int(justnum))
             else:
@@ -1215,7 +1217,9 @@ class microcpu:
             if DeviceHandle != None:
 #                v = self.getwordat(address)
                 v = self.memspace[address]+(self.memspace[address+1] << 8)
+                print("Disk Read: %04x" % v)                
                 if v <= MAXMEMSP-0x1ff:
+                    print("Disk Sector: %04x" % (self.DiskPtr))
                     DeviceFile.seek(self.DiskPtr,0)
                     block = DeviceFile.read(512)
                     tidx = v
@@ -1580,7 +1584,7 @@ def DissAsm(start, length, CPU):
         FoundLabels=Sort_And_Combine_Labels(FoundLabels)
         FoundLabels = CPU.FindWhatLine(i)+" " + FoundLabels
 
-        if (optcode in OPTLIST):    # This is making the assumption that value OptCodes are in the range 0 to len(OPTSYM), which really only valid in our special case.
+        if (optcode in OPTLIST):
             OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)" % \
                 (i, OPTSYM[optcode], P1, PI, PII,
                  tos, sft, ZF, NF, CF, OF, addr)

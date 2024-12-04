@@ -15,6 +15,10 @@ G HeapDeleteObject
 G HeapListMap
 G GetObjectRealSize
 G HeapAppend
+
+M LocalVar = %1 Var%2 @PUSHLOCALI Var%2
+M RestoreVar @POPLOCAL Var%1
+
 # This is the heap manager module
 
 # It provides the following services
@@ -133,7 +137,6 @@ G HeapAppend
              # Next question Will the new object take up all the space, or leave some for a new empty object?
              @SUBI SizeInBytes            # TOS is the size of the old object After we subtract the size we need now.
              @SUB SizeObjectHead
-             :BreakA1
              @POPNULL
              # OK its big enough for reasonable objects
              @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS # Get the 'old' 'next' object. It might be zero.
