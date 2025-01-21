@@ -1438,6 +1438,12 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     else:
                         # Otherwise inerset a simple one word or value to enable the MacroKey
                         MacroData.update({key: value})
+                elif line[0:2] == "MC" and not(IsOneChar):
+                    # MC is for clearing macros, mostly to disable the MF Flags
+                    (key,size) = nextword(line[2:])
+                    line=line[size+1:]
+                    if key in MacroData:
+                        MacroData.pop(key,None)                        
                 elif line[0] == "G" and IsOneChar:
                     # Globale labels are an override of 'Local' Labels by 'pre-defining them.
                     (key, size) = nextword(line[1:])
@@ -1804,6 +1810,20 @@ def debugger(FileLabels,passline):
             else:
                 print("ERR: Need to specify what to print")
                 continue
+        if cmdword == "hexi":
+            if argcnt > 0:
+                if argcnt == 1:
+                    startv = CPU.getwordat(int(arglist[0]))
+                    stopv = startv + 16
+                else:
+                    startv = CPU.getwordat(int(arglist[0]))
+                    stopv = int(arglist[1]) + 1
+                    if stopv < startv:
+                        stopv = startv + stopv + 1
+                hexdump(startv, stopv, CPU)
+            else:
+                print("ERR: Need to specify what to print")
+                continue
         if cmdword == "n":
             stepcnt = 1
             stoprange = 0
@@ -1819,19 +1839,14 @@ def debugger(FileLabels,passline):
                     break
             continue
         if cmdword == "s":
-            TestFlag = False
-            stoprange = 0
-            for ii in SymToValMap:
-                if CPU.memspace[CPU.pc] == ii[0]:
-                    TestFlag = True
-            if TestFlag:
-                CurInstSize = SymToValMap[CPU.memspace[CPU.pc]][2]
-                tempbreakpoints.append(CPU.pc + CurInstSize)
-                print("Setting Temporary Break Point at %04x" %
-                      (CPU.pc + CurInstSize))
-                cmdword = "c"  # This only works because cmdword == "c" is bellow this 'if block'
-            else:
-                print("PC Not resting on valid Opt Code. Can not single step.")
+            CurrentAddress=CPU.pc
+            CurrentLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
+            NewLine=0
+            while ( NewLine <= CurrentLine):
+                CurrentAddress += 1
+                NewLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
+            tempbreakpoints.append(CurrentAddress)
+            cmdword = "c"    # Continue the code.
         if cmdword == "c":
             stoprange = 0
             DissAsm(CPU.pc, 1, CPU)
@@ -1901,6 +1916,9 @@ def debugger(FileLabels,passline):
             else:
                 for ii in arglist:
                     watchwords.append(Str2Word(ii))
+        if cmdword == "cw":
+            print("Clearing watchs")
+            watchwords.clear()
         if cmdword == "L":
             if argcnt < 1:
                 sys.stdout.write("Filename: ")
@@ -1954,7 +1972,9 @@ h  - this test          hex-Print hexdump $1[-$2]
 l  - DissAsm from line  m  - modify address starting wiht $1
 n  - Do one step        p - print values $1
 ps - Print HW Stacl     q - quit debugger
-r  - reset              w - watch $1 """)
+r  - reset              w - watch $1
+cw - clear watches
+""")
         continue
 
 def main():

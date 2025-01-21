@@ -97,7 +97,7 @@ G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 @MV2V Seed Bval
 # << 7
 @PUSHI SModified
-@RTL @RTL @RTL @RTL @RTL @RTL @RTL
+@SHL @SHL @SHL @SHL @SHL @SHL @SHL
 @POPI S1Seed
 #
 # Now XOR it with original Seed
@@ -107,7 +107,7 @@ G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 @POPI SModified
 # S2 is SModified >> 9
 @PUSHI SModified
-@RTR @RTR @RTR @RTR @RTR @RTR @RTR @RTR @RTR
+@SHR @SHR @SHR @SHR @SHR @SHR @SHR @SHR @SHR
 @POPI S1Seed
 # Xor results
 @PUSHI S1Seed
@@ -117,7 +117,7 @@ G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 #
 # S3 is SModified << 8 Thats just making the Low Bits the High Bits
 @PUSHI SModified
-@RTL @RTL @RTL @RTL @RTL @RTL @RTL @RTL
+@SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL
 @POPI S1Seed
 @PUSHI S1Seed
 @PUSHI SModified

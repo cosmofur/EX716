@@ -557,7 +557,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     pushstack(R1,CPUStackData);
     Opsize=1;
     break;
-  case OptValRTR:
+  case OptValSHR:
     R1=popstack(CPUStackData);
     B1=0;
     if ( R1 & 0x1) { B1=1;}
@@ -566,7 +566,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     pushstack(R1,CPUStackData);	 
     Opsize=1;
     break;
-  case OptValRTL:
+  case OptValSHL:
     R1=popstack(CPUStackData);
     B1=0;
     if ( R1 & 0x8000) { B1=1;}
@@ -771,7 +771,7 @@ void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *H
     i=Param;
     while (memory[i] != 0 && i < 0xffff) {
       c=memory[i]; i++;
-      if ((c<32 || c> 127) && ( c !=0 && c != 7 && c != 27 && c != 30 && c!=10)) {
+      if ((c<32 || c> 127) && ( c !=0 && c != 7 && c != 9 && c != 27 && c != 30 && c!=10)) {
 	printf("%02x",c);
       } else {
 	printf("%c",(char) c);

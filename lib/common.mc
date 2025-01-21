@@ -1,9 +1,9 @@
+! COMMON_SEEN
+M COMMON_SEEN 1
 # Setup Library
 # Values which make up opcodes
 #
-# The '!' code marks a block to skip if already defined. 
-! COMMON_SEEN
-M COMMON_SEEN 1
+# The '!' code marks a block to skip if already defined.
 G NOP G PUSH G PUSHB G PUSHI G PUSHII G POPI G POPII G POPB G CMPI G CMPII G JMPZ
 G JMPN G JMPC G JMPO G JMP G JMPI G ADD G SUB G AND G OR G INV G ADDI G SUBI
 G ANDI G ORI G ADDII G SUBII G ANDII G ORII G CAST G POLL G CPUID G SETAPP G CLEAR
@@ -55,8 +55,8 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =POLL 43
 =RRTC 44
 =RLTC 45
-=RTR 46
-=RTL 47
+=SHR 46
+=SHL 47
 =INV 48
 =COMP2 49
 =FCLR 50
@@ -148,8 +148,8 @@ M CAST $$CAST %1
 M POLL $$POLL %1
 M RRTC $$RRTC
 M RLTC $$RLTC
-M RTR $$RTR
-M RTL $$RTL
+M SHR $$SHR
+M SHL $$SHL
 M INV $$INV
 M COMP2 $$COMP2
 M FCLR $$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
@@ -206,7 +206,6 @@ M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-#M PRTLN @JMP _%01 :_%0M %1 $$0 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0M @CAST _%0NL @POPNULL
 M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1 @POPNULL
 # Print simple test message with no variables no linefeed
 M PRT @JMP _J%0J1 :_%0M1 %1 0 :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1 @POPNULL
@@ -266,6 +265,7 @@ M PRT32I @PUSH CastPrint32II @CAST %1 @POPNULL
 #   @PUSH CastPrint32I @CAST _%0store1 @POPNULL
 # Print 32bit number that tos is pointing to.
 M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
+#
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.

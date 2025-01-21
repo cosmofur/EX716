@@ -206,7 +206,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @PUSH 0
 @WHILE_ZERO
    @POPNULL
-   @PUSHI Index1 @RTL @RTL @ADD DiskHandles # Each Cell is 4 Bytes/2 words long.
+   @PUSHI Index1 @SHL @SHL @ADD DiskHandles # Each Cell is 4 Bytes/2 words long.
    @PUSHS
    @IF_NOTZERO
       # This Index1 handle is in use.
@@ -220,7 +220,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @ELSE
       # Free Handle found. Make it the Current handle
       @POPNULL
-      @PUSHI Index1 @RTL @RTL @ADD DiskHandles # again.
+      @PUSHI Index1 @SHL @SHL @ADD DiskHandles # again.
       @POPI CurrentHandle
       @PUSH 1
    @ENDIF
@@ -294,7 +294,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @POPI CurrentWorkingDirectory
 @ENDIF
 # Caclulate the RootDirSector
-@PUSHI RootDirectoryEntries @RTL @RTL @RTL @RTL @RTL # * 32
+@PUSHI RootDirectoryEntries @SHL @SHL @SHL @SHL @SHL # * 32
 @PUSHI BytesPerSector @SUB 1
 @ADDS
 @PUSHI BytesPerSector
@@ -380,7 +380,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @PUSHLOCALI Var03
 ##
 @POPI cluster
-@PUSHI cluster @RTL   # cluster*2
+@PUSHI cluster @SHL   # cluster*2
 @PUSHI BytesPerSector
 @CALL DIVU            # Returns(DIV,MOD)
 @ADDI ReservedSectorsCount
@@ -392,7 +392,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPI FatTableBuffer
 #
 # On stack should still be the MOD value from previous DIV
-#@RTR         # MOD/2
+#@SHR         # MOD/2
 @ADDI FatTableBuffer
 @PUSHS
 @PRT "Next Cluster is: " @PRTHEXTOP @PRTNL
@@ -553,13 +553,13 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
    @PUSHI Indata
    @AND 0x1f      # Day is bits 0-4
    @POPI Day
-   @PUSH Indata @RTR @RTR @RTR @RTR @RTR # >>5 bits 5-8 is month
+   @PUSH Indata @SHR @SHR @SHR @SHR @SHR # >>5 bits 5-8 is month
    @AND 0x0f
    @POPI Month
    @PUSHI Indata
-   @RTR @RTR @RTR
-   @RTR @RTR @RTR
-   @RTR @RTR @RTR   # << 9 to get year offset
+   @SHR @SHR @SHR
+   @SHR @SHR @SHR
+   @SHR @SHR @SHR   # << 9 to get year offset
    @ADD 1980
    @POPI Year
    # Format string
@@ -576,16 +576,16 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @ELSE
    # Time   
    @PUSHI Indata
-   @AND 0x1f @RTL   # Seconds bits 0-4, *2 as range is only 0-31
+   @AND 0x1f @SHL   # Seconds bits 0-4, *2 as range is only 0-31
    @POPI Seconds
    @PUSHI Indata
-   @RTR @RTR @RTR @RTR @RTR  # >> 5
+   @SHR @SHR @SHR @SHR @SHR  # >> 5
    @AND 0x3f        # Minutes bits 5-10
    @POPI Minutes
    @PUSHI Indata
-   @RTR @RTR @RTR @RTR
-   @RTR @RTR @RTR @RTR
-   @RTR @RTR @RTR     # >> 11
+   @SHR @SHR @SHR @SHR
+   @SHR @SHR @SHR @SHR
+   @SHR @SHR @SHR     # >> 11
    @AND 0x1f
    @POPI Hours
    @PUSHI Hours
@@ -942,7 +942,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 #  entries per cluster calculated by sectory per cluster * bytes per sector / size of dir entry
 @PUSHI BytesPerSector @PUSHI SectorsPerCluster
 @CALL MULU
-@RTR @RTR @RTR @RTR @RTR # Fastest way to divide by 32, size of a directory entry
+@SHR @SHR @SHR @SHR @SHR # Fastest way to divide by 32, size of a directory entry
 @POPI entriesPerCluster
 # Figure out offset with in the cluster
 @PUSHI entry
@@ -993,7 +993,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPI Buffer
 @POPI cluster
 # Calculate Sector    (cluster -2 ) * 4 + FistDataSector
-@PUSHI cluster @SUB 2 @RTL @RTL
+@PUSHI cluster @SUB 2 @SHL @SHL
 @ADDI FirstDataSector
 @POPI sector
 #
@@ -1142,7 +1142,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPI cluster
 #
 # int fatSector = ReservedSectorsCount + ((cluster * 2) / BytesPerSector)
-@PUSHI cluster @RTL  # cluster * 2
+@PUSHI cluster @SHL  # cluster * 2
 @PUSHI BytesPerSector
 @CALL DIVU   @SWP @POPI offset  # / BytesPerSector (save MOD value as offset)
 @ADDI ReservedSectorsCount
@@ -1228,10 +1228,10 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
             @CALL HeapDeleteObject
             # Return the newly allocated cluster number.
             # ((sector - fatStart) * (BytesPerSector/2)) + (Index1/2)
-            @PUSHI BytesPerSector @RTR     # (BytesPerSector/2)
+            @PUSHI BytesPerSector @SHR     # (BytesPerSector/2)
             @PUSHI sector @SUBI fatStart   # (sector - fatStart)
             @CALL MULU
-            @PUSHI Index1 @RTR             # (Index1/2)
+            @PUSHI Index1 @SHR             # (Index1/2)
             @ADDS                          # Address of the new cluster
             @POPI ExitValue
             # We need to exit both the inner and outer for loops so set exit values.
@@ -1372,7 +1372,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPI cluster
 #
 # fatSector = ReservedSectorsCount + ((cluster*2) / BytesPerSector)
-@PUSHI cluster @RTL  # (cluster * 2)
+@PUSHI cluster @SHL  # (cluster * 2)
 @PUSHI BytesPerSector
 @CALL DIVU           # (cluser*2)/BytesPerSector)
 @SWP @POPI offset    # offset is the MOD of this DIV
@@ -1807,14 +1807,14 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 @POPNULL
 # Create a temporary array to store the values
 @PUSHI MyHeap
-@PUSHI VarCount @ADD 1 @RTL
+@PUSHI VarCount @ADD 1 @SHL
 @CALL HeapNewObject
 @POPI ValueArray
 @ForIA2V Index1 0 VarCount
    @PUSHI ValueArray
    # Little math trick here, we are working our way from the Nth index of
    # ValueArray down to 0, so ValueArray Index will have the correct indexes
-   @PUSHI VarCount @SUBI Index1 @SUB 1 @RTL
+   @PUSHI VarCount @SUBI Index1 @SUB 1 @SHL
    @ADDS
    @POPS    # Saves VarN
 @Next Index1
@@ -1889,9 +1889,9 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
           @IF_GE_A "0\0"
              @IF_LE_A "9\0"
              # Its a second digit, mul first by ten then add.
-                @PUSHI Size @RTL  # x2
+                @PUSHI Size @SHL  # x2
                 @DUP
-                @RTL @RTL         # x8
+                @SHL @SHL         # x8
                 @ADDS             # x10
                 @POPI Size
                 @SUB "0\0"
@@ -1911,7 +1911,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
        @CASE "s\0"
           # Printing a string...or rather a pointer to a string.
           @POPNULL
-          @PUSHI Index1 @RTL
+          @PUSHI Index1 @SHL
           @ADDI ValueArray
           @INCI Index1
           @PUSHS       # Value of String Ptr
@@ -1956,7 +1956,7 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
           # we replace the d with the number based on the formatting rules
           @POPNULL
           @PUSH SFBuffer # Temporary destination buffer for itos
-          @PUSHI Index1 @RTL
+          @PUSHI Index1 @SHL
           @ADDI ValueArray
           @INCI Index1
           @PUSHS    #This puts the selected value

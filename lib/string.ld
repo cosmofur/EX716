@@ -1040,12 +1040,12 @@ M STRSTACK \
 #
 # Create an array of SSCount*2 in length
 @PUSHI HeapIn
-@PUSHI SSCount @ADD 1 @RTL
+@PUSHI SSCount @ADD 1 @SHL
 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error, while creating split string list." @END @ENDIF
 @POPI NewArray
 # Make sure the END of Heap Marker is set to 0
 @PUSH 0
-@PUSHI SSCount @ADD 1 @RTL @ADDI NewArray
+@PUSHI SSCount @ADD 1 @SHL @ADDI NewArray
 @POPS
 #
 # Now use the strtolk function to split and copy the strings into their array location
@@ -1078,7 +1078,8 @@ M STRSTACK \
     @ENDIF
 @ENDWHILE
 @POPNULL
-
+:Debug05
+@PUSH 0 @PUSHI NewArray @PUSHI SSCount @SHL @ADDS @POPS
 @PUSHI NewArray
 @PUSHI SSCount
 @POPLOCAL Var08
@@ -1110,7 +1111,7 @@ M STRSTACK \
 @POPI Object
 #
 @MA2V 0 Index1
-@PUSHI Index1 @RTL @ADDI Object
+@PUSHI Index1 @SHL @ADDI Object
 @PUSHS
 @WHILE_NOTZERO
    @PUSHI HeapID
@@ -1118,7 +1119,7 @@ M STRSTACK \
    @CALL HeapDeleteObject @IF_GT_A 0 @PRT "Error Deleteing Heap Object: " @PRTTOP @ENDIF
    @POPNULL
    @INCI Index1
-   @PUSHI Index1 @RTL @ADDI Object @PUSHS
+   @PUSHI Index1 @SHL @ADDI Object @PUSHS
 @ENDWHILE
 @POPNULL
 @PUSHI HeapID

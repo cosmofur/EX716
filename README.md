@@ -191,23 +191,19 @@ A Physical description of a non existent CPU:
                 application of multi-core version of the CPU. The names stuck, but the multi-core version is left as a
                 future project)
 
-             Bit Rotate(Shift) Commands, 1 byte opcode, No PRM, affects just top of stack
+             Bit Shift/Rotate Commands, 1 byte opcode, No PRM, affects just top of stack
 
                 RRTC: Rotate Right Through Carry
                 RLTC: Rotate Left Through Carry
-                RTR:  Rotate Right
-                RTL:  Rotate Left
-                             The difference between 'Through Carry' and normal rotates is, in  a
-                normal rotate, the 'last' bit in whichever direction is moved into the Carry Flag but
+                SHR:  Shift Right
+                SHL:  Shift Left
+                
+                             The difference between 'Through Carry' and normal shift is, in  a
+                normal shift, the 'last' bit in whichever direction is moved into the Carry Flag but
                 in 'Through Carry' the Carry bit also acts as the 'input' and its previous state is
                 copied into the first bit of the rotation. (Highest or lowest depending on direction)
                 Through Carry: ==   CF > ROTATE > CF
-                Normal Rotate: ==   0 > ROTATE > CF
-
-                There is a bit of a misnomer in the naming of RTL and RTR, and they probably should have been named
-                SHR and SHL for Shift rather than rotate. To create a true rotate you have to prep the Carry flag with
-                the value of the current 0th bit and then use RdTC, where RTR and RTL really are just shifts with
-                a flag preserving just one bit.
+                Normal Shift: ==   0 > ROTATE > CF
 
              INV, 1 byte opcode, No PRM affects just top of stack
 
@@ -321,6 +317,21 @@ The main logic loop of the assembler is:
                                      '\' and can contain variables based on parameters %1 to %9 You
                                      can use %0 adjacent with other text to create local unique
                                      variables for each instance of the Macro called.
+
+                    'MF' Macro Value MF is how to set a one word macro, unlike 'M' it does not consume all text
+                                     until the end of line, rather just puts the one word 'Value' into the Macro
+                                     The main use for MF is to set macros to be used as flag values with the '!'
+                                     and '?' tests. It important for when Macros are used and defined 'within'
+                                     another macro. (If you tried to use the 'M' method of defining a new macro
+                                     within the body of a macro, it would break because the 'new' macro would
+                                     consume the entire of the remaining line of the first macro.)
+
+                    'MC' Macro       MC is to erase a macro. It main use is to make sure a macro is NOT defined
+                                     for the '?' and '!' tests. Combined with the 'MF' and creating macros
+                                     'on the fly' as part of other macros, gives the power of simple logic and
+                                     conditional statements inside macros. See the 'structures.ld' macro package
+                                     examples for IF/ELSE/ENDIF logic, which uses these flags to know when to
+                                     include the 'ELSE" logic and when to just jump out to the endif.
                                      
                     'G' Label        Defines a Label as Global, All the callable addresses defined
                                      inside a library file, need to be declared with 'G'.
@@ -461,7 +472,7 @@ Worth nothing that in several macros the following notation is used:
     location is a numeric constant. Other wise use 'V' to be variable and should be a label or address where
     that variable value is stored.
 
-@MA2V %1 %2  : Move Constant A to Variable Address . Moves value of %1 to address [%2] Both can also be labels
+@MA2V %1 %2  : Move Constant A to Variable Address . Moves value of %1 to address [%2] Both can also be labels (but if %1 is lable, it is not a variable, just a lable that has the value of a constant.
 
 @MV2V %1 %2  : Move word stored at address [%1] to be stored at address [%2]
 
@@ -535,6 +546,26 @@ IF_GT_S    : True if SFT > TOS
 IF_GT_A    : True if TOS > Constant A
 IF_GT_V    : True if TOS > value stored at address V
 
+All the 'normal' GT/GE/LT/LE functions are based on SIGNED integers. Which can confuse large numbers as negatives.
+The 'U' for Unsigned group, deal with just unsigned numbers, so if you did accidently include a negative number
+in the 'U' contidionals it will be treated as a large positive number.
+
+IF_UGT_V   : True if the unsigned values of TOS > value of variable V
+IF_UGE_V   : True if the unsigned values of TOS >= value of variable V
+IF_ULE_V   : True if the unsigned values of TOS <= value of variable V
+IF_ULT_V   : True if the unsigned values of TOS < value of variable V
+IF_UGT_A   : True if the unsigned values of TOS > Constant A
+IF_UGE_A   : True if the unsigned values of TOS >= Constant A
+IF_ULT_A   : True if the unsigned values of TOS < Constant A
+IF_ULE_A   : True if the unsigned values of TOS <= Constant A
+IF_ULT_S   : True if the unsigned values of SFT < TOS
+IF_ULE_S   : True if the unsigned values of SFT <= TOS
+IF_UGT_S   : True if the unsigned values of SFT > TOS
+IF_UGE_S   : True if the unsigned values of SFT >= TOS
+
+
+
+
 
 Now the WHILE group:
 The WHILE group tests for the condition only at the 'top' of the loop.
@@ -545,12 +576,23 @@ WHILE_ZERO       : Continue Loop if TOS == Zero
 WHILE_NOTZERO    : Continue Loop if TOS does not equal Zero
 WHILE_EQ_A       : Continue Loop if TOS equals constant A
 WHILE_NEQ_A      : Continue Loop if TOS does not equal constant A
+WHILE_EQ_AV      : Continue Loop if Constant A is equal to variable V
 WHILE_EQ_V       : Continue Loop if TOS equals value at address V
 WHILE_NEQ_V      : Continue Loop if TOS does not equals value at address V
+WHILE_NEQ_AV     : Continue Loop if Constant A is Not equal to variable V
 WHILE_LT_A       : Continue Loop if TOS if A is LT TOS
 WHILE_LT_V       : Continue Loop if TOS if V is LT TOS
 WHILE_GT_A       : Continue Loop if TOS if A is GT TOS
 WHILE_GT_V       : Continue Loop if TOS if V is GT TOS
+
+All the 'normal' GT/GE/LT/LE functions are based on SIGNED integers. Which can confuse large numbers as negatives.
+The 'U' for Unsigned group, deal with just unsided compairisons, so you did accidently include a negative number
+in the 'U' contidionals it will be treated as a large positive number.
+
+WHILE_UGT_A      : Continue Loop if the Unsigned values of A is GT TOS
+WHILE_UGT_V      : Continue Loop if the Unsigned values of V is GT TOS
+WHILE_ULT_A      : Continue Loop if the Unsigned values of A is LT TOS
+WHILE_ULT_V      : Continue Loop if the Unsigned values of V is LT TOS
 
 The LOOP group:
 The LOOP group tests for the condition at the END of the loop (so it will do it at least once)

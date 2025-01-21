@@ -16,9 +16,6 @@ G HeapListMap
 G GetObjectRealSize
 G HeapAppend
 
-M LocalVar = %1 Var%2 @PUSHLOCALI Var%2
-M RestoreVar @POPLOCAL Var%1
-
 # This is the heap manager module
 
 # It provides the following services
@@ -53,9 +50,11 @@ M RestoreVar @POPLOCAL Var%1
 @PUSHRETURN
 =SizeInBytes Var01
 =HeapID Var02
+=Index1 Var03
 
 @PUSHLOCALI Var01
 @PUSHLOCALI Var02
+@PUSHLOCALI Var03
 #
 @POPI SizeInBytes
 @POPI HeapID      # At this point the HeapID is same as address where heap memory starts
@@ -69,6 +68,12 @@ M RestoreVar @POPLOCAL Var%1
    @POPNULL
    @PUSH 0        # Returning zero means the heap request was invalid
 @ELSE
+# Should not be needed, but just in case uncomment here.
+#   @ForIA2V Index1 0 SizeInBytes
+#      @PUSH 0
+#      @PUSHI HeapID @ADDI Index1
+#      @POPS
+#   @Next Index1
    @POPNULL
    @PUSHI HeapID
    @ADD SizeFirstHead  # address of first object will be after the first headers
@@ -85,6 +90,7 @@ M RestoreVar @POPLOCAL Var%1
    @SUB ObjectPtrLocation @PUSH 0 @SWP @POPS
    @PUSHI HeapID      # Successfull Heap created return it's ID on stack
 @ENDIF
+@POPLOCAL Var03
 @POPLOCAL Var02
 @POPLOCAL Var01
 @POPRETURN

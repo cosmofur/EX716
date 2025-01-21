@@ -44,8 +44,8 @@
 #define OptValPOLL 43
 #define OptValRRTC 44
 #define OptValRLTC 45
-#define OptValRTR 46
-#define OptValRTL 47
+#define OptValSHR 46
+#define OptValSHL 47
 #define OptValINV 48
 #define OptValCOMP2 49
 #define OptValFCLR 50
@@ -97,8 +97,8 @@ char *optcnames[] = {
 "POLL",
 "RRTC",
 "RLTC",
-"RTR",
-"RTL",
+"SHR",
+"SHL",
 "INV",
 "COMP2",
 "FCLR",

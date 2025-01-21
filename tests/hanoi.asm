@@ -161,7 +161,7 @@ L softstack.ld
 #
 @PRT "A:" @PRTI Aheight @PRT " B:" @PRTI Bheight @PRT " C:" @PRTI Cheight @PRTNL
 @ForIV2A Index01 MaxHeight 0
-   @PUSHI MaxHeight @RTL @ADD 3
+   @PUSHI MaxHeight @SHL @ADD 3
    @PUSHI Index01   @PUSHI Aheight
    @IF_LE_S
       @POPNULL @POPNULL
@@ -170,10 +170,10 @@ L softstack.ld
       @POPNULL @POPNULL
       @PUSH 0
    @ENDIF
-   @RTL
+   @SHL
    @CALL FancyLine
 
-   @PUSHI MaxHeight @RTL @ADD 3
+   @PUSHI MaxHeight @SHL @ADD 3
    @PUSHI Index01   @PUSHI Bheight
    @IF_LE_S
       @POPNULL @POPNULL
@@ -182,10 +182,10 @@ L softstack.ld
       @POPNULL @POPNULL
       @PUSH 0
    @ENDIF
-   @RTL
+   @SHL
    @CALL FancyLine
 
-   @PUSHI MaxHeight @RTL @ADD 3
+   @PUSHI MaxHeight @SHL @ADD 3
    @PUSHI Index01   @PUSHI Cheight
    @IF_LE_S
       @POPNULL @POPNULL
@@ -194,7 +194,7 @@ L softstack.ld
       @POPNULL @POPNULL
       @PUSH 0
    @ENDIF
-   @RTL
+   @SHL
    @CALL FancyLine
 
 
@@ -228,8 +228,8 @@ L softstack.ld
 @POPI Width
 #
 # First write Width/2-space/2 spaces
-@PUSHI Width @RTR
-@PUSHI Space @RTR
+@PUSHI Width @SHR
+@PUSHI Space @SHR
 @SUBS
 @POPI GroupSpace
 @ForIA2V Index01 0 GroupSpace
@@ -242,8 +242,8 @@ L softstack.ld
 @Next Index01
 #
 # Finish up with the remaining spaces.
-@PUSHI Width @RTR
-@PUSHI Space @RTR
+@PUSHI Width @SHR
+@PUSHI Space @SHR
 @SUBS
 @POPI GroupSpace
 @ForIA2V Index01 0 GroupSpace

@@ -102,12 +102,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
   @CALL IsLeapYear
   @IF_ZERO
      @POPNULL
-     @PUSHI month @RTL
+     @PUSHI month @SHL
      @ADD DataInMonthData
      @PUSHS
   @ELSE
      @POPNULL
-     @PUSHI month @RTL
+     @PUSHI month @SHL
      @ADD DataInMonthData
      @PUSHS
      @PUSHI month

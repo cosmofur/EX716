@@ -296,7 +296,7 @@ b0
 # Function GetIndex(N) returns the low-address of the byte structure at index N
 :GetIndex
 @SWP
-@RTL @DUP @RTL @RTL @ADDS  # == Mul x 10
+@SHL @DUP @SHL @SHL @ADDS  # == Mul x 10
 @ADD MapDataStart
 @IF_LT_A MapDataStart
   @PRT "Error code Under: " @PRTHEXTOP @PRT " Out of range\n"
@@ -323,7 +323,7 @@ b0
    @PUSHI Index1 @ADD 1 @PRTTOP @POPNULL  # Print Row Number
    @PRT "|"
    @ForIA2B Index2 0 8  # Columns (or X)
-       @PUSHI Index1 @RTL @RTL @RTL 
+       @PUSHI Index1 @SHL @SHL @SHL 
        @ADDI Index2
        @CALL GetIndex
        @DUP @ADD SeenOffset @PUSHS     # Check if we've scanned this Quad
@@ -391,7 +391,7 @@ b0
       @PUSHI SFMS
       @IF_ZERO
          @PUSHI NSY1 @PUSHI NSX1
-         @RTL @RTL @RTL                   # Index = X*8+Y
+         @SHL @SHL @SHL                   # Index = X*8+Y
          @ADDS
          @CALL GetIndex
          @ADD SeenOffset  @PUSH 1  @SWP @POPS  # [Index].Seen=1
@@ -405,7 +405,7 @@ b0
 :PrintQuad
 @SWP
 @DUP
-@RTR @RTR @RTR @AND 7 @ADD 1 @PRTTOP @POPNULL
+@SHR @SHR @SHR @AND 7 @ADD 1 @PRTTOP @POPNULL
 @PRT ","
 @AND 7 @ADD 1 @PRTTOP @POPNULL
 @RET
@@ -542,7 +542,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 # We probably could have saved all this in one word as X and Y are 0-7 values and type is <=5 so 9 bits are all we need
 # But for now we'll do this in the 'in-efficient' way of 3 words per object
 # First Insert the Enterprise location. (This way we won't run into stars before we get to see the local map)
-@PUSHI EnterSectCCQ @RTR @RTR @RTR @AND 0b0111 # Bits 345 are the X part
+@PUSHI EnterSectCCQ @SHR @SHR @SHR @AND 0b0111 # Bits 345 are the X part
 @POPII ArryPtrCCQ @INC2I ArryPtrCCQ
 @PUSHI EnterSectCCQ @AND 0b0111     # Mask 0-7 is the Y part
 @POPII ArryPtrCCQ @INC2I ArryPtrCCQ
@@ -607,7 +607,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
       # Then we leave the old Klingon Health values.
    @ELSE
       # New set of Klingons means new health values.
-      @PUSHI Index1CCQ @RTL
+      @PUSHI Index1CCQ @SHL
       @ADD KlingHealthArray
       @PUSH 100 @SWP @POPS# KlingHealthArray[Index]=100
    @ENDIF
@@ -649,8 +649,8 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @POPI TestYCE
 @POPI TestXCE
 @ForIA2V IndexCE 0 SizeCE
-   @PUSHI IndexCE @RTL  # Index*2
-   @ADDI IndexCE  @RTL  # +Index *2 == Index*6
+   @PUSHI IndexCE @SHL  # Index*2
+   @ADDI IndexCE  @SHL  # +Index *2 == Index*6
    @ADDI ArryPtrCE
    @POPI CellIndexCE
    @PUSHII CellIndexCE   # Get the 0 cell, or X value
@@ -694,7 +694,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 # Debug
 #
 #@ForIA2V Index1 0 ObjectArrayCount
-#   @PUSHI Index1 @RTL @ADDI Index1 @RTL   # Index*6
+#   @PUSHI Index1 @SHL @ADDI Index1 @SHL   # Index*6
 #   @ADD ObjectArray
 #   @PRT "["
 #   @DUP @PUSHS @ADD 1 @PRTTOP @PRT "," @POPNULL
@@ -830,14 +830,14 @@ b7  b7  b7  b8  b8  b9  b9  b10
                   @PUSHI IndexQuad @DUP
                   # Get the Klingons galactic position
                   @AND 0x7 @POPI LSY 
-                  @RTR @RTR @RTR @AND 0x7 @POPI LSX
+                  @SHR @SHR @SHR @AND 0x7 @POPI LSX
                   @PUSH 50 @CALL rndint @ADDI KlingonsSkill
                   @IF_GT_A 70
                       @POPNULL
                       # Target Enterprise (We know we're Not IN the same quad as enterprise from earlier test)
                       @PUSHI EnterpQuad @DUP
                       @AND 0x7 @POPI QUY
-                      @RTR @RTR @RTR @AND 0x7 @POPI QUX
+                      @SHR @SHR @SHR @AND 0x7 @POPI QUX
                       @PUSHI QUY
                       @IF_LT_V LSY   # Enterprise is above Klingon, move north
                          @DECI LSY
@@ -889,7 +889,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
                   @SUB 1
                   @POPII KlingCntPtr
                   # Put it in it's new Quad
-                  @PUSHI LSX @RTL @RTL @RTL @ADDI LSY
+                  @PUSHI LSX @SHL @SHL @SHL @ADDI LSY
                   @CALL GetIndex
                   @ADD KlingOffset
                   @DUP      #Will need it twice
@@ -936,9 +936,9 @@ b7  b7  b7  b8  b8  b9  b9  b10
 # Most actions take 1 unit of time.
 @MA2V 1 TimeUsed
 @PUSHI EnterpQuad @AND 0x7 @POPI QUY
-@PUSHI EnterpQuad @RTR @RTR @RTR @AND 0x7 @POPI QUX
+@PUSHI EnterpQuad @SHR @SHR @SHR @AND 0x7 @POPI QUX
 @PUSHI EnterSect @AND 0x7 @POPI LSY
-@PUSHI EnterSect @RTR @RTR @RTR @AND 0x7 @POPI LSX
+@PUSHI EnterSect @SHR @SHR @SHR @AND 0x7 @POPI LSX
 @PRT "\nLocation(" @PRTI QUX @PRT "." @PRTI LSX @PRT "," @PRTI QUY @PRT "." @PRTI LSY @PRTLN ")"
 @PUSHI CmdString
 @AND 0xff
@@ -1020,7 +1020,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
    @POPI V1In 
    @POPI V2In
    @PRT "In Case " @StackDump
-   @PUSHI EnterSect @RTR @RTR @RTR @AND 0x7  # Push CurX
+   @PUSHI EnterSect @SHR @SHR @SHR @AND 0x7  # Push CurX
    @PUSHI EnterSect @AND 0x7                 # Push CurY
    @PUSHI V1In @PUSHI V2In                    # Angle S.A
    @PUSH 8                                   # Sector is 8x8
@@ -1041,8 +1041,8 @@ b7  b7  b7  b8  b8  b9  b9  b10
    @CBREAK
 @ENDCASE
 @POPNULL
-@PUSHI QUX @RTL @RTL @RTL @ADDI QUY @POPI EnterpQuad
-@PUSHI LSX @RTL @RTL @RTL @ADDI LSY @POPI EnterSect
+@PUSHI QUX @SHL @SHL @SHL @ADDI QUY @POPI EnterpQuad
+@PUSHI LSX @SHL @SHL @SHL @ADDI LSY @POPI EnterSect
 @RET
 #
 # Function: ParseNumber(String)
@@ -1178,11 +1178,11 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @IF_NOTZERO
    # There is a base here. See where it is.
    @ForIA2V IndexCD 0 ObjectArrayCount
-       @PUSHI IndexCD  @RTL @DUP @RTL @ADDS # X*2+X*4 = X*6
+       @PUSHI IndexCD  @SHL @DUP @SHL @ADDS # X*2+X*4 = X*6
        @ADD ObjectArray @DUP @POPI BasePtr
        @ADD 4 @PUSHS   # See if this object is the StarBases
        @IF_EQ_A BaseCode
-          @PUSHI EnterSect @RTR @RTR @RTR @AND 0x7  # Enterprise's X
+          @PUSHI EnterSect @SHR @SHR @SHR @AND 0x7  # Enterprise's X
           @PUSHI EnterSect @AND 0x7                 # Enterprise's Y
           @PUSHI BasePtr @PUSHS                     # Base's X
           @PUSHI BasePtr ADD 2 @PUSHS               # Base's Y
@@ -1289,12 +1289,12 @@ b7  b7  b7  b8  b8  b9  b9  b10
       @PUSHI DRIVFT
       @IF_GT_A 0
           @INCI CurYFT
-          @PUSHI DXFT @RTL @SUBS @POPI DRIVFT # D = D - 2*dx
+          @PUSHI DXFT @SHL @SUBS @POPI DRIVFT # D = D - 2*dx
       @ELSE
           @POPNULL
       @ENDIF
       @PUSHI DRIVFT
-      @PUSHI DYFT @RTL @ADDS @POPI DRIVFT # D = D + 2*dy
+      @PUSHI DYFT @SHL @ADDS @POPI DRIVFT # D = D + 2*dy
    @Next CurXFT
 @ENDIF
 @PRT "Loop 1 End FireTrack: " @StackDump
@@ -1343,12 +1343,12 @@ b7  b7  b7  b8  b8  b9  b9  b10
 @POPI ReturnFI
 @MA2V 0 MatchFI
 @ForIA2V Index1FI 0 MisslePathSize
-   @PUSHI Index1FI @RTL
+   @PUSHI Index1FI @SHL
    @ADD MisslePathData
    @POPI MPPtrFI
    @ForIA2V Index2FI 0 ObjectArrayCount            
       @PUSH ObjectArray
-      @PUSHI Index2FI @RTL @ADDI Index1FI @RTL  # Index*6
+      @PUSHI Index2FI @SHL @ADDI Index1FI @SHL  # Index*6
       @ADDS    # Location is Index*6 + ObjectArray
       @POPI  OAPtrFI
       @PUSHII MPPtrFI      # MissleData.X
@@ -1433,7 +1433,7 @@ b7  b7  b7  b8  b8  b9  b9  b10
 
 # Junk calls bellow here for debug
 #
-#@PUSH ObjectArray @RTL @DUP @RTL @ADDS # X*2+X*4=X*6
+#@PUSH ObjectArray @SHL @DUP @SHL @ADDS # X*2+X*4=X*6
 #@POPI Index2
 #@MA2V 0 Index3
 

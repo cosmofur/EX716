@@ -798,7 +798,7 @@ int doeval(int startpc) {
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
-       case OptValRTR:
+       case OptValSHR:
 	 R1=popstack(OptCode);
 	 B1=0;
 	 if ( R1 & 0x1) { B1=1;}
@@ -808,7 +808,7 @@ int doeval(int startpc) {
 	 Opsize=1;
 	 PC=PC+Opsize;	 
 	 break;
-       case OptValRTL:
+       case OptValSHL:
 	 R1=popstack(OptCode);
 	 B1=0;
 	 if ( R1 & 0x8000) { B1=1;}

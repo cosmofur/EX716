@@ -4,7 +4,53 @@
 # Keep in mind the actual 'logic' of the IF condition is code you need to write yourself
 # THAT code leaves values on the stack that have to be fairly simple
 # Conditions supported by the IF blocks are:
-# ZERO, NO_ZERO, EQ_S, EQ_A, EQ_V, EQ_VV, GT_A, GE_A, GT_S, GE_S, LT_A, LE_A, LT_S, LE_S
+# ZERO, NOTZERO,
+# NEG. ZFLAG.NOTZF,POS,OVERFLOW,NOTOVER,NOTCARRY
+# EQ_S, EQ_A, EQ_V, EQ_VV, EQ_VA, EQ_AV
+# LT_S, LT_A, LT_V, LT_VV
+# LE_S, LE_A, LE_V, LE_VV
+# ULT_S, ULT_A, ULT_V, ULT_VV
+# ULE_S, ULE_A, ULE_V, ULE_VV
+# GT_S, GT_A, GT_V, GT_VV,
+# GE_S, GE_A, GE_V, GE_VV,
+# UGT_S, UGT_A, UGT_V, UGT_VV,
+# UGE_S, UGE_A, UGE_V, UGE_VV,
+# INRANGE_AB, INRANGE_AV,INRANGE_VA
+#
+# Not there are no 'NEQ or few 'Not' prebuilt IF conditions, this is because the ELSE logic
+# does that already. There is no forced requirment that the positive IF block has to have any
+# content, and you can have an IF ELSE ENDIF block that only has content in the ELSE block.
+#
+# While loops also have a number of tests available (not as exaustive as IF but a good number)
+# NOTZERO,EQ_A,NEQ_A,NEQ_V,EQ_AV,NEQ_AV,GT_A,GT_V,LT_A,LT_V,UGT_A,UGT_V,ULT_A,ULT_V
+#
+# WHEN/DO_?/ENDWHEN loops are basicly simplified while loops but with the conditional part
+# being a multi line WHEN function. This allows more complex conditions that what the
+# built in ones allow, while keeping it a readable structure.
+# Only condition the DO part cares about are ZERO or NOTZERO but WHEN part of the block
+# can be as complex as it needs to be, just has to exit with a zero/notzero on the stack.
+#
+# LOOP/UNTIL
+# Loop Until is basicly a WHEN block but with the condtional tested at the bottom rather
+# than the top of the loop. This will mean that the loop will run at least once. Where
+# normal WHEN loops many not run at all, if the initial condition has already been met.
+# Like WHEN/DO loops the conditional at the bottom is only tested for ZERO/NOTZERO but
+# you can use as many lines as you want at the end of the loop to prepare that test.
+#
+# WHILEBREAK/FORBREAK
+# This is a somewhat limited, 'break out of current loop' command.
+# It has a MAJOR limitation, it has to be decided at a top level IF/ENDIF block.
+# You can't break out of FOR or WHILE loop from more than 1 level deep of an IF block.
+#
+# FORCONTINUE is like FORBREAK, it shortcuts the loop to the NEXT line, but like
+# FORBREAK it has to be at a top level IF block within the loop.
+# 
+
+
+
+
+
+# 
 #    Stack is not poped so what ever values you are testing, will remain on stack.
 # EQ_V means cmping stack vs variable, EQ_VV means cmping two Variables for equality.
 # EQ_VV,EQ_VA are really the only ones that takes two parameters.
@@ -300,7 +346,9 @@ M IF_NOTCARRY \
 #
 # ELSE is common to all the IF type blocks.
 # Note how if we fall into the ELSE block from the code right above.
-# It jumps right to the 'JustEnd' label. We do the same thing for ENDIF 
+# It jumps right to the 'JustEnd' label. We do the same thing for ENDIF
+# We also set with MF a _%V_ElseFlag so correctly nested ENDIF will know if
+# an 'else' was in effect or not.
 M ELSE \
   @JMP _%V_JustEnd \
   :_%V_ElseBlock \
@@ -312,16 +360,6 @@ M ELSE \
 # defined, or used, but would still trigger a warning message during assembly since
 # it had been indirectly referenced but not defined.
 
-# M ENDIF \
-#   @JMP _%V_JustEnd \
-#   :_%V_ENDIF \
-#   ! _%V_ElseFlag \
-#      @JMP _%V_JustEnd \
-#      =_%V_ElseBlock 00 \
-#   ENDBLOCK \
-#   @JMP _%V_ElseBlock \
-#   :_%V_JustEnd \
-#   %P
 M ENDIF \
   @JMP _%V_JustEnd \
   :_%V_ENDIF \
@@ -520,7 +558,7 @@ M ENDWHILE \
 M LOOP \
   %S \
   :_%V_TopLoop
-# Like for 'while' we'll only handle the TOS zero or notzero cases.
+# UNTIL only handles the TOS zero or notzero cases.
 # If you need a more complex test, manually do the test before UNTIL...
 # and leave either 0 or 1 on the stack.
 
@@ -540,10 +578,10 @@ M UNTIL_ZERO \
 # Unlike a 'C' switch case, each Case needs to be a block that ends with CBREAK
 # So the 'case' match can't 'fall though' to the cases bellow and will always jump to the ENDCASE line
 # So the SWITCH part is just a push of the test value and is always 16b numeric.
-# The CASE types include CASE, CASE_RANGE A B, CASE_REF V, CDEFAULT
+# The CASE types include CASE, CASE_RANGE A B, CASE_I V, CDEFAULT
 #
 # Main reason for switch is to prep the Macro Stack so ENDCASE has something to 'pop'
-# You need that so the V_ENDCASE will work.
+# You need that so the ENDCASE will work.
 M SWITCH \
   %S
 #
@@ -560,7 +598,6 @@ M CASE \
   :_%V_DoCase1
 
 # Takes two constant params (low value then high value, can't be swaped)
-# What going on here, might seem complex, the key is we have and IF_GE but no IF_LE
 # So some of the complexity is to make sure we can use IF_GE for both the low and high
 # range tests in the CASE. Other wise we could miss the edge cases.
 M CASE_RANGE \
@@ -579,7 +616,8 @@ M CASE_I \
   @CMPI %1 \
   @JMPNZ _%V_NextCase
 
-# The only reason we need CDEFAULT is to balance the Macro Stack, which would underflow without.
+# You Always need CDEFAULT is to balance the Macro Stack, which would underflow without.
+# So always include a CDEFAULT even if you alreay had CASE's for all the valid values.
 M CDEFAULT \
   :_%V_NextCase \
   %S
@@ -631,15 +669,22 @@ M ENDCASE \
 #
 # 
 # The For Loops come in the following types
-#  ForIA2B     : 3 Args For from constant A to Constant B
-#  ForIA2V     : 3 Args For from constant A to Variable
-#  ForIV2A     : 3 Args For from constant Variable to Constant A
-#  ForIV2V     : 3 Args For From Variable to Variable
-#  Next I      : 1 Args must match Index name from For Loop (Inc var is default +1)
-#  NextBy I A  : 2 Args Index name and Increment value, which can be negative
-#  NextByI I V : 2 Args Index name and variable for increment
+#  ForIA2B Index    : 3 Args For from constant A to Constant B
+#  ForIA2V Index    : 3 Args For from constant A to Variable
+#  ForIV2A Index    : 3 Args For from Variable to Constant A
+#  ForIV2V Index    : 3 Args For From Variable to Variable
+#  ForIA2S Index    : 2 Args For from Constant to value on TOS
+#  Next Index       : 1 Args must match Index name from For Loop (Inc var is default +1)
+#  NextBy Index A   : 2 Args Index name and Increment value, which can be negative
+#  NextByI Index V  : 2 Args Index name and variable for increment
 #                       Just make sure that Index will eventually equal the stop value.
-#
+#             For cases when your lookint to stop loop when index is >= stop value.
+#  ForIupA2B Index  : 3 Args For from constant A until >= Constant B
+#  ForIupA2V Index  : 3 Args For from constant A until >= Variable B
+#  ForIupA2V Index  : 3 Args For from Varable A until >= Constant B
+#  ForIupV2V Index  : 3 Args For from Varable A until >= Varable B
+#  ForIupA2S Index  : 2 Args For from constant A until >= TOS value
+
 #
 #
 # for Index from constant to constant

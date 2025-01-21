@@ -252,7 +252,7 @@ L screen.ld
    @JMP ExitHandleCommand
 @ENDIF
 @POPNULL
-@PUSHI CommandVal @RTL  # Index is by words not bytes.
+@PUSHI CommandVal @SHL  # Index is by words not bytes.
 @ADD CW_JumpTable
 @PUSHS
 @JMPS
@@ -1524,7 +1524,7 @@ CMDMEM "MEM\0"
 @ELSE
    # Get line string pointer
    @POPI linenum
-   @PUSHI linenum @RTL
+   @PUSHI linenum @SHL
    @ADDI SRCIndex
    @PUSHS
    @DUP
@@ -1585,7 +1585,7 @@ CMDMEM "MEM\0"
    @POPNULL
 @ELSE
    # Check to see if we need to delete old string at this index.
-   @RTL @ADDI SRCIndex
+   @SHL @ADDI SRCIndex
    @POPI Index01   # Is address where ptr to string will be saved.   
    @PUSHII Index01
    @IF_ZERO
@@ -1643,7 +1643,7 @@ CMDMEM "MEM\0"
     @POPI MaxLines
     @PUSHI MainHeapID
     @PUSHI SRCIndex
-    @PUSHI MaxLines @RTL
+    @PUSHI MaxLines @SHL
     @CALL HeapResizeObject @IF_LT_A 100 @PRTLN "Failed to resize Index." @END @ENDIF
     @POPI SRCIndex
     @MV2V MaxLines SRCAllocCnt
@@ -1653,10 +1653,10 @@ CMDMEM "MEM\0"
    # Copy from SRCMaxLines downto CurrentLine
    @PUSHI SRCIndex
    @ADDI Index01
-   @ADD 1 @RTL
+   @ADD 1 @SHL
    @PUSHS        # Val of mem[i+1]
    @PUSHI SRCIndex
-   @ADDI Index01 @RTL
+   @ADDI Index01 @SHL
    @POPS         # pop to mem[i]
 @NextBy Index01 -1
 @POPNULL

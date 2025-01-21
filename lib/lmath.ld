@@ -12,8 +12,22 @@ L string.ld
 #   ADD32VVV      means all three arguments are the address where 32 bit values will be found/stored
 #   SUB32VII      means arg 1 is address, but args 2 and 3 are pointers to indirect locations.
 #   Same works for 2 argument functions
-#   RTR32VI or RTL32II
+#   SHR32VI or SHL32II
 #
+################################
+# To Clearify the meaning of 'V' and 'I'
+# :AValue 0 0
+# :BValue 0 0
+# :CValue 0 0
+# :APtr AValue
+# :BPtr BValue
+# :Cptr BValue
+#
+# @ADD32VII AValue BPtr CPtr
+# Please note that with the exception of @MOVE commands the arguments are always a sort of pointer.
+# The 'V' version being the address(ptr) to the 4 bytes of the 32 bit work is on the stack.
+# The 'I' version being the address of a word which in tern points to the 4 bytes of the 32 bit word.
+# 
 # Provide procedures to do basic math on 32 bit numbers
 #
 # Functions come in two flavors
@@ -27,7 +41,7 @@ L string.ld
 # 3 Pointer functions are:
 #   ADD32, SUB32, CMP32, AND32, OR32
 # 2 Pointer functions are:
-#   RTR32, RTL32, INV32
+#   SHR32, SHL32, INV32
 #
 # Helpful 32bit math macros (Note some of these 'macros' take up 25 to 30 bytes of memory, each
 # time they are assembled. So if you need to call them in many diffrent places in your code. It
@@ -55,10 +69,10 @@ M MATH32DEFINE 1
 @PRTLN "Invalid Entry:"
 @END
 # Define the globals
-G ADD32 G SUB32 G CMP32 G AND32 G OR32 G RTR32 G RTL32 G INV32
+G ADD32 G SUB32 G CMP32 G AND32 G OR32 G SHR32 G SHL32 G INV32
 G DIV32 G DIV32U G MUL32 G i32tos G stoi32 G INT2LONG G LONG2INT
 G PRT32BIN G PRT32HEX G DIV32VVVV G MUL32VVV G DIVU32VVVV
-G ADD32VVV G SUB32VVV G CMP32VV G AND32VVV G OR32VVV G RTR32VV G RTL32VV G INV32VV
+G ADD32VVV G SUB32VVV G CMP32VV G AND32VVV G OR32VVV G SHR32VV G SHL32VV G INV32VV
 G INT2LONGVV G LONG2INTVV
 
 @JMP ENDLMATH
@@ -159,7 +173,10 @@ M MOVE32AVI @MOVE32AI %1 %2
 # These are functions which take one 16 bit number and one 32 bit acumulator and
 # lets you do the most common functions to them. 
 #
-# Pattern is take 16 %1 turn into 32 bit %0LW1 and then apply function of 
+# Pattern is take 16 %1 turn into 32 bit %0LW1 and then apply function of
+# Memonic is Add Word Long Src Dest
+#         so ADDWLAW 123 A32 is Add Immediate Word A to Long A32
+#            ADDWLAI 123 A32Ptr is Add Immediate Word A to Long at Ptr A32Ptr
 M ADDWLAV @JMP %0JMP \
          :%0W1 %1 :%0LW1 0 0 \
          :%0JMP @INT2LONG %0W1 %0LW1 \
@@ -343,15 +360,15 @@ M CMP32II @PUSHI %1 @PUSHI %2 @CALL CMP32VV
 :C32Return 0
 :C32Result 0 0
 #
-M RTR32VV @PUSH %1 @PUSH %2 @CALL RTR32VV
-M RTR32VI @PUSH %1 @PUSHI %2 @CALL RTR32VV
-M RTR32IV @PUSHI %1 @PUSH %2 @CALL RTR32VV
-M RTR32II @PUSHI %1 @PUSHI %2 @CALL RTR32VV
-# Function RTR32
-# RTR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to B
-# Call RTR32(A,B)Rotats A saves to B
-:RTR32
-:RTR32VV
+M SHR32VV @PUSH %1 @PUSH %2 @CALL SHR32VV
+M SHR32VI @PUSH %1 @PUSHI %2 @CALL SHR32VV
+M SHR32IV @PUSHI %1 @PUSH %2 @CALL SHR32VV
+M SHR32II @PUSHI %1 @PUSHI %2 @CALL SHR32VV
+# Function SHR32
+# SHR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to B
+# Call SHR32(A,B)Rotats A saves to B
+:SHR32
+:SHR32VV
 @POPI ReturnAdr
 @POPI B_PTR
 @POPI A_PTR
@@ -359,7 +376,7 @@ M RTR32II @PUSHI %1 @PUSHI %2 @CALL RTR32VV
 # High Byte
 @PUSHI A_PTR @ADD 2 @PUSHS
 @FCLR
-@RTR
+@SHR
 @FSAV @POPI FlagSave     # Save any Carry bit
 @PUSHI B_PTR @ADD 2 @POPS
 # Low Byte
@@ -392,14 +409,14 @@ M INV32II @PUSHI %1 @PUSHI %2 @CALL INV32VV
 :IV32Aval 0
 :IV32Bval 0
 
-M RTL32VV @PUSH %1 @PUSH %2 @CALL RTL32VV
-M RTL32VI @PUSH %1 @PUSHI %2 @CALL RTL32VV
-M RTL32IV @PUSHI %1 @PUSH %2 @CALL RTL32VV
-M RTL32II @PUSHI %1 @PUSHI %2 @CALL RTL32VV
-# Function RTL32(Var_A,Var_B)
-# RTL32 Rotate Left RTL32(A,B) rotates A saves to B
-:RTL32
-:RTL32VV
+M SHL32VV @PUSH %1 @PUSH %2 @CALL SHL32VV
+M SHL32VI @PUSH %1 @PUSHI %2 @CALL SHL32VV
+M SHL32IV @PUSHI %1 @PUSH %2 @CALL SHL32VV
+M SHL32II @PUSHI %1 @PUSHI %2 @CALL SHL32VV
+# Function SHL32(Var_A,Var_B)
+# SHL32 Rotate Left SHL32(A,B) rotates A saves to B
+:SHL32
+:SHL32VV
 @POPI ReturnAdr
 @POPI B_PTR
 @POPI A_PTR
@@ -407,7 +424,7 @@ M RTL32II @PUSHI %1 @PUSHI %2 @CALL RTL32VV
 #@PUSH 1 @CMP 0 @POPNULL    # Clear Carry
 @FCLR
 @PUSHII A_PTR              # Do the Low Part of A
-@RTL
+@SHL
 @POPII B_PTR
 # The address of High-A is still on stack, fetch it now.
 @PUSHS
@@ -745,7 +762,7 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
 @MOVE32AV $$$0x80000000 DUMask
 
 @ForIA2B DUIndex 0 32
-   @RTL32VV DURemainder DURemainder  # Remainder << 1
+   @SHL32VV DURemainder DURemainder  # Remainder << 1
    @AND32VIV DUMask DUA_ValPtr DUTemp1
    @CMP32VV DUTemp1 DUZero
    @IF_NOTZERO
@@ -764,7 +781,7 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
       @POPNULL
 
    @ENDIF
-   @RTR32VV DUMask DUMask
+   @SHR32VV DUMask DUMask
 @Next DUIndex
 @COPY32VIV DURemainder DUResult
 @COPY32VIV DUQVal  DUReturnRemain
@@ -942,9 +959,9 @@ M MUL32VVI @PUSH %1 @PUSH %2 @PUSHI %3 @CALL MUL32VVV
       @PUSH M_ANS @PUSH NNLocal @PUSH M_ANS @CALL ADD32
 :M_ENDIF1
    # N = N << 1
-   @PUSH NNLocal @PUSH NNLocal @CALL RTL32
+   @PUSH NNLocal @PUSH NNLocal @CALL SHL32
    # MM / 2 | MM >> 1
-   @PUSH MMLocal @PUSH MMLocal @CALL RTR32
+   @PUSH MMLocal @PUSH MMLocal @CALL SHR32
 @JMP M_WHILE1
 :M_ENDWHILE
 @PUSH 0 @CMPI M_NEGFLAG @POPNULL

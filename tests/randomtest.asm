@@ -73,7 +73,7 @@ L random.ld
 :AddtoBucket
 @PUSHRETURN
 @POPI NewValue
-@RTL
+@SHL
 @ADD BucketTable
 @DUP
 @PUSHS
@@ -89,7 +89,7 @@ L random.ld
 :SetToBucket
 @PUSHRETURN
 @SWP
-@RTL
+@SHL
 @ADD BucketTable
 @POPS
 @POPRETURN
@@ -98,7 +98,7 @@ L random.ld
 # Function GetBucket(Bucket)
 :GetBucket
 @PUSHRETURN
-@RTL
+@SHL
 @ADD BucketTable
 @PUSHS
 @POPRETURN

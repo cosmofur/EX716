@@ -1,7 +1,7 @@
-# Input: Stack RET, N, MM
-# Output: ANS, CNT
 ! MUL_SEEN
 M MUL_SEEN 1
+# Input: Stack RET, N, MM
+# Output: ANS, CNT
 G MUL
 G MULU
 
@@ -35,8 +35,8 @@ L softstack.ld
      @PUSHI ANS @ADDI NN @POPI ANS 
   @ENDIF
   @POPNULL
-  @PUSHI NN  @RTL  @POPI NN   # NN << 1
-  @PUSHI MM  @RTR  @POPI MM   # MM >> 1
+  @PUSHI NN  @SHL  @POPI NN   # NN << 1
+  @PUSHI MM  @SHR  @POPI MM   # MM >> 1
   @PUSHI MM
 @ENDWHILE
 @POPNULL

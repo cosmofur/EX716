@@ -1,6 +1,8 @@
 ################
 # Fat16 Support
 # Define Fat16 Structures here.
+M LocalVar = %1 Var%2 @PUSHLOCALI Var%2
+M RestoreVar @POPLOCAL Var%1
 #  struct BootRecord {
 #     uint8_t jumpInstruction[3]; // Jump instruction
 #     char filesystemName[8];      // OEM Name
@@ -47,28 +49,29 @@
 #     uint32_t fileSize;       // File size
 # };
 =DSofsStart 0
-=DSofsfilename       DSofsStart         # 8 bytes
-=DSofsextension      DSofsStart+0x8     # 3 bytes
-=DSofsattributes     DSofsStart+0xb     # 1 byte
-=DSofsreserved       DSofsStart+0xc     # 2 bytes
-=DSofsCentSecond     DSofsStart+0xd     # 1 byte
-=DSofstime           DSofsStart+0xe     # 2 bytes
-=DSofsdate           DSofsStart+0x10    # 2 bytes
-=DSofsstartCluster   DSofsStart+0x1a    # 2 bytes
-=DSofsfileSize       DSofsStart+0x1c    # 4 bytes
-=DSofsSize           DSofsStart+0x20    # 32 bytes per record
+=DSofsFilename       0x0         # 8 bytes
+=DSofsExtension      0x8         # 3 bytes
+=DSofsAttributes     0x0b        # 1 byte
+=DSofsCreateTime     0x0d        # 2 bytes
+=DSofsCreateDate     0x10        # 2 bytes
+=DSofsAccessDate     0x12        # 2 bytes
+=DSofsWriteTime      0x16        # 2 bytes
+=DSofsWriteDate      0x18        # 2 bytes
+=DSofsStartCluster   0x1A        # 2 bytes (low word, extended disks also use high wod at 0x14)
+=DSofsStartHigh      0x14        # 2 bytes
+=DSofsFileSize       0x1c        # 4 bytes (32 bit file size)
+=DSofsSize           0x20        # Record size is 32 bytes
 #############################################################################
 #         File Pointer Structure
-#struct FilePointer {
-#    uint16_t currentCluster;  // Current cluster
-#    uint32_t currentSize;     // Current size of the file
-#    uint8_t buffer[512];      // Buffer for partial writes
-#    uint16_t bufferSize;      // Size of the buffer used
-#    uint8_t diskID;           // Identifier for the disk (0 for Disk 1, 1 for Disk 2, etc.)
-#};
-=FPofscurrentCluster 0                              # 2 bytes
-=FPofscurrentSize         FPofscurrentCluster+2     # 4 bytes
-=FPofsbuffer              FPofscurrentSize+4        # 512 bytes
-=FPofsbufferSize          FPofsbuffer+512           # 2 byte
-=FPofsdiskID              FPofsbufferSize+2         # 1 byte
-=FPofsSize                FPofsdiskID+2             # 0 bytes
+=FPofsFileSize          0       # To save time we also keep track of filesize as sector count and offset
+=FPofsCurrentSector     4       # equal to bits 10-26 in FileSize (shifted right 9 times)
+=FPofsCurrentOffset     6       # equal to bits 0-9 of FileSize (0-511, whole sectors will be '0')
+=FPofsFirstSector       8
+=FPofsDirRecSector      10
+=FPofsDirRecOffset      12
+=FPofsLogicSector       14
+=FPofsDiskID            16
+=FPofsState             18
+=FPofsBuffer            20
+=FPofsSize              FPofsBuffer+514
+

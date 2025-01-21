@@ -952,7 +952,7 @@ class microcpu:
                 c = self.memspace[i]
                 if c == 0:
                     print("Odd C is zero")
-                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30):
+                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30 and c!=9 ):
                     sys.stdout.write("\%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
@@ -1006,7 +1006,7 @@ class microcpu:
             try:
                 DeviceFile = open(DeviceHandle, "r+b")
                 self.DiskPtr = 0
-                DeviceFile.seek(0,0)
+                DeviceFile.seek(0)
             except IOError:
                 self.raiseerror(
                     "037 Error tying to open Random Device: %s" % DeviceHandle)
@@ -1026,14 +1026,13 @@ class microcpu:
             if DeviceHandle == None:
                 self.raiseerror("038 Attempted to Seek without selecting Disk")
             self.DiskPtr = address*0x200
-            DeviceFile.seek(self.DiskPtr, 0)
+            DeviceFile.seek(self.DiskPtr)
         if cmd == CastSeekDiskI:
             v = self.getwordat(address)
-            print("Debug: Seeking Disk Value: %04x" % v)
             if DeviceHandle == None:
                 self.raiseerror("038 Attempted to Seek without selecting Disk")
             self.DiskPtr = v*0x200
-            DeviceFile.seek(self.DiskPtr, 0)
+            DeviceFile.seek(self.DiskPtr)
         if cmd == CastWriteSector:
             if DeviceHandle == None:
                 self.raiseerror("038 Attempted to write without selecting Disk")
@@ -1200,7 +1199,7 @@ class microcpu:
                 v=address
                 print("Disk Read: %04x" % v)
                 if v <= MAXMEMSP-0x1ff:
-                    DeviceFile.seek(self.DiskPtr,v)
+#                    DeviceFile.seek(self.DiskPtr)
                     block = DeviceFile.read(512)
                     tidx = v
                     j=0
@@ -1217,19 +1216,19 @@ class microcpu:
             if DeviceHandle != None:
 #                v = self.getwordat(address)
                 v = self.memspace[address]+(self.memspace[address+1] << 8)
-                print("Disk Read: %04x" % v)                
+#                print("Disk Read location %04x to buffer at: %04x" % (int(self.DiskPtr/0x200),v))
                 if v <= MAXMEMSP-0x1ff:
-                    print("Disk Sector: %04x" % (self.DiskPtr))
-                    DeviceFile.seek(self.DiskPtr,0)
+#                    print("Disk Sector: %04x" % int(int(self.DiskPtr) / 0x200))
+                    DeviceFile.seek(self.DiskPtr)
                     block = DeviceFile.read(512)
                     tidx = v
-                    j=0
+#                    j=0
                     for i in block:
                         self.memspace[tidx] = int(i) & 0xff
                         tidx += 1
-                        j += 1
-                        if ( j > 16):
-                            j=0
+#                        j += 1
+#                        if ( j > 16):
+#                            j=0
                 else:
                     self.raiseerror("042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
         if cmd == PollReadTapeI:
@@ -1279,16 +1278,16 @@ class microcpu:
         self.flags = (self.flags & 0xfffb) | NCF
         self.StoreAcum(0, R1)
 
-    def optRTR(self, unused):
-        # RTR mean rotat Right and set carry CF to equal current lowest bit
+    def optSHR(self, unused):
+        # SHR mean shift Right and set carry CF to equal current lowest bit
         R1 = self.fetchAcum(0)
         NCF = (1 if (R1 & 0x1 != 0) else 0) << 2
         R1 = R1 >> 1
         self.flags = (self.flags & 0xfffb) | NCF
         self.StoreAcum(0, R1)
 
-    def optRTL(self, unused):
-        # RTL mean rotat Left and set carry CF to equal current Highest bit
+    def optSHL(self, unused):
+        # SHL mean shift Left and set carry CF to equal current Highest bit
         R1 = self.fetchAcum(0)
         NCF = (1 if (R1 & 0x8000 != 0) else 0) << 2
         R1 = R1 << 1
@@ -2021,7 +2020,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     print("%04x: M-%s> %s : %s" %
                           (address, GlobalLineNum, line, MacroLine[:16]),file=DebugOut)
                 else:
-                    print("S.",file=DebugOut,end="")
+                    print("Skip.%s(%d)," % (filename, SkipBlock),file=DebugOut,end="")
 
             if SkipBlock != 0:
                 while (line != ""):
@@ -2167,7 +2166,7 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     line=line[size+1:]
                     continue
                 elif line[0] == "L" and IsOneChar:
-                    # Load a file into memory as a library, enable 'local' variables.
+                    # Load a file into memory as a library, enable 'local' variables.                    
                     (newfilename, size) = nextword(line[1:])
                     HoldGlobeLine = GlobalLineNum
                     GlobalLineNum = 0
@@ -2380,7 +2379,7 @@ def debugger(FileLabels,passline):
                 if (thisword[0] if thisword and len(thisword) > 0 else "Invalid") in [ "+", "-"]:
                     # Handle case where user did label+/-value
                     Signval=1 if thisword[0]=="+" else -1
-                    thisword=thisword[1:]                
+                    thisword=thisword[1:]
                 # Convert to 16 bit number allow 0x formats
                 thisword = Str2Word(thisword)
                 if Signval != 0:
@@ -2389,7 +2388,7 @@ def debugger(FileLabels,passline):
                     else:
                         # Handle the odd case where first argument is +/- value
                         arglist.append(thisword * Signval)
-                        argcnt += 1                        
+                        argcnt += 1
                 else:
                     arglist.append(thisword)
                     argcnt += 1
@@ -2630,6 +2629,20 @@ def debugger(FileLabels,passline):
             else:
                 print("ERR: Need to specify what to print")
                 continue
+        if cmdword == "hexi":
+            if argcnt > 0:
+                if argcnt == 1:
+                    startv = CPU.getwordat(int(arglist[0]))
+                    stopv = startv + 16
+                else:
+                    startv = CPU.getwordat(int(arglist[0]))
+                    stopv = int(arglist[1]) + 1
+                    if stopv < startv:
+                        stopv = startv + stopv + 1
+                hexdump(startv, stopv, CPU)
+            else:
+                print("ERR: Need to specify what to print")
+                continue
         if cmdword == "n":
             stepcnt = 1
             stoprange = 0
@@ -2645,19 +2658,14 @@ def debugger(FileLabels,passline):
                     break
             continue
         if cmdword == "s":
-            TestFlag = False
-            stoprange = 0
-            for ii in SymToValMap:
-                if CPU.memspace[CPU.pc] == ii[0]:
-                    TestFlag = True
-            if TestFlag:
-                CurInstSize = SymToValMap[CPU.memspace[CPU.pc]][2]
-                tempbreakpoints.append(CPU.pc + CurInstSize)
-                print("Setting Temporary Break Point at %04x" %
-                      (CPU.pc + CurInstSize))
-                cmdword = "c"  # This only works because cmdword == "c" is bellow this 'if block'
-            else:
-                print("PC Not resting on valid Opt Code. Can not single step.")
+            CurrentAddress=CPU.pc
+            CurrentLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
+            NewLine=0
+            while ( NewLine <= CurrentLine):
+                CurrentAddress += 1
+                NewLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
+            tempbreakpoints.append(CurrentAddress)
+            cmdword = "c"    # Continue the code.
         if cmdword == "c":
             stoprange = 0
             DissAsm(CPU.pc, 1, CPU)
@@ -2727,6 +2735,10 @@ def debugger(FileLabels,passline):
             else:
                 for ii in arglist:
                     watchwords.append(Str2Word(ii))
+        if cmdword == "cw":
+            print("Clearing watchs")
+            watchwords.clear()
+
         if cmdword == "L":
             if argcnt < 1:
                 sys.stdout.write("Filename: ")
@@ -2780,7 +2792,9 @@ h  - this test          hex-Print hexdump $1[-$2]
 l  - DissAsm from line  m  - modify address starting wiht $1
 n  - Do one step        p - print values $1
 ps - Print HW Stacl     q - quit debugger
-r  - reset              w - watch $1 """)
+r  - reset              w - watch $1
+cw - clear watches
+""")
         continue
 
 def main():
