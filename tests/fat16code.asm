@@ -250,6 +250,7 @@ ENDBLOCK
    @PUSHI DiskID
    @CALL findEntryInDirectory  # (currentSector, compoents[index], diskid)   
    @IF_ZERO
+      @PRT "No File Exact Match: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL
       # No filename matched.
       @POPNULL
       @MA2V 0 FP
@@ -265,12 +266,14 @@ ENDBLOCK
       @AND 0x10
       @IF_NOTZERO
          # Is a Directory. Move down into it.
+         @PRT "Directory Name: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL         
          @POPNULL
          @PUSHI Entry  @ADD DSofsStartCluster @PUSHS
          @CALL Cluster2Sector
          @POPI currentSector
       @ELSE
          # Found a file. Create a new FP structure
+      @PRT "File Matched: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL         
          @POPNULL
          @PUSHI MainHeapID
          @PUSH FPofsSize
@@ -377,6 +380,7 @@ ENDBLOCK
 @POPI currentSector
 #
 @MA2V 0 EntryOffset
+##@PRTLN "Buffer: " @PUSHI MainHeapID @CALL HeapListMap
 @PUSHI MainHeapID
 @PUSH 512
 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 297" @POPNULL @END @ENDIF
@@ -846,7 +850,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @PRT "| FPofsDirRecSector: " @PUSHI InFP @ADD FPofsDirRecSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsDirRecOffset: " @PUSHI InFP @ADD FPofsDirRecOffset @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsLogicSector: " @PUSHI InFP @ADD FPofsLogicSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
-@PRT "| FPofsDiskID: " @PUSHI InFP @ADD FPofsDiskID @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
+@PRT "| FPofsDiskID: " @PUSHI InFP @ADD FPofsDiskID @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t\t|\n"
 @PRT "|-------------------------------------------------------|\n"
 @RestoreVar 01
 @POPRETURN
@@ -1431,7 +1435,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
       # Reached End of Record.
       # Handle case were End of record and End of Sector are the same:
       @PRT "EOR: " @PRTHEXI RBIndex @StackDump
-      :Break02
       @POPNULL
       @PUSHI RBIndex
       @IF_GE_A 0x1ff
@@ -1562,8 +1565,9 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 # If FileName exists, erases it, then creates new File/FP
 :CreateNewFile
 @PUSHRETURN
-@LocalVar FileName
-@LocalVar FP
+@LocalVar FileName 01
+@LocalVar FP 02
+@LocalVar Index 03
 #
 @POPI FileName
 #
@@ -1576,38 +1580,11 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @PUSHI activeDisk
 @CALL readBootRecord
 #
-@PUSHI FileName
-@PUSH 0        # Start search at root DIR
-@CALL ParsePath
-@POPI FP
-@IF_NEQ_AV 0 FP
-   # Filename already exists, need to erase it before creating a new filename.
-   @PUSHI FP
-   @CALL DeleteFile
-@ENDIF
-@MA2V 0 FP   # Make sure we start here.
-# First thing we need to determin if the filename is in a sub-directory
-#
-@PUSHI FileName
-@CALL strUpCase
-@PUSHI InFilePath
-@CALL SplitPath
-@POPI numComponents
-@POPI components
-@MV2V rootDirStartSector currentSector
-@MV2V currentSector lastSector        # We'll move down path but keep track of the old spot if needed.
-@ForIA2V Index 0 numComponents
-    @PUSHI currentSector
-    @PUSHI components @PUSHI Index1 @SHL @ADDS @PUSHS
-    @PUSHI DiskID
-    @CALL findEntryInDirectory
-    @IF_ZERO
-       # File doesn't exit so we expect the 'last' part will not exist.
-    @ELSE
-       
-   
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
 
 
-
-   
    

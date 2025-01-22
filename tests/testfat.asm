@@ -34,18 +34,65 @@ L lmath.ld
 @PUSH 0           # Select Disk 0
 @CALL readBootRecord
 #
-@STRSTACK "/test3.bin"      # Set up string with filename.
-@POPI ExternalFile1
 #
+
+@PRTLN "/test3False.bin"
+@STRSTACK "/test3False.bin"      # Set up string with filename.
+@POPI ExternalFile1
 @PUSHI ExternalFile1        
 @PUSH 0                     # Start search at root DIR
-
+:Break01
+@CALL ParsePath
+@IF_ULT_A 2
+   @PRT "File Could not be Parsed."
+@ELSE
+@POPI FP
+@ENDIF
+#
+#
+@PRTLN "/test.txt"
+@STRSTACK "/test.txt"
+@POPI ExternalFile1
+@PUSHI ExternalFile1
+@PUSH 0
+:Break02
 @CALL ParsePath
 @IF_ZERO
    @PRT "File Could not be Parsed."
 @ELSE
 @POPI FP
-
+@ENDIF
+#
+#
+@PRTLN "/dir1/"
+@STRSTACK "/dir1/"
+@POPI ExternalFile1
+@PUSHI ExternalFile1
+@PUSH 0
+:Break03
+@CALL ParsePath
+@IF_ZERO
+   @PRT "File Could not be Parsed."
+@ELSE
+@POPI FP
+@ENDIF
+#
+#
+#
+@PRTLN "/dir1/subfile.txt"
+@STRSTACK "/dir1/subfile.txt"
+@POPI ExternalFile1
+@PUSHI ExternalFile1
+@PUSH 0
+:Break04
+@CALL ParsePath
+@IF_ZERO
+   @PRT "File Could not be Parsed."
+@ELSE
+@POPI FP
+@ENDIF
+:Break05
+@END
 #
 # Create a common Buffer for data
 
@@ -70,7 +117,7 @@ L lmath.ld
 #
 # FSEEK(FP,Ptr-32bit)
 @PUSHI FP @PUSHI File32Address
-@CALL FSEEK
+@CALL Fseek
 @IF_ZERO
    @PRT "Error in FSEEK\n"
 @ENDIF
@@ -92,7 +139,7 @@ L lmath.ld
 #
 # ReadBlock(FP,Size,Buffer)
 @PUSHI FP @PUSH 450 @PUSHI FileBuffer
-@CALL ReadBlock
+@CALL ReadBuffer
 @IF_LT_A 512
    @PRT "Reached End Of File: "
 @ENDIF

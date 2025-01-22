@@ -98,6 +98,7 @@ G HeapAppend
 #
 # Function HeapNewObject(Size,HeapID)
 :HeapNewObject
+##@PRT "Call From: " @PRTHEXTOP @PRT " Size: "
 @PUSHRETURN
 =HeapID Var01
 =SizeInBytes Var02
@@ -115,7 +116,9 @@ G HeapAppend
 @PUSHLOCALI Var06
 
 @POPI SizeInBytes
+##@PRTHEXI SizeInBytes @PRTNL
 @POPI HeapID
+##@PRTLN "HeapNewObject: " @PUSHI HeapID  @CALL HeapListMap
 #
 @PUSHII HeapID      # Ptr to first Object
 @POPI IndexX

@@ -729,6 +729,7 @@ M ForIupA2V \
 M ForIA2S \
   %S \
   @POPI _%V_EndVal \
+  @MA2V %2 %1 \  
   @JMP _%V_ForTop \
   :_%V_EndVal 0 \
   :_%V_ForTop \
@@ -740,6 +741,7 @@ M ForIA2S \
 M ForIupA2S \
   %S \
   @POPI _%V_EndVal \
+  @MA2V %2 %1 \
   @JMP _%V_ForTop \
   :_%V_EndVal 0 \
   :_%V_ForTop \
