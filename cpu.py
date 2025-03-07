@@ -407,6 +407,27 @@ class microcpu:
             CPU.raiseerror("000 Address OverFlow %05x" % location)
         self.memspace[location] = value
 
+    def dumpstack(self,stack):
+        global FileLineData
+        print("")
+        if not isinstance(stack, np.ndarray):
+            raise TypeError("stack must be a NumPy array")
+        if len(stack) % 2 != 0:
+            stack=np.append(stack,0)
+        arr_words=stack.view(np.uint16)
+        newlist=[]
+        print("Stack Dump:")
+        for num in arr_words:
+            if num < 0xff:
+                newlist.append(f"0x{num:04x} ")
+            else:
+                tresult=FileLineData.get_line_info(num)
+                if tresult == None or len(tresult) < 2:
+                    newlist.append(f"0x{num:04x} ")
+                else:
+                    newlist.append(f"{tresult[0]}:{tresult[1]}")
+        print(" ".join(newlist))
+
     def FindWhatLine(self, address):
         global FileLineData
 
@@ -554,6 +575,7 @@ class microcpu:
     def optPUSH(self, invalue):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
+            self.dumpstack(self.mb)
             self.raiseerror("005 MB Stack overflow, optpush")
         sp *= 2
         self.mb[sp] = self.lowbyte(invalue)
@@ -563,6 +585,7 @@ class microcpu:
     def optDUP(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
+            self.dumpstack(self.mb)
             self.raiseerror("006 MB Stack overflow, optpush")
         sp *= 2
         self.mb[sp] = self.lowbyte(self.mb[sp - 2])
@@ -572,6 +595,7 @@ class microcpu:
     def optPUSHI(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
+            self.dumpstack(self.mb)            
             self.raiseerror("007 MB Stack overflow, optPUSHI")
         sp *= 2
         if (address+1 > MAXMEMSP):
@@ -585,6 +609,7 @@ class microcpu:
     def optPUSHII(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
+            self.dumpstack(self.mb)            
             self.raiseerror("009 MB Stack overflow, optPUSHII")
         sp *= 2
         newaddress = self.getwordat(address)
@@ -627,6 +652,7 @@ class microcpu:
         sp -= 1
         sp *= 2
         if sp > (0xff/2 - 2):
+            self.dumpstack(self.mb)
             self.raiseerror("015 MB Stack overflow, optPOPI")
         self.insertbyte(address, self.mb[sp])
         if (address+1 <= MAXMEMSP):

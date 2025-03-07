@@ -64,14 +64,16 @@ M RestoreVar @POPLOCAL Var%1
 #############################################################################
 #         File Pointer Structure
 =FPofsFileSize          0       # To save time we also keep track of filesize as sector count and offset
-=FPofsCurrentSector     4       # equal to bits 10-26 in FileSize (shifted right 9 times)
-=FPofsCurrentOffset     6       # equal to bits 0-9 of FileSize (0-511, whole sectors will be '0')
-=FPofsFirstSector       8
-=FPofsDirRecSector      10
-=FPofsDirRecOffset      12
-=FPofsLogicSector       14
-=FPofsDiskID            16
-=FPofsState             18
-=FPofsBuffer            20
+=FPofsFSSector          4       # equal to bits 10-26 in FileSize (shifted right 9 times) (Alway ^'s to EOF)
+=FPofsFSOffset          6       # equal to bits 0-9 of FileSize (0-511, whole sectors will be '0')
+=FPofsFirstSector       8       # First HW sector in File. (For returning to begining of file)
+=FPofsDirRecSector      10      # HW Sector of Directory Entry
+=FPofsDirRecOffset      12      # Offset in sector for Dir Entry
+=FPofsHWSector          14      # HW Sector ID of current Read/Insert point. (anywhere on disk)
+=FPofsLogicSector       16      # Logical Sector ID Read/Insert Point (Relative to filesize)
+=FPofsOffset            18      # Offset with the current HW/Logival Sector where Read/Insert point is.
+=FPofsDiskID            20      # HW Disk ID
+=FPofsState             22      # -1 means 'stale' so Buffer will not be trusted without re-read.
+=FPofsBuffer            24
 =FPofsSize              FPofsBuffer+514
 

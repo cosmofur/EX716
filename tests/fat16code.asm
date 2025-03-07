@@ -6,6 +6,27 @@ L string.ld
 L heapmgr.ld
 L softstack.ld
 L lmath.ld
+##############################################################
+# Global Exports
+# Group 1, main services for end users.
+G initdisksys          # (heapid)   initilized memory used.
+G FileOpen             # (FileName, ModeCode):FP ModeCode={"r\0" "rw" "w\0" "a\0"}
+G Fseek                # (FP,Index32Ptr) Seeks within file, Note Index is ptr to 32 bit number.
+G ReadBuffer           # (FP, Size, Buffer) Read into Buffer 'upto' Size bytes.
+G ReadLine             # (FP, Buffer) Reads into Buffer line until terminating character (newline)
+G DeleteFile           # (FP) Deletes file (TBD)
+#
+# Group 2, Lower level calls for utility.
+G readBootRecord
+G ParsePath
+G FPrintFPInfo
+G Sector2Cluster
+G Cluster2Sector
+G F32to16
+G ReadSector
+##############################################################
+
+
 ###############################################################
 # Common Storage
 :Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0 :Var07 0 :Var08 0
@@ -31,20 +52,55 @@ L lmath.ld
 :clusterSize 0
 :FATSizeInBytes 0
 :ClusterMask 0
+:LastAllocatedCluster 2
 :RecordMark "\n\0"        # Default is newline could be possibly changed.
+########################################################
+#                    Index
+#
+# initdisksys(HeapID):void            sets up memory for disk requirments
+# readBootRecord(HWDiskID):void    Reads Disks boot record setup variables
+# ParsePath(filename,DiskID):codes takes in string Filename, returns FP or DIR info
+# findEntryInDirectory(sector,Filename,DiskID):[0|(HeapCopyDir,Sector,Offset)
+#                                  Searchs for String Filename in single Director.
+# compareFileNames(FileZ,FileSP):[0|1]
+#                                  Cmp null termed filename with Space padded version.
+# str2filename(FileName):FileSP    Turns FileZ to FileSP aces, heap object returned.
+# SplitPath(filepath):(array,numentries)
+#                                  Turns filepath into heap array or parts of path.
+# HexDump(addres,length)           Utility to hex dump block of memory. (plan to move to another library)
+# FPrintFPInfo(FP)                 Utility to print a formated output from FP
+# GetNextPossableSector(Sector):NextSector
+#                                  Figures out what next sector is, considered FAT tables as needed.
+# Sector2Cluster(sector):cluster   Returns the Cluster number for a given sector
+# Cluster2Sector(cluster):sector   Returns the first sector in the named Cluster
+# F32to16(In32Ptr):(sectorcount,Offset)
+#                                  Avoids use of Lmath library to convert 32bit filesize into sectorcount,offset
+# ReadSectorWorker(FP,LogicalSector):HWSector
+#                                  Converts a logical sector into actual hardware sector number
+# ReadSector(FP,Index,Buffer):int  Reads sector logicla offset Index, into predefined buffer. int < 512 means EOF
+# FatSectorFromCluster(ClusterIn): Reads the FAT table for ClusterIn and returns 1st sector of Next Cluster. (or 0xfffx)
+# FSeek(FP,IndexPtr):[0|1]         Searches for location within file. IndexPtr is ptr to 32 bit value.
+# Read_worker2(Type,FP,Size,Buffer):[0|bytesread]
+#                                  Type=1 means read Size bytes into exiting Buffer
+#                                  Type=2 means reaed until NewLine (or RecordMark) into Buffer
+# Readbuffer(FP,Size,Buffer):      Read Buffer of Size
+# ReadLine(FP,Buffer)              Read one Line to Buffer
+
+
+
 
 M CheckRequire \
   @IF_EQ_AV 0 MainHeapID \
-     @PRT "Error: Heap Not defined. Run initdisk first\n" \
+     @PRT "Error: Heap Not defined. Run initdisksys first\n" \
      @END \
   @ENDIF
 
 
 ################## Fat 16 core functions
 ################################################################
-# Function initdisk(HeapID)
+# Function initdisksys(HeapID)
 # Setups system for handeling memory requirements for FS
-:initdisk
+:initdisksys
 @SWP
 @POPI MainHeapID
 # Zero the key varaibles so no left over from previous set.
@@ -59,10 +115,11 @@ M CheckRequire \
 @MA2V 0 rootDirStartSector
 @MA2V 0 totalClusters
 @MA2V 0 FATSizeInSectors         # Size All the  FAT tables in number of Sectors.
-@MA2V 0 dataAreaStartSector
+
 @MA2V 0 totalDataSectors
 @MA2V 0 clusterSize
 @MA2V 0 FATSizeInBytes
+@MA2V 2 LastAllocatedCluster     # We keep track of last place we inserted a FAT entry to reduce frags
 
 @RET
 
@@ -126,7 +183,7 @@ M CheckRequire \
    @PUSHI rootDirSize
    @PUSHI bytesPerSector @CALL DIVU @POPI rootDirSizeInSectors @POPNULL
 
-   # dataAreaStartSector = reservedSectors+(numberofFATs*FATSize16)+rootDirSize
+   # dataAreaStartSector = reservedSectors+(numberofFATs*FATSize16)+rootDirSizeJ Sectors
    
    @IF_EQ_AV 2 numberofFATs
        # Most of the time, it will be '2' so just use ADD twice
@@ -214,7 +271,14 @@ ENDBLOCK
 @POPRETURN
 @RET
 #######################################################
-# Function ParsePath(filepath, DiskID):fp
+# Function ParsePath(filepath, DiskID):(FP/DIR,Code)
+# This is a core function that serves several uses.
+# It returns two code base on what it finds.
+#  Code 1       Code 2
+#  0            DIR_Cluster       If File not found but DIR part is valid
+#  1            FP                Both File and DIR parts are valid and exist
+#  2            DIR_CLuster       Dir Path is invalid. DIR_Cluster is how far down it got.
+# 
 # Functon that builds a File Pointer FP
 :ParsePath
 @PUSHRETURN
@@ -229,13 +293,15 @@ ENDBLOCK
 @LocalVar Index2 09
 @LocalVar DirSector 10
 @LocalVar EntryOffset 11
+@LocalVar Code1 12
+@LocalVar Code2 13
 #
 @POPI DiskID
 @POPI InFilePath
 
 #
-@MV2V rootDirStartSector currentSector
-#@MA2V 0 currentSector              # We are starting at 'Root' Directory. But later lets allow a CWD concept.
+@MV2V rootDirStartSector currentSector # We are starting at 'Root' Directory. But later lets allow a CWD concept.
+@MA2V 0 Code2       # If we find sub-directories, Code2 will be last DIR found.
 #
 @PUSHI InFilePath
 @CALL strUpCase      # Changes filePath to be just uppercase
@@ -243,17 +309,31 @@ ENDBLOCK
 @CALL SplitPath     # Split string filepath into array of string ptrs, return both number of entrys and the array
 @POPI numComponents
 @POPI components
-#
+@IF_EQ_AV 1 numComponents
+   @MA2V 0 Code1      # There is a diffrent default if we're dealling with sub-directories.
+@ELSE
+   @MA2V 3 Code1
+@ENDIF
+
+# We loop though all the components of the filepath string.
+# In simplest case a file in the root directory, this string will be basicly 1 unit long
+# In other cases the first units found should be names of sub-directories until we get to the last entry.
+# So every time we find a match, we will expect it to be name of a sub-directory and repeat but now starting
+# from that point.
 @ForIA2V Index1 0 numComponents
    @PUSHI currentSector
    @PUSHI components @PUSHI Index1 @SHL @ADDS @PUSHS  # put string ptr at array[index] on stack
    @PUSHI DiskID
-   @CALL findEntryInDirectory  # (currentSector, compoents[index], diskid)   
+   # fineEntryInDirectory will look for a string match in the current directory space.
+   # It return 0 if no match, or it copies the Dir Entry to memory an returns Ptr to it.
+   @CALL findEntryInDirectory  # (currentSector, compoents[index], diskid)
    @IF_ZERO
       @PRT "No File Exact Match: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL
       # No filename matched.
       @POPNULL
       @MA2V 0 FP
+#      @MA2V 0 Code1
+      @MV2V currentSector Code2 
       @FORBREAK
    @ELSE
       # The return is a pointer to an in memory version of the Directory Entry
@@ -266,18 +346,19 @@ ENDBLOCK
       @AND 0x10
       @IF_NOTZERO
          # Is a Directory. Move down into it.
+         @MA2V 0 Code1
          @PRT "Directory Name: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL         
          @POPNULL
          @PUSHI Entry  @ADD DSofsStartCluster @PUSHS
          @CALL Cluster2Sector
          @POPI currentSector
+         @MV2V currentSector Code2         # This will change if chain of sub-directories.         
       @ELSE
          # Found a file. Create a new FP structure
-      @PRT "File Matched: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL         
+      @PRT "File Matched: State:" @PRTI Index1 @PRT " of " @PRTI numComponents @PRTNL      
          @POPNULL
-         @PUSHI MainHeapID
-         @PUSH FPofsSize
-         @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 236:" @PRTHEXTOP @POPNULL @END @ENDIF
+         @MA2V 1 Code1         # This means the Basic Filename part is valid.
+         @PUSHI MainHeapID   @PUSH FPofsSize  @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 340:" @PRTHEXTOP @POPNULL @END @ENDIF
          @POPI FP
          @ForIA2B Index2 0 FPofsSize         # Zero out the FP structure.
             @PUSH 0
@@ -285,62 +366,73 @@ ENDBLOCK
             @POPS
          @NextBy Index2 2
          # We need to go though the FP Structure and fill out the fields.
+         # Entry is a constant that referes to Dir Structure in memory
          # We'll use these macros.
       # SetFPConst FPofsOFFSET Constant
          M SetFPConst @PUSH %2 @PUSHI FP @ADD %1 @POPS
-      # SetFPEntry FPofsOFFSET ENTRY[offset]
+      # SetFPEntry FPofsOFFSET ENTRY[offset]    Copies DIR[index] to matching FP[index]
          M SetFPEntry @PUSHI Entry @ADD %2 @PUSHS @PUSHI FP @ADD %1 @POPS
-      # SetFPVarI FPofsOFFSET MEM[variable]
+      # SetFPVarI FPofsOFFSET MEM[variable]     Copies Variable to matching FP[index]
          M SetFPVarI @PUSHI %2 @PUSHI FP @ADD %1 @POPS
-      # SetFPSVal FPofsOFFSET    < TOS saved to offset >
+      # SetFPSVal FPofsOFFSET                   Pops Stack TOS to FP[index]
          M SetFPSVal @PUSHI FP @ADD %1 @POPS              # This is like SetFPVarI but for TOS as value.
          #         
-         # Store the current DiskID with the FP so we can do disk to disk copies
+      # Store the current DiskID with the FP so we can do disk to disk copies
          @SetFPVarI FPofsDiskID DiskID
          #
-         #
-         #  Get the size, which is 2 words
+      #  Get the size, which is 2 words
          @SetFPEntry FPofsFileSize DSofsFileSize
          @SetFPEntry FPofsFileSize+2 DSofsFileSize+2
          #
-         # Current Sector, start with First Sector.
+      # We have to Sector/Offset structures
+      # FSSector/FSOffset are equal to 'FileSize' and are pointing to EOF
+         @PUSHI Entry @ADD DSofsFileSize
+         @CALL F32to16            # Split the 32bit size into Sector/Offset
+         @SetFPSVal FPofsFSOffset
+         @SetFPSVal FPofsFSSector
+         #
+      # Set HWSector to sector where read/insert would be in HW units.
          @PUSHI Entry @ADD DSofsStartCluster @PUSHS
          @CALL Cluster2Sector
-         @SetFPSVal FPofsCurrentSector
-         #
-         # Offset for latest read/write will always start as zero
-         @SetFPConst FPofsCurrentOffset 0
-         # current sector by itself only gives us the physical Disk info of the sector
-         # we also need to know its relative location in the logical file.
-         @SetFPConst FPofsLogicSector 0
-         #
-         # At first First Sector and Current will be the same
-         @PUSHI FP @ADD FPofsCurrentSector @PUSHS
+      # Hardware Sector of Start of File
          @DUP
          @SetFPSVal FPofsFirstSector
-         @SetFPSVal FPofsCurrentSector
-         #
-         # Now save the Sector number and offset for this Directory Record.
+      # In the begining, these are the same, HWSector changes with read/writes.         
+         @SetFPSVal FPofsHWSector      
+      # Logcal Startof File is 0
+         @SetFPConst FPofsLogicSector 0
+      # Both Logic and HW share the same Offset info, so set that to zero
+         @SetFPConst FPofsOffset 0
+      # Now save the Sector number and offset for this Directory Record.
          @SetFPVarI FPofsDirRecSector DirSector
          @SetFPVarI FPofsDirRecOffset EntryOffset
          # Mark the FP buffer as stale so we'll know to read it.
-         @SetFPConst FPofsState -1
+      @SetFPConst FPofsState -1
          #
-         @PUSHI FP @CALL FPrintFPInfo
-         @PUSHI FP
+      # For debugging print the FP infor.
+      @PUSHI FP @CALL FPrintFPInfo
+      @MV2V FP Code2     # IF File hadn't been found Code2 would still be zero or DIR Sector for subdirectories.
       @ENDIF
       # No longer need Entry, clean it up
       @PUSHI MainHeapID
       @PUSHI Entry
       @CALL HeapDeleteObject @IF_NOTZERO @PRT "Memory Error 301" @END @ENDIF
       @POPNULL
+      # We sort of should exit the For loop here, but if there is a case
+      # where the path continued past this point, then there should be trated as an error.
+      # Letting the loop continue, should trigger that sort of error.
    @ENDIF
 @Next Index1
 # clean up the components array.
 @PUSHI components
 @PUSHI MainHeapID
 @CALL SplitDelete
+@PUSHI Code2
+@PUSHI Code1
 
+
+@RestoreVar 13
+@RestoreVar 12
 @RestoreVar 11
 @RestoreVar 10
 @RestoreVar 09
@@ -356,7 +448,8 @@ ENDBLOCK
 @RET
 ###############################################################
 # Function findEntryInDirectory(currentSector,FileName, DiskID) [Entry, Sector, Offset] | 0 for EOL
-# Scans the current clusters directory entries for matching FileName
+# Scans the current clusters directory entries for matching FileName/Dir
+# Does NOT decend into any sub-directories. But will return match if 'filename' is a DIR name.
 :findEntryInDirectory
 @PUSHRETURN
 @LocalVar currentSector 01     #
@@ -414,8 +507,9 @@ ENDBLOCK
    #  Inner on is testing each DIR entry in the current sector.
    # Our exit contions are:
    #    We reach an END of DIR mark.   Exit 1
-   #    We find a match                Exit 2
+   #    We find a Filename/DIR match   Exit 2
    #    We ran out of valid Sectors    Exit 3
+   #    
    #         If root dir, thats limited by 'rootDirEntries'
    #         If non-root, we're looking for a FAT entry that > 0xfff0
 @MA2V 0 ReturnCode
@@ -451,9 +545,8 @@ ENDBLOCK
               @PUSHI Entry @ADD DSofsFilename
               @CALL compareFileNames
               @IF_ZERO
-                 @POPNULL                 
-                 @PUSHI Entry @PUSH 32 @CALL HexDump
-                 # Exact match.
+                 @POPNULL
+                 # Exact File match 
                  # Creata a new buffer to be a copy of the entry.
                  @MA2V 2 ReturnCode                   # Found a valid match
                  @MV2V EntryOffset ResultOffset
@@ -478,7 +571,7 @@ ENDBLOCK
      # Need to try the next Sector. But getting next sector is diffrent for Root vs Sub-Directory
      @IF_EQ_AV 0 IsRoot
         @INCI SectorCnt
-        @IF_EQ_AV 0 ClusterMask      # We need this option for 'odd' sized Clusters
+        @IF_EQ_AV 0 ClusterMask      # We need this option for 'odd' sized Clusters that are not Mul of 2
            @PUSHI SectorCnt @PUSHI sectorsPerCluster
            @CALL DIVU
            @POPNULL   # We only want the MOD value
@@ -543,6 +636,7 @@ ENDBLOCK
         @ELSE
             @MA2V 3 ReturnCode         # Reached end of Root DIR
         @ENDIF
+        @POPNULL
      @ENDIF
    @ENDIF
    @PUSHI ReturnCode                   # If this is still zero, then continue the search.
@@ -668,6 +762,11 @@ ENDBLOCK
 # Will loop over the fixed lenth of the 8.3 or 11 character space
 # If index < 8, we will copy InFilePart changing to spaces when we hit either '.' or null
 # else  skip forward if on '.' and repeat same logic about spaces for the Extention part.
+@PUSHII FilePart @AND 0xff
+@IF_EQ_A "/\0"
+   @INCI FilePart
+@ENDIF
+@POPNULL
 @WHILE_LT_A 11
    @IF_ULT_A 8         # Deal with FILE part
       @PUSHII FilePart @AND 0xff
@@ -844,13 +943,16 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @PRT "|         File Pointer: " @PRTHEXI InFP @PRT "\t\t\t\t|\n"
 @PRT "--------------------------------------------------------\n"
 @PRT "| FPofsFileSize: " @PUSHI InFP @ADD FPofsFileSize @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t\t|\n"
-@PRT "| FPofsCurrentSector: " @PUSHI InFP @ADD FPofsCurrentSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
-@PRT "| FPofsCurrentOffset: " @PUSHI InFP @ADD FPofsCurrentOffset @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
+@PRT "| FPofsFSSector: " @PUSHI InFP @ADD FPofsFSSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
+@PRT "| FPofsFSOffset: " @PUSHI InFP @ADD FPofsFSOffset @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsFirstSector: " @PUSHI InFP @ADD FPofsFirstSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsDirRecSector: " @PUSHI InFP @ADD FPofsDirRecSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsDirRecOffset: " @PUSHI InFP @ADD FPofsDirRecOffset @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
+@PRT "| FPofsHWSector: " @PUSHI InFP @ADD FPofsHWSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsLogicSector: " @PUSHI InFP @ADD FPofsLogicSector @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
+@PRT "| FPofsOffset: " @PUSHI InFP @ADD FPofsOffset @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t|\n"
 @PRT "| FPofsDiskID: " @PUSHI InFP @ADD FPofsDiskID @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t\t|\n"
+@PRT "| FPofsState: " @PUSHI InFP @ADD FPofsState @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\t\t\t|\n"
 @PRT "|-------------------------------------------------------|\n"
 @RestoreVar 01
 @POPRETURN
@@ -1003,10 +1105,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPRETURN
 @RET
 
-
-
-
-
 # Field Formated Stroage to allow 8 bit 'shifts'
 :F36LWLB $$0
 :F36LWHB $$0
@@ -1023,33 +1121,32 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @PUSHRETURN
 @LocalVar FP 01
 @LocalVar LogicIndex 02
-@LocalVar SearchPoint 03
-@LocalVar SearchSector 04
-@LocalVar FatBuffer 05
-@LocalVar FatSector 06
-@LocalVar FatOffset 07
-@LocalVar CurrentCluster 08
+@LocalVar SearchPoint 03      # Location in file in Logical Sectors
+@LocalVar SearchSector 04     # Location in file in HW Sectors
+@LocalVar SearchOffset 05     # Offset in range 0-511 of with in sector of interest
+@LocalVar FatBuffer 06
+@LocalVar FatSector 07
+@LocalVar FatOffset 08
+@LocalVar CurrentCluster 09
 #
 @POPI LogicIndex
 @POPI FP
 #
-# Get the last used LogicSector value.
-#@PRT "Requested Logic Sector is: " @PRTHEXI LogicIndex @PRTNL
+# Get in File where we last read data from.
+@PUSHI FP @ADD FPofsHWSector @PUSHS
+@POPI SearchSector                # In HW Sector Units
+@PUSHI FP @ADD FPofsOffset @PUSHS
+@POPI SearchOffset
 @PUSHI FP @ADD FPofsLogicSector @PUSHS
 @POPI SearchPoint
 
-@MA2V 0 SearchPoint               # In logical sector units
-@PUSHI FP @ADD FPofsFirstSector @PUSHS
-@POPI SearchSector                # In HW Sector Units
-
+ 
 @PUSH 1
 @WHILE_NOTZERO
    @POPNULL
-#   @PRT "Checking Logical: " @PRTHEXI SearchPoint @PRT " HW: " @PRTHEXI SearchSector @PRTNL
    #
    @IF_EQ_VV LogicIndex SearchPoint
       # Match Found
-      # SearchSector should have result
       @PUSH 0
    @ELSE
       @INCI SearchPoint
@@ -1069,7 +1166,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
          @PUSHI SearchSector     # We may have to dec this so it points to previous FAT.
          @SUB 1
          @CALL Sector2Cluster
-         @PUSHI FP @SWP
          @CALL FatSectorFromCluster  # Does the work of searching the FAT table for next sector.
          @POPI SearchSector
       @ELSE
@@ -1082,6 +1178,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPNULL
 @PUSHI SearchSector
 #
+@RestoreVar 09
 @RestoreVar 08
 @RestoreVar 07
 @RestoreVar 06
@@ -1097,6 +1194,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 #################################################
 # Function ReadSector(FP,Index,BufferPtr):AcutalSize(<512 means EOF)
 # Reads a full 512 byte sector from file FP based on Index.
+# Index is Logical Index, 0 to number sectors in file, not HW sector.
 :ReadSector
 @PUSHRETURN
 @LocalVar FP 01
@@ -1115,6 +1213,13 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @CALL F32to16           # takes 32 bit number pointed at, into 2 16 values
 @POPI FileRemainder
 @POPI FileSizeSectors
+@PRT "Requesting LSector: " @PRTHEXI InIndex @PRT " Disk FileSize: " @PRTHEXI FileSizeSectors @PRTNL
+@IF_EQ_AV 0 FileRemainder
+   # File Ends in natural sector boundry.
+@ELSE
+   # If Remainder>0 then we count it as an additional FileSizeSectors
+   @INCI FileSizeSectors
+@ENDIF
 # Do some tests to make sure PF even valid
 @PUSH 1                       # If none of the fail tests work, then leave 1 on stack
 @IF_EQ_AV 0 FileSizeSectors
@@ -1146,17 +1251,19 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @ELSE
    @POPNULL      # Get Rid of that 1 flag.
 @ENDIF
-@PUSHI FP
-@PUSHI InIndex
-@CALL ReadSectorWorker1
+#
+# Now we have a valid InIndex and FP, start the process of reading data.
+# ReadSectorWorker1 figures out HW Sector from Logical Sector number.
+@PUSHI FP @PUSHI InIndex @CALL ReadSectorWorker1
 @POPI SearchSector
+#@PRT "Logic Sector: " @PRTHEXI InIndex @PRT " = HW: " @PRTHEXI SearchSector @PRTNL
 @PUSHI FP @ADD FPofsDiskID @PUSHS        # Get FP.DiskID
 @POPI Temp1
 @DISKSELI Temp1
 @DISKSEEKI SearchSector
 @DISKREADI OutBuffer                        # Load disk sector to Buffer.
 @PUSHI SearchSector
-@PUSHI FP @ADD FPofsCurrentSector @POPS
+@PUSHI FP @ADD FPofsHWSector @POPS
 @PUSHI InIndex @ADD 1
 @PUSHI FP @ADD FPofsLogicSector @POPS
 # We will drop here, whether or not we changed our current sector number
@@ -1185,20 +1292,18 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPRETURN
 @RET
 ############################################
-# Function FatSectorFromCluster(FP,ClusterIn)
+# Function FatSectorFromCluster(ClusterIn)
 # Gien a Cluster number, query the FAT table for the next cluster.
 :FatSectorFromCluster
 @PUSHRETURN
-@LocalVar FP 01
-@LocalVar ClusterIN 02
-@LocalVar ByteOffset 03
-@LocalVar sectorOffsetInFAT 04
-@LocalVar offsetInSector 05
-@LocalVar Temp1 06
-@LocalVar FATBuffer 07
+@LocalVar ClusterIN 01
+@LocalVar ByteOffset 02
+@LocalVar sectorOffsetInFAT 03
+@LocalVar offsetInSector 04
+@LocalVar Temp1 05
+@LocalVar FATBuffer 06
 #
 @POPI ClusterIN
-@POPI FP
 #
 #
 @PUSHI ClusterIN
@@ -1211,10 +1316,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPI sectorOffsetInFAT
 @POPI offsetInSector
 #
-#
-# Now select the DISK and fetch the FAT table entry
-@PUSHI FP @ADD FPofsDiskID @POPI Temp1
-@DISKSELI Temp1
 #
 @PUSHI sectorOffsetInFAT
 @ADDI reservedSectors
@@ -1241,7 +1342,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPNULL
 
 #
-@RestoreVar 07
 @RestoreVar 06
 @RestoreVar 05
 @RestoreVar 04
@@ -1264,7 +1364,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @LocalVar FileSizeSect 06
 #
 @POPI IndexPtr
-@POPI FP
 #
 # Get the requested location in file
 @PUSHI IndexPtr
@@ -1287,7 +1386,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @ENDIF
 @POPNULL
 @IF_EQ_VV FileSizeSect TargSector
-   # The case when both are equal, we need to check the offsets.
+   # The case when both sector counts are equal, we need to check the offsets.
    @PUSHI TargOffset
    @IF_GT_V FileOffset
       # Targe is beyond end of file.
@@ -1301,9 +1400,9 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 #
 # Save the new target values.
 @PUSHI TargSector
-@PUSHI FP @ADD FPofsCurrentSector @POPS
+@PUSHI FP @ADD FPofsHWSector @POPS
 @PUSHI TargOffset
-@PUSHI FP @ADD FPofsCurrentOffset @POPS
+@PUSHI FP @ADD FPofsOffset @POPS
 @PUSH 1           # Setting this to 'not 0' means successfull.
 :FSeekExit
 # Exit function
@@ -1339,6 +1438,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPI InSize
 @POPI FP
 @POPI WType
+@PUSH 0 @PUSHI OutBuffer @POPS   # Null the OutBuffer
 #
 # First question, is the current buffer stale, or can we use it as is?
 @PUSHI FP @ADD FPofsState @PUSHS
@@ -1349,6 +1449,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
    @PUSHI FP
    @PUSHI FP @ADD FPofsLogicSector @PUSHS
    @PUSHI FP @ADD FPofsBuffer      # Note Buffer is IN FP so its no need for PUSHS
+#   @PUSH -1 @PUSHI FP @ADD FPofsLogicSector @POPS   # Break old Logic Sector to force read.
    @CALL ReadSector
    @POPNULL # Not testing for EOF because it won't make a diffrence.
    @PUSHI FP @ADD FPofsLogicSector @PUSHS
@@ -1361,7 +1462,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @PUSHI FP @ADD FPofsBuffer
 @POPI ReadBuffer
 @MA2V 0 TotalRead
-@PUSHI FP @ADD FPofsCurrentOffset @PUSHS
+@PUSHI FP @ADD FPofsOffset @PUSHS
 @POPI RBIndex
 #
 # To Read buffers we'll be reading blocks in the destination buffer until one of the End conditions are met.
@@ -1396,7 +1497,6 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
      @PRT "Not a valid worker flag. (1435)" @END
      @CBREAK
    @ENDCASE
-#   @PRT "Doing Char: " @PRTHEXI RBIndex @StackDump
    @SWP
    @POPNULL
    @IF_ZERO
@@ -1408,13 +1508,15 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
       @INCI RBIndex
       # Test if we need to read next block.
       @PUSHI RBIndex
-      @IF_GE_A 0x200
+      @IF_GE_A 0x1ff
+         :Debug01
          @POPNULL
          # Get Next Sector (FP,LogicSector,Buffer)
-         @PUSHI FP         
+         @PUSHI FP
          @PUSHI FP @ADD FPofsLogicSector @PUSHS @ADD 1  # Move to next logical sector.
-         @PUSHI FP @ADD FPofsLogicSector @POPS
-         @PUSHI FP @ADD FPofsLogicSector @PUSHS
+#         @PRT "Read Next Sector: " @PRTHEXTOP @PRTNL
+#         @PUSHI FP @ADD FPofsLogicSector @POPS
+#         @PUSHI FP @ADD FPofsLogicSector @PUSHS
          @PUSHI FP @ADD FPofsBuffer
          @CALL ReadSector
          @IF_ZERO
@@ -1431,10 +1533,10 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
          @PUSH 0
       @ENDIF
    @ELSE
-      @PRT "End of Record: " @PRTHEXI RBIndex @PRTSP @StackDump @PRTNL
+#      @PRT "End of Record: " @PRTHEXI RBIndex @PRTSP @StackDump @PRTNL
       # Reached End of Record.
       # Handle case were End of record and End of Sector are the same:
-      @PRT "EOR: " @PRTHEXI RBIndex @StackDump
+#      @PRT "EOR: " @PRTHEXI RBIndex @StackDump
       @POPNULL
       @PUSHI RBIndex
       @IF_GE_A 0x1ff
@@ -1486,6 +1588,12 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
                @PUSH 1  # Reach end of block, but not end of fie.
             @ENDIF
          @ENDIF
+      @ELSE
+         # We Reached an End of block, not consider if we have to skip past the EOL mark.         
+         @IF_EQ_AV 2 WType
+            # This will move cursor past the RecordMark Character.
+            @INCI RBIndex
+         @ENDIF            
       @ENDIF      
    @ENDIF
 @ENDWHILE
@@ -1496,13 +1604,13 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @ELSE
    # Else return is total number of bytes read.
    @POPNULL
-   @PUSHI TotalRead
+   @PUSHI TotalRead @ADD 1
 @ENDIF
 
    
 # Whatever the current RBIndex is the new FP.CurrentOffset
 @PUSHI RBIndex
-@PUSHI FP @ADD FPofsCurrentOffset @POPS
+@PUSHI FP @ADD FPofsOffset @POPS
 @RestoreVar 07
 @RestoreVar 06
 @RestoreVar 05
@@ -1553,33 +1661,415 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPRETURN
 @RET
 ################################################
-# DeleteFile(FP):SuccessCode
+# Function DeleteFile(FP):SuccessCode
 :DeleteFile
+:DeleteFileFP
 @PRT "Not yet implimented.\n"
 @PUSH 0
 @SWP
 @RET
-   
 ################################################
-# Function CreateNewFile(FileName):FP
-# If FileName exists, erases it, then creates new File/FP
-:CreateNewFile
+# Function FileOpen(Filename, ModeCode):FP
+# Mode == "r" "rw" "w" "a" Read,ReadWrite,Write Must be 2 bytes long.
+# Will open existing file, or create new file
+# Returns a FP.
+#
+:FileOpen
 @PUSHRETURN
 @LocalVar FileName 01
-@LocalVar FP 02
-@LocalVar Index 03
+@LocalVar ModeCode 02
+@LocalVar FP 03
+@LocalVar WorkDir 04
+@LocalVar DirOffset 05
+@LocalVar DirSector 06
+@LocalVar DirBuffer 07
+@LocalVar SpaceFileName 08
+@LocalVar PathStat 09
+@LocalVar Index1 10
+
 #
+@POPI ModeCode
 @POPI FileName
 #
-@IF_EQ_AV -1 activeDisk
-   @PRT "No Disk Selected, Use readBootRecord before CreateNewFile\n"
+@DISKSELI activeDisk
+@PUSHI FileName @PUSHI activeDisk
+@CALL ParsePath
+@POPI PathStat
+@POPI FP           # FP will be 0 or DIR info, if path is not to valid filename.
+#
+# Our logic rules are:
+# FP exists already:
+#    Mode "rw" "r"   Set FP.(Current[Sector,Offset]=0)
+#    Mode "a"        Set FP.(Current[Sector,Offset]=EOF)
+#    Mode "w"        Delete old file, create newone.
+# FP does not exist
+#    Mode "r"        Error can't read non-existing file.
+#    Otherwise Create new FP
+#
+@IF_EQ_AV 1 PathStat   # Code 1 mean valid Filename for FP.
+   @IF_EQ_AV "w\0" ModeCode
+      # File exists, "w" means delete old file and replace.
+      @PUSHI FP
+      @CALL DeleteFileFP
+      @PUSHI FileName
+      @PUSHI ModeCode
+      @CALL FileOpen  # Yes we are calling this function recurivly
+   @ELSE
+      @IF_EQ_AV "a\0" ModeCode
+         # Append of existing file, move FP.Current to EOF
+         @PUSHI FP @ADD FPofsFileSize
+         @CALL F32to16     # Converts the 32 bit file size into 'logical sector' and 'offset'
+         @PUSHI FP @ADD FPofsOffset @POPS
+         @PUSHI FP @ADD FPofsHWSector @POPS
+      @ENDIF
+      # Reach here then FP is good File with offset to right position.
+   @ENDIF
+@ELSE
+   # ParsePath did not find a filename, but it may have found a directory.
+   @IF_EQ_AV 2 PathStat    # Code 2 means the filename was not just not fount, it wasn't even valid
+      @MA2V -1 FP          # Return -1 as error code for invalud Filename
+   @ELSE
+      # Here means we have a valid directory and filename, so need to create a FP
+      @MV2V FP WorkDir
+      @PUSHI WorkDir
+      @CALL FindAvailDir    # Returns (DirSector,DirOffset) or 0 for error.
+      @IF_EQ_A -1
+         # -1 means we ran out of space or DIR was full.
+         @POPNULL
+         @POPNULL
+         @PRT "Error, can not allocate new Directory Entry on Disk for: " @PRTSI FileName @PRTNL
+         @MA2V -1 FP
+      @ELSE
+         # Found a directory, build a DIR entry there and make a FP to it.
+         @POPI DirOffset
+         @POPI DirSector
+         # Need to create a new DIR entry and FP
+         #
+         # First create a buffer for the DIR entry
+         @PUSHI MainHeapID
+         @PUSH 512
+         @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 1627" @POPNULL @END @ENDIF
+         @POPI DirBuffer
+         # Fetch the current DirBuffer
+         @DISKSEEKI DirSector
+         @DISKREADI DirBuffer
+         #
+         # Now modify the DirBuffer and write it back.
+         @PUSHI FileName
+         @CALL str2filename  # Convert FileName into its space padded format.
+         @POPI SpaceFileName
+         #
+         @ForIA2B Index1 0 11
+             @PUSHI SpaceFileName @ADDI Index1 @PUSHS @AND 0xff   # Get Character from Src
+             @PUSHI DirBuffer  @ADDI DirOffset @ADDI Index1 @AND 0xff00  # Get Word from Dest, mask high byte
+             @ORS      # Combine them.
+             @PUSHI DirBuffer @ADDI DirOffset @ADDI Index1 @POPS
+         @Next Index1
+         # No longer need the space padded filename, so clear its memory.
+         @PUSHI MainHeapID @PUSHI SpaceFileName
+         @CALL HeapDeleteObject @IF_NOTZERO @PRT "Memory Error 1646: " @PRTTOP @END @ENDIF
+         @POPNULL
+         # We assume this is a normal file, so give it just a 0x20 (archive bit set) attribute
+         @PUSH 0x20
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsAttributes @PUSHS @AND 0xff00
+         @ORS
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsAttributes @POPS
+         #
+         # We'll just use 0 for time and date info for now.
+         @PUSH 0
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsCreateTime @POPS
+         @PUSH 0
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsCreateDate @POPS
+         @PUSH 0
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsWriteTime @POPS
+         @PUSH 0
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsWriteDate @POPS
+         #
+         @CALL FindFreeCluster    # searches FAT entries returns first free one.         
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsStartCluster @POPS
+         # StartHigh is always 0 in this FAT16
+         @PUSH 0
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsStartHigh @POPS
+         #
+         # Set FileSize to 0 0 (zero both FileSize and FileSize+2)
+         @PUSHI DirBuffer @ADDI DirOffset @ADD DSofsFileSize
+         @DUP @PUSH 0 @SWP
+         @POPS
+         @ADD 2 @PUSH 0 @SWP
+         @POPS
+         #
+         # Now Write the DirBuffer with its updates to where it was.
+         @DISKSEEKI DirSector
+         @DISKWRITEI DirBuffer
+         #
+         # Now we need to create a new FP
+         @PUSHI MainHeapID
+         @PUSH FPofsSize
+         @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 236:" @PRTHEXTOP @POPNULL @END @ENDIF
+         @POPI FP
+         @ForIA2B Index1 0 FPofsSize         # Zero out the FP structure.
+            @PUSH 0
+            @PUSHI FP @ADDI Index1
+            @POPS
+         @NextBy Index1 2
+         # Fill in FP fields
+
+         @PUSHI DirBuffer @ADD DSofsFileSize @PUSHS @PUSHI FP @ADD FPofsSize @POPS
+         @PUSHI DirBuffer @ADD DSofsFileSize+2 @PUSHS @PUSHI FP @ADD FPofsSize+2 @POPS
+         
+         
+
+         @PUSHI activeDisk @PUSHI FP @ADD FPofsDiskID @POPS
+
+
+         @PUSHI DirBuffer @ADD DirOffset @ADD DSofsStartCluster @PUSHS @DUP
+         @PUSHI FP @ADD FPofsHWSector @POPS
+         @PUSHI FP @ADD FPofsFirstSector @POPS
+         @PUSH 0  @PUSHI FP @ADD FPofsOffset @POPS
+         @PUSH 0  @PUSHI FP @ADD FPofsLogicSector @POPS
+         @PUSH -1 @PUSHI FP @ADD FPofsState @POPS
+         #
+         # We no longer need DirBuffer
+         @PUSHI MainHeapID
+         @PUSHI DirBuffer
+         @CALL HeapDeleteObject @IF_NOTZERO @PRT "Memory Error 1704" @END @ENDIF
+         #
+      @ENDIF
+   @ENDIF
+@ENDIF
+@PUSHI FP
+#
+@RestoreVar 10
+@RestoreVar 09
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+##############################################
+# Function FindAvailDir(InSector)
+# Searches the Dir Structure, and finds first one that is empty/available
+:FindAvailDir
+@PUSHRETURN
+@LocalVar InSector 01
+@LocalVar Index1 02
+@LocalVar Index2 03
+@LocalVar SectorData 04
+@LocalVar Temp1 05
+@LocalVar Result1 06
+@LocalVar Result2 07
+@LocalVar CurrentCluster 08
+@LocalVar Sector 09
+@LocalVar NewCluster 10
+
+#
+@POPI InSector
+#
+@PUSHI MainHeapID
+@PUSH 512
+   @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 1736" @POPNULL @END @ENDIF
+@POPI SectorData
+#
+# We have diffrent loops for Root vs Sub-Directory
+@PUSHI InSector
+@IF_LT_V dataAreaStartSector
+   @POPNULL
+   # Its a Root DIR so all the sectors will be sequential and not involve the FAT table.
+   @ForIA2V Index1 0 rootDirSizeInSectors
+       @PUSHI Index1 @ADDI InSector @POPI Temp1
+       @DISKSEEKI Temp1
+       @DISKREADI SectorData
+       @MA2V 0 Result2
+       @ForIA2B Index2 0 512          
+          @PUSHI SectorData @ADDI Index2 @PUSHS @AND 0xff
+#          @PRT " Offset: " @PRTHEXI Index2 @PRT " is : " @PRTHEXTOP @PRTNL
+          @MA2V 0 Temp1
+          @IF_ZERO @MA2V 1 Temp1 @ENDIF
+          @IF_EQ_A 0xff @MA2V 1 Temp1 @ENDIF
+          @IF_EQ_AV 1 Temp1      # ZERO OR FF
+             @POPNULL   # True
+             @PUSHI InSector @ADDI Index1 @POPI Result1
+             @JMP FADExit
+          @ELSE
+             # False
+             @POPNULL
+          @ENDIF
+          @PUSHI Result2 @ADD 32 @POPI Result2
+       @NextBy Index2 32
+   @Next Index1
+   # Error exit case, return -1
+   @MA2V -1 Result1
+   @MA2V -1 Result2
+   @JMP FADExit
    @END
 @ENDIF
+@POPNULL
+# Here means we are doing a Sub-Directory and may need to use the FAT tables.
+@PUSHI InSector
+@CALL Sector2Cluster
+@POPI CurrentCluster
+@PUSH 0
+@WHILE_ZERO
+   @POPNULL
+   @PUSHI CurrentCluster
+   @CALL Cluster2Sector
+   @POPI Sector
+   @ForIA2V Index1 0 sectorsPerCluster
+       @PUSHI Sector @ADDI Index1 @POPI Temp1  # Temp1=Sector+Index1
+       @DISKSEEKI Temp1       
+       @DISKREADI SectorData
+       @MA2V 0 Result2
+       @ForIA2B Index2 0 512
+           @PUSHI SectorData @ADDI Index2 @PUSHS @AND 0xff  # SectorData[Index2] &0xff
+           @IF_ZERO
+               @POPI Result1
+               @JMP FADExit
+           @ENDIF
+           @POPNULL
+           @PUSHI Result2 @ADD 32 @POPI Result2
+       @NextBy Index2 32
+   @Next Index1
+   @PUSHI Sector @ADDI sectorsPerCluster
+   @CALL GetNextPossableSector
+   @IF_UGE_A 0xfff0
+      # End of Cluster Chain. Unlike ROOT directories grow as needed.
+      @CALL FindFreeCluster
+      @IF_ZERO
+          @PRT "Disk FAT table is full. No space left for new files"
+          @END
+      @ENDIF
+      @POPI NewCluster
+      @PUSHI CurrentCluster @PUSHI NewCluster
+      @CALL StoreFat
+      @PUSHI NewCluster @PUSH 0xffff
+      @CALL StoreFat
+      @MV2V NewCluster CurrentCluster
+   @ELSE
+      @POPI Sector
+   @ENDIF
+   @PUSH 0
+@ENDWHILE
+@POPNULL
+# Set result to -1,-1 since there are no matches.
+@MA2V -1 Result1
+@MA2V -1 Result2
+:FADExit
+:Debug02
+# We always end here for the exit
+@PUSHI MainHeapID
+@PUSHI SectorData
+@CALL HeapDeleteObject @IF_NOTZERO @PRT "Memory Error 1732" @END @ENDIF
+@POPNULL
+@PUSHI Result1
+@PUSHI Result2
 #
-# Refresh the boot record, if needed.
-@PUSHI activeDisk
-@CALL readBootRecord
+@RestoreVar 10
+@RestoreVar 09
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+########################################################
+# Function FindFreeCluster
+# Wil l search FAT tables of current disk to find a free cluster.
+:FindFreeCluster
+@PUSHRETURN
 #
+@LocalVar StepNByVal 01
+@LocalVar MaxCluster 02
+@LocalVar FatBuffer 03
+@LocalVar Cluster 04
+@LocalVar FatSector 05
+@LocalVar FatEntry 06
+#@PRT "1:" @StackDump
+#
+@PUSHI MainHeapID
+@PUSHI bytesPerSector
+@CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 1880" @POPNULL @END @ENDIF
+@POPI FatBuffer
+#
+@PUSHI bytesPerSector @SHR @POPI StepNByVal
+@PUSHI totalDataSectors @PUSHI sectorsPerCluster
+@CALL DIVU @SWP @POPNULL
+@POPI MaxCluster
+#@PRT "2:" @StackDump
+@ForIV2V Cluster LastAllocatedCluster MaxCluster
+    # FatSector = (( Cluster / 2 ) / bytesPerSector) + reservedSectors
+    @PUSHI Cluster @SHR   # Cluster / 2
+    @PUSHI bytesPerSector
+    @CALL DIVU @SWP @POPNULL
+    @ADDI reservedSectors
+    @POPI FatSector
+    @DISKSEEKI FatSector
+    @DISKREADI FatBuffer
+    @ForIA2V FatEntry 0 bytesPerSector
+       @PUSHI FatBuffer @ADDI FatEntry @PUSHS
+       @IF_ZERO
+         @POPNULL
+#@PRT "3:" @StackDump         
+         # LastAllocatedCluster = (FateSector - reservedSectors) * ( bytsPerSector / 2) + (FatEntry / 2)
+         @PUSHI FatSector @SUBI reservedSectors # (FatSector - reservedSectors)
+         @PUSHI bytesPerSector @SHR   # (bytesPerSector / 2)
+         @CALL MULU
+         @PUSHI FatEntry @SHR         # FatEntry / 2
+         @ADDS
+         @POPI LastAllocatedCluster
+         @PUSHI LastAllocatedCluster
+         @JMP ExitFindFreeCluster
+       @ENDIF
+       @POPNULL
+    @NextBy FatEntry 2
+@NextByI Cluster StepNByVal
+# No Free Entry found, but we also want to wrap around to beginng before decalairing no match.
+#@PRT "4:" @StackDump         
+@ForIA2V Cluster 0 LastAllocatedCluster
+    # FatSector = (( Cluster / 2 ) / bytesPerSector) + reservedSectors
+    @PUSHI Cluster @SHR   # Cluster / 2
+    @PUSHI bytesPerSector
+    @CALL DIVU @SWP @POPNULL
+    @ADDI reservedSectors
+    @POPI FatSector
+    @DISKSEEKI FatSector
+    @DISKREADI FatBuffer   
+    @ForIA2V FatEntry 0 bytesPerSector
+       @PUSHI FatBuffer @ADDI FatEntry @PUSHS
+       @IF_ZERO
+         @POPNULL
+         # LastAllocatedCluster = (FateSector - reservedSectors) * ( bytsPerSector / 2) + (FatEntry / 2)
+         @PUSHI FatSector @SUBI reservedSectors # (FatSector - reservedSectors)
+         @PUSHI bytesPerSector @SHR   # (bytesPerSector / 2)
+         @CALL MULU
+         @PUSHI FatEntry @SHR         # FatEntry / 2
+         @ADDS
+         @POPI LastAllocatedCluster
+         @PUSHI LastAllocatedCluster
+         @JMP ExitFindFreeCluster
+       @ENDIF
+    @NextBy FatEntry 2
+@NextByI Cluster StepNByVal
+@PUSH 0          # Bad Exit, no Free FAT entry found
+:ExitFindFreeCluster
+# Result is on stack, common exit.
+@PUSHI MainHeapID
+@PUSHI FatBuffer
+@CALL HeapDeleteObject @IF_NOTZERO @PRT "Memory Error 1942" @END @ENDIF
+@POPNULL
+#@PRT "5:" @StackDump         
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
 @RestoreVar 03
 @RestoreVar 02
 @RestoreVar 01
@@ -1587,4 +2077,105 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @RET
 
 
-   
+
+#########################################################
+# Function FetchFat(Cluster):Value
+# Fetches Cluster item from FAT table.
+:FetchFat
+@PUSHRETURN
+@LocalVar Cluster 01
+@LocalVar ByteOffset 02
+@LocalVar sectorOffsetInFAT 03
+@LocalVar offsetInSector 04
+@LocalVar Temp1 05
+
+#
+@POPI Cluster
+#
+@IF_EQ_AV -1 SavedFatBuffer
+   @PUSHI MainHeapID
+   @PUSH 512
+   @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 1965" @POPNULL @END @ENDIF
+   @POPI SavedFatBuffer
+@ENDIF
+@IF_EQ_VV Cluster LastFatBuffer
+    @PUSHI Cluster
+    @SHL
+    @POPI ByteOffset
+    @PUSHI ByteOffset
+    @PUSHI bytesPerSector
+    @CALL DIVU
+    @POPI sectorOffsetInFAT
+    @POPI offsetInSector
+@ELSE
+    @PUSHI Cluster
+    @SHL
+    @POPI ByteOffset
+    @PUSHI ByteOffset
+    @PUSHI bytesPerSector
+    @CALL DIVU
+    @POPI sectorOffsetInFAT
+    @POPI offsetInSector
+    @PUSHI sectorOffsetInFAT
+    @ADDI reservedSectors
+    @POPI Temp1
+    @DISKSEEKI Temp1
+    @DISKREADI SavedFatBuffer
+@ENDIF
+@MV2V Cluster LastFatBuffer
+@PUSHI SavedFatBuffer
+@ADDI offsetInSector
+@PUSHS
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+:SavedFatBuffer -1
+:LastFatBuffer -1
+###################################################
+# Function StoreFat(Cluster,Value)
+:StoreFat
+@PUSHRETURN
+@LocalVar Cluster 01
+@LocalVar Value 02
+@LocalVar ByteOffset 03
+@LocalVar sectorOffsetInFAT 04
+@LocalVar offsetInSector 05
+#
+@POPI Value
+@POPI Cluster
+@IF_EQ_AV -1 SavedFatBuffer
+     # Its normal to do a FetchFat before doing a StoreFat
+     @PUSHI Cluster
+     @CALL FetchFat
+@ENDIF
+@PUSHI Cluster
+@SHL
+@POPI ByteOffset
+@PUSHI ByteOffset
+@PUSHI bytesPerSector
+@CALL DIVU
+@POPI sectorOffsetInFAT
+@POPI offsetInSector
+@PUSHI Value
+@PUSHI SavedFatBuffer
+@ADDI offsetInSector
+@POPS
+# Its normal to delete the SavedFatBuffer after a write
+@PUSHI MainHeapID
+@PUSHI SavedFatBuffer
+@CALL HeapDeleteObject @IF_NOTZERO @PRT "Memory Error 2044" @END @ENDIF
+@MA2V -1 LastFatBuffer      # Mark it as freed
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
