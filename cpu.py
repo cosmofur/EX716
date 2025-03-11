@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 from functools import lru_cache
 import signal
@@ -1181,10 +1181,10 @@ class microcpu:
             if len(c) == 1:
                 self.putwordat(address, ord(c))
             elif len(c) == 2:
-                self.putwordat(address, (ord(c[0])) << 8 + (ord(c[1])))
+                self.putwordat(address, ((ord(c[1])) << 8) + (ord(c[0])))
                 self.putwordat(address+2, 0)
             elif len(c) == 3:
-                self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
+                self.putwordat(address, ((ord(c[1])) << 8) + (ord(c[0])))
                 # This will create a 3 char string null terminated
                 self.putwordat(address+2, (ord(c[2])))
         if cmd == PollSetNoEcho:

@@ -44,9 +44,10 @@ M StatusPrint @PUSH 1 @PUSH 23 @CALL WinCursor
 @LocalVar ScreenStart 09      # First character visible on screen
 @LocalVar Length 10           # Current text length
 @LocalVar UChar 11            # Input Character
-@LocalVar ExitCode 12         # Code to use when time to exit
-@LocalVar NeedDraw 13         # Set to 1 when Redraw is needed.
-@LocalVar MaxLen 14
+@LocalVar UOver 12
+@LocalVar ExitCode 13         # Code to use when time to exit
+@LocalVar NeedDraw 14         # Set to 1 when Redraw is needed.
+@LocalVar MaxLen 15
 #
 @POPI InBuffer
 @POPI InCursor
@@ -56,7 +57,6 @@ M StatusPrint @PUSH 1 @PUSH 23 @CALL WinCursor
 @POPI InX
 @POPI InFlag
 #
-#@StatusPrint @PRT "Entry: " @StackDump @PRT "   "
 @MV2V InCursor Pos
 @MA2V 0 ScreenStart
 @MA2V -1 ExitCode
@@ -96,38 +96,49 @@ M StatusPrint @PUSH 1 @PUSH 23 @CALL WinCursor
 #
 @PUSH 1
 @TTYNOECHO
-#@StatusPrint @PRT "Begin: " @StackDump @PRT "   "
-
 @WHILE_NOTZERO
-! DEBUG
    @READC UChar
-ENDBLOCK
-? DEBUG
-#   @PRT ":--->" @PRTSTRI InBuffer @PRTNL
-   @CALL SimRead
-   @POPI UChar
-ENDBLOCK
-   @PUSHI UChar @CALL TransCode
-   @POPI UChar
+   # Check for Arrow Key codes.
    @PUSHI UChar
+   @IF_EQ_A 0x5b1b       # <ESC>[ 2 letter code.
+      # We are dealing with 3 byte codes for the arrow keys
+      @POPNULL
+      @PUSHI UOver
+      @SWITCH
+      @CASE "A\0"       # Up Arrow (Worth Nothing we zero term the mini string, due to 16 bit rules.)
+         @MA2V 0x10 UChar
+         @CBREAK
+      @CASE "B\0"      # Down Arrow
+         @MA2V 0xe UChar
+         @CBREAK
+      @CASE "C\0"      # Right Arrow
+         @MA2V 0x6 UChar
+         @CBREAK
+      @CASE "D\0"      # Left Arrow
+         @MA2V 02 UChar 
+         @CBREAK
+      @CDEFAULT
+         @MA2V 0 UChar    # Null it out for other escape codes
+         @CBREAK
+      @ENDCASE
+      @POPNULL
+      @PUSHI UChar
+   @ENDIF
+   @IF_EQ_A 0x7f
+      @POPNULL
+      @PUSH 0x8
+   @ENDIF
+   @IF_EQ_A 0xd
+      @POPNULL
+      @PUSH 0xa
+   @ENDIF   
    @SWITCH
-#   @StatusPrint @PRT "Switch: " @StackDump @PRT "   "   
    @CASE 0xa             # LF
-       @PRT "\nLF"
-       @POPNULL
        @MV2V 1 ExitCode
        @MA2V 1 NeedDraw       
        @JMP KeyExit
        @CBREAK
-   @CASE 0xd             # CR
-       @PRT "\nCR"   
-       @POPNULL
-       @MV2V 1 ExitCode   
-       @MA2V 1 NeedDraw              
-       @JMP KeyExit
-       @CBREAK       
    @CASE 0x8             # BS
-       @PRT "\nBS"      
        @PUSHI Pos
        @IF_GT_A 0
           @PUSHI InBuffer @PUSHI Pos @SUB 1 @PUSHI Length @PUSHI InWidth
@@ -140,7 +151,6 @@ ENDBLOCK
        @MA2V 1 NeedDraw
        @CBREAK
    @CASE_RANGE 32 127
-       :Debug01
        @PUSHI Length
        @PUSHI InWidth @SUB 1
        @IF_LT_S
@@ -160,7 +170,6 @@ ENDBLOCK
        @MA2V 1 NeedDraw              
        @CBREAK
    @CASE 0x2            # Left Arrow
-       @PRT "\nLA"      
        @PUSHI Pos
        @IF_GT_A 0
           @DECI Pos          
@@ -169,7 +178,6 @@ ENDBLOCK
        @MA2V 1 NeedDraw              
        @CBREAK
    @CASE 0x6            # Right Arrow
-       @PRT "\nRA"         
        @PUSHI Pos
        @IF_LT_V Length
           @INCI Pos
@@ -178,7 +186,6 @@ ENDBLOCK
        @MA2V 1 NeedDraw              
        @CBREAK
    @CASE 0x10           # Uparrow
-       @PRT "\nUA"            
        @PUSHI InFlag
        @AND 0x4         # Flag bit 4 exit on up/down arrow
        @IF_NOTZERO
@@ -191,7 +198,6 @@ ENDBLOCK
        @MA2V 1 NeedDraw              
        @CBREAK
    @CASE 0x0e          # Down Arrow
-       @PRT "\nDA"               
        @PUSHI InFlag
        @AND 0x4         # Flag bit 4 exit on up/down arrow
        @IF_NOTZERO
@@ -204,21 +210,17 @@ ENDBLOCK
        @MA2V 1 NeedDraw              
        @CBREAK
    @CASE 0xc           # Ctl-L Redraw
-       @PRT "\nCL"               
        @MA2V 1 NeedDraw
        @CBREAK
    @CASE 0x1           # Ctl-A Home
-       @PRT "\nCA"               
        @MA2V 1 NeedDraw
        @MA2V 0 Pos
        @CBREAK
    @CASE 0x5
-       @PRT "\nUE"               
        @MA2V 1 NeedDraw   
        @MV2V Length Pos
        @CBREAK
    @CASE_RANGE 1 32
-       @PRT "\nCTL"               
        @PUSHI InFlag
        @AND 0x8
        @IF_NOTZERO
@@ -231,7 +233,6 @@ ENDBLOCK
        @MA2V 1 NeedDraw
        @CBREAK
    @CASE 0
-       @PRT "\nNUL"
        @POPNULL
        @CBREAK
    @CDEFAULT
@@ -242,7 +243,7 @@ ENDBLOCK
    @POPNULL
    @IF_EQ_AV 0 UChar
    @ELSE
-      @StackDump
+#      @PUSH 30 @PUSH 9 @CALL WinCursor @StackDump   
    @ENDIF
    # Handle Line/Screen Scrolling
    @PUSHI Pos
@@ -279,10 +280,10 @@ ENDBLOCK
       @DUP
       @PUSHS @AND 0x00ff
       @SWP @POPS
-#      @PRT "\nEnd of While: " @StackDump @PRT " Pos: " @PRTI Pos @PRTNL
    @ENDIF
 @ENDWHILE
 @POPNULL
+@RestoreVar 15
 @RestoreVar 14
 @RestoreVar 13
 @RestoreVar 12
@@ -375,10 +376,11 @@ ENDBLOCK
     @IF_EQ_VV Index Length
        @PUSHI Buffer @ADDI Length
        @PUSHI Buffer @ADDI Length @PUSHS
-       @PUSHI 0 @AND 0xff @SWP @POPS
+       @AND 0xff @SWP @POPS
     @ENDIF
 @ENDIF
 @POPNULL
+@PUSHI UChar
 @PUSHI Length
 @RestoreVar 06
 @RestoreVar 05
@@ -406,7 +408,7 @@ ENDBLOCK
 @POPI Buffer
 @POPI InY
 @POPI InX
-@PUSH 30 @PUSH 5 @CALL WinCursor @StackDump
+#@PUSH 30 @PUSH 5 @CALL WinCursor @StackDump
 
 #
 @CALL WinHideCursor
@@ -423,7 +425,7 @@ ENDBLOCK
 @CALL WinCursor
 @CALL WinShowCursor
 @MA2V 0 NeedDraw
-@PUSH 30 @PUSH 7 @CALL WinCursor @StackDump
+#@PUSH 30 @PUSH 7 @CALL WinCursor @StackDump
 
 @RestoreVar 06
 @RestoreVar 05
@@ -442,23 +444,25 @@ ENDBLOCK
 @LocalVar UChar 01
 @LocalVar Index1 02
 @LocalVar NewChar 03
+@LocalVar PostNew 04
 @POPI UChar
 #
 @IF_EQ_AV 27 UChar    # Check for Escape for possible arrow keys
-   @ForIA2B Index1 0 50     # We may have to adjust this, we really want something like 200 millseconds max delay here
    ! DEBUG
        @READCNW NewChar
    ENDBLOCK
    ? DEBUG
        @CALL SimRead
        @POPI NewChar
+       @IF_EQ_AV 27 NewChar
    ENDBLOCK
+   
        @PUSHI NewChar
        @IF_EQ_AV "[\0" NewChar
           @POPNULL
           @MA2V 49 Index1         # Force the for Loop to exit next time.
           # Start of an arrow key
-          @PUSH 0
+          @PUSH 0          
           @WHILE_ZERO
               @POPNULL
               ? DEBUG              
@@ -471,6 +475,7 @@ ENDBLOCK
               @PUSHI NewChar
           @ENDWHILE
           @SWITCH
+#          @PUSH 30 @PUSH 11 @CALL WinCursor @StackDump             
           @CASE "A\0"       # UP
              @POPNULL
              @MA2V 0x10 UChar         # ^P
@@ -494,9 +499,9 @@ ENDBLOCK
        @ELSE
           @POPNULL
        @ENDIF
-    @Next Index1
 @ENDIF
 @PUSHI UChar
+@RestoreVar 04
 @RestoreVar 03
 @RestoreVar 02
 @RestoreVar 01
@@ -559,7 +564,6 @@ ENDBLOCK
 @POPI HighVisable
 @INCI HighVisable
 @ForIV2V Index1 LowVisable HighVisable
-    @PUSH 0 @PUSHI YLine @CALL WinCursor @PRTI YLine @PRT "]"
     @PUSHI LineArray
     @PUSHI Index1 @SHL
     @ADDS @PUSHS @POPI StrTemp
@@ -597,7 +601,6 @@ ENDBLOCK
 #
 # Setup a blank 200 byte line for the first line of the text.
 @PUSHI MainHeap @PUSH 200 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 540" @END @ENDIF
-:Debug02
 @POPII LineArray
 @PUSH 0 @PUSHI LineArray @PUSHS @POPS
 #
@@ -607,32 +610,32 @@ ENDBLOCK
 @MA2V 0 CurCursor
 @CALL ScreenRefresh
 
-#@PRT "Start: " @StackDump
 @TTYNOECHO
-@PUSH 0b1100
-@PUSH 0 @PUSH 30
-@PUSH 200
-@PUSHI WinWidth @SUB 4
 @PUSH 0
-@PUSHII LineArray
-@CALL VisReadLine
-@PRT "\nFirst Return value: "
-@PUSHII LineArray @POPI Var02 @PRTSTRI Var02
-@POPNULL
-@POPI Var01
-@PUSH 0b1100
-@PUSH 0 @PUSH 32
-@PUSH 200
-@PUSHI WinWidth @SUB 4
-@PUSHI Var01
-@PUSHII LineArray
-@CALL VisReadLine
-@PRT "\nSecond Return value:    "
-@PUSHII LineArray @POPI Var02 @PRTSTRI Var02
-@PRTNL
-#@StackDump
-@TTYECHO
-@END
+@IF_NOTZERO
+  @PUSH 0b1100
+  @PUSH 0 @PUSH 30
+  @PUSH 200
+  @PUSHI WinWidth @SUB 4
+  @PUSH 0
+  @PUSHII LineArray
+  @CALL VisReadLine
+  @PRT "\nFirst Return value: "
+  @PUSHII LineArray @POPI Var02 @PRTSTRI Var02
+  @POPNULL
+  @POPI Var01
+  @PUSH 0b1100
+  @PUSH 0 @PUSH 32
+  @PUSH 200
+  @PUSHI WinWidth @SUB 4
+  @PUSHI Var01
+  @PUSHII LineArray
+  @CALL VisReadLine
+  @PRT "\nSecond Return value:    "
+  @PUSHII LineArray @POPI Var02 @PRTSTRI Var02
+  @PRTNL  
+  @TTYECHO
+@ENDIF
 
 @PUSH 1
 
@@ -653,11 +656,16 @@ ENDBLOCK
         @PUSHI LineArray @PUSHI CurrentLine @SHL @ADDS @POPS
      @ENDIF
      @CALL VisReadLine
+     :Debug01
      @PRT "Return Code is:" @StackDump @PRT " ----->" @PRTTOP @PRTNL
      @IF_EQ_A 15
          @POPNULL
+         @POPNULL
+         @POPNULL
          @PUSH 0
      @ELSE
+         @POPNULL
+         @POPNULL
          @POPNULL
          @PUSH 1
      @ENDIF         
