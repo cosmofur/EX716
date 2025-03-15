@@ -979,7 +979,7 @@ class microcpu:
                 if c == 0:
                     print("Odd C is zero")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30 and c!=9 ):
-                    sys.stdout.write("\%02x" % c)
+                    sys.stdout.write("%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
                 i += 1
@@ -1010,7 +1010,7 @@ class microcpu:
                 if c == 0:
                     print("0x0")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
-                    sys.stdout.write("\%02x" % c)
+                    sys.stdout.write("%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
                 i += 1
