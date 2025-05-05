@@ -1,3 +1,4 @@
+! MATH32DEFINE
 L string.ld
 ################
 # lmath.ld library
@@ -49,8 +50,8 @@ L string.ld
 # COPY32VV   Label32    Label32
 # COPY32VIV  [Label]    Label          (will be deprecated)
 #      New Name: COPY32IV
-# MOVE32AV   $$$Number  Label
-# MOVE32AVI  $$$Number  [Label32]     (will be deprecated)
+# MOVE32AV   Number  Label
+# MOVE32AVI  Number  [Label32]     (will be deprecated)
 #      New Name MOVE32AI
 # INT2LONG   Label16    Label32        (will be deprecated)
 #      New Name INT2LONGVV
@@ -64,7 +65,6 @@ L string.ld
 #
       
 #
-! MATH32DEFINE
 M MATH32DEFINE 1
 @PRTLN "Invalid Entry:"
 @END
@@ -158,6 +158,8 @@ M COPY32IVIV @COPY32II %1 %2
 # macro and normally that source number will not be directly refrenced again.
 # these 'MOVE's are less efficent than COPY's
 #  MOVE32AV is the ruff 32bit equivalent of @MA2V
+#
+# Also the constant will be treated as 32bit, no need to use '$$$' when calling it.
 M MOVE32AV @JMP %0SkipOver :%0C1 $$$%1 \
            :%0SkipOver @PUSHI %0C1 @PUSH %2 @POPS \
 	   @PUSHI %0C1+2 @PUSH %2+2 @POPS
@@ -463,8 +465,8 @@ M SHL32II @PUSHI %1 @PUSHI %2 @CALL SHL32VV
 @MA2V 0 isWorkBuff+6
 @MA2V 0 isWorkBuff+8
 @MA2V 0 isWorkBuff+10
-@MOVE32AV $$$0 isZero     # Constants we need for inverting 2scompt
-@MOVE32AV $$$1 isOne#
+@MOVE32AV 0 isZero     # Constants we need for inverting 2scompt
+@MOVE32AV 1 isOne#
 # Save working copy of number
 #
 @COPY32IVV isA32Ptr isA32
@@ -624,7 +626,7 @@ M SHL32II @PUSHI %1 @PUSHI %2 @CALL SHL32VV
     # Invert and add 1 for 2s comp
     @PUSHI IResultPtrSI @PUSH InvalueSI
     @CALL INV32
-    @INT2LONG $$$1 L32RegSI
+    @INT2LONG 1 L32RegSI
     @PUSH InvalueSI
     @PUSH L32RegSI
     @PUSH L32RegSI
@@ -746,8 +748,8 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
 @POPI DUA_ValPtr
 @COPY32IVV DUA_ValPtr LocalA
 @COPY32IVV DUB_ValPtr LocalB
-@MOVE32AV $$$0 DUZero
-@MOVE32AV $$$1 DUOne
+@MOVE32AV 0 DUZero
+@MOVE32AV 1 DUOne
 @CMP32VV DUB_ValPtr DUZero
 @IF_ZERO
    @PRTLN "Divide by Zero Error:"
@@ -757,9 +759,9 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
    @RET
 @ENDIF
 @POPNULL
-@MOVE32AV $$$0 DUQVal
-@MOVE32AV $$$0 DURemainder
-@MOVE32AV $$$0x80000000 DUMask
+@MOVE32AV 0 DUQVal
+@MOVE32AV 0 DURemainder
+@MOVE32AV 0x80000000 DUMask
 
 @ForIA2B DUIndex 0 32
    @SHL32VV DURemainder DURemainder  # Remainder << 1
@@ -832,8 +834,8 @@ M DIV32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIV32VVVV
 @POPI DSResult
 @POPI DSBVal
 @POPI DSAVal
-@MOVE32AV $$$0 DSZero
-@MOVE32AV $$$1 DSOne
+@MOVE32AV 0 DSZero
+@MOVE32AV 1 DSOne
 @MA2V 0 DSNegative
 # IF A or/and B are negative invert the Negative flag
 @PUSHI DSAVal @PUSH DSZero @CALL CMP32
@@ -928,10 +930,10 @@ M MUL32VVI @PUSH %1 @PUSH %2 @PUSHI %3 @CALL MUL32VVV
 @PUSHI MMPtr @ADD 2 @PUSHS @POPI MMLocal+2
 @PUSHII NNPtr @POPI NNLocal
 @PUSHI NNPtr @ADD 2 @PUSHS @POPI NNLocal+2
-@MOVE32AV $$$0 M_ANS
+@MOVE32AV 0 M_ANS
 @MA2V 0 M_NEGFLAG
-@MOVE32AV $$$0 M_ZERO
-@MOVE32AV $$$1 M_ONE
+@MOVE32AV 0 M_ZERO
+@MOVE32AV 1 M_ONE
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL
 @JGT M1NotNeg   # A=Zero B=MM if B>A jmp NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag

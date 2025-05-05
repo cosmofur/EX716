@@ -143,6 +143,7 @@ UniqueID = 0
 SkipBlock = 0
 DataSegment=-1      # if DataSegment is -1 then Data and Address overlap.
 dataaddress = 0
+LastMLen = 0
 
 
 GLOBALFLAG = 1
@@ -896,7 +897,7 @@ def IsLocalVar(inlabel, LocalID, LORGFLAG):
 
 
 def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP, filename):
-    global MacroStack, Debug
+    global MacroStack, Debug, LastMLen
     i = 0
     newline = ""
     inquote = False
@@ -954,6 +955,16 @@ def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP, filename):
                         "051 Macro Refrence Stack Underflow: %s" % line)
                 newline = newline + MacroStack[-2]
                 i += 1
+            elif (line[i:i+6] == "strlen"):
+                # Adding MS Macro concept of 'string len' for macros.
+                # Notation is %STRLEN symbol, saves most recent result in %%LEN
+                (tempkey,tempsize) = nextword(line[i+6:])
+                LastMLen=len(tempkey)
+#                newline=newline+line[i+6+tmpsize:]
+                i=i+6+tmpsize
+            elif (line[i:i+4] == "%LEN"):
+                newline = newline + str(LastMLen)
+                i += 5                
             elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
                 varval = int(line[i:i+1])
                 if len(MacroVars) < varval:
@@ -1435,9 +1446,11 @@ def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
                     if (value == ""):
                         # empty string, erase existing macro named key, if any
                         MacroData.pop(key,None)
+                        MacroPCount.pop(key,None)                        
                     else:
                         # Otherwise inerset a simple one word or value to enable the MacroKey
                         MacroData.update({key: value})
+                        MacroPCount.update({key: 0})                        
                 elif line[0:2] == "MC" and not(IsOneChar):
                     # MC is for clearing macros, mostly to disable the MF Flags
                     (key,size) = nextword(line[2:])

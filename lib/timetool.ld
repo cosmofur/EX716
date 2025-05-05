@@ -7,14 +7,6 @@ I common.mc
 L lmath.ld
 L mul.ld
 L div.ld
-:Var01 0
-:Var02 0
-:Var03 0
-:Var04 0
-:Var05 0
-:Var06 0
-:Var07 0
-:Var08 0
 :LVar01 0 0
 :LVar02 0 0
 :LVar03 0 0

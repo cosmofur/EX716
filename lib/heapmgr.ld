@@ -34,14 +34,6 @@ G HeapAppend
 # ObjectID[-2]=16b Ptr to Next Object Entry or zero if last entry
 # ObjectID[-3]=8b flag. (0=Free, 1=In-use)
 #
-# Storage
-:Var01 0
-:Var02 0
-:Var03 0
-:Var04 0
-:Var05 0
-:Var06 0
-:Var07 0
 #
 #
 # Function HeapDefineMemory(Address,SizeInBytes)

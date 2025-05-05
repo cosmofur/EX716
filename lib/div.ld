@@ -3,12 +3,6 @@
 ! DEFINEDDIV
 M DEFINEDDIV 0
 # Define Local storage (Registers)
-:Var01 0
-:Var02 0
-:Var03 0
-:Var04 0
-:Var05 0
-:Var06 0
 I common.mc
 L softstack.ld
 G DIVU G DIV

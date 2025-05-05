@@ -26,18 +26,6 @@ M STRSTACK \
 
 # Function strlen
 # strlen(str_var) returns length of string
-# Vars
-:Var01 0
-:Var02 0
-:Var03 0
-:Var04 0
-:Var05 0
-:Var06 0
-:Var07 0
-:Var08 0
-:Var09 0
-:Var10 0
-:Var11 0
 :WorkBuff "00000000" $$0       # Long enough for -32000 to +32000
 
 #

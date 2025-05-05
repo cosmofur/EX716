@@ -93,20 +93,6 @@ G ActiveBuffer G ActiveDisk G CurrentWorkingDirectory G CurrentWorkingCluster 0
 
 
 #
-# Local temporary values (Registers)
-:Var01 0
-:Var02 0
-:Var03 0
-:Var04 0
-:Var05 0
-:Var06 0
-:Var07 0
-:Var08 0
-:Var09 0
-:Var10 0
-:Var11 0
-:Var12 0
-:Var13 0
 ###########################################################################
 # Function ErrorExit
 :ErrorExit
