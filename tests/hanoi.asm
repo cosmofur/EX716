@@ -3,8 +3,6 @@ L heapmgr.ld
 L softstack.ld
 
 :ExternalHeap 0
-
-:Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0 :Var07 0 :Var08 0
 :Aheight 0 :Bheight 0 :Cheight 0 :MaxHeight 0
 
 :Init

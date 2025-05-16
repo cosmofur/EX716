@@ -6,10 +6,6 @@ L random.ld
 #M PUSHRETURN @PRT "Top:" @StackDump @CALL __MOVE_HW_SS 
 #M POPRETURN  @PRT "Bottom:" @StackDump @CALL __MOVE_SS_HW 
 #################################################
-# Shared Variables
-:Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0 :Var07 0 :Var08 0 :Var09 0
-:Var10 0 :Var11 0 :Var12 0 :Var13 0 :Var14 0 :Var15 0 :Var16 0
-##################################################
 #
 # Screen Library provides
 # WinHeight and WinWidth

@@ -24,10 +24,26 @@ from collections import defaultdict
 
 import sys
 import os
+import traceback
 
 
 # Constants
+class WatchedDict(dict):
+    def __init__(self, *args, **kwargs):
+        self.watch_keys = set()
+        super().__init__(*args, **kwargs)
 
+    def watch(self, key):
+        self.watch_keys.add(key)
+
+    def update(self, other, note=""):
+        for k, v in other.items():
+            if k in self.watch_keys:
+                print(f"[WATCH] FileLabels[{k}] = {v}  ({note})")
+                print("Stack trace (most recent call last):")
+                for line in traceback.format_stack(limit=10):  # limit for brevity
+                    print("   " + line.strip())
+            super().update({k: v})
 
 CastPrintStr=1
 CastPrintInt=2
@@ -178,10 +194,13 @@ class AssemblerContext:
         self.ActiveFile = ""
         self.DeviceFile = 0
         self.GlobalLineNum = 0
+        self.FileLineNum = 0
         self.UniqueLineNum = 0
         self.LocalID = ""
         self.LORGFLAG = 0
         self.SkipBlock = 0
+        self.AddressedLinesSeen = set()
+        self.CurrentLineBeingParsed = 0
 
         # Data segment state
         self.ExpectData = 0
@@ -218,7 +237,6 @@ MAXHWSTACK = 0xff - 2
 InDebugger = False
 RunMode = False
 GPC = 0
-LineAddrList = [[0, 0], [0, 0]]
 
 CPUPATH = os.getenv('CPUPATH')
 JSONFNAME = "CPU.json"
@@ -250,7 +268,7 @@ def shandler(signum, frame):
     #
     msg = "Ctrl-c"
     print(msg, end="", flush=True)
-    debugger(FileLabels,current_context)
+    debugger("",current_context)
 
 
 signal.signal(signal.SIGINT, shandler)
@@ -402,38 +420,53 @@ class InputFileData:
         if line_number not in self.file_data[filename]:
             self.file_data[filename][line_number] = []
         self.file_data[filename][line_number].append(memory_address)
+        if memory_address not in self.address_map:
+            bisect.insort(self.sorted_addresses, memory_address)
         self.address_map[memory_address] = (filename, line_number)
-        bisect.insort(self.sorted_addresses, memory_address)
+        
 
-    def get_line_info(self, memory_address):
+    def get_line_info(self, memory_address, exact=False):
         if memory_address in self.address_map:
             return self.address_map[memory_address]
-
+        if exact:
+            return None
         pos=bisect.bisect_right(self.sorted_addresses, memory_address)
         if pos==0:
             return None
         nearest_lower_address = self.sorted_addresses[pos-1]
         return self.address_map[nearest_lower_address]
-
+    
     def get_nearest_address(self, filename, line_number):
+        matching_files = [
+            afile for afile in self.file_data
+            if line_number in self.file_data[afile]
+        ]
+
         if filename not in self.file_data:
-            if len(self.file_data) > 1:
-                print("Multiple Matches for (%04x) : Re-enter with one of the following. " % line_number)
-                for afile in self.file_data:
-                    Result1 = self.get_nearest_address(afile, line_number)
-                    if Result1 != None:
-                        print("%s:%d:%04x" % (afile, line_number, Result1))
+            if len(matching_files) > 1:
+                print("Multiple Matches for Line:(%d) : Re-enter with one of the following." % line_number)
+                for afile in matching_files:
+                    addr = self.file_data[afile][line_number][0]
+                    print("%s:%d:%04x" % (afile, line_number, addr))
                 return None
-            filename=self.file_data[0]
-        lines=sorted(self.file_data[filename].keys())
+            elif len(matching_files) == 1:
+                filename = matching_files[0]
+            else:
+                return None
+
+        lines = sorted(self.file_data[filename].keys())
+
         closest_line = None
         for ln in lines:
             if ln >= line_number:
                 closest_line = ln
                 break
+
         if closest_line is None:
             return None
-        return self.file_data[filename][closest_line][0]
+
+        address = self.file_data[filename][closest_line][0]
+        return (filename, closest_line, address)
 
 FileLineData = InputFileData()
 
@@ -488,7 +521,7 @@ class microcpu:
             if num < 0xff:
                 newlist.append(f"0x{num:04x} ")
             else:
-                tresult=FileLineData.get_line_info(num)
+                tresult=FileLineData.get_line_info(num, False)
                 if tresult == None or len(tresult) < 2:
                     newlist.append(f"0x{num:04x} ")
                 else:
@@ -497,7 +530,7 @@ class microcpu:
 
     def FindWhatLine(self, address):
         global FileLineData
-        tresult = FileLineData.get_line_info(address)
+        tresult = FileLineData.get_line_info(address, False)
         if tresult == None or len(tresult)< 2 :
             print("No good line match found for address %04x" % address)
             return " no-file "
@@ -507,16 +540,12 @@ class microcpu:
         global FileLineData
         if (":" in line_info):
             parts=line_info.split(":")
-            if len(parts[0]) == 0:
-                self.Last_Filename_used = None
-                OutFile=None
-            else:
-                self.Last_Filename_used = parts[0]
-                OutFile=self.Last_Filename_used
-            OutLine=int(digitsonly(parts[1]))
+            OutFile = parts[0] if parts[0] else None
+            self.Last_Filename_used = OutFile
+            OutLine= int(digitsonly(parts[1]))
         else:
             OutFile=self.Last_Filename_used
-            OutLine = int(digitsonly(line_info))
+            OutLine = int(digitsonly(line_info))            
         return FileLineData.get_nearest_address(OutFile, OutLine)
 
     def raiseerror(self, idcode):
@@ -1559,6 +1588,7 @@ def Str2Word(instr):
 
 def Str32Word(instr):
     # Support for 0x, hex, 0b for binary and Oo for ocatal as well as decimal by default
+    global current_context
     result = 0
     if type(instr) != str:
         # Conversion doesn't make sense if instr is not a string.
@@ -1578,8 +1608,8 @@ def Str32Word(instr):
             if (len(instr) > 3):
                 result = result + (ord(instr[2:3]) << 8)
         elif (instr[0:1].upper() >= "A" and instr[0:1].upper() <= "Z"):
-            if instr in context.FileLabels:
-                result = context.FileLabels[instr]
+            if instr in current_context.FileLabels:
+                result = current_context.FileLabels[instr]
             else:
                 CPU.raiseerror(
                     "047 Use of fixed value(%s) as label before defined." % instr)
@@ -1843,7 +1873,7 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
                     print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
                     CPU.raiseerror(
-                        "050 Macro Refrence Stack Underflow: %s at %s:%s" % (line,filename,context.GlobalLineNum))
+                        "050 Macro Refrence Stack Underflow: %s at %s:%s" % (line,filename,context.FileLineNum))
                 newline = newline + MacroStack[-1]
                 i += 1
                 continue
@@ -1970,7 +2000,7 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
     else:
         # Unresolved label — mark for second pass
         newkey = localkey
-        context.FWORDLIST.append([newkey, curaddress, 0, f"{context.ActiveFile}:{context.GlobalLineNum}"])
+        context.FWORDLIST.append([newkey, curaddress, 0, f"{context.ActiveFile}:{context.FileLineNum}"])
         return ("value",0)
 
 
@@ -2043,6 +2073,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
     prior_activefile = context.ActiveFile
     context.LORGFLAG = LorgFlag
     context.LocalID = LocalID
+    context.FileLineNum = 1
     if context.Debug > 1:
         if  context.LORGFLAG == LOCALFLAG:
             print("LOCAL:",end="",file=DebugOut)
@@ -2076,7 +2107,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
                 if len(context.MacroLine) > 0:
                     NewLine = {"M."+context.ActiveMacroName+" "+filename + ":" +
-                    str(context.GlobalLineNum): context.address}
+                    str(context.FileLineNum): context.address}
                     context.FileLabels.update(NewLine)
 
                     (PosParams, PosSize) = nextwordplus(context.MacroLine)
@@ -2113,15 +2144,22 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 if line == "":
                     ExitOut = False
                     GetAnother = True
+                    context.CurrentLineBeingParsed = context.FileLineNum                    
                     while GetAnother:
-                        context.GlobalLineNum += 1
+#                        if filename == "foo9.asm":
+#                            print("Line:",context.FileLineNum)
+                        context.FileLineNum += 1
                         context.UniqueLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
                         if context.Debug > 1 and context.SkipBlock == 0:
-                            print("%s:%s> %60s:%2d" % (wfilename,str(context.GlobalLineNum),inline,context.SkipBlock), file=DebugOut)
-                        if not (context.address in context.FileLabels):
-                            FileLineData.add_entry(filename, context.GlobalLineNum, context.address)
+                            print("%s:%s> %60s:%2d" % (wfilename,str(context.FileLineNum),inline,context.SkipBlock), file=DebugOut)
+
+#                        print("Inserting Label: Filename: %s, %d, %04x" % (filename,context.CurrentLineBeingParsed, context.address))
+#                        if context.address not in context.AddressedLinesSeen:
+                        FileLineData.add_entry(filename, context.CurrentLineBeingParsed, context.address)
+                        context.AddressedLinesSeen.add(context.address)
+#                        if not (context.address in context.FileLabels):
                         if inline:
                             if inline.strip()[-1:] == '\\':
                                 GetAnother = True
@@ -2139,10 +2177,10 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             line = removecomments(line).strip()
             if context.Debug > 1:
                 if context.ActiveMacro == False and context.SkipBlock == 0:
-                    print("%04x: %s> %s" % (context.address, context.GlobalLineNum, line),file=DebugOut)
+                    print("%04x: %s> %s" % (context.address, context.FileLineNum, line),file=DebugOut)
                 elif context.SkipBlock == 0:
                     print("%04x: M-%s> %s : %s" %
-                          (context.address, context.GlobalLineNum, line, context.MacroLine[:16]),file=DebugOut)
+                          (context.address, context.FileLineNum, line, context.MacroLine[:16]),file=DebugOut)
                 else:
                     print("Skip.%s(%s)," % (filename, line[:5]),file=DebugOut,end="")
 
@@ -2175,7 +2213,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             elif line[:8] == "ENDBLOCK":
                 line = line[8:]
                 continue
-#            if context.GlobalLineNum == 468 and filename == "lmath.ld":
+#            if context.FileLineNum == 212 and filename == "tests/forth.asm":
 #               print("Break here:%s:",filename)            
             if len(line) > 0:
                 IsOneChar = False
@@ -2249,9 +2287,9 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         context.ExpectData=Str2Word(dsize)   # Defines how many bytes to expect goes into the dataaddress
                     else:
                         context.ExpectData=0
-                    if ("F."+filename+":"+str(context.GlobalLineNum) in context.FileLabels):
+                    if ("F."+filename+":"+str(context.FileLineNum) in context.FileLabels):
                         # We created an internal label for each line number, but this label will replace it.
-                        del context.FileLabels["F."+filename+":"+str(context.GlobalLineNum)]
+                        del context.FileLabels["F."+filename+":"+str(context.FileLineNum)]
                     newitem = {IsLocalVar(key,  context): workingaddress}
                     context.FileLabels.update(newitem)
                     UpdateVarHistory(newitem,workingaddress,workingaddress)
@@ -2263,6 +2301,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     if (not (value[0:len(value)].isdecimal())):
                         value = DecodeStr(value, context.address, CPU, True, context)
                     newitem=IsLocalVar(key, context)
+#                    print("Setting Fixed Value: %s to %s: %s:line: %s(%s)\n" % ( newitem, value, filename,line, context.FileLineNum))
                     context.FileLabels.update({newitem: value})
                     UpdateVarHistory(newitem,value,context.address)
                     line = line[size:]
@@ -2296,27 +2335,26 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 elif line[0] == "L" and IsOneChar:
                     # Load a file into memory as a library, enable 'local' variables.                    
                     (newfilename, size) = nextword(line[1:])
-                    HoldGlobeLine = context.GlobalLineNum
+                    HoldGlobeLine = context.FileLineNum
                     oldfilename = context.ActiveFile
                     NewLocalID = str(context.UniqueLineNum)+newfilename
                     context.highaddress = context.address = \
                         loadfile(newfilename, context.address, CPU , LOCALFLAG, NewLocalID, context)
                     context.ActiveFile = oldfilename
-                    context.GlobalLineNum = HoldGlobeLine
+                    context.FileLineNum = HoldGlobeLine
                     line = line[size+1:]
                     continue
                 elif line[0] == "I" and IsOneChar:
                     # Load a file, but keep it in the 'global' context
                     (newfilename, size) = nextword(line[1:])
-                    HoldGlobeLine = context.GlobalLineNum
-                    context.GlobalLineNum = 0
+                    HoldGlobeLine = context.FileLineNum
                     oldfilename = context.ActiveFile
                     NewLocalID = str(context.UniqueLineNum)+newfilename
                     # May need come back here and use context.LORGFLAG rather than GLOBALFLAG..test this.
                     context.highaddress = context.address = \
                         loadfile(newfilename, context.address, CPU , GLOBALFLAG, NewLocalID, context)
                     context.ActiveFile = oldfilename
-                    context.GlobalLineNum = HoldGlobeLine
+                    context.FileLineNum = HoldGlobeLine
                     line = line[size+1:]
                     continue
                 elif line[0] == "P" and IsOneChar:
@@ -2373,10 +2411,13 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     continue
                 elif line[0:2] == "MF" and not(IsOneChar):
                     # MF Macro is for setting, or freeing single value macros. For use as flags
+#                    print("MF Parse: Before(%s) " % line,end="")
+#                    print(" Step1: %s (%s)" % (key,line[size+1:]),end="")
+#                    print(" Step2: %s (%s)" % (value, line[size:]))
                     (key,size) = nextword(line[2:])
-                    line=line[size+1:]
+                    line = line[size+1:] if line[size+1:size+2] == " " else line[size:]
                     (value,size) = nextword(line)
-                    line=line[size+1:]
+                    line = line[size+1:] if line[size+1:size+2] == " " else line[size:]                    
                     if (value == ""):
                         # empty string, erase existing macro named key, if any
                         context.MacroData.pop(key,None)
@@ -2395,7 +2436,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
                     # Note than nearly everything here will take up some sort of storage, so address will
                     # be incremented. This is where labels become 'variables'
-                    LineAddrList.append([context.address, context.GlobalLineNum, filename])
+                    context.CurrentLineBeingParsed = context.FileLineNum
                     (key, size) = nextwordplus(line)
                     line = line[size:]
                     if context.address > context.highaddress:
@@ -2445,7 +2486,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
 
 
 def debugger(passline, context: AssemblerContext):
-    global InDebugger, LineAddrList, breakpoints, tempbreakpoints, EchoFlag
+    global InDebugger, breakpoints, tempbreakpoints, EchoFlag
     startrange = 0
     stoprange = 0
     redoword = "Null"
@@ -2722,33 +2763,38 @@ def debugger(passline, context: AssemblerContext):
                                 print("End Modify")
                                 break
         if cmdword == "l":
-            startaddr = 0
-            stopaddr = 30
+            startaddr = None
+            stopaddr = None
             if argcnt > 0 or len(rawlist) > 0:
-                print(rawlist)
                 tresult = CPU.FindAddressLine(rawlist[0])
-                if tresult == None:
-                    print("Range 1(%s) not valid:" % rawlist[0])
-                    startaddr=0
+                if tresult is None:
+                    print("Start line not valid or is ambiguous: %s" % rawlist[0])
                 else:
-                    startaddr=int(tresult)
+                    (_, _, startaddr)=tresult
                 if argcnt > 1:
                     tresult=CPU.FindAddressLine(rawlist[1])
                     if tresult == None:
-                        print("Range 2(%s) not valid:" % rawlist[1])
-                        stopaddr=0
+                        print("End Line is not valid or is ambiguous: %s" % rawlist[1])
                     else:
-                        stopaddr=int(tresult)
-                else:
-                    if startaddr != 0:
-                        stopaddr=startaddr+30
-                    else:
-                        stopaddr=startaddr
-            if stopaddr < startaddr:     # Handle cases when labels are swapped.
-                stopaddr = startaddr + abs(stopaddr)
-            print("Dissasembly from src lines %04x to %04x" %
-                  (startaddr, stopaddr))
-            DissAsm(startaddr, stopaddr - startaddr, CPU)
+                        (_, _, stopaddr)=tresult
+            else:
+                startaddr = CPU.pc  # Default to current PC
+                stopaddr = (startaddr + 30) & 0xffff
+
+            # If only start address found, compute default end
+            if startaddr is not None and stopaddr is None:
+                stopaddr = (startaddr + 30) & 0xffff
+
+                # Validate range
+            if startaddr is not None and stopaddr is not None:
+                if stopaddr < startaddr:
+                    stopaddr = startaddr + abs(stopaddr)
+                elif stopaddr == startaddr:
+                    stopaddr = (startaddr + 30) & 0xffff
+
+                DissAsm(startaddr, stopaddr - startaddr, CPU)
+            else:
+                print("Unable to disassemble; start or end address not resolved.")
             continue
         if cmdword == "hex":
             if argcnt > 0:
@@ -2794,13 +2840,19 @@ def debugger(passline, context: AssemblerContext):
             continue
         if cmdword == "s":
             CurrentAddress=CPU.pc
+            OriginalAddress = CurrentAddress
             CurrentLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
             NewLine=0
+# Limit forward search to about 15 instructions based on average of 2.5 bytes per instruction. or 40 bytes.
             while ( NewLine <= CurrentLine):
+#            and (CurrentAddress <= (OriginalAddress+40 ))): 
                 CurrentAddress += 1
                 NewLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
-            tempbreakpoints.append(CurrentAddress)
-            cmdword = "c"    # Continue the code.
+            if NewLine <= CurrentLine:
+                print("Could not find good match, set breakpoint manually near %04x" % OriginalAddress)
+            else:            
+                tempbreakpoints.append(CurrentAddress)
+                cmdword = "c"    # Continue the code.
         if cmdword == "c":
             stoprange = 0
             DissAsm(CPU.pc, 1, CPU)
@@ -2881,14 +2933,13 @@ def debugger(passline, context: AssemblerContext):
             else:
                 ii=arglist[0]
             if os.path.exists(ii):
-                HoldGlobeLine = context.GlobalLineNum
-                context.GlobalLineNum = 0
+                HoldGlobeLine = context.FileLineNum
                 oldfilename = context.ActiveFile
                 NewLocalID = str(context.UniqueLineNum)+ii                
                 context.highaddress = \
                     loadfile(ii, 0, CPU , LOCALFLAG, NewLocalID, context)                    
                 context.ActiveFile = oldfilename
-                context.GlobalLineNum = HoldGlobeLine
+                context.FileLineNum = HoldGlobeLine
             else:
                 print("File: %s Not found" % ii)
             continue
@@ -2899,14 +2950,13 @@ def debugger(passline, context: AssemblerContext):
             else:
                 ii=arglist[0]
             if os.path.exists(ii):
-                HoldGlobeLine = context.GlobalLineNum
-                context.GlobalLineNum = 0
+                HoldGlobeLine = context.FileLineNum
                 oldfilename = context.ActiveFile
                 NewLocalID = str(context.UniqueLineNum)+ii                
                 context.highaddress = \
                     loadfile(ii, 0, CPU , GLOBALFLAG, NewLocalID, context)                
                 context.ActiveFile = oldfilename
-                context.GlobalLineNum = HoldGlobeLine
+                context.FileLineNum = HoldGlobeLine
             else:
                 print("File: %s Not found" % ii)
             continue
@@ -2950,7 +3000,13 @@ def main():
     context.SkipBlock = 0
     context.Remote = False
     context.watchword = []
-    CPU.pc = 0    
+
+#    context.FileLabels = WatchedDict()     # ⬅ replace dict with subclass
+#    context.FileLabels.watch("HeapID___1169heapmgr.ld")      # ⬅ optional: monitor a specific key
+#    context.FileLabels.watch("Var04")      # ⬅ optional: monitor a specific key
+
+    
+    CPU.pc = 0
 
     
 
@@ -2977,8 +3033,8 @@ def main():
         if skipone:
             skipone = False
             if prpcmd == 1:
-                watchwords.append(Str2Word(arg))
-                print("New Watchwords %s" % (watchwords))
+                current_context.watchwords.append(Str2Word(arg))
+                print("New Watchwords %s" % (current_context.watchwords))
             if prpcmd == 2:
                 breakafter.append(Str2Word(arg))
             if prpcmd == 3:

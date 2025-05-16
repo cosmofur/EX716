@@ -84,7 +84,7 @@ M PUSHLOCALII @PUSHII %1 @CALL __MOVE_HW_SS
 M PUSHLOCAL @PUSH %1 @CALL __MOVE_HW_SS
 # These require that you define labels Var00 to VarNN and allow
 # them to be used like 'Registers' or local variables inside functions.
-M LocalVar = %1 Var%2 @PUSHLOCALI Var%2
+M LocalVar = %1 Var%2 @PUSHI Var%2 @CALL __MOVE_HW_SS
 M RestoreVar @POPLOCAL Var%1
 
 # Function __MOVE_HW_SS

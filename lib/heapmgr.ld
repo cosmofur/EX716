@@ -40,17 +40,14 @@ G HeapAppend
 # Address should be start of free memory, and size is how much to allocate.
 :HeapDefineMemory
 @PUSHRETURN
-=SizeInBytes Var01
-=HeapID Var02
-=Index1 Var03
+@LocalVar HeapID 01
+@LocalVar SizeInBytes 02
+@LocalVar Index1 03
 
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
 #
 @POPI SizeInBytes
 @POPI HeapID      # At this point the HeapID is same as address where heap memory starts
-#@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
+@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
 #
 # test for overflow
 @PUSHI HeapID
@@ -82,9 +79,9 @@ G HeapAppend
    @SUB ObjectPtrLocation @PUSH 0 @SWP @POPS
    @PUSHI HeapID      # Successfull Heap created return it's ID on stack
 @ENDIF
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -92,20 +89,12 @@ G HeapAppend
 :HeapNewObject
 ##@PRT "Call From: " @PRTHEXTOP @PRT " Size: "
 @PUSHRETURN
-=HeapID Var01
-=SizeInBytes Var02
-=IndexX Var03
-=NewNextObject Var04
-=ContinueLoop Var05
-=OldNextObject Var06
-
-
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
+@LocalVar HeapID 01
+@LocalVar SizeInBytes 02
+@LocalVar IndexX 03
+@LocalVar NewNextObject 04
+@LocalVar ContinueLoop 05
+@LocalVar OldNextObject 06
 
 @POPI SizeInBytes
 ##@PRTHEXI SizeInBytes @PRTNL
@@ -221,12 +210,12 @@ G HeapAppend
   @PUSHI IndexX
 # Else the ContinueLoop already on th stack is the error value
 @ENDIF
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 
@@ -235,18 +224,13 @@ G HeapAppend
 #
 :HeapResizeObject
 @PUSHRETURN
-=HeapID Var01
-=ObjectID Var02
-=NewSizeInBytes Var03
-=IndexX Var04
-=IndexY Var05
-=NewObject Var06
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
+@LocalVar HeapID 01
+@LocalVar ObjectID 02
+@LocalVar NewSizeInBytes 03
+@LocalVar IndexX 04
+@LocalVar IndexY 05
+@LocalVar NewObject 06
+
 #
 @POPI ObjectID
 @POPI HeapID
@@ -302,12 +286,12 @@ G HeapAppend
     # Call to HeapNewObject result in an error, which will already be in NewObject, just let it be returned.
     @POPNULL
 @ENDIF
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -315,10 +299,8 @@ G HeapAppend
 # Function HeapDeleteObject(HeapID,ObjectID)
 :HeapDeleteObject
 @PUSHRETURN
-=Var01 ObjectID
-=Var02 HeapID
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar HeapID 01
+@LocalVar ObjectID 02
 
 #
 @POPI ObjectID
@@ -331,8 +313,8 @@ G HeapAppend
 @PUSHI HeapID
 @CALL HeapDefrag
 #
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -341,12 +323,9 @@ G HeapAppend
 # Walk the Heap find any free nodes and check if they are adjacent. Combine them if possible.
 :HeapDefrag
 @PUSHRETURN
-=Var01 HeapID
-=Var02 IndexX
-=Var03 IndexY
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
+@LocalVar HeapID 01
+@LocalVar IndexX 02
+@LocalVar IndexY 03
 #
 @POPI HeapID
 #
@@ -401,19 +380,18 @@ G HeapAppend
 @ENDWHILE
 @POPNULL
 @PUSH 0   # Will be the return value.
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 
 # Function HeapListMap(HeapID)
 :HeapListMap
 @PUSHRETURN
-=ObjectID Var01
-=HeapID Var02
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar HeapID 01
+@LocalVar ObjectID 02
+
 #
 @POPI HeapID
 @PUSHII HeapID
@@ -449,8 +427,8 @@ G HeapAppend
    @PRTNL
 @ENDWHILE
 @POPNULL
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
    
@@ -495,21 +473,14 @@ G HeapAppend
 # Appends Object2 to Object1 and growns
 :HeapAppend
 @PUSHRETURN
-=Object1 Var01
-=Object2 Var02
-=Offset Var03
-=HeapID Var04
-=NewObject Var04
-=Object1Size Var05
-=Object2Size Var06
-=Index1 Var07
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
-@PUSHLOCALI Var07
+@LocalVar HeapID 01
+@LocalVar Object1 02
+@LocalVar Index1 03
+@LocalVar Offset 04
+@LocalVar NewObject 05
+@LocalVar Object1Size 06
+@LocalVar Object2Size 07
+@LocalVar Object2 08
 #
 @POPI Offset
 @POPI Object2
@@ -548,13 +519,14 @@ G HeapAppend
    @Next Index1
 @ENDIF
 # Object1's id or error code is on the stack.
-@POPLOCAL Var07
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 

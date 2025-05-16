@@ -4,14 +4,32 @@ M COMMON_SEEN 1
 # Values which make up opcodes
 #
 # The '!' code marks a block to skip if already defined.
+:Var01 0
+:Var02 0
+:Var03 0
+:Var04 0
+:Var05 0
+:Var06 0
+:Var07 0
+:Var08 0
+:Var09 0
+:Var10 0
+:Var11 0
+:Var12 0
+:Var13 0
+:Var14 0
+:Var15 0
+:Var16 0
+:Var17 0
+:Var18 0
+:Var19 0
+:Var20 0
 G NOP G PUSH G PUSHB G PUSHI G PUSHII G POPI G POPII G POPB G CMPI G CMPII G JMPZ
 G JMPN G JMPC G JMPO G JMP G JMPI G ADD G SUB G AND G OR G INV G ADDI G SUBI
 G ANDI G ORI G ADDII G SUBII G ANDII G ORII G CAST G POLL G CPUID G SETAPP G CLEAR
 G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
 G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
-:Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0 :Var07 0 :Var08 0 :Var09 0 :Var10 0
-:Var11 0 :Var12 0 :Var13 0 :Var14 0 :Var15 0 :Var16 0 :Var17 0 :Var18 0 :Var19 0 :Var20 0
 
 
 =NOP 0
