@@ -47,7 +47,7 @@ G HeapAppend
 #
 @POPI SizeInBytes
 @POPI HeapID      # At this point the HeapID is same as address where heap memory starts
-@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
+#@PRT "HeadDefineMemory: Start: " @PRTHEXI HeapID @PRT " Size: " @PRTI SizeInBytes @PRTNL
 #
 # test for overflow
 @PUSHI HeapID

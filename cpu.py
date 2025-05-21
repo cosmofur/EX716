@@ -301,20 +301,21 @@ def create_new_unique():
 def validatestr(instr, typecode):
     # When we call int() function we must first make sure the string passed if value for that
     # numeric base. We support hex, octal, binary and 'decimal'
-    alpha = "0123456789xo"
+    instr=instr.lower()
     if typecode == 16:
         alpha = "0123456789abcdefABCDEF-+x"
     elif typecode == 2:
         alpha = "01+-xb"
     elif typecode == 8:
         alpha = "01234567+-xo"
-    newstr = ""
+    elif typecode == 10:
+        alpha = "0123456789+-"
+    else:
+        CPU.raiseerror(f"Unknown base typecode: {typecode}")
     for cc in instr:
         if not (cc in alpha):
-            print("String %s is not valid for base %d" % (instr, typecode))
-        else:
-            newstr += cc
-    return (int(newstr, typecode))
+            CPU.raiseerror("String %s is not valid for base %d" % (instr, typecode))
+    return (int(instr, 0))
 
 LocVarHist = {}
 
@@ -470,6 +471,14 @@ class InputFileData:
 
 FileLineData = InputFileData()
 
+def safeprint(*args, **kwargs):
+    try:
+        print(*args, **kwargs)
+    except Exception as e:
+        try:
+            print("Logging failed: ", e)
+        except:
+            pass  # Fail completely silently
 
 
 # I must admit it, I am not a 'natural' OO programmer.
@@ -549,66 +558,85 @@ class microcpu:
         return FileLineData.get_nearest_address(OutFile, OutLine)
 
     def raiseerror(self, idcode):
-        global GPC, RunMode
-        fd = sys.stdin.fileno()
-        new = termios.tcgetattr(fd)
-        new[3] = new[3] | termios.ECHO          # lflags
-        print("CPU State: ",file=DebugOut)
-        i=CPU.pc
-        if current_context == None:
-            print("Emulator failed to startup. Code: " % idcode)
-            sys.exit(valid)            
-        if ( i+1 < 0xffff ):
-           optcode = CPU.memspace[i]
-           P1 = CPU.getwordat(i+1)
-           if (P1 > 0xfffe):
-               OUTLINE="Invalide number at address %04x[%06x] " % (i,P1)
-               P1=P1 & 0xfffe
-           PI = CPU.getwordat(P1)
-           PII = CPU.getwordat(PI)
-           ZF = 1 if CPU.flags & 1 else 0
-           NF = 1 if CPU.flags & 2 else 0
-           CF = 1 if CPU.flags & 4 else 0
-           OF = 1 if CPU.flags & 8 else 0
-           OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%1d N%1d C%1d O%1d" % \
-                (i, OPTSYM[optcode], P1, PI, PII,
-                 ZF, NF, CF, OF)
-           pline=CPU.FindWhatLine(i)
-           if pline != None:
-               print(f"Line: {pline}")
-        else:
-            OUTLINE="Invalid PC ( %06x ) " % i
-        print(OUTLINE, file=DebugOut)
-        if (self.mb[0xff]-1 > 0):
-            for i in range(self.mb[0xff]-1):
-                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
-                print(" %04x" % (val),file=DebugOut,end="")
-            print(" ",file=DebugOut)
-            sys.stdout.flush()
-        else:
-            print("Stack Empty",file=DebugOut)
-            print("Stack Empty at %04x" % i)
-        if self.mb[0xff] > 0 and self.mb[0xff] < 255:
-            print("Invalid range for stack info: SP:%03x" % ( self.mb[0xff]-1))
-            self.mb[0xff]=0xf0
-        try:
-            termios.tcsetattr(fd, termios.TCSADRAIN, new)
-        except:
-            print("TTY Error: On No Echo", file=DebugOut)
+        global GPC, RunMode, DebugOut
 
-        print("Error Number: %s \n\tat PC:0x%04x " % (idcode, int(CPU.pc)),file=DebugOut)
-        if is_string_numeric(idcode[0:3]):
-            valid = int(idcode[0:3])
-        else:
-            valid=-1
-        if RunMode:
-            print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
-        print(new[3])
-        if not InDebugger:
+        valid = -1
+        try:
+            fd = sys.stdin.fileno()
+            new = termios.tcgetattr(fd)
+            new[3] = new[3] | termios.ECHO
+            termios.tcsetattr(fd, termios.TCSADRAIN, new)
+        except Exception as e:
+            safeprint("TTY Setup Error:", e, file=DebugOut)
+
+        try:
+            safeprint("CPU State:", file=DebugOut)
+            i = getattr(self, "pc", -1)
+            mem = getattr(self, "memspace", {})
+
+            if current_context is None:
+                safeprint("Emulator failed to startup. Code: %s" % idcode, file=DebugOut)
+                sys.exit(99)
+
+            if 0 <= i < 0xffff:
+                try:
+                    try:
+                        optcode = mem[i]
+                    except:
+                        optcode = 0
+                    P1 = self.getwordat(i+1)
+                    PI = self.getwordat(P1 & 0xfffe)
+                    PII = self.getwordat(PI)
+                    ZF = 1 if self.flags & 1 else 0
+                    NF = 1 if self.flags & 2 else 0
+                    CF = 1 if self.flags & 4 else 0
+                    OF = 1 if self.flags & 8 else 0
+                    opname = OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}"
+                    outline = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%d N%d C%d O%d" % (
+                        i, opname, P1, PI, PII, ZF, NF, CF, OF
+                    )
+                    safeprint(outline, file=DebugOut)
+                    pline = self.FindWhatLine(i)
+                    if pline is not None:
+                        safeprint(f"Line: {pline}", file=DebugOut)
+                except Exception as e:
+                    safeprint("Error printing instruction context:", e, file=DebugOut)
+            else:
+                safeprint("Invalid PC: %06x" % i, file=DebugOut)
+
+            # Dump stack if present
+            try:
+                sp = self.mb[0xff]
+                if 0 < sp < 255:
+                    for idx in range(sp - 1):
+                        val = self.mb[idx*2] + 0xff * self.mb[idx*2 + 1]
+                        safeprint(" %04x" % val, file=DebugOut, end="")
+                    safeprint(" ", file=DebugOut)
+                else:
+                    safeprint("Stack Empty or Invalid SP: %02x" % sp, file=DebugOut)
+                    self.mb[0xff] = 0xf0  # reset
+            except Exception as e:
+                safeprint("Stack dump error:", e, file=DebugOut)
+
+            # Print ID code
+            safeprint("Error Number: %s at PC:0x%04x" % (idcode, i), file=DebugOut)
+            if idcode[:3].isdigit():
+                valid = int(idcode[:3])
+        except Exception as e:
+            safeprint("Error decoding idcode:", e, file=DebugOut)
+            valid = -1
+
+        # Always try to enter the debugger if we're in dev mode
+        try:
+            safeprint("Entering debugger due to fatal error.", file=DebugOut)
+            debugger("", current_context)
+        except Exception as e:
+            safeprint("Debugger failed: %s" % e, file=DebugOut)
+            safeprint("Falling back to sys.exit(%d)" % valid, file=DebugOut)
             sys.exit(valid)
-        else:
-            print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
-            debugger("",current_context)
+
+   
+
 
     def lowbyte(self, invalue):
         invalue = int(invalue)
@@ -630,7 +658,7 @@ class microcpu:
         elif address != 0 and address <= CTPS:
             address = CTPS * 2 - (address+1) * 2
         else:
-            print("Stack Empty.",file=DebugOut)
+            safeprint("Stack Empty.",file=DebugOut)
             CPU.raiseerror("Stack Empty Fetch %04x " % address)
             return 0
         return self.mb[address]+(self.mb[address+1] << 8)
@@ -1066,7 +1094,7 @@ class microcpu:
         cmd = self.fetchAcum(0)
         if cmd == 0:
             if self.mb[0xff] > 0:
-                print("Stack: \n".join('%02x ' %
+                safeprint("Stack: \n".join('%02x ' %
                       item for item in self.mb[0:self.mb[0xff]]))
             DissAsm(self.pc, 3, self)
         if cmd == CastPrintStr:
@@ -1074,7 +1102,7 @@ class microcpu:
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
                 if c == 0:
-                    print("Odd C is zero")
+                    safeprint("Odd C is zero")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30 and c!=9 and c!=8 ):
                     sys.stdout.write("%02x" % c)
                 else:
@@ -1097,7 +1125,7 @@ class microcpu:
         if cmd == CastPrintChar:
             v = self.memspace[address]
             if (v < 31):
-                print("%c" % v)
+                safeprint("%c" % v)
             else:
                 sys.stdout.write(chr(v))
         if cmd == CastPrintStrI:
@@ -1105,7 +1133,7 @@ class microcpu:
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
                 if c == 0:
-                    print("0x0")
+                    safeprint("0x0")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
                     sys.stdout.write("%02x" % c)
                 else:
@@ -1142,7 +1170,7 @@ class microcpu:
             if context.DeviceHandle == None:
                 context.DeviceHandle = "DISK%02d.disk" % v
             try:
-#                print("Device Handle: %s set:" % context.DeviceHandle)
+#                safeprint("Device Handle: %s set:" % context.DeviceHandle)
                 context.DeviceFile = open(context.DeviceHandle, "r+b")
                 self.DiskPtr = 0
                 context.DeviceFile.seek(0,0)
@@ -1201,17 +1229,17 @@ class microcpu:
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
         if cmd == CastEnd:
-            print("\nEND of Run:(%d Opts)" % current_context.GlobalOptCnt)
+            safeprint("\nEND of Run:(%d Opts)" % current_context.GlobalOptCnt)
             sys.exit(address)
         if cmd == CastDebugToggle:
             Debug = 0 if Debug else 1
         if cmd == CastStackDump:
-            print(" %04x:Stack:(%d):%s [" %
+            safeprint(" %04x:Stack:(%d):%s [" %
                              (PrevPC,self.mb[0xff]-1,CPU.FindWhatLine(PrevPC)), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
                 val = self.mb[i*2]+((self.mb[i*2+1])<<8)
-                print(" %04x" % (val),file=DebugOut,end="")
-            print(" ]",file=DebugOut)
+                safeprint(" %04x" % (val),file=DebugOut,end="")
+            safeprint(" ]",file=DebugOut)
         if cmd == CastTapeWriteI:
             if context.DeviceHandle != None:
                 v=address
@@ -1255,7 +1283,7 @@ class microcpu:
             if int(justnum) < 65535 and int(justnum) >= -32767:
                 CPU.putwordat(address, int(justnum))
             else:
-                print("Error: %s is not valid 16 bit number" % justnum,file=DebugOut)
+                safeprint("Error: %s is not valid 16 bit number" % justnum,file=DebugOut)
                 CPU.putwordat(address, 0)
         if cmd == PollReadStrI:
             sys.stdout.flush()
@@ -1283,7 +1311,7 @@ class microcpu:
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                print("TTY Error: On No Echo",file=DebugOut)
+                safeprint("TTY Error: On No Echo",file=DebugOut)
         if cmd == PollSetEcho:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
@@ -1292,14 +1320,14 @@ class microcpu:
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                print("TTY Error: On Echo",file=DebugOut)
+                safeprint("TTY Error: On Echo",file=DebugOut)
         if cmd == PollReadCINoWait:
             c='\0'
             while True:
                 c=get_key()
             self.putwordat(address,ord(c))            
         if current_context == None:
-            print("CPU Stopped")
+            safeprint("CPU Stopped")
             return
         if cmd == PollReadSector:
             if current_context.DeviceHandle != None:
@@ -1442,7 +1470,6 @@ class microcpu:
         optcode = self.memspace[pc]
         context.GlobalOptCnt += 1
         if not (optcode in OPTLIST):
-            print(OPTLIST)
             self.raiseerror(
                 "046 Optcode %s at File %s, Address( %04x ), is invalid:" % (optcode,self.FindWhatLine(pc),pc))
         if context.Debug > 0:
@@ -1590,44 +1617,43 @@ def Str32Word(instr):
     # Support for 0x, hex, 0b for binary and Oo for ocatal as well as decimal by default
     global current_context
     result = 0
-    if type(instr) != str:
-        # Conversion doesn't make sense if instr is not a string.
-        return instr
+
+    if not isinstance(instr, str):
+        return instr        # Already numberic just return as is.
+    instr=instr.strip()
     if len(instr) < 3:
-        # Must be decimal as 0x0 is the smallest by length non decimal
-        result = int("".join(char for char in instr if char.isdigit()))
+        # Too short to have a prefix, treat a pure decimal
+        if instr.isdigit():
+            result=int(instr)
+        else:
+            CPU.raiseerror("048 Short numeric string %s is not a valid decimal value" % instr)
     else:
-        if instr[0:2] == "0x":            # Hex
-            result = validatestr(instr, 16)
-        elif instr[0:2] == "0b":          # Binary
+        prefix=instr[:2].lower()
+        if prefix == "0x":
+            result = validatestr(instr,16)
+        elif prefix == "0b":
             result = validatestr(instr, 2)
-        elif instr[0:2] == "0o":          # Octal
+        elif prefix == "0o":
             result = validatestr(instr, 8)
-        elif instr[0:1] == '"':           # Quoted text
+        elif instr[0] == '"':  # Quoted character(s)
             result = ord(instr[1:2])
-            if (len(instr) > 3):
-                result = result + (ord(instr[2:3]) << 8)
-        elif (instr[0:1].upper() >= "A" and instr[0:1].upper() <= "Z"):
+            if len(instr) > 3:
+                result += ord(instr[2:3]) << 8
+        elif instr[0].upper() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
             if instr in current_context.FileLabels:
                 result = current_context.FileLabels[instr]
             else:
-                CPU.raiseerror(
-                    "047 Use of fixed value(%s) as label before defined." % instr)
+                CPU.raiseerror("047 Use of fixed value(%s) as label before defined." % instr)
         else:
-            valid = True
-            for i in instr:
-                if (i > '9' or i < '0'):
-                    valid = False
-                    break
-            if valid:
+            if instr.isdigit():
                 result = validatestr(instr, 10)
+            elif all(c in "0123456789ABCDEFabcdef" for c in instr):
+                CPU.raiseerror("049 Ambiguous value '%s': Looks like hex, but missing 0x prefix." % instr)
             else:
-                result = 0
-                CPU.raiseerror(
-                    "048 String %s is not a valid decimal value" % instr)
-#    result = int("".join(char for char in result if char.isdigit()))
-    result = int(result) & 0xffffffff
-    return result
+                CPU.raiseerror("048 String %s is not a valid decimal value" % instr)
+
+    return int(result) & 0xffffffff
+        
 
 
 def Str2Byte(instr):
@@ -1706,7 +1732,7 @@ def DissAsm(start, length, CPU):
                     if iaddr > i and iaddr < bestmatch:
                         bestmatch=iaddr
                         bestmatchcode=name
-            print("DATA-Segment:")
+            safeprint("DATA-Segment:")
             hexdump(i,max(min(i+255,bestmatch),i+15),CPU)
 #            print("Label : %s" % bestmatchcode)
             i = bestmatch
@@ -1725,7 +1751,7 @@ def DissAsm(start, length, CPU):
                 lastad = ii
                 rstring += "SD:(%d)" % CPU.mb[0xff]
 
-        print("%s %s" % (OUTLINE, rstring),file=DebugOut)
+        safeprint("%s %s" % (OUTLINE, rstring),file=DebugOut)
     return i
 
 def reverse_lookup(my_dict):
@@ -1768,11 +1794,11 @@ def getkeyfromval(val, my_dict):
     return
 
 def hexdump(startaddr, endaddr, CPU):
-    print("Range is %04x to %04x" % (startaddr, endaddr))
+    safeprint("Range is %04x to %04x" % (startaddr, endaddr))
     i = startaddr
     header = "0  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F"
     header = header[(startaddr % 16)*3:][0:47]
-    print("       %s" % header)
+    safeprint("       %s" % header)
     while i < endaddr:
         Fstring = "%04x: " % int(i)
         sys.stdout.write(Fstring)
@@ -1786,7 +1812,7 @@ def hexdump(startaddr, endaddr, CPU):
             else:
                 sys.stdout.write("_")
         i += 16
-        print(" ")
+        safeprint(" ")
 
 # Allow use of the CPUPATH OS Enviroment variable to find library directories.
 def fileonpath(filename):
@@ -1798,7 +1824,7 @@ def fileonpath(filename):
     for testpath in CPUPATH.split(":"):
         if os.path.exists(testpath+"/"+filename):
             return testpath+"/"+filename
-    print("Import Filename error, %s not found" % (filename),file=DebugOut)
+    safeprint("Import Filename error, %s not found" % (filename),file=DebugOut)
     sys.exit(-1)
 
 
@@ -1852,7 +1878,7 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
             elif (line[i:i+1] == "P"):
                 # POP value from refrence stack...does not change newline
                 if context.Debug > 1:
-                    print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
+                    safeprint("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 if (not MacroStack):
                     CPU.raiseerror(
                         "049 Macro Refrence Stack Underflow: %s" % line)
@@ -1864,13 +1890,13 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
                 # Does not change the newline
                 MacroStack.append(context.MacroVars[context.varcntstack[context.varbaseSP]])
                 if context.Debug > 1:
-                    print("Push to MacroStack(%s,%s) Depth: %s" % (MacroStack,line[i:], len(MacroStack)),file=DebugOut)
+                    safeprint("Push to MacroStack(%s,%s) Depth: %s" % (MacroStack,line[i:], len(MacroStack)),file=DebugOut)
                 i += 1
                 continue
             elif (line[i:i+1] == "V"):
                 # Insert into newline value that top of refrence stack...do not pop it
                 if context.Debug > 1:
-                    print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
+                    safeprint("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
                     CPU.raiseerror(
                         "050 Macro Refrence Stack Underflow: %s at %s:%s" % (line,filename,context.FileLineNum))
@@ -1880,7 +1906,7 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
             elif (line[i:i+1] == "W"):
                 # Insert into newline value that is second from top of refrense stack, do not pop it.
                 if context.Debug > 1:
-                    print("Refrence second from top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
+                    safeprint("Refrence second from top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack or len(MacroStack) < 2 ):
                     CPU.raiseerror(
                         "051 Macro Refrence Stack Underflow: %s" % line)
@@ -1963,7 +1989,7 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
     # Handle quoted string
     if token.startswith('"') and token.endswith('"'):
         if JUSTRESULT:
-            print("String Values can't be modified with offsets:%s" % (token), file=DebugOut)
+            safeprint("String Values can't be modified with offsets:%s" % (token), file=DebugOut)
             return 0
         for c in token[1:-1]:
             CPU.memspace[curaddress] = ord(c)
@@ -2014,7 +2040,7 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
             curaddress += 1
         return curaddress
     elif instr.startswith('"') and JUSTRESULT:
-        print("String values can't be modified or used as numeric results", file=DebugOut)
+        safeprint("String values can't be modified or used as numeric results", file=DebugOut)
         return 0
 
     prefix, base_token, modifiers = parse_expression(instr)
@@ -2032,7 +2058,7 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
         base_mod=decode_token(mod[1:], curaddress, CPU, JUSTRESULT, context)
         # Should always be a truple but also should always be numeric.
         if base_mod[0] != "value":
-            print("Unexpected mix of strings and numbers.: %s" % (mod[1:]), file=DebugOut)
+            safeprint("Unexpected mix of strings and numbers.: %s" % (mod[1:]), file=DebugOut)
             return 0
         mod_val = base_mod[1]
         result += sign * mod_val
@@ -2076,10 +2102,10 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
     context.FileLineNum = 1
     if context.Debug > 1:
         if  context.LORGFLAG == LOCALFLAG:
-            print("LOCAL:",end="",file=DebugOut)
+            safeprint("LOCAL:",end="",file=DebugOut)
         else:
-            print("Global:",end="",file=DebugOut)
-        print("FileLoad Start: %s Addr: %04x" % (filename, offset),file=DebugOut)
+            safeprint("Global:",end="",file=DebugOut)
+        safeprint("FileLoad Start: %s Addr: %04x" % (filename, offset),file=DebugOut)
     context.ActiveFile = filename
     context.address = int(offset)
     line = "#Start"
@@ -2101,7 +2127,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
         context.MacroLine = ""
         varpos = 0
         if context.Debug > 1:
-            print("Reading Filename %s" % wfilename,file=DebugOut)
+            safeprint("Reading Filename %s" % wfilename,file=DebugOut)
         while True:
             if context.ActiveMacro and line == "":
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
@@ -2121,21 +2147,21 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     # Need to subsutute and %# that are not in quotes with varval
                     line = ReplaceMacVars(line, filename, context)
                     if context.Debug > 1:
-                        print("Expanded Macro: %s(%40s)" % (line,context.MacroLine),file=DebugOut)
+                        safeprint("Expanded Macro: %s(%40s)" % (line,context.MacroLine),file=DebugOut)
                     context.varbaseNext = context.varbaseSP
                     context.varbaseSP -= 1 if context.varbaseSP > 0 else 0
                     if PosParams == "ENDMACENDMAC":
                         # As macro's may call other macros, we need to mark in the stream where they end.
                         context.MacroLine = context.MacroLine[PosSize:]
                     if context.Debug > 1:
-                        print("End-Macro: [:]%s" % context.backfill,file=DebugOut)
+                        safeprint("End-Macro: [:]%s" % context.backfill,file=DebugOut)
                     line = line + " " + context.backfill
                     context.backfill = ""
                     context.ActiveMacro = False
                 else:
                     line = context.backfill
                     if context.Debug > 1:
-                        print("End-Macro: [:]%s" % context.backfill,file=DebugOut)
+                        safeprint("End-Macro: [:]%s" % context.backfill,file=DebugOut)
                     context.backfill = ""
                     context.ActiveMacro = False
                     continue
@@ -2147,13 +2173,13 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     context.CurrentLineBeingParsed = context.FileLineNum                    
                     while GetAnother:
 #                        if filename == "foo9.asm":
-#                            print("Line:",context.FileLineNum)
+#                            safeprint("Line:",context.FileLineNum)
                         context.FileLineNum += 1
                         context.UniqueLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
                         if context.Debug > 1 and context.SkipBlock == 0:
-                            print("%s:%s> %60s:%2d" % (wfilename,str(context.FileLineNum),inline,context.SkipBlock), file=DebugOut)
+                            safeprint("%s:%s> %60s:%2d" % (wfilename,str(context.FileLineNum),inline,context.SkipBlock), file=DebugOut)
 
 #                        print("Inserting Label: Filename: %s, %d, %04x" % (filename,context.CurrentLineBeingParsed, context.address))
 #                        if context.address not in context.AddressedLinesSeen:
@@ -2171,18 +2197,18 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                             ExitOut = True
                             break
                     if context.Debug > 1 and context.SkipBlock == 0:
-                        print("%04x: %s:%2d" % (context.address, line,context.SkipBlock),file=DebugOut)
+                        safeprint("%04x: %s:%2d" % (context.address, line,context.SkipBlock),file=DebugOut)
                     if ExitOut:
                         break
             line = removecomments(line).strip()
             if context.Debug > 1:
                 if context.ActiveMacro == False and context.SkipBlock == 0:
-                    print("%04x: %s> %s" % (context.address, context.FileLineNum, line),file=DebugOut)
+                    safeprint("%04x: %s> %s" % (context.address, context.FileLineNum, line),file=DebugOut)
                 elif context.SkipBlock == 0:
-                    print("%04x: M-%s> %s : %s" %
+                    safeprint("%04x: M-%s> %s : %s" %
                           (context.address, context.FileLineNum, line, context.MacroLine[:16]),file=DebugOut)
                 else:
-                    print("Skip.%s(%s)," % (filename, line[:5]),file=DebugOut,end="")
+                    safeprint("Skip.%s(%s)," % (filename, line[:5]),file=DebugOut,end="")
 
             if context.SkipBlock != 0:                
                 while (line != ""):
@@ -2214,7 +2240,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 line = line[8:]
                 continue
 #            if context.FileLineNum == 212 and filename == "tests/forth.asm":
-#               print("Break here:%s:",filename)            
+#               safeprint("Break here:%s:",filename)            
             if len(line) > 0:
                 IsOneChar = False
                 if len(nextword(line)[0]) == 1:
@@ -2259,7 +2285,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         context.backfill = line[cpos:] + " " + context.backfill
                         line = ""
                     else:
-                        print("Missing: ", macname,file=DebugOut)
+                        safeprint("Missing: ", macname,file=DebugOut)
                         CPU.raiseerror(
                             "054  Macro %s is not defined" % (macname))
                 # Here is were we start the 'switch case' looking for commands.
@@ -2268,7 +2294,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     (key, size) = nextword(line[1:])
                     newitem = IsLocalVar(key, context)
                     if context.Debug >1:
-                        print(">>> adding %s at location %s with name: %s" %
+                        safeprint(">>> adding %s at location %s with name: %s" %
                               (newitem, hex(context.address),IsLocalVar(newitem,  context)),file=DebugOut)
 
                     context.FileLabels.update({newitem:context.address})
@@ -2301,7 +2327,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     if (not (value[0:len(value)].isdecimal())):
                         value = DecodeStr(value, context.address, CPU, True, context)
                     newitem=IsLocalVar(key, context)
-#                    print("Setting Fixed Value: %s to %s: %s:line: %s(%s)\n" % ( newitem, value, filename,line, context.FileLineNum))
+#                    safeprint("Setting Fixed Value: %s to %s: %s:line: %s(%s)\n" % ( newitem, value, filename,line, context.FileLineNum))
                     context.FileLabels.update({newitem: value})
                     UpdateVarHistory(newitem,value,context.address)
                     line = line[size:]
@@ -2366,7 +2392,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                             nline=f"{nline} {word.strip()}:{PosVar} "
                         else:
                             nline=f"{nline} {word.strip()} "
-                    print("%04x: %s" % (context.address, nline),file=DebugOut)
+                    safeprint("%04x: %s" % (context.address, nline),file=DebugOut)
                     line = ""
                     continue
                 elif line[0] == "!" and IsOneChar:    # If Macro does NOT exist, then eval until matching ENDBLOCK
@@ -2510,7 +2536,7 @@ def debugger(passline, context: AssemblerContext):
         sys.stdout.flush()
         if len(passline) != 0:
             # passline is a way debugger can be called and process some fixed commands before returning to user inputed commands.
-            print("processing %s\n" % passline)
+            safeprint("processing %s\n" % passline)
             cmdline=passline[0]
             passline=passline[1:]
         else:
@@ -2521,7 +2547,7 @@ def debugger(passline, context: AssemblerContext):
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                print("TTY Error: On Echo On")
+                safeprint("TTY Error: On Echo On")
         # To file redirection from 'scipted debug files' we also allow possible comments in those files.
         cmdline = removecomments(cmdline).strip()
         if cmdline != "":
@@ -2544,7 +2570,7 @@ def debugger(passline, context: AssemblerContext):
                     varval = FindHistoricVal(thisword, CPU.pc, context)
                     arglist.append(varval)
                     argcnt += 1
-                    print("%s found: %04x" % (thisword, varval))
+                    safeprint("%s found: %04x" % (thisword, varval))
                 else:
                     varval = FindLabelMatch(thisword, context)
                     if varval != None:
@@ -2586,14 +2612,14 @@ def debugger(passline, context: AssemblerContext):
                 else:
                     startrange = CPU.pc
                 stoprange = startrange+42
-            print("Range of DissAsmby %04x - %04x" % ( startrange, stoprange))
+            safeprint("Range of DissAsmby %04x - %04x" % ( startrange, stoprange))
             stoprange = DissAsm(startrange, stoprange - startrange, CPU)
             continue
         if cmdword == "ps":
             if (CPU.mb[0xff] == 0):
-                print("Empty Stack")
+                safeprint("Empty Stack")
                 continue
-            print("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
+            safeprint("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
             for i in range(0, min(CPU.mb[0xff]*2, 64), 2):
                 v = CPU.mb[i] + (CPU.mb[i+1] << 8)
                 SInfo = "%04x:" % v
@@ -2602,7 +2628,7 @@ def debugger(passline, context: AssemblerContext):
                     SInfo = SInfo+"[[%0x]]" % CPU.getwordat(CPU.getwordat(v))
                 else:
                     SInfo = SInfo + "[*]"
-                print(SInfo)
+                safeprint(SInfo)
                 continue
         if cmdword == "p":
             if argcnt > 0:
@@ -2637,9 +2663,9 @@ def debugger(passline, context: AssemblerContext):
                            SInfo += "%c" % c
                        else:
                            SInfo += "_"
-                   print(SInfo)
+                   safeprint(SInfo)
             else:
-                print("ERR: Need to specify what to print")
+                safeprint("ERR: Need to specify what to print")
                 continue
         if cmdword == "pa":
             if argcnt > 0:
@@ -2655,7 +2681,7 @@ def debugger(passline, context: AssemblerContext):
                 # Add each filtered label to the table
                 for key, value in filtered_labels.items():
                     table += f"| {key} | {int(value):04x} |\n"
-                print(table)
+                safeprint(table)
 
             continue
         if cmdword == "m":
@@ -2752,7 +2778,7 @@ def debugger(passline, context: AssemblerContext):
                                     L=("",0)
                                     continue
                                 except:
-                                    print("Input %s not valid" % cmdline)
+                                    safeprint("Input %s not valid" % cmdline)
                                     cmdline=""
                                 L=("",0)
                                 continue
@@ -2768,13 +2794,13 @@ def debugger(passline, context: AssemblerContext):
             if argcnt > 0 or len(rawlist) > 0:
                 tresult = CPU.FindAddressLine(rawlist[0])
                 if tresult is None:
-                    print("Start line not valid or is ambiguous: %s" % rawlist[0])
+                    safeprint("Start line not valid or is ambiguous: %s" % rawlist[0])
                 else:
                     (_, _, startaddr)=tresult
                 if argcnt > 1:
                     tresult=CPU.FindAddressLine(rawlist[1])
                     if tresult == None:
-                        print("End Line is not valid or is ambiguous: %s" % rawlist[1])
+                        safeprint("End Line is not valid or is ambiguous: %s" % rawlist[1])
                     else:
                         (_, _, stopaddr)=tresult
             else:
@@ -2794,7 +2820,7 @@ def debugger(passline, context: AssemblerContext):
 
                 DissAsm(startaddr, stopaddr - startaddr, CPU)
             else:
-                print("Unable to disassemble; start or end address not resolved.")
+                safeprint("Unable to disassemble; start or end address not resolved.")
             continue
         if cmdword == "hex":
             if argcnt > 0:
@@ -2808,7 +2834,7 @@ def debugger(passline, context: AssemblerContext):
                         stopv = startv + stopv + 1
                 hexdump(startv, stopv, CPU)
             else:
-                print("ERR: Need to specify what to print")
+                safeprint("ERR: Need to specify what to print")
                 continue
         if cmdword == "hexi":
             if argcnt > 0:
@@ -2822,7 +2848,7 @@ def debugger(passline, context: AssemblerContext):
                         stopv = startv + stopv + 1
                 hexdump(startv, stopv, CPU)
             else:
-                print("ERR: Need to specify what to print")
+                safeprint("ERR: Need to specify what to print")
                 continue
         if cmdword == "n":
             stepcnt = 1
@@ -2833,7 +2859,7 @@ def debugger(passline, context: AssemblerContext):
                 CPU.evalpc(context)
                 DissAsm(CPU.pc, 1, CPU)
                 if CPU.pc in breakpoints or CPU.pc in tempbreakpoints:
-                    print("Break Point %04x" % CPU.pc)
+                    safeprint("Break Point %04x" % CPU.pc)
                     if CPU.pc in tempbreakpoints:
                         tempbreakpoints.remove(CPU.pc)
                     break
@@ -2849,7 +2875,7 @@ def debugger(passline, context: AssemblerContext):
                 CurrentAddress += 1
                 NewLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
             if NewLine <= CurrentLine:
-                print("Could not find good match, set breakpoint manually near %04x" % OriginalAddress)
+                safeprint("Could not find good match, set breakpoint manually near %04x" % OriginalAddress)
             else:            
                 tempbreakpoints.append(CurrentAddress)
                 cmdword = "c"    # Continue the code.
@@ -2859,7 +2885,7 @@ def debugger(passline, context: AssemblerContext):
             AtLeastOne = 1
             while CPU.pc <= 0xffff:
                 if (CPU.pc in breakpoints or CPU.pc in tempbreakpoints) and AtLeastOne != 1:
-                    print("Break Point %04x" % CPU.pc)
+                    safeprint("Break Point %04x" % CPU.pc)
                     if ( CPU.pc in tempbreakpoints):
                         tempbreakpoints.remove(CPU.pc)
                     DissAsm(CPU.pc, 1, CPU)
@@ -2872,22 +2898,22 @@ def debugger(passline, context: AssemblerContext):
             if argcnt < 1:
                 CPU.pc = context.Entry
                 CPU.mb[0xff] = 0
-                print("PC set to %0x4" % context.Entry)
+                safeprint("PC set to %0x4" % context.Entry)
                 CPU.flags = 0
             else:
                 CPU.pc = arglist[0]
-                print("PC set to %04x" % arglist[0])
+                safeprint("PC set to %04x" % arglist[0])
             CPU.flags = 0
             CPU.mb[0xff] = 0
             continue
         if cmdword == "g":
             stoprange = 0
             if argcnt < 1:
-                print("Need to provide an address to go to.")
+                safeprint("Need to provide an address to go to.")
                 cmdword = "Null"
                 continue
             CPU.pc = arglist[0]
-            print("PC set to %04x" % arglist[0])
+            safeprint("PC set to %04x" % arglist[0])
             continue
         if cmdword == "tb":
             if argcnt < 1:
@@ -2899,31 +2925,31 @@ def debugger(passline, context: AssemblerContext):
         if cmdword == "b":
             if argcnt < 1:
                 if len(breakpoints) == 0:
-                    print("No break points set")
+                    safeprint("No break points set")
                 else:
-                    print("Break Points:")
+                    safeprint("Break Points:")
                     for ii in breakpoints:
-                        print("%04x" % int(ii))
+                        safeprint("%04x" % int(ii))
                 if len(tempbreakpoints) != 0:
                     for ii in tempbreakpoints:
-                        print("Temp Break:%04x" % ii)
+                        safeprint("Temp Break:%04x" % ii)
             else:
                 for ii in arglist:
                     breakpoints.append(ii)
             continue
 
         if cmdword == "cb":
-            print("Clearing Breakpoints")
+            safeprint("Clearing Breakpoints")
             breakpoints = []
             continue
         if cmdword == "w":
             if argcnt < 1:
-                print(context.watchwords)
+                safeprint(context.watchwords)
             else:
                 for ii in arglist:
                     context.watchwords.append(Str2Word(ii))
         if cmdword == "cw":
-            print("Clearing watchs")
+            safeprint("Clearing watchs")
             context.watchwords.clear()
 
         if cmdword == "L":
@@ -2941,7 +2967,7 @@ def debugger(passline, context: AssemblerContext):
                 context.ActiveFile = oldfilename
                 context.FileLineNum = HoldGlobeLine
             else:
-                print("File: %s Not found" % ii)
+                safeprint("File: %s Not found" % ii)
             continue
         if cmdword == "I":
             if argcnt < 1:
@@ -2958,20 +2984,20 @@ def debugger(passline, context: AssemblerContext):
                 context.ActiveFile = oldfilename
                 context.FileLineNum = HoldGlobeLine
             else:
-                print("File: %s Not found" % ii)
+                safeprint("File: %s Not found" % ii)
             continue
         if cmdword == "q":
-            print("End Debugging.")
+            safeprint("End Debugging.")
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
             new[3] = new[3] | termios.ECHO          # lflags
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                print("TTY Error: On No Echo")
+                safeprint("TTY Error: On No Echo")
             sys.exit(0)
         if cmdword == "h":
-            print("""
+            safeprint("""
 Debug Mode Commands:
 b - break points        c - continue [ $1 steps ]
 cb - clear breakpoints  d - DissAsm $1 $2
@@ -3034,7 +3060,7 @@ def main():
             skipone = False
             if prpcmd == 1:
                 current_context.watchwords.append(Str2Word(arg))
-                print("New Watchwords %s" % (current_context.watchwords))
+                safeprint("New Watchwords %s" % (current_context.watchwords))
             if prpcmd == 2:
                 breakafter.append(Str2Word(arg))
             if prpcmd == 3:
@@ -3049,7 +3075,7 @@ def main():
                 DebugOut=sys.stdout
             elif arg == "-c":
                 OptCodeFlag = True
-                print("Optcode flag set")
+                safeprint("Optcode flag set")
             elif arg == "-O":
                 BinaryOutFlag = True
             elif arg == "-w":
@@ -3066,7 +3092,7 @@ def main():
             elif arg == "-r":
                 context.Remote = not (context.Remote)
             elif arg == "-h":
-                print("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
@@ -3086,7 +3112,7 @@ def main():
             loadfile("common.mc", maxusedmem, CPU, GLOBALFLAG, "common.mc",  context)        
         UseDebugger = True
     if context.Remote:
-        print("RDB running on port 4444, use nc localhost 4444")
+        safeprint("RDB running on port 4444, use nc localhost 4444")
         rpdb.set_trace()
     if OptCodeFlag:
         # Write the 'compiled' code as a hex dump file.
@@ -3145,7 +3171,7 @@ def main():
                 break
             limiter -= 1
         filler = 0x100 - (limiter % 0x100)
-        print("Writeing Binary Output from %s with spacer of %s" %
+        safeprint("Writeing Binary Output from %s with spacer of %s" %
               (limiter, filler))
         for i in range(0, limiter):
             cval = ((CPU.memspace[i]) & 0xff)
@@ -3159,9 +3185,9 @@ def main():
     RunMode = True
     CPU.pc = context.Entry
     if context.Debug > 1:
-        print("Start of Run: Debug: %s: Watch: %s" % (context.Debug, context.watchwords))
+        safeprint("Start of Run: Debug: %s: Watch: %s" % (context.Debug, context.watchwords))
     if ListOut:
-        print("-------0--Max:%04x------" % (maxusedmem),file=DebugOut)
+        safeprint("-------0--Max:%04x------" % (maxusedmem),file=DebugOut)
         DissAsm(0, maxusedmem, CPU)
     elif UseDebugger:
         debugger(firstcmd,context)
@@ -3178,6 +3204,6 @@ if __name__ == '__main__':
     try:
         termios.tcsetattr(fd, termios.TCSADRAIN, new)
     except:
-        print("TTY Error: On No Echo")
+        safeprint("TTY Error: On No Echo")
 
 #    cProfile.run('main()')

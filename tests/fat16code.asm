@@ -28,10 +28,6 @@ G ReadSector
 
 
 ###############################################################
-# Common Storage
-:Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0 :Var07 0 :Var08 0
-:Var09 0 :Var10 0 :Var11 0 :Var12 0 :Var13 0 :Var14 0 :Var15 0 :Var16 0
-#########
 # Key Varaibale used by current active Disk.
 :MainHeapID 0
 :activeDisk -1         # This is set -1 because there a real chance first disk used might be '0'
@@ -78,7 +74,7 @@ G ReadSector
 # ReadSectorWorker(FP,LogicalSector):HWSector
 #                                  Converts a logical sector into actual hardware sector number
 # ReadSector(FP,Index,Buffer):int  Reads sector logicla offset Index, into predefined buffer. int < 512 means EOF
-# FatSectorFromCluster(ClusterIn): Reads the FAT table for ClusterIn and returns 1st sector of Next Cluster. (or 0xfffx)
+# NextClusterFromCluster(ClusterIn): Reads the FAT table for ClusterIn and returns 1st sector of Next Cluster. (or 0xfffx)
 # FSeek(FP,IndexPtr):[0|1]         Searches for location within file. IndexPtr is ptr to 32 bit value.
 # Read_worker2(Type,FP,Size,Buffer):[0|bytesread]
 #                                  Type=1 means read Size bytes into exiting Buffer
@@ -743,6 +739,7 @@ ENDBLOCK
 
 #####################################################
 # Function str2filename(FilePart):Heap Object 12 byte space padded FileName format
+# Turns ASCIIZ string into space padded fixed 12 byte string (12th byte is zero)
 :str2filename
 @PUSHRETURN
 @LocalVar FilePart 01
@@ -820,7 +817,7 @@ ENDBLOCK
 
 #####################################################
 # Function SplitPath(filepath):(outarray, numentries)
-# Local String
+# Split a possible multi directory path "Foo\Bar\Kat" into pointer array of strings
 :Divider "/\0"
 :SplitPath
 @PUSHRETURN
@@ -839,6 +836,7 @@ ENDBLOCK
    
 #################################################
 # Function HexDump(address, length)
+# Hex Dump debug function. 
 :HexDump
 @PUSHRETURN
 @LocalVar Start 01
@@ -934,6 +932,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 
 #######################################################
 # Function FPrintFPInfo
+# Prints table of FP fields
 :FPrintFPInfo
 @PUSHRETURN
 @LocalVar InFP 01
@@ -1024,6 +1023,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 
 ####################################################
 # Function Sector2Cluster(sectorid):cluster
+# Identifies the Cluster a given sector falls in (rounding down)
 :Sector2Cluster
 @PUSHRETURN
 @LocalVar SectorIn 01
@@ -1166,7 +1166,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
          @PUSHI SearchSector     # We may have to dec this so it points to previous FAT.
          @SUB 1
          @CALL Sector2Cluster
-         @CALL FatSectorFromCluster  # Does the work of searching the FAT table for next sector.
+         @CALL NextClusterFromCluster  # Does the work of searching the FAT table for next sector.
          @POPI SearchSector
       @ELSE
          # Still in Cluster, just move to next sector.
@@ -1292,9 +1292,9 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @POPRETURN
 @RET
 ############################################
-# Function FatSectorFromCluster(ClusterIn)
+# Function NextClusterFromCluster(ClusterIn)
 # Gien a Cluster number, query the FAT table for the next cluster.
-:FatSectorFromCluster
+:NextClusterFromCluster
 @PUSHRETURN
 @LocalVar ClusterIN 01
 @LocalVar ByteOffset 02
@@ -1622,6 +1622,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @RET
 ################################################
 # Function ReadBuffer(FP,Size,Buffer)
+# Reads user defined (max 16bit 64K size) Block date into buffer from current insertion point
 :ReadBuffer
 @PUSHRETURN
 @LocalVar FP 01
@@ -1662,6 +1663,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 @RET
 ################################################
 # Function DeleteFile(FP):SuccessCode
+# Not yet implmented.
 :DeleteFile
 :DeleteFileFP
 @PRT "Not yet implimented.\n"
@@ -2137,6 +2139,7 @@ M NibbleHexS @ADD "0\0" @IF_GT_A "9\0" @ADD 7 @ENDIF @PRTCHS
 :LastFatBuffer -1
 ###################################################
 # Function StoreFat(Cluster,Value)
+# Saves Cluster# at 
 :StoreFat
 @PUSHRETURN
 @LocalVar Cluster 01

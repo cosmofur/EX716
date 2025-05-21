@@ -3,7 +3,18 @@ I common.mc
 L string.ld
 L heapmgr.ld
 L softstack.ld
-
+############################################################
+#  EX716 Forth
+#
+# Built in words: from 
+#
+#  ".": Print top           ":": Define Word         ";": End Define
+#  "@": Fetch Memory addr   "!": Store at addr       "sp@": Get SP
+#  "rp@": Get Return RP     "-=": -1 top stack       "+": Add
+#  "nand": NAND             "exit:: (resume?)        "tib": Fetch TIB variable
+#  "STATE": Fetch STATE     ">in": Read Text In      "HERE": Fetch HERE
+#  "latest": Last Def Word  "key": Read Key          "emit": Print 1 char
+# ----------------------------------------------
 
 @JMP Main     # Make sure if we drop here from unexpected early jump, we still make it to Main.
 
@@ -13,7 +24,8 @@ L softstack.ld
 :TIB 0
 :TV 0
 :MainHeap 0
-:HERE 0
+:HEREPTR 0
+:DictPtr 0
 :COMPILEBUFFER 0
 :INPUTBUFFER 0
 :STATE 0
@@ -63,7 +75,8 @@ M BPUSH @PUSHI RP @POPS \
 #    Of Pops BP(tos) to HW(tos)
 M BPOP @PUSHI RP @ADD 2 @DUP \
        @POPI RP \
-       @PUSHS       
+       @PUSHS
+M FCALL @PUSH J_%0 @BPUSH @JMP %1 :J_%0
 
 # Macro Defines a Dictionary entry, 3 required arguments "String" Label Flags (must be 0 if not used)
 # First create label named "Word_%2" value is address of previous WORD/LINK
@@ -80,15 +93,45 @@ M DEFWORD :Word_%2 \
           :%2
 
 M NEXT @JMP next
+# . ( -- )        Print integer at top of stack
+@DEFWORD "." PRTDOT 0
+@FPOP
+@PRTTOP @PRTNL
+@FPUSH
+@NEXT
+
+# Major work horse create new Words
+@DEFWORD ":" COLON_DEV F_IMMEDIATE
+@PUSHI TIB
+@CALL GetNextWord
+@IF_ZERO
+   @PRTLN "Error: Missing content"
+   @POPNULL
+@ELSE
+   # Move TIB down input string, but also preserve current stack.
+   @DUP @POPI TIB
+   @CALL CreateHeader   # Builds dictionary Entry
+   @FCALL HERE
+   @FPOP
+   @POPI DictPtr
+   @MA2V 1 STATE
+   @NEXT
+@ENDIF
 #
 # @ (addr -- x)   Fetch memory at addr
-# Start the built in words at 0x200
-
 @DEFWORD "@" FETCH 0
 @FPOP
 @PUSHS
 @FPUSH
 @NEXT
+#
+# Every ":" needs ";" to end the compile mode.
+@DEFWORD ";" SEMICOLON_DEV F_IMMEDIATE
+@PUSH EXIT        # End decleration with call to exit
+@CALL Compile
+@MA2V 0 STATE     # End Compile Mode
+@NEXT
+
 
 #
 # ! ( x addr -- )    Store x at addr
@@ -166,11 +209,11 @@ M NEXT @JMP next
 @PUSHI TOIN
 @FPUSH
 @NEXT
-
-
-
-
-
+#
+@DEFWORD "HERE" HERE 0
+@PUSHI HEREPTR
+@FPUSH
+@NEXT
 
 @DEFWORD "latest" LATESTVAR 0
 @PUSHII LATEST
@@ -198,7 +241,64 @@ M NEXT @JMP next
 @NEXT
 
 
+#####################
+# Function CreateHeader
+# Modifies 'LATEST' to point to a new Word Definiation and allocates space for it.
+:CreateHeader
+@PUSHRETURN
+@LocalVar NameStart 01
+@LocalVar NameEnd 02
+@LocalVar NameLen 03
+@LocalVar TmpHerePtr 04
+@LocalVar Index01 05
+@POPI NameEnd
+@POPI NameStart
+#
+# Compute length
+# NameLen=NameEnd - NameStart
+@PUSHI NameEnd @SUBI NameStart @POPI NameLen
+#
+# Get Current HerePtr
+@MV2V HEREPTR TmpHerePtr
+#
+# Store LINK at head of new Word
+# Memory[HerePtr]=LATEST; HerePtr += 2
+@PUSHI LATEST
+@POPII TmpHerePtr
+@INC2I TmpHerePtr
+#
+# Save Flags and Length (current flags always zero?)
+@PUSHI NameLen          ## ?? Might want to sub 1 here.
+@SUB 1
+@POPII TmpHerePtr
+@INCI TmpHerePtr
+#
+@ForIA2V Index01 0 NameLen
+  @PUSHII NameStart @AND 0xff
+  @POPII TmpHerePtr
+  @INCI TmpHerePtr
+  @INCI NameStart
+@Next Index01
+#
+# Old HEREPTR should have spot where the LATEST should now point to.
+@PUSHI HEREPTR
+@POPI LATEST
+#
+# Now move HEREPTR to next free memory
+@MV2V TmpHerePtr HEREPTR
+#
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
 
+
+
+
+  
 
 
 
@@ -219,12 +319,12 @@ M NEXT @JMP next
 @PUSH ENDOFCODE @PUSH 0xf800 @SUB ENDOFCODE
 @CALL HeapDefineMemory
 @POPI MainHeap
-@PRT "\nBefore Setup:\n" @PUSHI MainHeap @CALL HeapListMap
+#@PRT "\nBefore Setup:\n" @PUSHI MainHeap @CALL HeapListMap
 @PUSHI MainHeap @PUSH SoftHeapSize
 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 219" @END @ENDIF
 @DUP @ADD SoftHeapSize @SWP
 @CALL SetSSStack
-@PRT "\nAfter Stack Setup:\n" @PUSHI MainHeap @CALL HeapListMap
+#@PRT "\nAfter Stack Setup:\n" @PUSHI MainHeap @CALL HeapListMap
 @PUSHI MainHeap @PUSH InputBufferSize
 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 223" @END @ENDIF
 @POPI INPUTBUFFER
@@ -237,8 +337,8 @@ M NEXT @JMP next
 @PUSHI MainHeap @PUSH CodeBufferSize
 @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 232" @END @ENDIF
 @POPI COMPILEBUFFER
-@MV2V COMPILEBUFFER HERE
-@PRT "\nAfter Setup:\n" @PUSHI MainHeap @CALL HeapListMap
+@MV2V COMPILEBUFFER HEREPTR
+#@PRT "\nAfter Setup:\n" @PUSHI MainHeap @CALL HeapListMap
 #
 @PUSHI RP0 @ADD RP0Size @SUB 2 @POPI RP
 @PUSHI SP0 @ADD SP0Size @SUB 2 @POPI SP
@@ -258,14 +358,39 @@ M NEXT @JMP next
 
 @PUSHII instr @AND 0xff
 @WHILE_NOTZERO        #Skip any starting white-space
-   @IF_EQ_A " \0"
+   @SWITCH
+   @CASE " \0"
       @INCI instr
       @POPNULL
       @PUSHII instr @AND 0xff
-   @ELSE
+      @CBREAK
+   @CASE "(\0"      # Skip forward until ")" or 0
+      @POPNULL
+      @INCI instr
+      @PUSHII instr @AND 0xff
+      @WHILE_NOTZERO
+         @IF_EQ_A ")\0"    # End of Comment
+            @POPNULL
+            @INCI instr
+            @PUSH 0
+         @ELSE
+            # Anything else is part of comment.
+            @POPNULL
+            @INCI instr
+            @PUSHII instr @AND 0xff
+         @ENDIF
+      @ENDWHILE
+      # If we get here, then we've exited the comment and
+      # instr is pointing at either a zero or whatever follows the comment.
+      # If it happens to be a space, this will just continue the whitespace skipping.
+      @PUSHII instr @AND 0xff
+      @CBREAK
+   @CDEFAULT
+      # Handle cases of neither comment or space, drop out of skip whitepace loop
       @POPNULL
       @PUSH 0
-   @ENDIF
+      @CBREAK
+   @ENDCASE
 @ENDWHILE
 @POPNULL
 @PUSHII instr @AND 0xff
@@ -331,13 +456,17 @@ M NEXT @JMP next
 @LocalVar FlagVal 04
 
 # Zero out first word so first call to parse will always be null
-:Break01
 @MV2V INPUTBUFFER TIB
 @PUSH 0 @POPII TIB
 # Start Loop
 @PUSH 0
+@PRT "Start of Interpreter:"
+@CALL DumpDictionary
+@PRTNL
 @WHILE_ZERO
-    @PRT "Main Loop: " @PRTSI TIB @PRTNL
+#    @PRT "Main Loop: " @PRTSI TIB @PRTNL
+    @CALL DumpDictionary
+    :Break01
     @PUSHI TIB
     @CALL GetNextWord
     @IF_ZERO
@@ -366,7 +495,7 @@ M NEXT @JMP next
        @ELSE
           # Null Entry means unknown word, handle as error.
           @POPNULL
-          @PUSH "Unknown Word.(" @PRTSI WordVal @PRT ")\n"
+          @PRT "Unknown Word.(" @PRTSI WordVal @PRT ")\n"
           @MV2V INPUTBUFFER TIB
           @PUSH 0 @POPII TIB
           @JMP InterContinue
@@ -447,7 +576,7 @@ M NEXT @JMP next
    @PUSHI Entry @ADD 2 @PUSHS @AND LENMASK  # mem[Entry+2] & LENMASK
    @IF_EQ_V NameLength      
       # words are at least same length. Do strcmp
-      @PRT "CMPing " @PUSHII NameStart @PRTHEXTOP @POPNULL @PRT " <> " @PUSHI Entry @ADD 3 @PUSHS @PRTHEXTOP @POPNULL @PRTNL
+#      @PRT "CMPing " @PUSHII NameStart @PRTHEXTOP @POPNULL @PRT " <> " @PUSHI Entry @ADD 3 @PUSHS @PRTHEXTOP @POPNULL @PRTNL
       @POPNULL
       @PUSHI Entry @ADD 3
       @PUSHI NameStart
@@ -494,8 +623,8 @@ M NEXT @JMP next
 # Function: execute
 :execute
 @BPUSH        # Save Reuturn the RP Stack
-@PRT "Exec: " @PRTHEXTOP
-@CALL DebugStacks
+#@PRT "Exec: " @PRTHEXTOP
+#@CALL DebugStacks
 # Whats on TOS should be address of Word code.
 @JMPS
 
@@ -503,11 +632,10 @@ M NEXT @JMP next
 #######################################
 # Function Compile
 :Compile
-@FPOP
-@PUSHI HERE                # Get value of HERE (i.e., compile address)
-@SWP                       # Stack = [addr, value]
+@SWP                       # Move Return Address to sft
+@PUSHI DictPtr             # Get where to insert.
 @POPS                      # Store value at addr
-@INC2I HERE
+@INC2I DictPtr
 @RET
 
 #######################################
@@ -540,6 +668,43 @@ M NEXT @JMP next
 @RestoreVar 01
 @POPRETURN
 @RET
+#######################################
+# Function DumpDictionary
+:DumpDictionary
+@PUSHRETURN
+@LocalVar Index1 01
+@LocalVar NamePtr 02
+@LocalVar LastByte 03
+@LocalVar HoldOld 04
 
+@MV2V LATEST Index1
+@PRT "LATEST:" @PRTHEXI LATEST @PRT ":"
+@PUSHI Index1
+@WHILE_NOTZERO
+   @POPNULL
+   @PRT "@" @PRTHEXI Index1 @PRT "="
+   @PUSHI Index1 @ADD 3
+   @POPI NamePtr
+   @PUSHI Index1 @ADD 2
+   @PUSHS @AND LENMASK
+   @ADDI Index1 @ADD 3 @POPI HoldOld
+   @PUSHII HoldOld @POPI LastByte
+   @PUSHII HoldOld @AND 0xff00 @POPII HoldOld
+   @PRT "'"
+   @PRTSI NamePtr @PRT "'>"
+   @PUSHI LastByte @POPII HoldOld
+   @PUSHII Index1
+   @PRTHEXTOP @PRT ", "
+   @POPI Index1
+   @PUSHI Index1
+@ENDWHILE
+@POPNULL
+@PRTNL
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
 :ENDOFCODE
 . Main
