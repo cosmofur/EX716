@@ -1,13 +1,12 @@
 I common.mc
 L lmath.ld
-:Var1 0 0
 :Var1Ptr Var1
-:Var2 0 0
-:Var2Ptr Var2
-:Var3 0 0
-:Var3Ptr Var3
-:Var4 0 0
-:Var4Ptr Var4
+:Var2Ptr Var3
+:Var3Ptr Var5
+:Var4Ptr Var7
+=Var2 Var3
+=Var3 Var5
+=Var4 Var7
 
 :Main . Main
 @PRT " 100 / 4 = "

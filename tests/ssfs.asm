@@ -72,11 +72,6 @@ M SSFSDefined
 :ADTInUse 0              # Count of how many are in use.
 :ADTActive 0             # Porinter to ADT entry that is active
 #######
-# Register table
-:Var01 0 :Var02 0 :Var03 0:Var04 0 :Var05 0 :Var06 0
-:Var07 0 :Var08 0 :Var09 0:Var10 0 :Var11 0 :Var12 0
-:Var13 0 :Var14 0 :Var15 0:Var16 0 :Var17 0 :Var18 0
-
 ########################
 #      Set up Global entry points
 G SSFSInitSystem

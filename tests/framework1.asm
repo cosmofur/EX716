@@ -5,8 +5,6 @@ L heapmgr.ld
 #
 #
 # Dynamic Variables
-:Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0
-:Var07 0 :Var08 0 :Var09 0 :Var10 0 :Var11 0 :Var12 0
 # Static Variables
 :MainHeapID 0
 :RootObject 0

@@ -12,9 +12,9 @@ M SetVal @CALL SetVal
 #
 #
 =Constant 0x100
-:Var1 0x1001
-:Var2 0x2002
-:Var3 0x3003
+@MA2V 0x1001 Var1
+@MA2v 0x2002 Var2
+@MA2V 0x3003 Var3
 :Ref1 Var1
 :Ref2 Var2
 :Ref3 Var3

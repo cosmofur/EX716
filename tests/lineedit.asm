@@ -8,10 +8,6 @@ M LocalVar = %1 Var%2 @PUSHLOCALI Var%2
 M RestoreVar @POPLOCAL Var%1
 M StatusPrint @PUSH 1 @PUSH 23 @CALL WinCursor
 #################################################
-# Shared Variables
-:Var01 0 :Var02 0 :Var03 0 :Var04 0 :Var05 0 :Var06 0 :Var07 0 :Var08 0 :Var09 0
-:Var10 0 :Var11 0 :Var12 0 :Var13 0 :Var14 0 :Var15 0 :Var16 0
-##################################################
 # Function SimRead
 # EachCall will send next byte in message until null.
 :SimIndex 0
