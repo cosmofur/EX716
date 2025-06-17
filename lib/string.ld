@@ -7,7 +7,7 @@ L softstack.ld
 L heapmgr.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
 G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok G splitstr G SplitDelete
-G strUpCase G strLowCase
+G strUpCase G strLowCase G HexDump
 
 #
 # Some 'String' Macros
@@ -507,7 +507,7 @@ M STRSTACK \
    @PUSHII StrPtrA @AND 0xff
    @IF_EQ_A "-\0"
       @PUSH 1
-      @INCI StrPtrA
+#      @INCI StrPtrA
    @ELSE
       @IF_EQ_A "+\0"
          @PUSH 1
@@ -1184,5 +1184,11 @@ M STRSTACK \
 @POPLOCAL Var01
 @POPRETURN
 @RET
+
+? HEXDUMP
+# We only include this code if HEXDUMP is defined, otherwise we save space by not using it.
+G HexDump
+@RET
+
 
 ENDBLOCK

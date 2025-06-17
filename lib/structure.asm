@@ -153,18 +153,19 @@ M IF_LE_V \
   :_%0_True
 # IF_GE_S will A(SFT) >= B(TOS)
 M IF_GE_S \
-   @SWP @CMPS @SWP \
-   @JMPN  _%0_True \
+   %S \
+   @CMPS \
    @JMPZ _%0_True \
-   %S @JMP _%V_ENDIF \
+   @JMPN _%V_ENDIF \
    :_%0_True
 # True if TOS >= A
 M IF_GE_A \
-   @PUSH %1 @SWP @CMPS @SWP @POPNULL \
-   @JMPN _%0_True \
+   %S \
+   @PUSH %1 \
+   @CMPS @POPNULL \
    @JMPZ _%0_True \
-    %S @JMP _%V_ENDIF \
-    :_%0_True
+   @JMPN _%V_ENDIF \
+   :_%0_True
 # True if TOS >= V
 M IF_GE_V \
   @PUSHI %1 @CMPS @POPNULL \
@@ -172,10 +173,11 @@ M IF_GE_V \
   @JMPN _%V_ENDIF
 # True if (A,B) A>B
 M IF_GT_S \
-  @SWP @CMPS @SWP \
-  @JMPN _%0_True \
-  %S @JMP _%V_ENDIF \
-  :_%0_True
+  %S \
+  @CMPS \
+  @JMPN _%V_ENDIF \
+  @JMPZ _%V_ENDIF \
+ :_%0_True
 # True if TOP > A
 M IF_GT_A \
   @PUSH %1 @SWP @CMPS @SWP @POPNULL \
@@ -350,9 +352,10 @@ M IF_NOTCARRY \
 # We also set with MF a _%V_ElseFlag so correctly nested ENDIF will know if
 # an 'else' was in effect or not.
 M ELSE \
+  MF _%V_ElseFlag true \
   @JMP _%V_JustEnd \
-  :_%V_ElseBlock \
-  MF _%V_ElseFlag true
+  :_%V_ENDIF
+
 #
 # The Tricky part of ENDIF is determining if we used an ELSE block or not.
 # If no ELSE had been used the %V_ElseFlag will not exist.
@@ -361,13 +364,14 @@ M ELSE \
 # it had been indirectly referenced but not defined.
 
 M ENDIF \
-  @JMP _%V_JustEnd \
-  :_%V_ENDIF \
   ? _%V_ElseFlag \
-    @JMP _%V_ElseBlock \
+  @JMP _%V_JustEnd \
   ENDBLOCK \
-:_%V_JustEnd \
-%P
+  ! _%V_ElseFlag \
+  :_%V_ENDIF \
+  ENDBLOCK \
+  :_%V_JustEnd \
+  %P
 
 #
 # Now this section is for simple While loop block structures.

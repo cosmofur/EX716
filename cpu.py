@@ -22,6 +22,7 @@ import time
 import bisect
 from collections import defaultdict
 
+
 import sys
 import os
 import traceback
@@ -357,8 +358,6 @@ def FindLabelMatch(varname, context: AssemblerContext):
         return context.FileLabels[varname]
 
     potential_matches = [ key for key in context.FileLabels.keys() if key.startswith(varname + "_")]
-    if len(potential_matches) == 1:
-        return context.FileLabels[potential_matches[0]]
     if len(potential_matches) == 1:
         return context.FileLabels[potential_matches[0]]
     if len(potential_matches) > 1:
@@ -1232,7 +1231,7 @@ class microcpu:
             safeprint("\nEND of Run:(%d Opts)" % current_context.GlobalOptCnt)
             sys.exit(address)
         if cmd == CastDebugToggle:
-            Debug = 0 if Debug else 1
+           current_context.Debug = 0 if current_context.Debug else 1
         if cmd == CastStackDump:
             safeprint(" %04x:Stack:(%d):%s [" %
                              (PrevPC,self.mb[0xff]-1,CPU.FindWhatLine(PrevPC)), file=DebugOut,end="")
@@ -1648,7 +1647,8 @@ def Str32Word(instr):
             if instr.isdigit():
                 result = validatestr(instr, 10)
             elif all(c in "0123456789ABCDEFabcdef" for c in instr):
-                CPU.raiseerror("049 Ambiguous value '%s': Looks like hex, but missing 0x prefix." % instr)
+                safeprint("Ambiguous value '%s': Looks like hex, but missing 0x prefix." % instr)
+                result = validatestr("0x"+instr,16)
             else:
                 CPU.raiseerror("048 String %s is not a valid decimal value" % instr)
 
@@ -1794,6 +1794,47 @@ def getkeyfromval(val, my_dict):
     return
 
 def hexdump(startaddr, endaddr, CPU):
+    safeprint("Range is %04x to %04x" % (startaddr, endaddr))
+    
+    base = startaddr & ~0xF  # align to 16-byte row start
+    offset = startaddr % 16
+
+    # Print header from current offset to end of row
+    header = "    " + " ".join(f"{x:02x}" for x in range(offset, 16))
+    safeprint("  %s" % header)
+
+    i = base
+    while i < endaddr:
+        Fstring = "%04x: " % i
+        sys.stdout.write(Fstring)
+
+        # Hex output
+        for j in range(16):
+            addr = i + j
+            if addr < startaddr or addr >= endaddr or addr >= len(CPU.memspace):
+                sys.stdout.write("   ")  # blank space
+            else:
+                sys.stdout.write("%02x " % CPU.memspace[addr])
+        
+        sys.stdout.write("  ")
+
+        # ASCII output
+        for j in range(16):
+            addr = i + j
+            if addr < startaddr or addr >= endaddr or addr >= len(CPU.memspace):
+                sys.stdout.write(" ")
+            else:
+                c = CPU.memspace[addr]
+                if (c != 0x7f) and (((c & 0xc0) == 0x40) or ((c & 0xe0) == 0x20)):
+                    sys.stdout.write("%c" % c)
+                else:
+                    sys.stdout.write("_")
+        
+        i += 16
+        safeprint(" ")
+
+        
+def hexdumpold(startaddr, endaddr, CPU):
     safeprint("Range is %04x to %04x" % (startaddr, endaddr))
     i = startaddr
     header = "0  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F"
@@ -2444,7 +2485,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     line = line[size+1:] if line[size+1:size+2] == " " else line[size:]
                     (value,size) = nextword(line)
                     line = line[size+1:] if line[size+1:size+2] == " " else line[size:]                    
-                    if (value == ""):
+                    if (value == '""'):
                         # empty string, erase existing macro named key, if any
                         context.MacroData.pop(key,None)
                         context.MacroPCount.pop(key,None)
@@ -2630,6 +2671,30 @@ def debugger(passline, context: AssemblerContext):
                     SInfo = SInfo + "[*]"
                 safeprint(SInfo)
                 continue
+        if cmdword == "spush":
+            if argcnt > 0:
+                if (CPU.mb[0xff] > (0xff/2 -2)):
+                    safeprint("Stack full")
+                    continue
+                if (arglist[0] & 0xfffff) < 0xffff:
+                    CPU.optPUSH(arglist[0])
+                else:
+                    safeprint("Invalid number:")                    
+                continue
+            else:
+                safeprint("Need an argument")
+                continue
+        if cmdword == "spop":
+            if argcnt == 0:
+                safeprint("POPNULL")
+                CPU.optPOPNULL(0)
+                continue
+            else:
+                if (arglist[0] & 0xfffff) > 0xffff:
+                    safeprint("Not valid address:")
+                    continue
+                CPU.optPOPI(arglist[0])
+                continue            
         if cmdword == "p":
             if argcnt > 0:
                 if argcnt == 1:
@@ -2668,21 +2733,31 @@ def debugger(passline, context: AssemblerContext):
                 safeprint("ERR: Need to specify what to print")
                 continue
         if cmdword == "pa":
-            if argcnt > 0:
-                for label in arglist:
-                    FindLabelMatch(label, context)
-            else:
-                # Handle prety print of all variables
-                filtered_labels = {key: value for key, value in context.FileLabels.items() if (not key.startswith("_") and not key.startswith("F.") and not key.startswith("M."))}
+            # Filter labels
+            filtered_labels = {
+                key: value for key, value in context.FileLabels.items()
+                if not key.startswith("_") and not key.startswith("F.") and not key.startswith("M.")
+            }
 
-                table = "| Name | Value |\n"
-                table += "|------|-------|\n"
+            # Step 1: Collect rows based on rawlist filtering
+            import re
+            rows = []
+            for key, value in filtered_labels.items():
+                value_str = str(value)
+                if not rawlist or any(re.search(pattern, key) or re.search(pattern, value_str) for pattern in rawlist):
+                    rows.append((key, f"{int(value):04x}"))
 
-                # Add each filtered label to the table
-                for key, value in filtered_labels.items():
-                    table += f"| {key} | {int(value):04x} |\n"
-                safeprint(table)
+            # Step 2: Determine column widths
+            name_width = max(len("Name"), max(len(k) for k, _ in rows)) if rows else len("Name")
+            value_width = max(len("Value"), max(len(v) for _, v in rows)) if rows else len("Value")
 
+            # Step 3: Build the table
+            table = f"| {'Name'.ljust(name_width)} | {'Value'.ljust(value_width)} |\n"
+            table += f"|{'-' * (name_width + 2)}|{'-' * (value_width + 2)}|\n"
+            for key, val in rows:
+                table += f"| {key.ljust(name_width)} | {val.ljust(value_width)} |\n"
+
+            safeprint(table)
             continue
         if cmdword == "m":
             if argcnt >= 1:
@@ -2997,17 +3072,42 @@ def debugger(passline, context: AssemblerContext):
                 safeprint("TTY Error: On No Echo")
             sys.exit(0)
         if cmdword == "h":
-            safeprint("""
-Debug Mode Commands:
-b - break points        c - continue [ $1 steps ]
-cb - clear breakpoints  d - DissAsm $1 $2
-h  - this test          hex-Print hexdump $1[-$2]
-l  - DissAsm from line  m  - modify address starting wiht $1
-n  - Do one step        p - print values $1
-ps - Print HW Stacl     q - quit debugger
-r  - reset              w - watch $1
-cw - clear watches
-""")
+            help_commands = [
+                ("b", "break points"),
+                ("c", "continue [ $1 steps ]"),
+                ("cb", "clear breakpoints"),
+                ("d", "DissAsm $1 $2"),
+                ("g","goto $1"),
+                ("h", "this test"),
+                ("hex", "Print hexdump $1[-$2]"),
+                ("l", "DissAsm from line"),
+                ("m", "modify address starting with $1"),
+                ("n", "Do one step"),
+                ("p", "print values $1"),
+                ("pa", "Print all or some labels [pattern,pattern]"),
+                ("ps", "Print HW Stack"),
+                ("spush","Push $1 to Stack"),
+                ("spop","POPNULL stack | $1 saves to Address"),
+                ("pa", "Print all G lables | pa $1 print lable value"),
+                ("q", "quit debugger"),
+                ("r", "reset"),
+                ("w", "watch $1"),
+                ("cw", "clear watches"),
+            ]
+            help_commands.sort(key=lambda x: x[0])
+            num_columns = 2
+            half = (len(help_commands) + 1) // num_columns
+            col1 = help_commands[:half]
+            col2 = help_commands[half:]
+
+            # Pad second column if needed
+            if len(col2) < len(col1):
+                col2.append(("", ""))
+
+            # Format and print
+            safeprint("Debug Mode Commands:")
+            for left, right in zip(col1, col2):
+                safeprint(f"{left[0]:<4} - {left[1]:<30}    {right[0]:<4} - {right[1]}") 
         continue
 
 def main():
