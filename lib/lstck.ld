@@ -77,8 +77,8 @@ G SPGet32
 #  @PRTTOP
 @PUSH 1        # Rememberng that S_SP points to 'next available' space and not the 'TOP'
 @ADDS          # so idx 0 mean S_SP - 4, idx 1 means S_SP - 8, idx 5 means SP_SP - 24
-@RTL           # Value at TOS is offset, multiply by 4 to make it point to 32b words
-@RTL
+@SHL           # Value at TOS is offset, multiply by 4 to make it point to 32b words
+@SHL
 #
 # S_SP should be pointer to block spot for next push.
 @PUSHI S_SP

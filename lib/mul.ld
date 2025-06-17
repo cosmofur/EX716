@@ -1,23 +1,30 @@
-# Input: Stack RET, N, MM
-# Output: ANS, CNT
-# Requites common
 ! MUL_SEEN
 M MUL_SEEN 1
-@JMP MULINIT
+# Input: Stack RET, N, MM
+# Output: ANS, CNT
 G MUL
 G MULU
+
+# Define local storage (Registers)
+I common.mc
+L softstack.ld
 :MULU
-@POPI RETURN
+=MM Var01
+=NN Var02
+=ANS Var03
+@PUSHRETURN
+@PUSHLOCALI MM
+@PUSHLOCALI NN
+@PUSHLOCALI ANS
 @POPI MM
 @POPI NN
 @MA2V 0 ANS
 @PUSHI NN
 @IF_ZERO      # If either NN or MM is zero, answer is zero
-   @PUSHI RETURN
-   @RET
+    @JMP MULUEXIT
 @ENDIF
 @POPNULL
-@PUSHI MM     # A additional MM is zero test would be redundent.
+@PUSHI MM     # No Need to test MM for zero, while loop just will not run.
 @WHILE_NOTZERO
 # if m & 1 ; then m >> 1  
   @AND 1
@@ -25,32 +32,25 @@ G MULU
      @PUSHI ANS @ADDI NN @POPI ANS 
   @ENDIF
   @POPNULL
-  @PUSHI NN  @RTL  @POPI NN   # NN << 1
-  @PUSHI MM  @RTR  @POPI MM   # MM >> 1
+  @PUSHI NN  @SHL  @POPI NN   # NN << 1
+  @PUSHI MM  @SHR  @POPI MM   # MM >> 1
   @PUSHI MM
 @ENDWHILE
 @POPNULL
 @PUSHI ANS
-@PUSHI RETURN
+:MULUEXIT
+@POPLOCAL ANS
+@POPLOCAL NN
+@POPLOCAL MM
+@POPRETURN
 @RET
-:RETURN
-0
-:RETURN2
-0
-:NN
-0
-:MM
-0
-:ANS
-0
-:SIGN
-0
-:ONEMASK
-1
 #
 # Now for the Signed version of MUL
 :MUL
-@POPI RETURN2
+=SIGN Var01
+@PUSHRETURN
+@PUSHLOCALI SIGN
+
 @MA2V 0 SIGN
 @IF_LT_A 0          # IF NN or MM < 0 Invert SIGN
    @PUSHI SIGN
@@ -70,9 +70,9 @@ G MULU
 @ELSE
   @POPNULL
 @ENDIF
-@PUSHI RETURN2
+@POPLOCAL SIGN
+@POPRETURN
 @RET
-:MULINIT
 ENDBLOCK
 
 

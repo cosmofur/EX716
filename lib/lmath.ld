@@ -1,3 +1,4 @@
+! MATH32DEFINE
 L string.ld
 ################
 # lmath.ld library
@@ -12,8 +13,22 @@ L string.ld
 #   ADD32VVV      means all three arguments are the address where 32 bit values will be found/stored
 #   SUB32VII      means arg 1 is address, but args 2 and 3 are pointers to indirect locations.
 #   Same works for 2 argument functions
-#   RTR32VI or RTL32II
+#   SHR32VI or SHL32II
 #
+################################
+# To Clearify the meaning of 'V' and 'I'
+# :AValue 0 0
+# :BValue 0 0
+# :CValue 0 0
+# :APtr AValue
+# :BPtr BValue
+# :Cptr BValue
+#
+# @ADD32VII AValue BPtr CPtr
+# Please note that with the exception of @MOVE commands the arguments are always a sort of pointer.
+# The 'V' version being the address(ptr) to the 4 bytes of the 32 bit work is on the stack.
+# The 'I' version being the address of a word which in tern points to the 4 bytes of the 32 bit word.
+# 
 # Provide procedures to do basic math on 32 bit numbers
 #
 # Functions come in two flavors
@@ -27,7 +42,7 @@ L string.ld
 # 3 Pointer functions are:
 #   ADD32, SUB32, CMP32, AND32, OR32
 # 2 Pointer functions are:
-#   RTR32, RTL32, INV32
+#   SHR32, SHL32, INV32
 #
 # Helpful 32bit math macros (Note some of these 'macros' take up 25 to 30 bytes of memory, each
 # time they are assembled. So if you need to call them in many diffrent places in your code. It
@@ -35,8 +50,8 @@ L string.ld
 # COPY32VV   Label32    Label32
 # COPY32VIV  [Label]    Label          (will be deprecated)
 #      New Name: COPY32IV
-# MOVE32AV   $$$Number  Label
-# MOVE32AVI  $$$Number  [Label32]     (will be deprecated)
+# MOVE32AV   Number  Label
+# MOVE32AVI  Number  [Label32]     (will be deprecated)
 #      New Name MOVE32AI
 # INT2LONG   Label16    Label32        (will be deprecated)
 #      New Name INT2LONGVV
@@ -50,13 +65,15 @@ L string.ld
 #
       
 #
-! MATH32DEFINE
 M MATH32DEFINE 1
+@PRTLN "Invalid Entry:"
+@END
 # Define the globals
-G ADD32 G SUB32 G CMP32 G AND32 G OR32 G RTR32 G RTL32 G INV32
+G ADD32 G SUB32 G CMP32 G AND32 G OR32 G SHR32 G SHL32 G INV32
 G DIV32 G DIV32U G MUL32 G i32tos G stoi32 G INT2LONG G LONG2INT
-G PRT32BIN G PRT32HEX G DIV32VVVV G MUL32VVV
-G ADD32VVV G SUB32VVV G CMP32VVV G AND32VVV G OR32VVV G RTR32VV G RTL32VV G INV32VV
+G PRT32BIN G PRT32HEX G DIV32VVVV G MUL32VVV G DIVU32VVVV
+G ADD32VVV G SUB32VVV G CMP32VV G AND32VVV G OR32VVV G SHR32VV G SHL32VV G INV32VV
+G INT2LONGVV G LONG2INTVV
 
 @JMP ENDLMATH
 # Global Variables
@@ -94,12 +111,6 @@ M ADD32VIV @PUSH %1 @PUSHI %2 @PUSH %3 @CALL ADD32VVV
 M ADD32VVI @PUSH %1 @PUSH %2 @PUSHI %3 @CALL ADD32VVV
 
 
-M INT2LONGVV @PUSH %1 @PUSH %2 @CALL INT2LONGVV
-M INT2LONGVI @PUSH %1 @PUSHI %2 @CALL INT2LONGVV
-M INT2LONGIV @PUSHI %1 @PUSH %2 @CALL INT2LONGVV
-M INT2LONGII @PUSHI %1 @PUSHI %2 @CALL INT2LONGVV
-M INT2LONG @PUSH %1 @PUSH %2 @CALL INT2LONGVV
-
 # The Nameing convention was changed, so the original explaination that was here, is now deprecated
 #
 # New syntax means
@@ -107,6 +118,18 @@ M INT2LONG @PUSH %1 @PUSH %2 @CALL INT2LONGVV
 #      V - value passed is the direct address where the 32 bit value starts
 #      I - value passed is a 16b pointer to where the 32 bit value starts
 #      A - is used when an direct constant will be the value stored.
+#
+# Because the following are a mix of 16 and 32 bit values, the rules are a bit diffrence.
+# For 16 bit number part
+#    V means pass the lable where the data is stored
+#    I points pointer that points to the data
+M INT2LONGVV @PUSH %1 @PUSH %2 @CALL INT2LONGVV
+M INT2LONGVI @PUSH %1 @PUSHI %2 @CALL INT2LONGVV
+M INT2LONGIV @PUSHI %1 @PUSH %2 @CALL INT2LONGVV
+M INT2LONGII @PUSHI %1 @PUSHI %2 @CALL INT2LONGVV
+M INT2LONG @PUSH %1 @PUSH %2 @CALL INT2LONGVV
+
+
 #
 # V -> V
 M COPY32VV \
@@ -135,6 +158,8 @@ M COPY32IVIV @COPY32II %1 %2
 # macro and normally that source number will not be directly refrenced again.
 # these 'MOVE's are less efficent than COPY's
 #  MOVE32AV is the ruff 32bit equivalent of @MA2V
+#
+# Also the constant will be treated as 32bit, no need to use '$$$' when calling it.
 M MOVE32AV @JMP %0SkipOver :%0C1 $$$%1 \
            :%0SkipOver @PUSHI %0C1 @PUSH %2 @POPS \
 	   @PUSHI %0C1+2 @PUSH %2+2 @POPS
@@ -143,6 +168,81 @@ M MOVE32AI @JMP %0SkipF :%0C1 $$$%1 \
            :%0SkipF @PUSHI %0C1 @PUSHI %2 @POPS \
 	   @PUSHI %0C1+2 @PUSHI %2 @ADD 2 @POPS
 M MOVE32AVI @MOVE32AI %1 %2
+
+#
+# Common 16to32 bit functions for common operations.
+#
+# These are functions which take one 16 bit number and one 32 bit acumulator and
+# lets you do the most common functions to them. 
+#
+# Pattern is take 16 %1 turn into 32 bit %0LW1 and then apply function of
+# Memonic is Add Word Long Src Dest
+#         so ADDWLAW 123 A32 is Add Immediate Word A to Long A32
+#            ADDWLAI 123 A32Ptr is Add Immediate Word A to Long at Ptr A32Ptr
+M ADDWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @ADD32VVV %2 %0LW1 %2
+M ADDWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @ADD32VVV %2 %0LW1 %2
+M ADDWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @ADD32IVI %2 %0LW1 %2
+M ADDWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @ADD32IVI %2 %0LW1 %2
+#########
+M SUBWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @SUB32VVV %2 %0LW1 %2
+M SUBWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @SUB32VVV %2 %0LW1 %2
+M SUBWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @SUB32IVI %2 %0LW1 %2
+M SUBWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @SUB32IVI %2 %0LW1 %2
+###################
+M MULWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @MUL32VVV %2 %0LW1 %2
+M MULWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @MUL32VVV %2 %0LW1 %2
+M MULWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @MUL32IVI %2 %0LW1 %2
+M MULWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @MUL32IVI %2 %0LW1 %2
+####################
+# The DIVision requires 3 parameters 1 Word and 2 Longs, Extra long is for remainder, and must be of type 'V' rather than 'I'
+# Which just means the remainder must point directly to address of unique 32 store, not a pointer.
+M DIVWLAV @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @DIV32VVVV %2 %0LW1 %2 %3
+M DIVWLIV @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @DIV32VVVV %2 %0LW1 %2 %3
+M DIVWLAI @JMP %0JMP \
+         :%0W1 %1 :%0LW1 0 0 \
+         :%0JMP @INT2LONG %0W1 %0LW1 \
+         @DIV32IVIV %2 %0LW1 %2 %3
+M DIVWLII @JMP %0JMP :%0LW1 0 0 \
+          :%0JMP @INT2LONG %1 %0LW1 \
+          @DIV32IVIV %2 %0LW1 %2 %3
+          
+
+
 
 
 
@@ -233,6 +333,7 @@ M CMP32II @PUSHI %1 @PUSHI %2 @CALL CMP32VV
 @PUSH C32Result
 @CALL SUB32   # We are Using SUB32 to Subtract A - B > Temp Result
 #  Test if High Worked Highest Bit is set, if so, it's negative.
+
 @PUSHI C32Result+2
 @AND 0x8000
 @IF_NOTZERO      # Sign bit is set
@@ -261,15 +362,15 @@ M CMP32II @PUSHI %1 @PUSHI %2 @CALL CMP32VV
 :C32Return 0
 :C32Result 0 0
 #
-M RTR32VV @PUSH %1 @PUSH %2 @CALL RTR32VV
-M RTR32VI @PUSH %1 @PUSHI %2 @CALL RTR32VV
-M RTR32IV @PUSHI %1 @PUSH %2 @CALL RTR32VV
-M RTR32II @PUSHI %1 @PUSHI %2 @CALL RTR32VV
-# Function RTR32
-# RTR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to B
-# Call RTR32(A,B)Rotats A saves to B
-:RTR32
-:RTR32VV
+M SHR32VV @PUSH %1 @PUSH %2 @CALL SHR32VV
+M SHR32VI @PUSH %1 @PUSHI %2 @CALL SHR32VV
+M SHR32IV @PUSHI %1 @PUSH %2 @CALL SHR32VV
+M SHR32II @PUSHI %1 @PUSHI %2 @CALL SHR32VV
+# Function SHR32
+# SHR32 Rotate Right 32 bit version 2 Parms ptr to A and Return to B
+# Call SHR32(A,B)Rotats A saves to B
+:SHR32
+:SHR32VV
 @POPI ReturnAdr
 @POPI B_PTR
 @POPI A_PTR
@@ -277,7 +378,7 @@ M RTR32II @PUSHI %1 @PUSHI %2 @CALL RTR32VV
 # High Byte
 @PUSHI A_PTR @ADD 2 @PUSHS
 @FCLR
-@RTR
+@SHR
 @FSAV @POPI FlagSave     # Save any Carry bit
 @PUSHI B_PTR @ADD 2 @POPS
 # Low Byte
@@ -310,14 +411,14 @@ M INV32II @PUSHI %1 @PUSHI %2 @CALL INV32VV
 :IV32Aval 0
 :IV32Bval 0
 
-M RTL32VV @PUSH %1 @PUSH %2 @CALL RTL32VV
-M RTL32VI @PUSH %1 @PUSHI %2 @CALL RTL32VV
-M RTL32IV @PUSHI %1 @PUSH %2 @CALL RTL32VV
-M RTL32II @PUSHI %1 @PUSHI %2 @CALL RTL32VV
-# Function RTL32(Var_A,Var_B)
-# RTL32 Rotate Left RTL32(A,B) rotates A saves to B
-:RTL32
-:RTL32VV
+M SHL32VV @PUSH %1 @PUSH %2 @CALL SHL32VV
+M SHL32VI @PUSH %1 @PUSHI %2 @CALL SHL32VV
+M SHL32IV @PUSHI %1 @PUSH %2 @CALL SHL32VV
+M SHL32II @PUSHI %1 @PUSHI %2 @CALL SHL32VV
+# Function SHL32(Var_A,Var_B)
+# SHL32 Rotate Left SHL32(A,B) rotates A saves to B
+:SHL32
+:SHL32VV
 @POPI ReturnAdr
 @POPI B_PTR
 @POPI A_PTR
@@ -325,7 +426,7 @@ M RTL32II @PUSHI %1 @PUSHI %2 @CALL RTL32VV
 #@PUSH 1 @CMP 0 @POPNULL    # Clear Carry
 @FCLR
 @PUSHII A_PTR              # Do the Low Part of A
-@RTL
+@SHL
 @POPII B_PTR
 # The address of High-A is still on stack, fetch it now.
 @PUSHS
@@ -364,8 +465,8 @@ M RTL32II @PUSHI %1 @PUSHI %2 @CALL RTL32VV
 @MA2V 0 isWorkBuff+6
 @MA2V 0 isWorkBuff+8
 @MA2V 0 isWorkBuff+10
-@MOVE32AV $$$0 isZero     # Constants we need for inverting 2scompt
-@MOVE32AV $$$1 isOne#
+@MOVE32AV 0 isZero     # Constants we need for inverting 2scompt
+@MOVE32AV 1 isOne#
 # Save working copy of number
 #
 @COPY32IVV isA32Ptr isA32
@@ -525,7 +626,7 @@ M RTL32II @PUSHI %1 @PUSHI %2 @CALL RTL32VV
     # Invert and add 1 for 2s comp
     @PUSHI IResultPtrSI @PUSH InvalueSI
     @CALL INV32
-    @INT2LONG $$$1 L32RegSI
+    @INT2LONG 1 L32RegSI
     @PUSH InvalueSI
     @PUSH L32RegSI
     @PUSH L32RegSI
@@ -647,9 +748,9 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
 @POPI DUA_ValPtr
 @COPY32IVV DUA_ValPtr LocalA
 @COPY32IVV DUB_ValPtr LocalB
-@MOVE32AV $$$0 DUZero
-@MOVE32AV $$$1 DUOne
-@CMP32IV DUB_ValPtr DUZero
+@MOVE32AV 0 DUZero
+@MOVE32AV 1 DUOne
+@CMP32VV DUB_ValPtr DUZero
 @IF_ZERO
    @PRTLN "Divide by Zero Error:"
    @POPNULL
@@ -658,13 +759,12 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
    @RET
 @ENDIF
 @POPNULL
-@MOVE32AV $$$0 DUQVal
-@MOVE32AV $$$0 DURemainder
-@MOVE32AV $$$0x80000000 DUMask
+@MOVE32AV 0 DUQVal
+@MOVE32AV 0 DURemainder
+@MOVE32AV 0x80000000 DUMask
 
 @ForIA2B DUIndex 0 32
-   :Break1
-   @RTL32VV DURemainder DURemainder  # Remainder << 1
+   @SHL32VV DURemainder DURemainder  # Remainder << 1
    @AND32VIV DUMask DUA_ValPtr DUTemp1
    @CMP32VV DUTemp1 DUZero
    @IF_NOTZERO
@@ -683,7 +783,7 @@ M DIVU32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIVU32VVVV
       @POPNULL
 
    @ENDIF
-   @RTR32VV DUMask DUMask
+   @SHR32VV DUMask DUMask
 @Next DUIndex
 @COPY32VIV DURemainder DUResult
 @COPY32VIV DUQVal  DUReturnRemain
@@ -734,8 +834,8 @@ M DIV32IIII @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @CALL DIV32VVVV
 @POPI DSResult
 @POPI DSBVal
 @POPI DSAVal
-@MOVE32AV $$$0 DSZero
-@MOVE32AV $$$1 DSOne
+@MOVE32AV 0 DSZero
+@MOVE32AV 1 DSOne
 @MA2V 0 DSNegative
 # IF A or/and B are negative invert the Negative flag
 @PUSHI DSAVal @PUSH DSZero @CALL CMP32
@@ -830,10 +930,10 @@ M MUL32VVI @PUSH %1 @PUSH %2 @PUSHI %3 @CALL MUL32VVV
 @PUSHI MMPtr @ADD 2 @PUSHS @POPI MMLocal+2
 @PUSHII NNPtr @POPI NNLocal
 @PUSHI NNPtr @ADD 2 @PUSHS @POPI NNLocal+2
-@MOVE32AV $$$0 M_ANS
+@MOVE32AV 0 M_ANS
 @MA2V 0 M_NEGFLAG
-@MOVE32AV $$$0 M_ZERO
-@MOVE32AV $$$1 M_ONE
+@MOVE32AV 0 M_ZERO
+@MOVE32AV 1 M_ONE
 @PUSH M_ZERO @PUSH MMLocal @CALL CMP32 @POPNULL
 @JGT M1NotNeg   # A=Zero B=MM if B>A jmp NotNeg
 @PUSHI M_NEGFLAG @INV @POPI M_NEGFLAG  # Flip NEGFlag
@@ -861,9 +961,9 @@ M MUL32VVI @PUSH %1 @PUSH %2 @PUSHI %3 @CALL MUL32VVV
       @PUSH M_ANS @PUSH NNLocal @PUSH M_ANS @CALL ADD32
 :M_ENDIF1
    # N = N << 1
-   @PUSH NNLocal @PUSH NNLocal @CALL RTL32
+   @PUSH NNLocal @PUSH NNLocal @CALL SHL32
    # MM / 2 | MM >> 1
-   @PUSH MMLocal @PUSH MMLocal @CALL RTR32
+   @PUSH MMLocal @PUSH MMLocal @CALL SHR32
 @JMP M_WHILE1
 :M_ENDWHILE
 @PUSH 0 @CMPI M_NEGFLAG @POPNULL

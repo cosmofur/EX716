@@ -1,13 +1,36 @@
+! COMMON_SEEN
+M COMMON_SEEN 1
 # Setup Library
 # Values which make up opcodes
 #
-# The '!' code marks a block to skip if already defined. 
-! COMMON_SEEN
-M COMMON_SEEN 1
+# The '!' code marks a block to skip if already defined.
+:Var01 0
+:Var02 0
+:Var03 0
+:Var04 0
+:Var05 0
+:Var06 0
+:Var07 0
+:Var08 0
+:Var09 0
+:Var10 0
+:Var11 0
+:Var12 0
+:Var13 0
+:Var14 0
+:Var15 0
+:Var16 0
+:Var17 0
+:Var18 0
+:Var19 0
+:Var20 0
 G NOP G PUSH G PUSHB G PUSHI G PUSHII G POPI G POPII G POPB G CMPI G CMPII G JMPZ
 G JMPN G JMPC G JMPO G JMP G JMPI G ADD G SUB G AND G OR G INV G ADDI G SUBI
 G ANDI G ORI G ADDII G SUBII G ANDII G ORII G CAST G POLL G CPUID G SETAPP G CLEAR
 G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
+G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
+G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
+
 
 =NOP 0
 =PUSH 1
@@ -55,8 +78,8 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =POLL 43
 =RRTC 44
 =RLTC 45
-=RTR 46
-=RTL 47
+=SHR 46
+=SHL 47
 =INV 48
 =COMP2 49
 =FCLR 50
@@ -64,22 +87,26 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =FLOD 52
 
 # Cast and Poll Codes
-=CastPrintStrI 1
+=CastPrintStr 1
 =CastPrintInt 2
 =CastPrintIntI 3
 =CastPrintSignI 4
 =CastPrintBinI 5
 =CastPrintChar 6
-=CastPrintStrII 11
+=CastPrintStrI 11
+=CastPrintIntUI 12
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
-=CastPrint32Int 32
-=CastSelectDisk 20
-=CastSeekDisk 21
-=CastWriteSector 22
-=CastSyncDisk 23
 =CastPrint32I 32
+=CastPrint32II 33
+=CastSelectDisk 20
+=CastSelectDiskI 24
+=CastSeekDisk 21
+=CastSeekDiskI 25
+=CastWriteSector 22
+=CastWriteSectorI 26
+=CastSyncDisk 23
 =CastPrint32S 33
 =CastTapeWriteI 34
 =PollReadIntI 1
@@ -89,6 +116,7 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 =PollSetEcho 5
 =PollReadCINoWait 6
 =PollReadSector 22
+=PollReadSectorI 26
 =PollReadTapeI 23
 =PollRewindTape 24
 =PollReadTime 25
@@ -97,59 +125,62 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
 # When executing a macro, the rule is one macro per line.
-M NOP b$NOP
-M PUSH b$PUSH %1
-M DUP b$DUP
-M PUSHI b$PUSHI %1
-M PUSHII b$PUSHII %1
-M PUSHS b$PUSHS
-M POPNULL b$POPNULL
-M SWP b$SWP
-M POPI b$POPI %1
-M POPII b$POPII %1
-M POPS b$POPS
-M CMP b$CMP %1
-M CMPS b$CMPS
-M CMPI b$CMPI %1
-M CMPII b$CMPII %1
-M ADD b$ADD %1
-M ADDS b$ADDS
-M ADDI b$ADDI %1
-M ADDII b$ADDII %1
-M SUB b$SUB %1          # (updated SUB ~ TOS=(TOS-P1))
-M SUBS b$SUBS
-M SUBI b$SUBI %1
-M SUBII b$SUBII %1
-M OR b$OR %1
-M ORS b$ORS
-M ORI b$ORI %1
-M ORII b$ORII %1
-M AND b$AND %1
-M ANDS b$ANDS
-M ANDI b$ANDI %1
-M ANDII b$ANDII %1
-M XOR b$XOR %1
-M XORS b$XORS
-M XORI b$XORI %1
-M XORII b$XORII %1
-M JMPZ b$JMPZ %1
-M JMPN b$JMPN %1
-M JMPC b$JMPC %1
-M JMPO b$JMPO %1
-M JMP b$JMP %1
-M JMPI b$JMPI %1
-M JMPS b$JMPS
-M CAST b$CAST %1
-M POLL b$POLL %1
-M RRTC b$RRTC
-M RLTC b$RLTC
-M RTR b$RTR
-M RTL b$RTL
-M INV b$INV
-M COMP2 b$COMP2
-M FCLR b$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
-M FSAV b$FSAV
-M FLOD b$FLOD
+# If you need a Macro to Define another 'macro' for the purpose of flags
+# You can use the MF or MacroFlag command which takes only one argument
+# and unlike 'M' macros can be enbeded inside other macros.
+M NOP $$NOP
+M PUSH $$PUSH %1
+M DUP $$DUP
+M PUSHI $$PUSHI %1
+M PUSHII $$PUSHII %1
+M PUSHS $$PUSHS
+M POPNULL $$POPNULL
+M SWP $$SWP
+M POPI $$POPI %1
+M POPII $$POPII %1
+M POPS $$POPS
+M CMP $$CMP %1
+M CMPS $$CMPS
+M CMPI $$CMPI %1
+M CMPII $$CMPII %1
+M ADD $$ADD %1
+M ADDS $$ADDS
+M ADDI $$ADDI %1
+M ADDII $$ADDII %1
+M SUB $$SUB %1          # (updated SUB ~ TOS=(TOS-P1))
+M SUBS $$SUBS
+M SUBI $$SUBI %1
+M SUBII $$SUBII %1
+M OR $$OR %1
+M ORS $$ORS
+M ORI $$ORI %1
+M ORII $$ORII %1
+M AND $$AND %1
+M ANDS $$ANDS
+M ANDI $$ANDI %1
+M ANDII $$ANDII %1
+M XOR $$XOR %1
+M XORS $$XORS
+M XORI $$XORI %1
+M XORII $$XORII %1
+M JMPZ $$JMPZ %1
+M JMPN $$JMPN %1
+M JMPC $$JMPC %1
+M JMPO $$JMPO %1
+M JMP $$JMP %1
+M JMPI $$JMPI %1
+M JMPS $$JMPS
+M CAST $$CAST %1
+M POLL $$POLL %1
+M RRTC $$RRTC
+M RLTC $$RLTC
+M SHR $$SHR
+M SHL $$SHL
+M INV $$INV
+M COMP2 $$COMP2
+M FCLR $$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
+M FSAV $$FSAV
+M FLOD $$FLOD
 
 
 # For compleatness we can proview VV VA AV versions of major math functions.
@@ -180,32 +211,34 @@ M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
 M MM2M @PUSHI %1 @POPI %2  # Another way to say it, Move Variable to Variable
 M MMI2M @PUSHII %1 @POPI %2
 M MM2IM @PUSHI %1 @POPII %2
-M JMPNZ @JMPZ $%01 @JMP %1 :%01        # A != B
-M JMPNZI @JMPZ $%01 @JMPI %1 :%0
-M JMPZI @JMPNZ $%01 @JMPI %1 :%0
-M JMPNC @JMPC $%0SKIP @JMP %1 :%0SKIP  # No Carry
-M JMPNO @JMPO $%01 @JMP %1 :%01        # No Overflow
+M JMPNZ @JMPZ $_%01 @JMP %1 :_%01        # A != B
+M JMPNZI @JMPZ $_%01 @JMPI %1 :_%0
+M JMPZI @JMPNZ $_%01 @JMPI %1 :_%0
+M JMPNC @JMPC $_%0SKIP @JMP %1 :_%0SKIP  # No Carry
+M JMPNO @JMPO $_%01 @JMP %1 :_%01        # No Overflow
 #  For this group, remeber the flags are based on the B-A
 #  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
 #          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
 M JGT @JMPN %1                           # A=A-B, if B>A or A<=B JMP %1
 M JGE @JMPN %1 @JMPZ %1                  # A=A-B, if B>=A or A<B JMP %1
-M JLT @JMPZ %0Skp @JMPN %0Skp @JMP %1 :%0Skp   #  if B<A or A>=B JMP %1
-M JLE @JMPN %0Skp @JMP %1 :%0Skp         # A=A-B, if B<=A or A>B JMP %1
-M CALL @PUSH $%01 @JMP %1 :%01
-M CALLZ @PUSH $%0_Loc @JMPZ %0_Do @JMP %0_After :%0_Do @JMP %1 :%0_Loc :%0_After
-M CALLNZ @PUSH $%0_Loc @JMPZ %0_After @JMP %1 :%0_Loc :%0_After
-#M RET @POPI $%0D @JMPI $%0D :%0D 0
+M JLT @JMPZ _%0Skp @JMPN _%0Skp @JMP %1 :_%0Skp   #  if B<A or A>=B JMP %1
+M JLE @JMPN _%0Skp @JMP %1 :_%0Skp         # A=A-B, if B<=A or A>B JMP %1
+M CALL @PUSH $_%01 @JMP %1 :_%01
+M CALLZ @PUSH $_%0_Loc @JMPZ _%0_Do @JMP _%0_After :_%0_Do @JMP %1 :_%0_Loc :_%0_After
+M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
+#M RET @POPI $com%0D @JMPI $_%0D :_%0D 0
 M RET @JMPS
-M JNZ @JMPZ $%0J @JMP %1 :%0J
+M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-M PRTLN @JMP %01 :%0M %1 b0 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST %0M @CAST %0NL @POPNULL
+M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1 @POPNULL
 # Print simple test message with no variables no linefeed
-M PRT @JMP J%0J1 :%0M1 %1 0 :J%0J1 @PUSH CastPrintStrI @CAST $%0M1 @POPNULL
+M PRT @JMP _J%0J1 :_%0M1 %1 0 :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1 @POPNULL
 # Print value of variable
 M PRTI @PUSH CastPrintIntI @CAST %1 @POPNULL
+# Print Value of unsigned variable
+M PRTUI @PUSH CastPrintIntUI @CAST %1 @POPNULL
 # Print value of variable in Hex
 M PRTHEXI @PUSH CastPrintHexI @CAST %1 @POPNULL
 # Print value Pointer is pointing at in Hex
@@ -213,40 +246,52 @@ M PRTHEXII @PUSH CastPrintHexII @CAST %1 @POPNULL
 # Print value of variable but surrounded with spaces for readability
 M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 # Print string starting at address
-M PRTS @PUSH CastPrintStrI @CAST %1 @POPNULL
-# Print string starting at the address that is stored AT the given pointer.
-M PRTSI @PUSHI %1 @POPI %0ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+M PRTSTR @PUSH CastPrintStr @CAST %1 @POPNULL
+# Print string start at variable
+M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
+# Alternative name for PRTSTR
+M PRTS @PUSH CastPrintStr @CAST %1 @POPNULL
+# Alternative name for PRTSTRI
+M PRTSI @PUSH CastPrintStrI @CAST %1 @POPNULL
+# Print given Character
+M PRTCH @PUSH CastPrintChar @CAST %1 @POPNULL
+# Print Character at Variable
+M PRTCHI @PUSH CastPrintCharI @CAST %1 @POPNULL
+# Print Character on Stack
+M PRTCHS @JMP _%0SkipF \
+     :_%0Data 0 \
+     :_%0SkipF @DUP @AND 0xff @POPI _%0Data @PUSH CastPrintChar @CAST _%0Data @POPNULL 
 # Print string whos address is on the stack
-M PRTSS @POPI %0Ptr @PUSH CastPrintStrI @CAST :%0ptr 0 @POPNULL
+M PRTSS @JMP _%0Skip :_%0ptr 0 :_%0Skip @POPI _%0Ptr @PUSH CastPrintCharI @CAST _%0ptr 0
 # Print value Pointer is pointing at.
-M PRTII @PUSHII %1 @POPI %0Store \
-        @PUSH CastPrintInt @CAST :%0Store 0 @POPNULL
+M PRTII @PUSHII %1 @POPI _%0Store \
+        @PUSH CastPrintInt @CAST :_%0Store 0 @POPNULL
 # Print value with sign '-' if negative
 M PRTSGNI @PUSH CastPrintSignI @CAST %1 @POPNULL
 # Print value in binary
 M PRTBINI @PUSH CastPrintBinI @CAST %1 @POPNULL
 # Print Line feed
-M PRTNL @JMP $%01 :%0NL 10 b0 :%01 @PUSH CastPrintStrI @CAST $%0NL @POPNULL
+M PRTNL @JMP _%01 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0NL @POPNULL
 # Print a space by itself
-M PRTSP @JMP $%01J :%0M " " b0 :%01J @PUSH CastPrintStrI @CAST $%0M @POPNULL
-# Print string start at address
-M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
+M PRTSP @JMP _%01J :_%0M " \0" :_%01J @PUSH CastPrintStr @CAST _%0M @POPNULL
 # Print immediate value (usefull to print value of pointer)
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
-M PRTTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTI %0M1
+M PRTTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTI _%0M1
 # Print Top valine in Hex
-M PRTHEXTOP @DUP @JMP J%0J1 :%0M1 0 :J%0J1 @POPI %0M1 @PRTHEXI %0M1
+M PRTHEXTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTHEXI _%0M1
 # Print Top with Sign
-M PRTSGNTOP @DUP @POPI %0Store @PRTSGNI %0Store @JMP %0Skip :%0Store 0 :%0Skip
+M PRTSGNTOP @DUP @POPI _%0Store @PRTSGNI _%0Store @JMP _%0Skip :_%0Store 0 :_%0Skip
 # Print 32bit number starting at address
-M PRT32 @PUSH CastPrint32Int @CAST %1 @POPNULL
-M PRT32I @JMP %0Jmp :%0store1 0 :%0store2 0 \
-   :%0Jmp @PUSHII %1 @POPI %0store1 \
-   @PUSHI %1 @ADD 2 @PUSHS @POPI %0store2 \
-   @PUSH CastPrint32Int @CAST %0store1 @POPNULL
-#
+M PRT32 @PUSH CastPrint32I @CAST %1 @POPNULL
+M PRT32I @PUSH CastPrint32II @CAST %1 @POPNULL
+#M PRT32I @JMP _%0Jmp :_%0store1 0 :_%0store2 0 \
+#   :_%0Jmp @PUSHII %1 @POPI _%0store1 \
+#   @PUSHI %1 @ADD 2 @PUSHS @POPI _%0store2 \
+#   @PUSH CastPrint32I @CAST _%0store1 @POPNULL
+# Print 32bit number that tos is pointing to.
 M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
+#
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1 @POPNULL
 # Print Prompt string, then read integer.
@@ -255,7 +300,7 @@ M PROMPT @PRT %1 @READI %2
 # Param of READS is lable of the buffer
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
 # Param of READSI is lable that contains pointer to buffer
-M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL :%0ADDR 0xffff @POPNULL
+M READSI @PUSHI %1 @POPI _%0ADDR @PUSH PollReadStrI @POLL :_%0ADDR 0xffff @POPNULL
 # Read a unechoed character from keyboard
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
 # Read character from keyboard with no wait if none ready.
@@ -269,7 +314,7 @@ M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack
 M TOP @DUP @POPI %1
 # Print a debug dump of the stack
-M StackDump @JMP %0J :%0J @PUSH 102 @CAST 0 @POPNULL
+M StackDump @JMP _%0J :_%0J @PUSH 102 @CAST 0 @POPNULL
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
@@ -280,22 +325,25 @@ M INC2I @PUSHI %1 @ADD 2 @POPI %1
 M DEC2I @PUSHI %1 @SUB 2 @POPI %1
 
 # A way to impliment a 16 bit 2 comp ABS function
-M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ %0IsPos @COMP2 :%0IsPos
+M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ _%0IsPos @COMP2 :_%0IsPos
+# Time Fetch, puts on stack 32 bit time as two 16 bit PUSHes
+M GETTIME @PUSH PollReadTime @POLL 0
+
 # Disk IO Group
 M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSELI @PUSH CastSelectDiskI @CAST %1 @POPNULL
 M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEKI @PUSHI %1 @POPI %0_LOC @PUSH CastSeekDisk @CAST :%0_LOC 0 @POPNULL
+M DISKSEEKI @PUSH CastSeekDiskI @CAST %1 @POPNULL
 M DISKWRITE @PUSH CastWriteSector @CAST %1 @POPNULL
-M DISKWRITEI @PUSHI %1 @POPI %0_LOC @PUSH CastWriteSector @CAST :%0_LOC 0 @POPNULL
+M DISKWRITEI @PUSH CastWriteSectorI @CAST %1 @POPNULL
 M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
 M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
-M DISKREADI @PUSHI %1 @POPI %0_LOC @PUSH PollReadSector @POLL :%0_LOC 0 @POPNULL
+M DISKREADI @PUSH PollReadSectorI @POLL %1 @POPNULL
 # We use the same logic for both Tape and Disk Select.
 M TAPESEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M TAPESELI @PUSHI %1 @POPI %0_LOC @PUSH CastSelectDisk @CAST :%0_LOC 0 @POPNULL
-M TAPEWRITE @PUSH CastTapeWriteI @PUSHI %1 @POPI %0_LOC @CAST :%0_LOC 0 @POPNULL
-M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI %0_LOC @POLL :%0_LOC 0 @POPNULL
+M TAPESELI @PUSHI %1 @POPI _%0_LOC @PUSH CastSelectDisk @CAST :_%0_LOC 0 @POPNULL
+M TAPEWRITE @PUSH CastTapeWriteI @PUSHI %1 @POPI _%0_LOC @CAST :_%0_LOC 0 @POPNULL
+M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI _%0_LOC @POLL :_%0_LOC 0 @POPNULL
 M TAPEREAD @PUSH PollReadTapeI @POLL %1 0 @POPNULL
 M TAPEREWIND @PUSH PollRewindTape @POLL 0 @POPNULL
 

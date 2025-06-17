@@ -160,7 +160,7 @@ G ST_INIT G ST_PUSH G ST_POP G ST_TOP G ST_SWP G ST_NTH G ST_SIZEOF
 # ST_NTH(SD,Depth) Will fetch without modifying value at SD[Top-Depth]
 :ST_NTH
 @POPI ST_RETURN
-@RTL               # We'll be using words so *2
+@SHL               # We'll be using words so *2
 @POPI ST_VALUE
 @POPI ST_SD
 @PUSHI ST_SD @SUB 2 @PUSHS  # [SD-2] = SIZE
@@ -193,7 +193,7 @@ G ST_INIT G ST_PUSH G ST_POP G ST_TOP G ST_SWP G ST_NTH G ST_SIZEOF
 @PUSHI ST_SD @SUB 4 @PUSHS   # [SD-4] = SP
 @POPI ST_SDSP
 # 
-@PUSHI ST_SDSP @RTR     # Size is in bytes, turn into words
+@PUSHI ST_SDSP @SHR     # Size is in bytes, turn into words
 @PUSHI ST_RETURN
 @RET
 ENDBLOCK

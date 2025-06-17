@@ -12,9 +12,10 @@ G HeapDefineMemory
 G HeapNewObject
 G HeapResizeObject
 G HeapDeleteObject
-G HeapCopyObject
 G HeapListMap
 G GetObjectRealSize
+G HeapAppend
+
 # This is the heap manager module
 
 # It provides the following services
@@ -22,9 +23,9 @@ G GetObjectRealSize
 # HeapNewObject(HeapID,Size_in_Bytes):ObjectID Return < 100 is Error code
 # HeapResizeObject(HeapID,ObjectID,NewSize_In_Bytes):ObjectID Return < 100 is error code
 # HeapDeleteObject(HeapID,ObjectID):StatusCode Success==0 other wise error code
-# HeapCopyObject(HeapID,ObjectId):ObjectIDReturn < 100 is error code
 # GetObjectRealSize(HeapID,ObjectID) Calculates the space between ObjectID and next.
 # HeapDefrag(HeapID) Walks though heap and tries to merge free objects that are next to each other.
+# HeapAppend(ObjectID1,ObjectId2,offset):ObjectID  Appends Object2 to Object1[:offset] 
 #
 # HeapID is ptr to memory
 # HeapID[0]=16b Ptr to First Object in Heap
@@ -33,27 +34,16 @@ G GetObjectRealSize
 # ObjectID[-2]=16b Ptr to Next Object Entry or zero if last entry
 # ObjectID[-3]=8b flag. (0=Free, 1=In-use)
 #
-# Storage
-:SizeInBytes 0
-:NewSizeInBytes 0
-:HeapID 0
-:ObjectID 0
-:NewObject 0
-:IndexX 0
-:IndexY 0
-:IndexZ 0
-:ContinueLoop 0
-:NewNextObject 0
-:OldNextObject 0
-:NewRemainingSize 0
 #
 #
 # Function HeapDefineMemory(Address,SizeInBytes)
 # Address should be start of free memory, and size is how much to allocate.
 :HeapDefineMemory
 @PUSHRETURN
-@PUSHLOCALI SizeInBytes
-@PUSHLOCALI HeapID
+@LocalVar HeapID 01
+@LocalVar SizeInBytes 02
+@LocalVar Index1 03
+
 #
 @POPI SizeInBytes
 @POPI HeapID      # At this point the HeapID is same as address where heap memory starts
@@ -67,6 +57,12 @@ G GetObjectRealSize
    @POPNULL
    @PUSH 0        # Returning zero means the heap request was invalid
 @ELSE
+# Should not be needed, but just in case uncomment here.
+#   @ForIA2V Index1 0 SizeInBytes
+#      @PUSH 0
+#      @PUSHI HeapID @ADDI Index1
+#      @POPS
+#   @Next Index1
    @POPNULL
    @PUSHI HeapID
    @ADD SizeFirstHead  # address of first object will be after the first headers
@@ -83,21 +79,27 @@ G GetObjectRealSize
    @SUB ObjectPtrLocation @PUSH 0 @SWP @POPS
    @PUSHI HeapID      # Successfull Heap created return it's ID on stack
 @ENDIF
-@POPLOCAL HeapID
-@POPLOCAL SizeInBytes
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
 # Function HeapNewObject(Size,HeapID)
 :HeapNewObject
+##@PRT "Call From: " @PRTHEXTOP @PRT " Size: "
 @PUSHRETURN
-@PUSHLOCALI HeapID
-@PUSHLOCALI SizeInBytes
-@PUSHLOCALI IndexX
-@PUSHLOCALI NewNextObject
+@LocalVar HeapID 01
+@LocalVar SizeInBytes 02
+@LocalVar IndexX 03
+@LocalVar NewNextObject 04
+@LocalVar ContinueLoop 05
+@LocalVar OldNextObject 06
 
 @POPI SizeInBytes
+##@PRTHEXI SizeInBytes @PRTNL
 @POPI HeapID
+##@PRTLN "HeapNewObject: " @PUSHI HeapID  @CALL HeapListMap
 #
 @PUSHII HeapID      # Ptr to first Object
 @POPI IndexX
@@ -119,22 +121,23 @@ G GetObjectRealSize
          @PUSHI HeapID
          @PUSHI IndexX
          @CALL GetObjectRealSize
-         @DUP @POPI NewRemainingSize
-         @IF_UGT_V SizeInBytes          #
+         @IF_UGE_V SizeInBytes          #
              #This means that the object was both free and large enough. So we tell While loop to exit.
              @MA2V 1 ContinueLoop
              # Next question Will the new object take up all the space, or leave some for a new empty object?
              @SUBI SizeInBytes            # TOS is the size of the old object After we subtract the size we need now.
              @SUB SizeObjectHead
-             @IF_UGT_A MinObjectSize       # We don't want to leave tiny objects arround that will never be used. D4
-                 @POPNULL
-                 # OK its big enough for reasonable objects
-                 @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS # Get the 'old' 'next' object. It might be zero.
-                 @POPI OldNextObject
-                 #
-                 @PUSHI IndexX @ADDI SizeInBytes @ADD SizeObjectHead # TOS is Ptr to 'new' objects we're squeezing in.
-                 @POPI NewNextObject
-                 #
+             @POPNULL
+             # OK its big enough for reasonable objects
+             @PUSHI IndexX @SUB ObjectPtrLocation @PUSHS # Get the 'old' 'next' object. It might be zero.
+             @POPI OldNextObject
+             #
+             @PUSHI IndexX @ADDI SizeInBytes @ADD SizeObjectHead # TOS is Ptr to 'new' objects we're squeezing in.
+             @POPI NewNextObject
+             #
+             @IF_EQ_VV NewNextObject OldNextObject
+                # New Object same size as old one, so no new mini objects are being created.
+             @ELSE
                  # Zero out the NewNextObject's default header
                  @PUSH 0 @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS
                  @PUSH 0 @PUSHI NewNextObject @SUB SizeObjectHead @POPS
@@ -144,11 +147,8 @@ G GetObjectRealSize
                  # Now setup the header of the NewNextObject
                  @PUSHI OldNextObject
                  @PUSHI NewNextObject @SUB ObjectPtrLocation @POPS # NewNextObject[-2]=Ptr->OldNextObject
-             @ELSE                    #
-                 # The space we are reclaiming was not large enough to divide but large enough for our one time use
-                 # The NextObject therefore remains the same. We just need to Mark current one as used
-                 @POPNULL
-             @ENDIF                   #
+             @ENDIF
+#
              @PUSHI IndexX @SUB SizeObjectHead @PUSHS
              @AND 0xff00
              @OR 0x1  # Mark Object as 'in use'
@@ -210,10 +210,12 @@ G GetObjectRealSize
   @PUSHI IndexX
 # Else the ContinueLoop already on th stack is the error value
 @ENDIF
-@POPLOCAL NewNextObject
-@POPLOCAL IndexX
-@POPLOCAL SizeInBytes
-@POPLOCAL HeapID
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 
@@ -222,13 +224,14 @@ G GetObjectRealSize
 #
 :HeapResizeObject
 @PUSHRETURN
-@PUSHLOCALI HeapID
-@PUSHLOCALI ObjectID
-@PUSHLOCALI NewSizeInBytes
-@PUSHLOCALI IndexX
-@PUSHLOCALI IndexY
-@PUSHLOCALI NewObject
-@POPI NewSizeInBytes
+@LocalVar HeapID 01
+@LocalVar ObjectID 02
+@LocalVar NewSizeInBytes 03
+@LocalVar IndexX 04
+@LocalVar IndexY 05
+@LocalVar NewObject 06
+
+#
 @POPI ObjectID
 @POPI HeapID
 #
@@ -283,12 +286,12 @@ G GetObjectRealSize
     # Call to HeapNewObject result in an error, which will already be in NewObject, just let it be returned.
     @POPNULL
 @ENDIF
-@POPLOCAL NewObject
-@POPLOCAL IndexY
-@POPLOCAL IndexX
-@POPLOCAL NewSizeInBytes
-@POPLOCAL ObjectID
-@POPLOCAL HeapID
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -296,8 +299,9 @@ G GetObjectRealSize
 # Function HeapDeleteObject(HeapID,ObjectID)
 :HeapDeleteObject
 @PUSHRETURN
-@PUSHLOCALI ObjectID
-@PUSHLOCALI HeapID
+@LocalVar HeapID 01
+@LocalVar ObjectID 02
+
 #
 @POPI ObjectID
 @POPI HeapID
@@ -309,8 +313,8 @@ G GetObjectRealSize
 @PUSHI HeapID
 @CALL HeapDefrag
 #
-@POPLOCAL HeapID
-@POPLOCAL ObjectID
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -319,9 +323,9 @@ G GetObjectRealSize
 # Walk the Heap find any free nodes and check if they are adjacent. Combine them if possible.
 :HeapDefrag
 @PUSHRETURN
-@PUSHLOCALI HeapID
-@PUSHLOCALI IndexX
-@PUSHLOCALI IndexY
+@LocalVar HeapID 01
+@LocalVar IndexX 02
+@LocalVar IndexY 03
 #
 @POPI HeapID
 #
@@ -368,22 +372,27 @@ G GetObjectRealSize
            @POPNULL
            @PUSH 0   # This will end the outter while loop.
         @ELSE
+           @POPNULL
            @PUSHI IndexY @SUB ObjectPtrLocation @PUSHS @POPI IndexX  # Set up for next outer while test
            @PUSHI IndexY
         @ENDIF        
      @ENDIF
 @ENDWHILE
-@POPLOCAL IndexY
-@POPLOCAL IndexX
-@POPLOCAL HeapID
+@POPNULL
+@PUSH 0   # Will be the return value.
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 
 # Function HeapListMap(HeapID)
 :HeapListMap
 @PUSHRETURN
-@PUSHLOCALI ObjectID
-@PUSHLOCALI HeapID
+@LocalVar HeapID 01
+@LocalVar ObjectID 02
+
+#
 @POPI HeapID
 @PUSHII HeapID
 @POPI ObjectID
@@ -402,8 +411,8 @@ G GetObjectRealSize
    @PUSHI HeapID
    @PUSHI ObjectID
    @CALL GetObjectRealSize
-   @PRT " Size("
-   @PRTTOP
+   @PRT " Size(0x"
+   @PRTHEXTOP
    @PRT ") Next ID->"
    @POPNULL
    @PUSHI ObjectID @SUB ObjectPtrLocation @PUSHS
@@ -418,8 +427,8 @@ G GetObjectRealSize
    @PRTNL
 @ENDWHILE
 @POPNULL
-@POPLOCAL HeapID
-@POPLOCAL ObjectID
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
    
@@ -459,5 +468,72 @@ G GetObjectRealSize
 @POPLOCAL ObjectID
 @POPRETURN
 @RET
+##################################################################
+# Function HeapAppend(HeapID,Object1,Object2,Offset):Object1_(new?)
+# Appends Object2 to Object1 and growns
+:HeapAppend
+@PUSHRETURN
+@LocalVar HeapID 01
+@LocalVar Object1 02
+@LocalVar Index1 03
+@LocalVar Offset 04
+@LocalVar NewObject 05
+@LocalVar Object1Size 06
+@LocalVar Object2Size 07
+@LocalVar Object2 08
+#
+@POPI Offset
+@POPI Object2
+@POPI Object1
+@POPI HeapID
+#
+# Calculate Object sizes
+@PUSHI Object1
+@PUSHI HeapID
+@CALL GetObjectRealSize
+@POPI Object1Size
+@PUSHI Object2
+@PUSHI HeapID
+@CALL GetObjectRealSize
+@POPI Object2Size
+#
+@PUSHI Object1Size @SUBI Offset
+@IF_LT_V Object2Size
+   # Object1 too Small, expand it.
+   @POPNULL
+   @PUSHI Object1Size @SUBI Offset
+   @ADDI Object2Size     # New size is Oldsize-Offset+Object2Size
+   @PUSHI Object1
+   @PUSHI HeapID
+   @CALL HeapResizeObject
+   @POPI Object1   # Object1 might as be just an error code.
+@ENDIF
+#
+# There is a chance that the resizing of Object1 failed with an error.
+# If so we don't bother copying Object2 and just pass the Object1 error to the calling process
+@PUSHI Object1
+@IF_GT_A 100       # Object1's ID will be < 100 if there is an error.
+   @ForIA2V Index1 0 Object2Size
+       @PUSHI Object2 @ADDI Index1 @PUSHS
+       @PUSHI Object1 @ADDI Offset @ADDI Index1 @POPS
+   @Next Index1
+@ENDIF
+# Object1's id or error code is on the stack.
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+
+   
+
+
+
 ENDBLOCK
 

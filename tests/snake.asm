@@ -59,13 +59,13 @@ L random.ld
 #
 # Initilzie CX,CY to center of screen.
 @PUSHI WinWidth
-@RTR
+@SHR
 @POPI CHX
 @PUSHI WinHeight
-@RTR
+@SHR
 @POPI CHY
 @PUSHI CHX
-@RTR
+@SHR
 @PUSHI CHY
 @CALL WinCursor
 # Prompt the user to enter two characters 'any' and <enter>

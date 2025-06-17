@@ -1,14 +1,15 @@
 ! SCREEN_DONE
-L io.ld
 L heapmgr.ld
+L string.ld
 M SCREEN_DONE 1
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot
 G WinHideCursor G WinShowCursor G ColorReset G ColorFGSet G ColorBGSet
+G CSICODE G WinNorth G WinSouth G WinEast G WinWest
 :WinWidth 80
 :WinHeight 24
 :CSICODE
-#"<ESC>["b0
-b$27 "[" b0
+#"<ESC>["$$0
+$$27 "[" $$0
 # Windows Clear
 :WinClear
 @PRTS CSICODE @PRT "0m"
@@ -59,8 +60,8 @@ b$27 "[" b0
 @PUSHLOCALI Direct
 @POPI StrPtr
 @POPI Y1 @POPI X1 @POPI Y0 @POPI X0
-#@PUSHI X0 @RTL @RTL @RTR @POPI X0
-#@PUSHI X1 @RTL @RTL @RTR @POPI X1
+#@PUSHI X0 @SHL @SHL @SHR @POPI X0
+#@PUSHI X1 @SHL @SHL @SHR @POPI X1
 @PUSHI X1 @SUBI X0 @POPI DX @ABSI DX @POPI DX
 
 @PUSHI X0
@@ -88,7 +89,7 @@ b$27 "[" b0
       @ENDIF
    @ENDIF
    
-   @PUSHI ERR @RTL @POPI E2
+   @PUSHI ERR @SHL @POPI E2
    @PUSHI E2
    @IF_GE_V DY
       @POPNULL
@@ -181,29 +182,62 @@ b$27 "[" b0
   @MA2V 50 WinHeight
 :NotTooTall
 @RET
-:TermInfoBuffer "                                                      " b0
+:TermInfoBuffer "                                                      " $$0
 :TIBIndex 0
 #
 # Function ColorBGSet(Color)
-:ANSICSI b$27 "[" b0
+:ANSICSI $$27 "[" $$0
 :ColorID 0
 :ColorBGSet
 @PUSHRETURN
 @POPI ColorID
-@PRTS ANSICSI @PRT "48;5;" @PRTI ColorID @PRT "m"
+#@PRTS ANSICSI @PRT "48;5;" @PRTI ColorID @PRT "m"
+@PRTS CSICODE  @PRT "48;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
 # Function ColorFGSet(Color)
 :ColorFGSet
 @PUSHRETURN
 @POPI ColorID
-@PRTS ANSICSI @PRT "38;5;" @PRTI ColorID @PRT "m"
+#@PRTS ANSICSI @PRT "38;5;" @PRTI ColorID @PRT "m"
+@PRTS CSICODE @PRT "38;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
 # Function ColorReset()
 :ColorReset
 @PRTS ANSICSI @PRT "0m"
 @RET
+########################### Direction
+# Function WinNorth()
+:WinNorth
+@SWP
+@PRT CSICODE
+@PRTTOP @POPNULL
+@PRT "A"
+@RET
+# Function WinSouth()
+:WinSouth
+@SWP
+@PRT CSICODE
+@PRTTOP @POPNULL
+@PRT "B"
+@RET
+# Function WinEast()
+:WinEast
+@SWP
+@PRT CSICODE
+@PRTTOP @POPNULL
+@PRT "C"
+@RET
+# Function WinWest()
+:WinWest
+@SWP
+@PRT CSICODE
+@PRTTOP @POPNULL
+@PRT "D"
+@RET
+
+
 
 ENDBLOCK
 :ENDSCREEN

@@ -78,14 +78,14 @@ G MemResetBit
 :MemGetBit
 @POPI MGReturn
 @DUP
-@RTR @RTR @RTR @RTR      # Div BitNum/16 to get which Word
+@SHR @SHR @SHR @SHR      # Div BitNum/16 to get which Word
 @POPI MGWord
 @AND 0x000f              # Mask BitNum to get 0-15 bit in word
 @POPI MGBitIn
 @MA2V 1 MGMASK
 @PUSHI MGMASK
 @ForIA2V MGIndex1 0 MGBitIn
-   @RTL
+   @SHL
 @Next MGIndex1
 @POPI MGMASK 
 @PUSHI MGWord
@@ -109,14 +109,14 @@ G MemResetBit
 @POPI MSReturn
 @POPI MSBitIn
 @PUSHI MSBitIn
-@RTR @RTR @RTR @RTR     # BinIn/16 gets which Word
+@SHR @SHR @SHR @SHR     # BinIn/16 gets which Word
 @POPI MSWord
 @PUSHI MSBitIn @AND 0x000f       # Bit in word 0-15
 @POPI MSBitPos
 @MA2V 1 MSMASK
 @PUSHI MSMASK
 @ForIA2V MSIndex 0 MSBitPos
-   @RTL                          # Shift Mask over MSBitPos number of bits
+   @SHL                          # Shift Mask over MSBitPos number of bits
 @Next MSIndex
 @POPI MSMASK
 @PUSHI MSWord
@@ -137,14 +137,14 @@ G MemResetBit
 @POPI MSReturn
 @POPI MSBitIn
 @PUSHI MSBitIn
-@RTR @RTR @RTR @RTR     # BinIn/16 gets which Word
+@SHR @SHR @SHR @SHR     # BinIn/16 gets which Word
 @POPI MSWord
 @PUSHI MSBitIn @AND 0x000f       # Bit in word 0-15
 @POPI MSBitPos
 @MA2V 1 MSMASK
 @PUSHI MSMASK
 @ForIA2V MSIndex 0 MSBitPos
-   @RTL                          # Shift Mask over MSBitPos number of bits
+   @SHL                          # Shift Mask over MSBitPos number of bits
 @Next MSIndex
 @INV                             # We reverse the bits (and make sure we have 16)
 @POPI MSMASK
@@ -190,7 +190,7 @@ G MemResetBit
 @POPNULL
 @ForIA2B Index1 0 4  # Zero out the 64 bits of the MemTable
    @PUSH 0
-   @PUSHI Index1 @RTL   # Words not bytes. 
+   @PUSHI Index1 @SHL   # Words not bytes. 
    @ADD MemTable
    @POPS
 @Next Index1

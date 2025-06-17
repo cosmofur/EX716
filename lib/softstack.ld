@@ -3,7 +3,7 @@
 # Used mostly so some simple low depth recursion can avoid reusing fixed storage
 #
 # This provides a Software stack which can be larger than the built in hardware stack.
-# The default is 'only' 240 bytes long and suttbale for 120 2 byte words, but you can
+# The default is 'only' 240 bytes long for 120 2 byte words, but you can
 # redefine any block of memory to be a new software stack.
 #
 # Main public  Macros are:
@@ -14,6 +14,14 @@
 #  PUSHLOCALI    - PUSH's the value of a [variable] to Software Stack
 #  PUSHLOCALII   - PUSH the value of a [[variable]] to software state (usefull if trying to push an item in array)
 #  PUSHLOCAL     - PUSH's a constant (or lable address) to software stack
+# 
+# Two related function to PUSHLOCAL and POPLOCAL are LocalVar and RestoreVar
+# They require that storage lables in the form Var01 to VarNN be declared.
+# The purpose to to associate localy named variables to 'register' like reused storage.
+# The ##'s need to be declaired in order, and Restored in Reverse Order.
+# LocalVar ##    - (re)defines a lable to preserve and reuse common 'Var01 - VarNN' storage for 'Local' variables
+# RestoreVar ##  - Restores common Var## back to original value. 
+
 #
 #  POPHW         - POP's SoftwareStack and PUSHS it onto the HW stack
 #  POPRETURN     - Same, but syntaticly clear is meant to recover the Return address of functions
@@ -51,8 +59,6 @@ M SOFTSTACK_DONE 1
 G __SS_TOP
 G __SS_BOTTOM
 G __SS_SP
-G __SS_BOTTOM
-G __SS_TOP
 G __MOVE_HW_SS
 G __MOVE_SS_HW
 G SetSSStack
@@ -67,14 +73,24 @@ G RestoreSSStack
 
 #
 # Define PUSHRETURN
+M ENABLETRACE M PUSHRETURN @PRT "Entry: " @StackDump @CALL __MOVE_HW_SS
+M ENABLERETTRACE M POPRETURN @PRT "Return: " @StackDump @CALL __MOVE_SS_HW
+M DISABLETRACE M PUSHRETURN @CALL __MOVE_HW_SS
+M DISABLERETTRACE M RET @JMPS
 M PUSHRETURN @CALL __MOVE_HW_SS
 M PUSHHW @CALL __MOVE_HW_SS
 M PUSHLOCALI @PUSHI %1 @CALL __MOVE_HW_SS
 M PUSHLOCALII @PUSHII %1 @CALL __MOVE_HW_SS
 M PUSHLOCAL @PUSH %1 @CALL __MOVE_HW_SS
+# These require that you define labels Var00 to VarNN and allow
+# them to be used like 'Registers' or local variables inside functions.
+M LocalVar = %1 Var%2 @PUSHI Var%2 @CALL __MOVE_HW_SS
+M RestoreVar @POPLOCAL Var%1
+
 # Function __MOVE_HW_SS
 #  Pushes top of HW Stack to SoftStack
 :__MOVE_HW_SS
+#@PRTHEXTOP @PRTSP
 @PUSHI __SS_SP
 @IF_ULT_V __SS_BOTTOM
    @POPNULL

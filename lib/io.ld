@@ -16,22 +16,26 @@ G StrReadToChar
 @POPI SRCStrPtr
 @MA2V 0 SRCReadCH
 @PUSH 0 @POPII SRCStrPtr   # Initilize StrPtr to empty string
-# While SRCReadCH != SRCChar loop
-:SRCMainLoop
-@PUSHI SRCReadCH @CMPI SRCChar @POPNULL     # ? SRCReadChr == SRCChar
-@JMPZ SRCExitMainLoop
-@PUSHI SRCLimit @CMP 0 @POPNULL              # ? SRCLimit == 0
-@JMPZ SRCExitMainLoop
+@PUSH SRCLimit
+@WHILE_NOTZERO
+   @SUB 1 @POPI SRCLimit
    @READC SRCReadCH
-   # While it true that READC will sometimes return specail characters as multi byte
-   # For our purposes we will only consider the lower ascii characters
    @PUSHI SRCReadCH @AND 0xff @POPI SRCReadCH
-   @PUSHI SRCStrPtr # StrPtr is already a pointer, so we just pass its value
-   @PUSH SRCReadCH  # Is local storage so we pass it's address turning into pointer
+   @PUSHI SRCStrPtr
+   @PUSHI SRCReadCH
    @CALL strcat
-   @DECI SRCLimit   # Count down to zero to prevent infinit loop if ch never seen.
-@JMP SRCMainLoop
-:SRCExitMainLoop
+   @PUSHI SRCLimit
+   @IF_EQ_VV SRCReadCH SRCChar
+      @POPNULL
+      @PUSH 0
+   @ELSE
+      @IF_EQ_AV 0 SRCLimit
+          @POPNULL
+          @PUSH 0
+      @ENDIF
+   @ENDIF
+@ENDWHILE
+@POPNULL
 @PUSHI SRCReturn
 @RET
 :SRCReturn 0

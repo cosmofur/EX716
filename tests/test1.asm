@@ -12,9 +12,9 @@ M SetVal @CALL SetVal
 #
 #
 =Constant 0x100
-:Var1 0x1001
-:Var2 0x2002
-:Var3 0x3003
+@MA2V 0x1001 Var1
+@MA2v 0x2002 Var2
+@MA2V 0x3003 Var3
 :Ref1 Var1
 :Ref2 Var2
 :Ref3 Var3
@@ -534,6 +534,7 @@ M SetVal @CALL SetVal
 @PRT " R1:" @PRTHEXI Ref1
 @PRT " R2:" @PRTHEXI Ref2
 @PRT " R3:" @PRTHEXI Ref3
+@PRT " ST:" @PRTHEXTOP
 @PRT " "
 @IF_ZFLAG
   @PRT "Z"
@@ -556,7 +557,6 @@ M SetVal @CALL SetVal
   @PRT "_"
 @ENDIF
 #@PRT " tos:" @SWP @PRTHEXTOP @SWP @PRTNL
-@StackDump
 @PUSHI ReturnVal
 @RET
 :ReturnVal 0

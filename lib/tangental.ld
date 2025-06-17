@@ -53,7 +53,7 @@ G COSR
    @END
    @CBREAK
 @ENDCASE
-@RTL              # *2
+@SHL              # *2
 @IF_EQ_VA SINDIR -1
    @PUSH SINTable   # Get Value starting from bottom table looking backwards
    @ADD 178
@@ -96,7 +96,7 @@ G COSR
 @PUSH           # Radians / 78 fit neatly into a 0-79 table
 @CALL DIV
 @SWP @POPNULL     # Don't need MOD
-@RTL
+@SHL
 @ADD SINTable
 @PUSHS            # Value we want *1000
 @SWP              # Put Return Address back on top
@@ -122,17 +122,17 @@ G COSR
 @ForIA2B IndexAT2 0 10
     @PUSHI YInputAT2
     @IF_NOTZERO
-       @RTR           # Y >> 1
+       @SHR           # Y >> 1
        @ADDI ResultAT2
        @POPI ResultAT2
        @MV2V XInputAT2 XOLDAT2
        @PUSHI XInputAT2
-       @PUSHI YOLDAT2 @RTR
+       @PUSHI YOLDAT2 @SHR
        @SUBS
        @POPI XInputAT2   # X=X - (Y_old >> 1)
        @MV2V YInputAT2 YOLDAT2
        @PUSHI YInputAT2
-       @PUSHI XInputAT2 @RTR
+       @PUSHI XInputAT2 @SHR
        @ADDS              # Y = Y + (X_old >> 1)
     @ENDIF
 @Next IndexAT2

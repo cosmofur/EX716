@@ -19,15 +19,15 @@ G PrintSF
 :__StrPtr
 0
 :__Char
-b0
+$$0
 :__Char2
-b0
-b0
+$$0
+$$0
 :__Unused
 0
 :__ValueHold
 0
-b0
+$$0
 #  Push Values, then Push PTR to Format String
 :PrintSF
 @POPI __ReturnPS
@@ -45,19 +45,19 @@ b0
 :__StartEscape
 @PUSHI __StrPtr @ADD 1 @POPI __StrPtr         # StrPtr ++
 @PUSHII __StrPtr @AND 0x00ff @POPI __Char     # Char=mem[StrPtr]
-@PUSH "^\0" b0 @CMPI __Char @POPI __Unused         # If "^^" then output "^"
+@PUSH "^\0" $$0 @CMPI __Char @POPI __Unused         # If "^^" then output "^"
 @JMPZ __TwoPercent
-@PUSH "d\0" b0 @CMPI __Char @POPI __Unused         # If ^d then output int as if passed by value
+@PUSH "d\0" $$0 @CMPI __Char @POPI __Unused         # If ^d then output int as if passed by value
 @JMPZ __IntByValue
-@PUSH "i\0" b0 @CMPI __Char @POPI __Unused         # if ^i then output in as if passed by refrence
+@PUSH "i\0" $$0 @CMPI __Char @POPI __Unused         # if ^i then output in as if passed by refrence
 @JMPZ __IntByRef
-@PUSH "b\0" b0 @CMPI __Char @POPI __Unused         # if ^b then output as binary if passed by value
+@PUSH "b\0" $$0 @CMPI __Char @POPI __Unused         # if ^b then output as binary if passed by value
 @JMPZ __BinByValue
-@PUSH "e\0" b0 @CMPI __Char @POPI __Unused         # if ^e then output as binary if passed by refrence
+@PUSH "e\0" $$0 @CMPI __Char @POPI __Unused         # if ^e then output as binary if passed by refrence
 @JMPZ __BinByRef
-@PUSH "n\0" b0 @CMPI __Char @POPI __Unused         # if ^n then linefeed.
+@PUSH "n\0" $$0 @CMPI __Char @POPI __Unused         # if ^n then linefeed.
 @JMPZ __LineFeed
-@PUSH "s\0" b0 @CMPI __Char @POPI __Unused         # if ^s then string print by refrence.
+@PUSH "s\0" $$0 @CMPI __Char @POPI __Unused         # if ^s then string print by refrence.
 @JMPZ __PrintString
 @PRT "Error: ("
 @PUSH 1 @CAST __Char
@@ -75,7 +75,7 @@ b0
 @POPII __ValueHold @PUSH 5 @CAST __ValueHold @POPI __Unused @JMP __ContinueLoop
 :__LineFeed
 @PRTNL @JMP __ContinueLoop
-b0 b0
+$$0 $$0
 :__PrintString
 @POPI $__StrPtrHold
 @PUSH 1

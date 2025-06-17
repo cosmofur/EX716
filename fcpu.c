@@ -340,7 +340,7 @@ void handleCast(int Param, int ParamI, int ParamII) {
     exit(0);
     break;  
   default:
-    printf("Error No such Cast Code.\n");
+    printf("Error No such Cast Code: %d\n", topstack(PC));
     break;
   }
   fflush(stdout);
@@ -403,7 +403,7 @@ void handlePoll(int Param,int ParamI,int ParamII) {
     break;
     
   default:
-    printf("Poll Code not implmented");
+    printf("Poll Code not implmented %d",topstack(PC));
   }
 }
   
@@ -798,7 +798,7 @@ int doeval(int startpc) {
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
-       case OptValRTR:
+       case OptValSHR:
 	 R1=popstack(OptCode);
 	 B1=0;
 	 if ( R1 & 0x1) { B1=1;}
@@ -808,7 +808,7 @@ int doeval(int startpc) {
 	 Opsize=1;
 	 PC=PC+Opsize;	 
 	 break;
-       case OptValRTL:
+       case OptValSHL:
 	 R1=popstack(OptCode);
 	 B1=0;
 	 if ( R1 & 0x8000) { B1=1;}

@@ -1,15 +1,23 @@
 I common.mc
 L lmath.ld
-:Var1 0 0
 :Var1Ptr Var1
-:Var2 0 0
-:Var2Ptr Var2
-:Var3 0 0
-:Var3Ptr Var3
-:Var4 0 0
-:Var4Ptr Var4
+:Var2Ptr Var3
+:Var3Ptr Var5
+:Var4Ptr Var7
+=Var2 Var3
+=Var3 Var5
+=Var4 Var7
 
 :Main . Main
+@PRT " 100 / 4 = "
+@MOVE32AV $$$100 Var1
+@MOVE32AV $$$4 Var2
+#@PUSH Var1 @PUSH Var2 @PUSH Var3 @CALL SUB32
+@DIV32VVVV Var1 Var2 Var3 Var4
+@PRT32 Var1 @PRT "/" @PRT32  Var2 @PRT "=" @PRT32 Var3 @PRT " + " @PRT32 Var4
+@END
+
+
 #
 #
 @PRT " 100,000 + 200,000 = "

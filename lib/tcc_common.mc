@@ -11,7 +11,7 @@ L div.ld
 0
 # Soft Stack Management variables
 :SSP
-b0 b18
+$$0 b18
 # Default Pointer variable
 :SSPPTR
 0
@@ -327,7 +327,7 @@ M SPRTTOP \
 # Assign a constant String to memory with null termination and put address of start of string to HW Stack.
 M STRNEW \
   @JMP J%0 \
-  :%0M1 %1 b0 \
+  :%0M1 %1 $$0 \
   :%0UN1 0 \
   :J%0 \
   @PUSH %0M1

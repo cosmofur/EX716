@@ -516,7 +516,7 @@ L string.ld
 # Test if GapSize+LineinfoDB[0] > sizeof(LineinfoDB)
 @PUSHI GapSize
 @ADDII LineinfoDB    # Location where size of current active linedb is stored.
-@RTL                 # turn into bytes
+@SHL                 # turn into bytes
 @ADD LineDBHeader    # TOS is total size of 'used' linedb
 #
 # Check if we have run out of space for LineinfoDB yet.
@@ -550,8 +550,8 @@ L string.ld
 #
 #
 # Turn Ranges into Bytes/Addresses
-@PUSHI TopRange @RTL @ADDI LineinfoDB @ADD LineDBHeader @POPI TopRange
-@PUSHI BottomRange @RTL @ADDI LineinfoDB @ADD LineDBHeader @POPI BottomRange
+@PUSHI TopRange @SHL @ADDI LineinfoDB @ADD LineDBHeader @POPI TopRange
+@PUSHI BottomRange @SHL @ADDI LineinfoDB @ADD LineDBHeader @POPI BottomRange
 #
 @PUSHI TopRange
 @IF_LT_V BottomRange
@@ -560,7 +560,7 @@ L string.ld
 @POPNULL
 
 @ForIV2V Index1 TopRange BottomRange
-   @PUSHI Index1 @PUSHI GapSize @RTL @SUBS @PUSHS
+   @PUSHI Index1 @PUSHI GapSize @SHL @SUBS @PUSHS
    @POPII Index1
 @NextBy Index1 -2     # Step down by 16 bit words
 @PUSHI LineinfoDB

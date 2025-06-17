@@ -1,6 +1,6 @@
 I common.mc
 L softstack.ld
-L random2.ld
+L random.ld
 # This test is to see how 'random' the random number generator is.
 :Main . Main
 
@@ -73,7 +73,7 @@ L random2.ld
 :AddtoBucket
 @PUSHRETURN
 @POPI NewValue
-@RTL
+@SHL
 @ADD BucketTable
 @DUP
 @PUSHS
@@ -89,7 +89,7 @@ L random2.ld
 :SetToBucket
 @PUSHRETURN
 @SWP
-@RTL
+@SHL
 @ADD BucketTable
 @POPS
 @POPRETURN
@@ -98,7 +98,7 @@ L random2.ld
 # Function GetBucket(Bucket)
 :GetBucket
 @PUSHRETURN
-@RTL
+@SHL
 @ADD BucketTable
 @PUSHS
 @POPRETURN
