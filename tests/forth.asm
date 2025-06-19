@@ -52,7 +52,7 @@ L div.ld
 = ELSETAG 2
 = THENTAG 3
 = BEGINTAG 4
-
+= DOTAG 5
 
 #  based on SectorForth
 
@@ -82,6 +82,15 @@ M FSWP \
        @PUSHI SP @ADD 4 @PUSHS \
        @PUSHI SP @ADD 2 @POPS \
        @PUSHI SP @ADD 4 @POPS
+# Gets SP TOS but doesn't pop it off.
+M FPEEK \
+      @PUSHI SP @ADD 2 \
+      @PUSHS
+# Peek at SFT for SP stack
+M FPEEK1 \
+      @PUSHI SP @ADD 3 \
+      @PUSHS      
+      
 # BPUSH(tos:x) saves tos:x at [BP] then rp-=2
 #    Or Pushes HW(tos) to BP(tos)
 M BPUSH @PUSHI RP @POPS \
@@ -91,6 +100,13 @@ M BPUSH @PUSHI RP @POPS \
 M BPOP @PUSHI RP @ADD 2 @DUP \
        @POPI RP \
        @PUSHS
+M BPEEK \
+      @PUSHI RP @ADD 2 \
+      @PUSHS
+# Peek at SFT for RP stack
+M BPEEK1 \
+      @PUSHI RP @ADD 3 \
+      @PUSHS            
 #
 # LPUSH(tos:x) saves tos:x at [LP] then lp-=2
 #    Or Pushes HW(tos) to LP(tos)
@@ -101,7 +117,17 @@ M LPUSH @PUSHI LP @POPS \
 M LPOP @PUSHI LP @ADD 2 @DUP \
        @POPI LP \
        @PUSHS
-
+M LPEEK \
+      @PUSHI LP @ADD 2 \
+      @PUSHS       
+# Peek at SFT for LP stack
+M LPEEK1 \
+      @PUSHI LP @ADD 3 \
+      @PUSHS                   
+# Macro that puts on HW Stack current HERE point (here - 2 for expected inc2i)
+M GET_HERE \
+  @PUSHI DictPtr @SUB 2
+  
 M FCALL @PUSH 0 @PUSH J_%0 @BPUSH @JMP %1 :J_%0
 #
 
@@ -517,7 +543,6 @@ M FNEXT @JMP next
   @INC2I DictPtr       # Save a space for the Address to be pasted.
 @ELSE
   @PRTLN "Error: Unclosed Logic, expected IF Block 002"
-  :Break01
   # Not sure how to recover from this error.
 @ENDIF
 @FNEXT
@@ -577,11 +602,114 @@ M FNEXT @JMP next
    @PUSH BRANCH
    @CALL Compile
    @LPOP
-   @POPS
+   @CALL Compile
 @ELSE
    @PRTLN "Error: AGAIN without matching BEGIN"
 @ENDIF
 @FNEXT
+#
+#
+@DEFWORD "do_runtime" DO_RUNTIME 0
+@FPOP
+@IF_EQ_A DOTAG
+   @POPNULL
+   @FPOP    # Jmp Address
+   @FPOP    # Limit
+   @PRT " Limit:" @PRTHEXTOP
+   @FPOP    # Start
+   @PRT " Start:" @PRTHEXTOP @PRTNL
+   # Now move to LP Stack
+   @LPUSH 
+   @LPUSH 
+   @LPUSH 
+   @PUSH DOTAG @LPUSH  # TAG
+@ELSE
+   @PRTLN "Error: Do Until not closed properly"
+   @RET
+@ENDIF
+
+@FNEXT
+
+
+#
+#
+@DEFWORD "do" DO_COMPILE F_IMMEDIATE  # ( start limit -- )
+@LocalVar PatchLocation 01
+
+# Compile in LITERAL <LOOP_TOP> with 0 as LOOP_TOP placeholder
+@PUSH LITERAL @CALL Compile
+# Record where the Zero was saved in memory
+@PUSHI DictPtr @POPI PatchLocation
+# Now save at that place a zero placeholder
+@PUSH 0 @CALL Compile       # PlaceHolder Value, patch when we know where 'here is
+
+# Tag has to be top of SP stack.
+@PUSH LITERAL @CALL Compile
+@PUSH DOTAG @CALL Compile
+# Make first run of loop call the DO_RUNTIME to initilize the LS data
+@PUSH DO_RUNTIME @CALL Compile
+
+# Now insert <LOOP_TOP> where we put placeholder
+@PUSHI DictPtr @SUB 2 @POPII PatchLocation   # DictPtr is Compile time HERE -2 for INC2 later
+
+@RestoreVar 01
+@FNEXT
+
+#
+@DEFWORD "loop" LOOP_COMPILE 0
+@LocalVar StartVar 01
+@LocalVar LimitVar 02
+@LocalVar StartAddress 03
+@LPOP
+@IF_EQ_A DOTAG
+   # Drop Though
+@ELSE
+   @PRTLN "Error: LOOP without matching DO"
+   @RET
+@ENDIF
+@POPNULL    # No longer need tag
+# Move Values to HW Stack
+@LPOP  @POPI StartAddress # Sae
+@LPOP  @POPI LimitVar     # Save Limit
+@LPOP  @POPI StartVar     # Save Start
+
+
+@INCI StartVar
+
+@IF_EQ_VV StartVar LimitVar
+   # Loop is finished, just drop to exit.
+@ELSE
+   # Now recreate the LS entries for next loop
+   
+   @PUSHI StartVar @LPUSH
+   @PUSHI LimitVar @LPUSH
+   @PUSHI StartAddress @LPUSH      # Push StartAddress   
+   @PUSH DOTAG @LPUSH
+   @MV2V StartAddress IP          # Do the Jmp back to StartAddress
+   :Break01
+@ENDIF
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@FNEXT
+#
+@DEFWORD "i" I_WORD 0
+@PUSHI LP @ADD 8 @PUSHS
+@FPUSH
+@FNEXT
+#
+@DEFWORD "j" J_WORD 0
+@PUSHI LP @ADD 16 @PUSHS
+@FPUSH
+@FNEXT
+#
+@DEFWORD "k" K_WORD 0
+@PUSHI LP @ADD 24 @PUSHS
+@FPUSH
+@FNEXT
+#
+
+   
 #
 @DEFWORD "see" SEEWORDS F_IMMEDIATE
 @IF_EQ_AV 1 STATE
@@ -611,6 +739,26 @@ M FNEXT @JMP next
    @ENDIF
 @ENDIF
 @FNEXT
+#
+#
+@DEFWORD ">r" TOR_WORD 0
+@FPOP
+@BPUSH
+@FNEXT
+#
+#
+@DEFWORD "r>" RFROM_WORD 0
+@BPOP
+@FPUSH
+@FNEXT
+#
+#
+@DEFWORD "r@" RFETCH_WORD 0
+@BPEEK
+@FPUSH
+@RET
+
+
    
 
 
