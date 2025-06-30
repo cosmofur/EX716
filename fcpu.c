@@ -18,6 +18,7 @@ int ZF=0;
 int NF=0;
 int CF=0;
 int OF=0;
+int AdminFlag=0;
 int R1,R2,A1,B1,A2,B2;  // Scratch Variables
 int DebugRange1,DebugRange2;
 int WatchWord;
@@ -856,6 +857,21 @@ int doeval(int startpc) {
 	 Opsize=1;
 	 PC=PC+Opsize;
 	 break;
+       case OptValADM:
+         if (PC <= 0x4000) {
+           AdminFlag = ~AdminFlag;           
+             }
+         break;
+       case OptValSCLR:
+         HWStack[HWSPIDX]=0;
+         break;
+       case OptValSRPT:
+         if (HWStack[HWSPIDX] < (MAXHWSTACK - 1)) {
+             pushstack(HWStack[HWSPIDX],optcode);
+           } else if (HWStack[HWSPIDX] == (MAXHWSTACK - 1)) {
+             pushstack(-1,optcode);
+         }
+         break;
        default:
 	 printf("Unknown OptCode %d at address %0x04\n",OptCode,PC);
 	 PC++;

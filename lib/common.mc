@@ -219,7 +219,10 @@ M JMPNO @JMPO $_%01 @JMP %1 :_%01        # No Overflow
 #  For this group, remeber the flags are based on the B-A
 #  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
 #          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
-M JGT @JMPN %1                           # A=A-B, if B>A or A<=B JMP %1
+M JGT @JMPZ _%0_Skip \
+      @JMPN _%0_Skip \
+      @JMP %1 \
+      :_%0_Skip                          # GT true if Both Z and N are false
 M JGE @JMPN %1 @JMPZ %1                  # A=A-B, if B>=A or A<B JMP %1
 M JLT @JMPZ _%0Skp @JMPN _%0Skp @JMP %1 :_%0Skp   #  if B<A or A>=B JMP %1
 M JLE @JMPN _%0Skp @JMP %1 :_%0Skp         # A=A-B, if B<=A or A>B JMP %1

@@ -113,10 +113,12 @@ M IF_EQ_AV \
   :_%0_True
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
-   @CMPS \
-   @JMPN  _%0_True \
-   %S @JMP _%V_ENDIF \
-   :_%0_True
+   %S \
+   @CMPS         \
+   @JMPN _%0_True \
+   @JMP _%V_ENDIF \
+ :_%0_True
+
 # IF_LT_A (A) = True if TOS is < A
 M IF_LT_A \
    @CMP %1 \
@@ -132,17 +134,19 @@ M IF_LT_V \
 #
 # IF_LE_S (A,B)=True if SFT(A) <= TOS(B)
 M IF_LE_S \
+  %S \
   @CMPS \
   @JMPZ _%0_True \
   @JMPN _%0_True \
-  %S @JMP _%V_ENDIF \
+  @JMP _%V_ENDIF \
   :_%0_True
 # IF_LE_A (A) = True if TOS is <=A
 M IF_LE_A \
+  %S \
   @CMP %1 \
   @JMPZ _%0_True \
   @JMPN _%0_True \
-  %S @JMP _%V_ENDIF \
+  @JMP _%V_ENDIF \
   :_%0_True
 # IF_LE_V V = True if TOS is <=V
 M IF_LE_V \
@@ -161,17 +165,18 @@ M IF_GE_S \
 # True if TOS >= A
 M IF_GE_A \
    %S \
-   @PUSH %1 \
-   @CMPS @POPNULL \
+   @CMP %1 \
    @JMPZ _%0_True \
    @JMPN _%V_ENDIF \
    :_%0_True
 # True if TOS >= V
 M IF_GE_V \
-  @PUSHI %1 @CMPS @POPNULL \
-  %S \
-  @JMPN _%V_ENDIF
-# True if (A,B) A>B
+   %S \
+   @CMPI %1 \
+   @JMPZ _%0_True \
+   @JMPN _%V_ENDIF \
+   :_%0_True
+# True if TOS > A
 M IF_GT_S \
   %S \
   @CMPS \
@@ -180,65 +185,48 @@ M IF_GT_S \
  :_%0_True
 # True if TOP > A
 M IF_GT_A \
-  @PUSH %1 @SWP @CMPS @SWP @POPNULL \
-  @JMPN _%0_True \
-  %S @JMP _%V_ENDIF \
-  :_%0_True
-M IF_GE_A \
-  @PUSH %1 @CMPS @POPNULL \
   %S \
-  @JMPN _%V_ENDIF
-# True if TOP > V
+  @CMP %1 \
+  @JMPN _%V_ENDIF \
+  @JMPZ _%V_ENDIF \
+  @JMP _%0_True \
+  :_%0_True
+# True if TOS > V
 M IF_GT_V \
-  @PUSHI %1 @SWP @CMPS @SWP @POPNULL \
-  @JMPN _%0_True \
-  %S @JMP _%V_ENDIF \
+  %S \
+  @CMPI %1 \
+  @JMPN _%V_ENDIF \
+  @JMPZ _%V_ENDIF \
+  @JMP _%0_True \
   :_%0_True
 M IF_INRANGE_AB \
   %S \
   @PUSH %1 @CMPS @POPNULL \
-  @JMPN _%0_False \
+  @JMPN _%V_ENDIF \
   @PUSH %2 @CMPS @POPNULL \
-  @JMPN _%0_True \
-  @JMPZ _%0_True \
-  :_%0_False \
-    @JMP _%V_ENDIF \
+  @JGT _%V_ENDIF \
   :_%0_True
 M IF_INRANGE_AV \
   %S \
   @PUSH %1 @CMPS @POPNULL \
-  @JMPN _%0_False \
+  @JMPN _%V_ENDIF \
   @PUSHI %2 @CMPS @POPNULL \
-  @JMPN _%0_True \
-  @JMPZ _%0_True \
-  :_%0_False \
-    @JMP _%V_ENDIF \
+  @JGT _%V_ENDIF \
   :_%0_True
 M IF_INRANGE_VA \
   %S \
   @PUSHI %1 @CMPS @POPNULL \
-  @JMPN _%0_False \
+  @JMPN _%V_ENDIF \
   @PUSH %2 @CMPS @POPNULL \
-  @JMPN _%0_True \
-  @JMPZ _%0_True \
-  :_%0_False \
-    @JMP _%V_ENDIF \
+  @JGT _%V_ENDIF \
   :_%0_True
 M IF_INRANGE_VV \
   %S \
   @PUSHI %1 @CMPS @POPNULL \
-  @JMPN _%0_False \
+  @JMPN _%V_ENDIF \
   @PUSHI %2 @CMPS @POPNULL \
-  @JMPN _%0_True \
-  @JMPZ _%0_True \
-  :_%0_False \
-    @JMP _%V_ENDIF \
+  @JGT _%V_ENDIF \
   :_%0_True
-  
-  
-
-
-
 #
 # Unsigned Logic follows here
 #
@@ -251,18 +239,6 @@ M IF_UGE_V \
    @CMPI %1 \
    %S \   
    @JMPC _%V_ENDIF
-M IF_ULE_V \
-   @CMPI %1 \
-   %S \
-   @JMPC _%0_True \
-   @JMPZ _%0_True \
-   @JMP _%V_ENDIF \
-   :_%0_True
-M IF_ULT_V \
-    @CMPI %1 \
-    @JMPC _%0_True \
-    %S @JMP _%V_ENDIF \
-    :_%0_True
 M IF_UGT_A \
    @CMP %1 \
    %S \
@@ -272,36 +248,53 @@ M IF_UGE_A \
    @CMP %1 \
    %S \   
    @JMPC _%V_ENDIF
-M IF_ULE_A \
-   @CMP %1 \
-   @JMPC _%0_True \
-   @JMPZ _%0_True \
-   %S @JMP _%V_ENDIF \
-   :_%0_True
-M IF_ULT_A \
-    @CMP %1 \
-    @JMPC _%0_True \
-    %S @JMP _%V_ENDIF \
-    :_%0_True
+#   @SWP @CMPS @SWP \
+   
 M IF_UGT_S \
-   @CMPS \
    %S \
+   @CMPS \
    @JMPC _%V_ENDIF \
    @JMPZ _%V_ENDIF
 M IF_UGE_S \
    @CMPS \
-   %S \   
+   %S \
    @JMPC _%V_ENDIF
+M IF_ULE_V \
+   @CMPI %1 \
+   %S \
+   @JMPC _%0_True \
+   @JMPZ _%0_True \
+   @JMP _%V_ENDIF \
+   :_%0_True
+M IF_ULT_V \
+    %S \
+    @CMPI %1 \
+    @JMPC _%0_True \
+    @JMP _%V_ENDIF \
+    :_%0_True
+M IF_ULE_A \
+   %S \
+   @CMP %1 \
+   @JMPC _%0_True \
+   @JMPZ _%0_True \
+   @JMP _%V_ENDIF \
+   :_%0_True
+M IF_ULT_A \
+    %S \
+    @CMP %1 \
+    @JMPC _%0_True \
+    @JMP _%V_ENDIF \
+    :_%0_True
 M IF_ULE_S \
+   %S \
    @CMPS  \
-   %S \   
    @JMPC _%0_True \
    @JMPZ _%0_True \
    @JMP _%V_ENDIF \
    :_%0_True
 M IF_ULT_S \
+    %S \
     @CMPS \
-    %S \    
     @JMPC _%0_True \
     @JMP _%V_ENDIF \
     :_%0_True
@@ -455,6 +448,7 @@ M WHILE_GT_V \
   :_%V_LoopTop \
   @CMPI %1 \
   @JMPN _%V_ExitLoop \
+  @JMPZ _%V_ExitLoop \
   :_%0_True
 
 M WHILE_LT_A \
@@ -609,9 +603,8 @@ M CASE_RANGE \
   @CMP %1 \
   @JMPN _%V_NextCase \
   @CMP %2 \
-  @JMPN _%V_InRange \
-  @JMPZ _%V_InRange \
-  @JMP _%V_NextCase \
+  @JGT _%V_NextCase \
+  @JMP _%V_InRange \
   :_%V_InRange
 
 # Compares TOS with value at [%1] 
@@ -688,6 +681,11 @@ M ENDCASE \
 #  ForIupA2V Index  : 3 Args For from Varable A until >= Constant B
 #  ForIupV2V Index  : 3 Args For from Varable A until >= Varable B
 #  ForIupA2S Index  : 2 Args For from constant A until >= TOS value
+#  ForIdownA2B Index  : 3 Args For from constant A until <= Constant B
+#  ForIdownA2V Index  : 3 Args For from constant A until <= Variable B
+#  ForIdownA2V Index  : 3 Args For from Varable A until <= Constant B
+#  ForIdownV2V Index  : 3 Args For from Varable A until <= Varable B
+#  ForIdownA2S Index  : 2 Args For from constant A until <= TOS value
 
 #
 #
@@ -708,8 +706,19 @@ M ForIupA2B \
   :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd
-  
+  @JMPC _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
+M ForIdownA2B \
+  %S \
+  @MA2V %2 %1 \
+  :_%V_ForTop \
+  @PUSHI %1 \
+  @CMP %3 @POPNULL \
+  @JMPN _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
+
 
 # for Index from constant to variable
 M ForIA2V \
@@ -727,7 +736,18 @@ M ForIupA2V \
   :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd
+  @JMPC _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
+M ForIdownA2V \
+  %S \
+  @MA2V %2 %1 \
+  :_%V_ForTop \
+  @PUSHI %1 \
+  @CMPI %3 @POPNULL \
+  @JMPN _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
 
 # For Index from constant to current TOS
 M ForIA2S \
@@ -751,7 +771,22 @@ M ForIupA2S \
   :_%V_ForTop \
   @PUSHI _%V_EndVal \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd
+  @JMPC _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
+M ForIdownA2S \
+  %S \
+  @POPI _%V_EndVal \
+  @MA2V %2 %1 \
+  @JMP _%V_ForTop \
+  :_%V_EndVal 0 \
+  :_%V_ForTop \
+  @PUSHI %1 \
+  @CMPI _%V_EndVal @POPNULL \
+  @JMPN _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+  
+
 
 # for Index from variable to constant
 M ForIV2A \
@@ -769,7 +804,18 @@ M ForIupV2A \
   :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd
+  @JMPC _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
+M ForIdownV2A \
+  %S \
+  @MV2V %2 %1 \
+  :_%V_ForTop \
+  @PUSHI %1 \
+  @CMP %3 @POPNULL \
+  @JMPN _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
   
 #for Index from variable to variable
 M ForIV2V \
@@ -786,7 +832,19 @@ M ForIupV2V \
   :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd
+  @JMPC _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
+
+M ForIdownV2V \
+  %S \
+  @MV2V %2 %1 \
+  :_%V_ForTop \
+  @PUSHI %1 \
+  @CMPI %3 @POPNULL \
+  @JMPN _%V_NextEnd \
+  @JMPZ _%V_NextEnd
+
 
 M Next \
   @INCI %1 \

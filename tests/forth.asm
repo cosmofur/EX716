@@ -5,18 +5,12 @@ L heapmgr.ld
 L softstack.ld
 L mul.ld
 L div.ld
+P Start Of forth.asm
 ############################################################
 #  EX716 Forth
 #
 # Built in words: from 
 #
-#  ".": Print top           ":": Define Word         ";": End Define
-#  "@": Fetch Memory addr   "!": Store at addr       "sp@": Get SP
-#  "rp@": Get Return RP     "-=": -1 top stack       "+": Add
-#  "nand": NAND             "exit:: (resume?)        "tib": Fetch TIB variable
-#  "STATE": Fetch STATE     ">in": Read Text In      "HERE": Fetch HERE
-#  "latest": Last Def Word  "key": Read Key          "emit": Print 1 char
-#  "words": List known words
 # ----------------------------------------------
 
 @JMP Main     # Make sure if we drop here from unexpected early jump, we still make it to Main.
@@ -42,6 +36,8 @@ L div.ld
 :LP0 0
 :LP 0
 :IP 0
+:RB_LATEST 0
+=HERE DictPtr     # Alias as HERE is more standard.
 = SoftHeapSize 1000
 = InputBufferSize 255
 = RP0Size 1000
@@ -148,28 +144,25 @@ M DEFWORD :Word_%2 \
 
 M FNEXT @JMP next
 # . ( -- )        Print integer at top of stack
+P Start of First DEFWORD {LINK}
 @DEFWORD "." PRTDOT 0
 @FPOP
-@PRTTOP @PRTNL
-@POPNULL
+@POPI TV
+@PRTSGNI TV @PRTS FIXedSpace
 #@FPUSH
 @FNEXT
-
 # Major work horse create new Words
 @DEFWORD ":" COLON_DEV F_IMMEDIATE
 @IF_EQ_AV 1 STATE
    @PRTLN "Error: Definition already in progress."
-   @MA2V 0 STATE
-   @MV2V INPUTBUFFER TIB
-   @MA2V 0 TIB
-   @FNEXT
+   @JMP ErrorReset
 @ENDIF
 @PUSHI TIB
 @CALL GetNextWord
-@PRT "Word Starts at: " @SWP @PRTHEXTOP @SWP @PRT " Ends at: " @PRTHEXTOP @PRTNL
+#@PRT "Word Starts at: " @SWP @PRTHEXTOP @SWP @PRT " Ends at: " @PRTHEXTOP @PRTNL
 @IF_ZERO
    @PRTLN "Error: Missing name for definition"
-   @POPNULL
+   @JMP ErrorReset
 @ELSE
    # Move TIB down input string, but also preserve current stack.
    @DUP @POPI TIB
@@ -177,7 +170,6 @@ M FNEXT @JMP next
    @MA2V 1 STATE
 @ENDIF
 @FNEXT
-
 #
 # @ (addr -- x)   Fetch memory at addr
 @DEFWORD "@" FETCH 0
@@ -189,8 +181,7 @@ M FNEXT @JMP next
 # Every ":" needs ";" to end the compile mode.
 @DEFWORD ";" SEMICOLON_DEV F_IMMEDIATE
 @IF_EQ_AV 0 STATE
-   @PRTLN "Error: Stray ';' wihtout matching ':'"
-   @FNEXT
+   @JMP ErrorReset
 @ENDIF
 @PUSH EXIT        # End decleration with call to exit
 @CALL Compile
@@ -228,7 +219,7 @@ M FNEXT @JMP next
 @FNEXT
 #
 # -= ( X -- f )     -1 of top of stack is 0, 0 otherwise
-@DEFWORD "0=" ZEROEQUALS
+@DEFWORD "0=" ZEROEQUALS 0
 @FPOP
 @IF_ZERO
    @PUSH -1
@@ -281,11 +272,115 @@ M FNEXT @JMP next
 @FPUSH
 @FNEXT
 #
-# nand ( x1 x2 -- n )    NAND two values at top of stack
-@DEFWORD "nand" NAND 0
+# */ (a b c - (a*b)/c)
+@DEFWORD "*/" MULDIVFUNC 0
+@FPOP        # stack (c)
+@FPOP        # stack (b c)
+@FPOP        # stack (a b c)
+@CALL MUL    # stack (a*b c)
+@SWP         # stack (c a*b)
+@CALL DIV    # stack (Result Remainder) wrong order
+@SWP         # Reverse order or result and remainder so stack is right.
+@FPUSH
+@FPUSH
+@FNEXT
+#
+# /mod ( a b - r q)
+@DEFWORD "/mod" DIVANDMODFUNC 0
+@FPOP
+@FPOP
+@SWP
+@CALL DIV
+@SWP
+@FPUSH
+@FPUSH
+@FNEXT
+#
+# min (a b - r)
+@DEFWORD "min" MINFUNC 0
+@FPOP
+@FPOP
+@IF_LT_S
+   @POPNULL
+@ELSE
+   @SWP
+   @POPNULL
+@ENDIF
+@FPUSH
+@FNEXT
+#
+# max (a b - r)
+@DEFWORD "max" MAXFUNC 0
+@FPOP
+@FPOP
+@IF_GT_S
+   @POPNULL
+@ELSE
+   @SWP
+   @POPNULL
+@ENDIF
+@FPUSH
+@FNEXT
+#
+# abs ( x -- n )
+@DEFWORD "abs" ABSFUNC 0
+@FPOP
+@DUP
+@PUSH 0x8000
+@ANDS
+@IF_NOTZERO
+   @POPNULL
+   @COMP2
+@ELSE
+   @POPNULL
+@ENDIF
+@FPUSH
+@FNEXT
+#
+# and (x1 x2 -- n) AND two values
+@DEFWORD "and" ANDFUNC 0
 @FPOP
 @FPOP
 @ANDS
+@FPUSH
+@FNEXT
+#
+# nand ( x1 x2 -- n )    NAND two values at top of stack
+@DEFWORD "nand" NANDFUNC 0
+@FPOP
+@FPOP
+@ANDS
+@INV
+@FPUSH
+@FNEXT
+# or ( x1 x2 -- n ) OR two values
+@DEFWORD "or" ORFUNC 0
+@FPOP
+@FPOP
+@ORS
+@FPUSH
+@FNEXT
+#
+# nor (x1 x2 -- n) NOR two values
+@DEFWORD "nor" NORFUNC 0
+@FPOP
+@FPOP
+@ORS
+@INV
+@FPUSH
+@FNEXT
+#
+# xor (x1 x2 -- n) XOR two values
+@DEFWORD "xor" XORFUNC 0
+@FPOP
+@FPOP
+@XORS
+@FPUSH
+@FNEXT
+#
+# invert (x -- ~x)
+@DEFWORD "invert" INVERTFUNC 0
+@FPOP
 @INV
 @FPUSH
 @FNEXT
@@ -315,7 +410,7 @@ M FNEXT @JMP next
 @FPUSH
 @FNEXT
 #
-@DEFWORD "here" HERE 0
+@DEFWORD "here" HEREWORD 0
 @PUSHI DictPtr
 @FPUSH
 @FNEXT
@@ -328,7 +423,7 @@ M FNEXT @JMP next
 
 # define some IO primitives
 
-@DEFWORD "key" KEY
+@DEFWORD "key" KEY 0
 @READC TV
 @PRT "String>" @PRTSI TV @PRTNL
 @PUSHI TV @AND 0xff
@@ -342,7 +437,23 @@ M FNEXT @JMP next
 @PRTS TV
 @FNEXT
 #
+@DEFWORD "cr" CROUT 0
+@PRTNL
+@FNEXT
+#
+@DEFWORD "SPACES" SPACEOUT 0
+# Using PRTS rather PRTSP to save a 2 bytes on repeated use.`
+@PRTS FIXedSpace
+@FNEXT
+:FIXedSpace " \0"
+#
 @DEFWORD "words" WORDS 0
+@PUSH 1
+@CALL DumpDictionary
+@FNEXT
+#
+@DEFWORD "words+" WORDSPLUS 0
+@PUSH 0
 @CALL DumpDictionary
 @FNEXT
 #
@@ -417,6 +528,28 @@ M FNEXT @JMP next
 @FPUSH
 @FNEXT
 #
+@DEFWORD "<>" NOTEQUAL 0
+@FPOP
+@FPOP
+@IF_EQ_S
+  @POPNULL @POPNULL
+  @PUSH 0
+@ELSE
+  @POPNULL @POPNULL
+  @PUSH -1
+@ENDIF
+@FPUSH
+@FNEXT
+#
+@DEFWORD "0<>" NOTZERO 0
+@FPOP
+@IF_NOTZERO
+   @POPNULL
+   @PUSH -1
+@ENDIF
+@FPUSH
+@FNEXT
+#
 @DEFWORD "<" LESSTHAN 0
 @FPOP
 @FPOP
@@ -431,11 +564,53 @@ M FNEXT @JMP next
 @FPUSH
 @FNEXT
 #
+@DEFWORD "<=" LESSTHANEQUAL 0
+@FPOP
+@FPOP
+@SWP
+@IF_LE_S
+  @POPNULL @POPNULL
+  @PUSH -1
+@ELSE
+  @POPNULL @POPNULL
+  @PUSH 0
+@ENDIF
+@FPUSH
+@FNEXT
+#
 @DEFWORD ">" GREATETHAN 0
 @FPOP
 @FPOP
 @SWP
 @IF_GT_S
+  @POPNULL @POPNULL
+  @PUSH -1
+@ELSE
+  @POPNULL @POPNULL
+  @PUSH 0
+@ENDIF
+@FPUSH
+@FNEXT
+#
+@DEFWORD ">=" GREATETHANEQUAL 0
+@FPOP
+@FPOP
+@SWP
+@IF_GT_S
+  @POPNULL @POPNULL
+  @PUSH -1
+@ELSE
+  @POPNULL @POPNULL
+  @PUSH 0
+@ENDIF
+@FPUSH
+@FNEXT
+#
+@DEFWORD "U<" UNSIGNLESSTHAN 0
+@FPOP
+@FPOP
+@SWP
+@IF_ULT_S
   @POPNULL @POPNULL
   @PUSH -1
 @ELSE
@@ -476,6 +651,13 @@ M FNEXT @JMP next
       @PUSH 0
    @ENDIF
 @ENDIF
+@FPUSH
+@FNEXT
+#
+@DEFWORD "?dup" DUPFUNC 0
+@FPOP
+@DUP
+@FPUSH
 @FPUSH
 @FNEXT
 #
@@ -543,7 +725,7 @@ M FNEXT @JMP next
   @INC2I DictPtr       # Save a space for the Address to be pasted.
 @ELSE
   @PRTLN "Error: Unclosed Logic, expected IF Block 002"
-  # Not sure how to recover from this error.
+  @JMP ErrorReset
 @ENDIF
 @FNEXT
 #
@@ -567,8 +749,7 @@ M FNEXT @JMP next
    @ELSE
       @POPNULL
       @PRT "Error Unclosed Logic, expected IF Block 001"
-      :Break02
-      # Not sure how to recover from this error.
+      @JMP ErrorReset
    @ENDIF
 @ENDIF
 @FNEXT
@@ -591,6 +772,7 @@ M FNEXT @JMP next
    @CALL Compile
 @ELSE
    @PRTLN "Error: UNTIL without matching BEGIN"
+   @JMP ErrorReset
 @ENDIF
 @FNEXT
 #
@@ -605,6 +787,7 @@ M FNEXT @JMP next
    @CALL Compile
 @ELSE
    @PRTLN "Error: AGAIN without matching BEGIN"
+   @JMP ErrorReset
 @ENDIF
 @FNEXT
 #
@@ -625,7 +808,7 @@ M FNEXT @JMP next
    @PUSH DOTAG @LPUSH  # TAG
 @ELSE
    @PRTLN "Error: Do Until not closed properly"
-   @RET
+   @JMP ErrorReset
 @ENDIF
 
 @FNEXT
@@ -665,7 +848,7 @@ M FNEXT @JMP next
    # Drop Though
 @ELSE
    @PRTLN "Error: LOOP without matching DO"
-   @RET
+   @JMP ErrorReset
 @ENDIF
 @POPNULL    # No longer need tag
 # Move Values to HW Stack
@@ -714,16 +897,13 @@ M FNEXT @JMP next
 @DEFWORD "see" SEEWORDS F_IMMEDIATE
 @IF_EQ_AV 1 STATE
    @PRTLN "Error: Can't SEE words while defining a new one."
-   @MA2V 0 STATE
-   @MV2V INPUTBUFFER TIB
-   @MA2V 0 TIB
-   @FNEXT
+   @JMP ErrorReset
 @ENDIF
 @PUSHI TIB
 @CALL GetNextWord
 @IF_ZERO
    @PRTLN "Error: Missing Word."
-   @POPNULL
+   @JMP ErrorReset
 @ELSE
    # Word Found
    @POPI TIB
@@ -757,10 +937,105 @@ M FNEXT @JMP next
 @BPEEK
 @FPUSH
 @RET
+##############################
+@DEFWORD "printstring" PRINTSTRING 0
+@LocalVar Length 01
+@LocalVar OldLast 02
+@LocalVar OldLocation 03
+@INC2I IP
+@PUSHII IP
+@POPI Length
+@INC2I IP
+@PUSHI IP @ADDI Length
+@POPI OldLocation
+@PUSHII OldLocation @POPI OldLast  # Save what was the High Byte of the last word in string.
+@PUSHI OldLast @AND 0xff00
+@POPII OldLocation
+@PRTSTRI IP         # This will print the now null terminated string.
+@PUSHI OldLast @POPII OldLocation   # Restore it
+@PUSHI IP @ADDI Length @SUB 1
+@POPI IP
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@FNEXT
 
 
-   
+@DEFWORD ".\"" DOTQUOTE_COMPILE F_IMMEDIATE
+@LocalVar Index1 01
+@LocalVar StartI 02
+@LocalVar StopI 03
+@PUSHI TIB
+@CALL GetNextString
+@IF_ZERO
+   @PRTLN "Error Can not print empty string."   
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+   @JMP ErrorReset
+@ENDIF
+@POPI StopI
+@POPI StartI
+@MV2V StopI TIB
 
+# String Print function will have in memory
+# DOStringPrint LEN text
+
+@PUSH PRINTSTRING
+@CALL Compile
+@PUSHI StopI @SUBI StartI @SUB 1
+@CALL Compile
+@ForIV2V Index1 StartI StopI
+   @PUSHII Index1 @AND 0xff
+   @CALL CompileByte
+@Next Index1
+@MV2V StopI TIB
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@FNEXT
+
+@DEFWORD "do_marker" DO_MARKER_RUNTIME 0
+  @LocalVar MarkerPtr 01
+
+  @PUSHI IP
+  @POPI MarkerPtr
+  @INC2I MarkerPtr
+  @PUSHII MarkerPtr @POPI LATEST
+  @INC2I MarkerPtr
+  @PUSHII MarkerPtr @POPI HERE
+  @PUSHI IP @ADD 4 @POPI IP
+  @RestoreVar 01
+  @FNEXT
+@DEFWORD "marker" DEF_MARKER F_IMMEDIATE
+  @LocalVar OldHere 01
+  @LocalVar XT 02
+  @IF_EQ_AV 1 STATE
+     @PRTLN "Error: Definition already in progress."
+     @JMP ErrorReset
+  @ENDIF
+  @PUSHI TIB @CALL GetNextWord
+  @IF_ZERO
+     @POPNULL  
+     @PRTLN "Error: Missing name for definition"
+     @JMP ErrorReset
+  @ELSE
+    # Move TIB down input string, but also preserve current stack.
+    @DUP @POPI TIB
+    @CALL CreateHeader   # Builds dictionary Entry
+    @PUSH DO_MARKER_RUNTIME
+    @CALL Compile
+    @MV2V HERE OldHere
+    @PUSHI LATEST
+    @CALL Compile       # Does Compile modify HERE? If so we may need to save it first.
+    @PUSHI OldHere
+    @CALL Compile
+    @PUSH EXIT
+    @CALL Compile
+  @ENDIF
+  @RestoreVar 02
+  @RestoreVar 01
+  @FNEXT
 
 #
 #
@@ -771,7 +1046,6 @@ M FNEXT @JMP next
 @DEFWORD "FNC_IMMEDIATE" FNC_IMMEDIATE 0
 @FPUSH
 @FNEXT
-
 ####################
 # Function DCol
 # DCol is the execution loop used for colon defined words.
@@ -780,9 +1054,9 @@ M FNEXT @JMP next
 #
 @PUSHII IP
 #@DUP @PUSH DumpString @CALL DumpFindName @IF_ZERO @POPNULL @PRT "DATA:" @PRTHEXTOP @POPNULL @ELSE @PRTSTR DumpString @POPNULL @PRTNL @ENDIF
-@PUSHI IP @PUSH 32
-@PRT "Hexdump: " @PRTHEXI IP @PRTNL
-@CALL HexDump
+#@PUSHI IP @PUSH 32
+#@PRT "Hexdump: " @PRTHEXI IP @PRTNL
+#@CALL HexDump
 @WHILE_NEQ_A EXIT
    @IF_GT_V COMPILEBUFFER
       # It a call to another DCOL, Preserve IP as it will have unique one for that call.
@@ -790,7 +1064,7 @@ M FNEXT @JMP next
       @CALL execute
       @MV2V MyIP IP
    @ELSE
-#@DUP @PUSH DumpString @CALL DumpFindName @IF_ZERO @POPNULL @PRT "DATA:" @PRTHEXTOP @POPNULL @ELSE @PRTSTR DumpString @POPNULL @PRTNL @ENDIF   
+#@DUP @PUSH DumpString @CALL DumpFindName @IF_ZERO @POPNULL @PRT "DATA:" @PRTHEXTOP @POPNULL @ELSE @PRTSTR DumpString @POPNULL @PRTNL @ENDIF
       @CALL execute
    @ENDIF   
    @INC2I IP
@@ -818,7 +1092,8 @@ M FNEXT @JMP next
 #
 # Compute length
 # NameLen=NameEnd - NameStart
-@PUSHI NameEnd @SUBI NameStart @POPI NameLen
+#@PUSHI NameEnd @SUBI NameStart @POPI NameLen
+@PUSHI NameStart @CALL strlen @POPI NameLen
 #
 # Get Current HerePtr
 @MV2V DictPtr TmpHerePtr
@@ -830,20 +1105,21 @@ M FNEXT @JMP next
 #
 # Save Flags and Length (current flags always zero?)
 @PUSHI NameLen 
-@SUB 1
-@CALL Compile
-@DECI DictPtr    # Len is 1 byte long, go back one.
+#@SUB 1
+@POPII DictPtr
+@INCI DictPtr
 #
-@ForIA2V Index01 1 NameLen
+@ForIA2V Index01 0 NameLen
   @PUSHII NameStart @AND 0xff
-  @CALL Compile
-  @DECI DictPtr
+  @POPII DictPtr
+  @INCI DictPtr
   @INCI NameStart
 @Next Index01
 @PUSH DCol             # First Word in Compiled code is DCol
 @CALL Compile
 #
 # TmpHerePtr should have location or begining of word. Fill it with OLD LATEST
+@MV2V LATEST RB_LATEST     # Save old Latest for possible ROLL Back
 @MV2V TmpHerePtr LATEST    # Now mark that an new LATEST
 #
 #
@@ -909,10 +1185,13 @@ M FNEXT @JMP next
 @ForIA2B TV 0 InputBufferSize
    @PUSH 0 @PUSHI TV @ADDI INPUTBUFFER @POPS
 @Next TV
+@MV2V LATEST RB_LATEST       # Setup for Roll Back on errors.
 # Save at bottom of call stack, call to clean exit.
 @PUSH ExitCode
 @BPUSH
 @RET
+#####################
+
 :ExitCode
 @PRTNL
 @PRTLN "END OF CODE:"
@@ -924,8 +1203,10 @@ M FNEXT @JMP next
 @LocalVar instr 01
 @LocalVar Index1 02
 @LocalVar WordStart 03
+@LocalVar TermCode 04
 @POPI instr
 
+@MA2V 1 TermCode   # Term Code records if word seperator is 0:'whitespace' or 1:'EOL'
 @PUSHII instr @AND 0xff
 @WHILE_NOTZERO        #Skip any starting white-space
    @SWITCH
@@ -970,10 +1251,12 @@ M FNEXT @JMP next
    @CASE " \0"        # Space end of word
       @POPNULL
       @PUSH 0
+      @MA2V 0 TermCode
       @CBREAK
    @CASE 0x0a        # Newline
       @POPNULL
       @PUSH 0
+      @MA2V 0 TermCode      
       @CBREAK
    @CASE 0           # Null
       @POPNULL
@@ -993,11 +1276,7 @@ M FNEXT @JMP next
    # empty strings means instr didn't move
    @PUSH 0
 @ELSE
-   # If instr[0] == space then it mid string word.
-   @PUSHII instr @AND 0xff
-   @IF_EQ_A " \0"
-      # Space means it was word but not end of string
-      @POPNULL
+   @IF_EQ_AV 0 TermCode         # WhiteSpace
       @PUSHII instr    # Get the full 16 bit work so we can modify it
       @AND 0xff00
       @POPII instr     # Zero out the space so word will be valid ASCIIZ string
@@ -1005,32 +1284,12 @@ M FNEXT @JMP next
       @PUSHI WordStart
       @PUSHI instr
    @ELSE
-      @SWITCH
-      @CASE 0x0a          # Enbeded linefeed same and end of line
-         @POPNULL
-         @PUSHII instr    # Get the full 16 bit work so we can modify it
-         @AND 0xff00
-         @POPII instr     # Zero out the space so word will be valid ASCIIZ string
-         @INCI instr      # Move past the 'null' inserted in WordStart String
-         @PUSHI WordStart
-         @PUSHI instr
-         @CBREAK
-      @CASE 0
-         @POPNULL
-         # instr is already pointing at end of string, so no need to further modify
-         @PUSHI WordStart
-         @PUSHI instr
-         @CBREAK
-      @CDEFAULT
-         # Skip the white space if any.
-         @POPNULL
-         @INCI instr
-         @PUSHI WordStart
-         @PUSHI instr
-         @CBREAK
-      @ENDCASE
+      # TermCode=1 means end of line
+      @PUSHI WordStart
+      @PUSHI instr
    @ENDIF
 @ENDIF
+@RestoreVar 04
 @RestoreVar 03
 @RestoreVar 02
 @RestoreVar 01
@@ -1039,7 +1298,7 @@ M FNEXT @JMP next
 
 #
 ##########################################
-# Function interperter()
+# Function interpreter()
 # Main loop for core forth program.
 # It might  be a good idea later to have some way to go directly
 # to a start 'word' but for most interactive use, we just prompt for them.
@@ -1063,13 +1322,16 @@ M FNEXT @JMP next
        # Input was Null, get a new line
        @POPNULL
        @MV2V INPUTBUFFER TIB
-       @PRT "OK? "
+       @IF_EQ_AV 0 STATE
+          @PRT "OK "
+       @ENDIF
        @READSI TIB
        @JMP InterContinue
     @ENDIF
     # We get here only if TOS has valid token info.
     # (Tolkien, new TIB)
     @POPI TIB
+    @PUSHI TIB @SUBI INPUTBUFFER @POPI TOIN   # Where in input buffer we're currently
     @DUP @POPI WordVal
     @CALL SearchDictionary   # [ 0 | DictEntry LenFlag CodeEntry ]
     @IF_EQ_A 0
@@ -1274,6 +1536,19 @@ M FNEXT @JMP next
 @RET
 
 #######################################
+# Function CompileByte
+:CompileByte
+@SWP
+@AND 0xff                     # Make sure paramater is just byte
+@PUSHII DictPtr @AND 0xff00   # Save the old Highbyte of word
+@ORS                          # Combine with new byte
+@PUSHI DictPtr
+@POPS
+@INCI DictPtr             # Inc only by one byte rather than 2
+@RET
+
+
+#######################################
 # Function DebugStacks
 :DebugStacks
 @PUSHRETURN
@@ -1330,46 +1605,111 @@ M FNEXT @JMP next
 @RestoreVar 01
 @POPRETURN
 @RET
+
+
+
 #######################################
 # Function DumpDictionary
 :DumpDictionary
-@PUSHRETURN
-@LocalVar Index1 01
-@LocalVar NamePtr 02
-@LocalVar LastByte 03
-@LocalVar HoldOld 04
+  @PUSHRETURN
+  @LocalVar Index1 01      # Word header address
+  @LocalVar StrLen 02      # Length of string part
+  @LocalVar LastByte 03    # Saved byte past string
+  @LocalVar LastAddr 04    # Address of byte past string
+  @LocalVar StrStart 05    # Start of string
+  @LocalVar FlagInfo 06    # Flags and length byte
+  @LocalVar Code1 07       # Code address
+  @LocalVar Compact 08     # Set to 1 to print just the word names.  0 for full table.
+  @LocalVar WidthCnt 09
+  
+  @POPI Compact            
+  @IF_EQ_AV 0 Compact
+     @PRT " Addr   Code   Flg  Name\n"
+     @PRT "------  ------ ---- ----------------\n"
+  @ENDIF
 
-@MV2V LATEST Index1
-@PRT "LATEST:" @PRTHEXI LATEST @PRT ":\n"
-@PUSHI Index1
-@WHILE_NOTZERO
-   @POPNULL
-   @PRT "Word ID: " @PRTHEXI Index1 @PRT " "
-   @PUSHI Index1 @ADD 3
-   @POPI NamePtr
-   @PUSHI Index1 @ADD 2
-   @PUSHS @AND LENMASK
-   @ADDI Index1 @ADD 3 @POPI HoldOld
-   @PUSHII HoldOld @POPI LastByte
-   @PUSHII HoldOld @AND 0xff00 @POPII HoldOld   
-   @PRT "'"
-   @PRTSI NamePtr @PRT "' \t( Code:"
-   @PUSHI LastByte @POPII HoldOld
-   @PUSHI Index1 @ADD 2 @PUSHS @AND LENMASK @ADDI Index1 @ADD 3
-   @PRTHEXTOP
-   @POPNULL
-   @PRT " )\n"
-   @PUSHII Index1 @POPI Index1
-   @PUSHI Index1
-@ENDWHILE
-@POPNULL
-@PRTNL
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
-@POPRETURN
+  @MA2V 0 WidthCnt
+  @MV2V LATEST Index1
+  @PUSHI Index1
+  @WHILE_NOTZERO
+    @POPNULL
+
+    # Extract flag byte
+    @PUSHI Index1 @ADD 2 @PUSHS @AND 0xff @POPI FlagInfo
+    @PUSHI FlagInfo @AND LENMASK @POPI StrLen
+
+    # Find byte just past the string
+    @PUSHI StrLen @ADDI Index1 @ADD 2 @POPI LastAddr
+    @PUSHII LastAddr @POPI LastByte
+    @PUSHII LastAddr @AND 0x00ff @POPII LastAddr  # Null it out
+
+    # Find start of string
+    @PUSHI Index1 @ADD 3 @POPI StrStart
+
+    # Extract Code Pointer
+    @PUSHI Index1 @ADD StrLen @ADD 3 @POPI Code1
+    @IF_EQ_AV 0 Compact
+       # Print Word Address
+       @PRTHEXI Index1 @PRT "    "
+
+       # Print Code Address
+       @PRTHEXI Code1 @PRT "   "
+
+       # Print Immediate Flag
+       @PRT " "
+       @PUSHI FlagInfo @AND 0x80
+       @IF_NOTZERO
+         @PRT "I"
+       @ELSE
+         @PRT " "
+       @ENDIF
+       @POPNULL
+       @PUSH FlagInfo @AND 0x40
+       @IF_NOTZERO
+           @PRT "H"
+       @ELSE
+          @PRT " "
+       @ENDIF
+       @POPNULL
+       @PRT "  "
+    @ENDIF
+    # Print Word Name
+    @PRTSI StrStart
+    @IF_EQ_AV 0 Compact
+       @PRT "\n"
+    @ELSE
+       @PRT " "
+       @PUSHI StrStart @CALL strlen @ADDI WidthCnt
+       @IF_GT_A 70
+           @POPNULL
+           @PRT "\n"
+           @MA2V 0 WidthCnt
+       @ELSE
+           @POPI WidthCnt
+       @ENDIF
+    @ENDIF
+    @PUSHI LastByte @POPII LastAddr
+
+    # Move to next word
+    @PUSHII Index1 @POPI Index1
+    @PUSHI Index1
+  @ENDWHILE
+
+  @POPNULL
+  @PRTNL
+  
+  @RestoreVar 09
+  @RestoreVar 08
+  @RestoreVar 07
+  @RestoreVar 06
+  @RestoreVar 05
+  @RestoreVar 04
+  @RestoreVar 03
+  @RestoreVar 02
+  @RestoreVar 01
+  @POPRETURN
 @RET
+
 ########################################
 # Function DumpFindName(ID,StrPtr)
 :DumpFindName
@@ -1442,7 +1782,106 @@ M FNEXT @JMP next
 @RestoreVar 01
 @POPRETURN
 @RET
-       
+
+########################################
+# Function GetNextString
+:GetNextString
+@PUSHRETURN
+@LocalVar instr 01
+@LocalVar StartIndex 02
+@POPI instr
+@MV2V instr StartIndex
+#
+@WHEN      # I don't use WHEN loops alot but they are basicly   1
+           # While Loops where the condition is spread out over
+           # a block of logic and leave 0 or 1 on the stack.
+   @PUSHII instr @AND 0xff
+   @IF_EQ_A 0                                                # 2
+      # End of String, leave the zero on TOS
+   @ELSE
+      @IF_EQ_A 34   # Double Quote character Code
+          @POPNULL
+          @PUSH 0
+      @ELSE
+          @IF_EQ_A 92   # Back Slash
+             # Allows some commonb \ codes
+             @INCI instr
+             @POPNULL
+             @PUSHII instr @AND 0xff
+             @SWITCH
+             @CASE "n\0"
+                @POPNULL
+                @PUSH 0xa      # Newline
+                @CBREAK
+             @CASE "t\0"
+                @POPNULL
+                @PUSH 7        # Tab
+                @CBREAK
+             @CASE "r\0"
+                @POPNULL
+                @PUSH 13       # CR
+                @CBREAK
+             @CASE "b\0"       # BackSpace
+                @POPNULL
+                @PUSH 8
+                @CBREAK
+             @CASE "0\n"       # Null
+                @POPNULL
+                @PUSH 0
+                @CBREAK
+             @CDEFAULT
+                # Just let any quoted character remain.
+                @CBREAK
+             @ENDCASE
+          @ENDIF
+      @ENDIF
+   @ENDIF
+@DO_NOTZERO
+   @POPNULL
+   @INCI instr
+#   @PUSHII instr
+@ENDWHEN
+@POPNULL
+@IF_EQ_VV instr StartIndex
+   # Null String instr remained the same.
+   @PUSH 0
+@ELSE
+   @PUSHII instr
+   @AND 0xff00    # Zero out the 'space' or existing null again.
+   @IF_NOTZERO    # not yet end of line, so turn 'space' into null
+      @POPII instr
+      @INCI instr # Prep instr for next word in input.
+   @ELSE   
+      @POPII instr
+   @ENDIF
+   @PUSHI StartIndex     # This will be begining of string.
+   @PUSHI instr
+@ENDIF
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+########################################
+# Function ErrorReset
+:ErrorReset
+#
+# Reset all major globals to get system stable to last known good state.
+@PUSHI RP0 @ADD RP0Size @SUB 2 @POPI RP
+@PUSHI SP0 @ADD SP0Size @SUB 2 @POPI SP
+@PUSHI LP0 @ADD LP0Size @SUB 2 @POPI LP
+@ForIA2B TV 0 InputBufferSize
+   @PUSH 0 @PUSHI TV @ADDI INPUTBUFFER @POPS
+@Next TV
+# Zero out first word so first call to parse will always be null
+@MV2V INPUTBUFFER TIB
+@PUSH 0 @POPII TIB
+@MA2V 0 TOIN
+@MA2V 0 STATE
+@MV2V RB_LATEST LATEST
+@JMP interpreter
+
+
 
 ########################################
 # Function DumpWord

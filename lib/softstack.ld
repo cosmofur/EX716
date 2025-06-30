@@ -101,8 +101,6 @@ M RestoreVar @POPLOCAL Var%1
 @POPNULL
 @SWP
 @DEC2I __SS_SP      # After a PUSH mem[__SS_SP] is value of TOP
-#@PRT "Soft PUSH Mem[" @PRTHEXI __SS_BOTTOM @PRT "/" @PRTHEXI __SS_SP @PRT "/" @PRTHEXI __SS_TOP @PRT "]:"
-#@PRTHEXTOP  @PRTNL
 @POPII __SS_SP
 
 @RET
@@ -124,9 +122,7 @@ M TOPLOCAL @PUSHII __SS_SP
    @JMP __SS_StackError
 @ENDIF
 @POPNULL
-#@PRT "Soft Pop Mem[" @PRTHEXI __SS_BOTTOM @PRT "/" @PRTHEXI __SS_SP @PRT "/" @PRTHEXI __SS_TOP @PRT "]:"
 @PUSHII __SS_SP
-#@PRTHEXTOP @PRTNL
 @INC2I __SS_SP
 @SWP
 @RET
