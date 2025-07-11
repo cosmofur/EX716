@@ -1,5 +1,5 @@
 ! COMMON_SEEN
-M COMMON_SEEN 1
+MF COMMON_SEEN 1
 # Setup Library
 # Values which make up opcodes
 #
@@ -85,6 +85,9 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =FCLR 50
 =FSAV 51
 =FLOD 52
+=ADM 53
+=SCLR 54
+=SRTP 55
 
 # Cast and Poll Codes
 =CastPrintStr 1
@@ -181,6 +184,9 @@ M COMP2 $$COMP2
 M FCLR $$FCLR                  # the F group is for clearing, saving, and loading Flag states. Usefill in Interupts
 M FSAV $$FSAV
 M FLOD $$FLOD
+M ADM $$ADM
+M SCLR $$SCLR
+M SRTP $$SRTP
 
 
 # For compleatness we can proview VV VA AV versions of major math functions.
