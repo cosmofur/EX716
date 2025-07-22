@@ -91,6 +91,27 @@ G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 :frnd16
 :xorshift16
 @PUSHRETURN
+#
+@MV2V Seed S1Seed
+#
+@PUSHI S1Seed @RLTC @RLTC @RLTC @RLTC @RLTC # Rot << 5
+@XORI S1Seed @POPI S1Seed
+@PUSHI S1Seed @RRTC @RRTC @RRTC          # Rot >> 3
+@XORI S1Seed @POPI S1Seed
+@PUSHI S1Seed @SHR @SHR @SHR @SHR @SHR @SHR @SHR # >> 7
+@XORI S1Seed @POPI S1Seed
+@PUSHI S1Seed @SHL @SHL               # << 2
+@XORI S1Seed @POPI S1Seed
+@PUSHI S1Seed                         # Save as answer
+@INCI Cval
+@PUSHI Cval @RLTC @RLTC @RLTC @RLTC @RLTC
+@XORI S1Seed @POPI Seed
+@POPRETURN
+@RET
+
+
+
+
 @INCI Cval
 @MV2V Seed S1Seed
 @MV2V Seed SModified

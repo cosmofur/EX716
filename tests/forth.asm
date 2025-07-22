@@ -26,6 +26,7 @@ L div.ld
 :DictPtr 0
 :COMPILEBUFFER 0
 :INPUTBUFFER 0
+:ActiveBuffer 0
 :STATE 0
 :TOIN 0
 :RP0 0
@@ -59,9 +60,11 @@ L div.ld
 # Link Pointer | Flags+Length | Name | Code...
 #  2 bytes         1 bye       Length Variable
 
-=F_HIDDEN 0x40
+=F_HIDDEN 0x40       
+=F_COMPILEONLY 0x40  # Replaces F_HIDDEN
 =LENMASK 0x1f
 =F_IMMEDIATE 0x80
+=F_ImmedCompOnly 0xC0   # Combination of Immediate and CompileOnly
 
 # Some macros to turn soft SP into way to move data onto/off hardware stack.
 # FPUSH(tos:x) saves tos:x at [SP] then sp-=2
@@ -743,7 +746,7 @@ M FNEXT @JMP next
 
 #
 # IF Logic
-@DEFWORD "if" IF_COMPILE F_IMMEDIATE
+@DEFWORD "if" IF_COMPILE F_ImmedCompOnly
    #:IF_COMPILE
    @PUSH ZBRANCH   #  emit opcode
    @CALL Compile
@@ -755,12 +758,12 @@ M FNEXT @JMP next
 @FNEXT
 #
 # ELSE Logic
-@DEFWORD "else" ELSE_COMPILE F_IMMEDIATE
+@DEFWORD "else" ELSE_COMPILE F_ImmedCompOnly
    #:ELSE_COMPILE
    @LPOP                #( get old IF TAG)
    @IF_EQ_A IFTAG
      @POPNULL
-     @PUSHI DictPtr      @ADD 2 
+     @PUSHI DictPtr  @ADD 2
      @LPOP              # Get old IF ADDRESS
      @POPS              #( patch IF's ZBRANCH to skip over ELSE )
      @PUSH BRANCH         #( emit unconditional jump )
@@ -777,7 +780,7 @@ M FNEXT @JMP next
 @FNEXT
 #
 # THEN Logic
-@DEFWORD "then" THEN_COMPILE F_IMMEDIATE
+@DEFWORD "then" THEN_COMPILE F_ImmedCompOnly
    #:THEN_COMPILE
    @LPOP         # Get tag
    @IF_EQ_A ELSETAG
@@ -802,14 +805,18 @@ M FNEXT @JMP next
 @FNEXT
 #
 # BEGIN ... UNTIL loop
-@DEFWORD "begin" BEGIN_COMPILE F_IMMEDIATE
+@DEFWORD "begin" BEGIN_COMPILE F_ImmedCompOnly
    @PUSHI DictPtr @SUB 2
    @LPUSH
    @PUSH BEGINTAG
    @LPUSH
 @FNEXT
 #
-@DEFWORD "until" UNTIL_COMPILE F_IMMEDIATE
+@DEFWORD "repeat" REPEAT_COMPILE F_IMMEDIATE
+   @FCALL AGAIN_COMPILE
+@FNEXT
+#
+@DEFWORD "until" UNTIL_COMPILE F_ImmedCompOnly
    @LPOP
    @IF_EQ_A BEGINTAG
       @POPNULL
@@ -824,7 +831,7 @@ M FNEXT @JMP next
 @FNEXT
 #
 # AGAIN is like UNTIL but without the conditional test.
-@DEFWORD "again" AGAIN_COMPILE F_IMMEDIATE
+@DEFWORD "again" AGAIN_COMPILE F_ImmedCompOnly
    @LPOP
    @IF_EQ_A BEGINTAG
       @POPNULL
@@ -840,11 +847,12 @@ M FNEXT @JMP next
 #
 #
 @DEFWORD "do_runtime" DO_RUNTIME 0
+   # do_runtime is to transfer SP values to Logic Stack in prep for 'loop'
    @FPOP
    @IF_EQ_A DOTAG
       @POPNULL
-      @FPOP    # LeaveTarget
-      @FPOP    # Jmp Address
+      @FPOP    # ForceExit
+      @FPOP    # LoopTop
       @FPOP    # Limit
       @FPOP    # Start
       # Now move to LP Stack
@@ -858,96 +866,131 @@ M FNEXT @JMP next
       @JMP ErrorReset
    @ENDIF
 @FNEXT
+
 #
-@DEFWORD "qdo_runtime" QDO_RUNTIME 0
-   # This is very much like DO_Runtime but with one extra value carried around
-   @FPOP
-   @IF_EQ_A QDOTAG
-      @POPNULL
-      @FPOP     # ExitAddress
-      @FPOP     # LeaveAddress
-      @FPOP     # Top Jmp Address
-      @FPOP     # Limit
-      @FPOP     # Start
-      # Move these to the LP Stack
-      @LPUSH
-      @LPUSH
-      @LPUSH
-      @LPUSH
-      @LPUSH
-      @PUSH QDOTAG @LPUSH
+#
+@DEFWORD "do" DO_COMPILE F_ImmedCompOnly  # ( start limit -- )
+@LocalVar LoopTop 01
+@LocalVar ForceExit 02
+@LocalVar TmpVal 03
+   #
+   # On Entry SP stack will have (Start, Limit) put in code to add
+   # Our goal for the Compile stage is to set up the following:
+   #
+   # Pass a message to future compile stage 'loop' that this is where we return to
+   # Setup initilization for (start limit looptop forceexit dotag)
+   M DOCOMMON \
+       @PUSH LITERAL @CALL Compile \
+       @PUSHI DictPtr @POPI %2 \
+       @PUSH %1 @CALL Compile
+   #
+   # start, limit already on SP
+     @DOCOMMON 0 LoopTop
+     @DOCOMMON 0 ForceExit
+     @DOCOMMON DOTAG TmpVal     
+     # This needs to be filled out by Loop durring compile stage.
+     @PUSHI ForceExit @LPUSH
+     @PUSH DOTAG @LPUSH              # Tag it as DO loop
+     #
+     # The next is a JMP to DO_RUNTIME but remember that happens after LOOP_COMPILE has already run durring compile stage.
+     @PUSH DO_RUNTIME @CALL Compile 
+     # Fill in the Loop top value, as it would be HERE-2
+     @PUSHI DictPtr @SUB 2 @POPII LoopTop
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@FNEXT
+#
+# Now the qdo version skips running if a=b
+@DEFWORD "?do" QDO_COMPILE F_ImmedCompOnly
+@LocalVar LoopTop 01
+@LocalVar ForceExit 02
+@LocalVar ForceExit2 03
+@LocalVar TmpVal 04
+#
+# We'll use the existing DOCOMMON
+     @PUSH TWODUPFUNC @CALL Compile
+     @PUSH NOTEQUAL @CALL Compile
+     @PUSH ZBRANCH @CALL Compile
+     @MV2V DictPtr ForceExit
+     @PUSH 0 @CALL Compile
+# Above is the JMP == logic to ForceExit now setup the DO loop fall though
+     @DOCOMMON 0 LoopTop
+     @DOCOMMON 0 ForceExit2     # Value will be same as ForceExit just additional location
+     @DOCOMMON DOTAG TmpVal
+     # Loop will need to fill in ForceExit and ForceExit2 durring compile stage
+     @PUSHI ForceExit @LPUSH
+     @PUSHI ForceExit2 @LPUSH
+     @PUSH QDOTAG @LPUSH
+     # 
+     @PUSH DO_RUNTIME @CALL Compile
+     # We can use the 'same' DO_RUNTIME as normal DO as its really only used on 2nd itteration
+     @PUSHI DictPtr @SUB 2 @POPII LoopTop
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@FNEXT
+
+#
+# Loop Compile only purpose is to setup ForceExit to be after current DictPtr
+@DEFWORD "loop" LOOP_COMPILE F_ImmedCompOnly
+@LocalVar TagHolder  01
+@LocalVar ForceExit  02
+@LocalVar ForceExit2 03
+
+   # Compile in the code that will jump at runto to Runtime Version of loop
+   @PUSH LOOP_RUNTIME @CALL Compile
+   #
+   # This will only run durring Compile
+   # It expece do_compile to have passed the ForceExit addres on LS
+   #
+   @MA2V 0 ForceExit2
+   @LPOP @POPI TagHolder
+   @IF_EQ_AV DOTAG TagHolder
+       # Its right so drop though.
    @ELSE
-      @PRTLN "Error: QDo loop not closed properly"
-      @JMP ErrorReset
+      @IF_EQ_AV QDOTAG TagHolder
+         # This is case where these is two places to put the ForceExit
+         @LPOP @POPI ForceExit2
+      @ELSE
+         @PRTLN "Error: Loop did not have matching do"
+         @JMP ErrorReset
+      @ENDIF
    @ENDIF
+   @LPOP @POPI ForceExit
+   @PUSHI DictPtr @SUB 2 @POPII ForceExit
+   @IF_EQ_AV 0 ForceExit2
+      # Do nothing
+   @ELSE
+      @PUSHI DictPtr @SUB 2 @POPII ForceExit2
+   @ENDIF
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @FNEXT
-      
 
-
-#
-#
-@DEFWORD "do" DO_COMPILE F_IMMEDIATE  # ( start limit -- )
-   @LocalVar DoTopLocation 01
-   @LocalVar LeaveTarget 02
-
-   # Compile in LITERAL <LOOP_TOP> with 0 as LOOP_TOP placeholder
-   @PUSH LITERAL @CALL Compile
-   # Record where the Zero was saved in memory
-   @PUSHI DictPtr @POPI DoTopLocation
-   # Now save at that place a zero placeholder
-   @PUSH 0 @CALL Compile       # PlaceHolder Value, patch when we know where 'here is
-
-   # Compile in LITERAL <LoopTarget> with 1 as Loop_TOP placeholder
-   @PUSH LITERAL @CALL Compile
-   @PUSHI DictPtr @POPI LeaveTarget
-   @PUSH 1 @CALL Compile
-   
-
-   # Tag has to be top of SP stack.
-   @PUSH LITERAL @CALL Compile
-   @PUSH DOTAG @CALL Compile
-   # Make first run of loop call the DO_RUNTIME to initilize the LS data
-   @PUSH DO_RUNTIME @CALL Compile
-
-   # Now insert <LOOP_TOP> where we put placeholder
-   @PUSHI DictPtr @SUB 2 @POPII DoTopLocation   # DictPtr is Compile time HERE -2 for INC2 later
-
-   @RestoreVar 02
-   @RestoreVar 01   
-@FNEXT
-#
-
-#
-@DEFWORD "loop" LOOP_COMPILE 0
+# The following is the version of Loop that runs at runtime only
+# It 
+@DEFWORD "loop_runtime" LOOP_RUNTIME 0
    @LocalVar StartVar 01
    @LocalVar LimitVar 02
-   @LocalVar StartAddress 03
-   @LocalVar LeaveTarget 04
+   @LocalVar LoopTop 03
+   @LocalVar ForceExit 04
    @LocalVar TagHolder 05
-   @LocalVar QuickExitLocation 05   
    @LPOP
    @POPI TagHolder
 
    # Error if neither DOTAG or QDOTAG are not here.
    @IF_EQ_AV DOTAG TagHolder
-      # Drop OK
+       # OK so drop through
    @ELSE
-      @IF_EQ_AV QDOTAG TagHolder
-         # In this case there an extra value to track
-         # Here is where we fix the QuickExitLocaiton from Qdo_compile
-         # This will be executed at LEAST the first time loop is encountered.
-         @LPOP @POPI QuickExitLocation
-         @PUSH EndLoopBlock @POPII QuickExitLocation
-      @ELSE
-         @PRTLN "Error Loop keyword not expected."
-         @JMP ErrorReset
-      @ENDIF
+       @PRTLN "Error Loop found not matching with do"
+       @JMP ErrorReset
    @ENDIF
-
-   
    # Move Values to HW Stack
-   @LPOP  @POPI LeaveTarget
-   @LPOP  @POPI StartAddress # Sae
+   @LPOP  @POPI ForceExit
+   @LPOP  @POPI LoopTop
    @LPOP  @POPI LimitVar     # Save Limit
    @LPOP  @POPI StartVar     # Save Start
 
@@ -957,26 +1000,15 @@ M FNEXT @JMP next
       # Loop is finished, just drop to exit.
    @ELSE
       # Now recreate the LS entries for next loop
-      @PUSHI LeaveTarget
-      @IF_EQ_A 1
-         @PUSHI IP @POPI LeaveTarget
-      @ENDIF
-      
-      @POPNULL
-
       @PUSHI StartVar @LPUSH
       @PUSHI LimitVar @LPUSH
-      @PUSHI StartAddress @LPUSH      # Push StartAddress
-      @PUSHI LeaveTarget  @LPUSH      # Push updated Leave Target
-      @IF_EQ_AV QDOTAG TagHolder
-          @PUSHI QuickExitLocation @LPUSH  # Only Needed by QDO's
-          @PUSH QDOTAG @LPUSH
-      @ELSE      
-         @PUSH DOTAG @LPUSH
-      @ENDIF
-      @MV2V StartAddress IP          # Do the Jmp back to StartAddress
+      @PUSHI LoopTop @LPUSH      # Push StartAddress
+      @PUSHI ForceExit  @LPUSH      # Push updated Leave Target
+      @PUSH DOTAG @LPUSH
+      @MV2V LoopTop IP          # Do the Jmp back to StartAddress
    @ENDIF
    :EndLoopBlock
+   @RestoreVar 05
    @RestoreVar 04
    @RestoreVar 03
    @RestoreVar 02
@@ -1003,78 +1035,6 @@ M FNEXT @JMP next
    @BPOP @POPNULL
    @BPOP @POPNULL
 @FNEXT
-#
-# ?do is a conditional versoin of do that won't run if the start and stop values are the same
-@DEFWORD "?do" QDOCOMPILE F_IMMEDIATE
-   @LocalVar DoTopLocation 01
-   @LocalVar LeaveTarget 02
-   @LocalVar QuickExitLocation 03
-#
-# Unlike a normal DO we need to first compile into code runtime logic to
-# check the equalto status of top 2 of SP
-# Then IF they are equal we need to jump to a location that
-# will be discovered later by LOOP
-   # Emit ZBRANCH and JMP is equal
-   #
-   @PUSH ZBRANCH @CALL Compile
-   @MV2V DictPtr QuickExitLocation
-   @PUSH 0 @CALL Compile          # put a zero in that locaiton for now.
-   #
-      # Now the rest of the logic is very much like older DO but with a few minor changes
-      #
-      @PUSH LITERAL @CALL Compile
-      @MV2V DictPtr DoTopLocation
-      @PUSH 0 @CALL Compile         # Here where we'll save LOOP_TOP
-      #
-      # Now do same thing for LoopTarget
-      @PUSH LITERAL @CALL Compile
-      @MV2V DictPtr LeaveTarget    # Target is the value QDO counts up to.
-      @PUSH 0 @CALL Compile
-      #
-      # Now TAG the values so LOOP will know what to do.
-      @PUSH LITERAL @CALL Compile
-      @PUSH QDOTAG @CALL Compile
-      @PUSH QDO_RUNTIME @CALL Compile    # Note we're doing QDO_Runtime not DO_Runtime
-      #
-      # For cases when we are not skipping the loop, we still need the LoopTop to be known.
-      @PUSHI DictPtr @SUB 2 @POPII DoTopLocation
-  @RestoreVar 03
-  @RestoreVar 02
-  @RestoreVar 01
-  @FNEXT
-      
-   
-   
-
-
-#
-   # Emit LITERAL ## save future value to SP
-   @PUSH LITERAL @CALL Compile
-   # Save this location for later editing.
-   @MV2V DictPtr DoTopLocation    # This is where 'loop' will return to.
-   @PUSH 0 @CALL Compile          # Loop will modify this.
-   @PUSH 0 @CALL Compile          # QDO has a second address that will be the exist addres to skip loop
-   #
-   # Now do same for Loop_TOP placeholder
-   @PUSH LITERAL @CALL Compile
-   @PUSHI DictPtr @POPI LeaveTarget  # Save this spot for future exit point
-   @PUSH 1 @CALL Compile             # This 1 will be replaced by 'loop'
-   #
-   # Now tag the loop
-   @PUSH QDOTAG @CALL Compile
-   @PUSH DO_RUNTIME @CALL Compile
-   #
-   # Now we can fix the DoTopLocation
-   @PUSHI DictPtr @SUB 2 @POPII DoTopLocation
-   #
-   @RestoreVar 02
-   @RestoreVar 01
-@FNEXT
-   
-
-   
-
-
    
 #
 @DEFWORD "i" I_WORD 0
@@ -1111,7 +1071,7 @@ M FNEXT @JMP next
       @CALL SearchDictionary
       @IF_EQ_A 0
          @PRTLN "Word not found in dictionary."
-         @MV2V INPUTBUFFER TIB
+         @MV2V ActiveBuffer TIB
          @PUSH 0 @POPII TIB
       @ELSE         
          @POPNULL @POPNULL
@@ -1346,16 +1306,25 @@ M FNEXT @JMP next
 
    # String Print function will have in memory
    # DOStringPrint LEN text
-
-   @PUSH PRINTSTRING
-   @CALL Compile
-   @PUSHI StopI @SUBI StartI
+   @IF_EQ_AV 1 STATE
+      # In compile mode put in code to print string later.
+      @PUSH PRINTSTRING
+      @CALL Compile
+      @PUSHI StopI @SUBI StartI
 #   @PRT "Size of string: " @PRTTOP @PRTNL
-   @CALL Compile
-   @ForIV2V Index1 StartI StopI
-      @PUSHII Index1 @AND 0xff
-      @CALL CompileByte
-   @Next Index1
+      @CALL Compile
+      @ForIV2V Index1 StartI StopI
+         @PUSHII Index1 @AND 0xff
+         @CALL CompileByte
+      @Next Index1
+   @ELSE
+      # In interactive mode print the string now.
+      @PUSHII StopI
+      @PUSH 0 @POPII StopI
+      @PRTSI StartI
+      @PUSHI StopI
+      @POPS
+   @ENDIF
    @RestoreVar 03
    @RestoreVar 02
    @RestoreVar 01
@@ -1363,7 +1332,7 @@ M FNEXT @JMP next
 #
 ##############################
 # tick returns the code ptr for the given word
-@DEFWORD "'" TICKFUNC 0
+@DEFWORD "'" TICKFUNC F_IMMEDIATE
    @PUSHI TIB
    @CALL GetNextWord
    @IF_ZERO
@@ -1371,7 +1340,7 @@ M FNEXT @JMP next
       @JMP ErrorReset
    @ENDIF
    @POPI TIB
-   @PUSHI TIB @SUBI INPUTBUFFER @POPI TOIN
+   @PUSHI TIB @SUBI ActiveBuffer @POPI TOIN
    @CALL SearchDictionary
    @IF_ZERO
       @PRTLN "Error: 101 Unknown word"
@@ -1394,7 +1363,7 @@ M FNEXT @JMP next
       @JMP ErrorReset
    @ENDIF
    @POPI TIB
-   @PUSHI TIB @SUBI INPUTBUFFER @POPI TOIN
+   @PUSHI TIB @SUBI ActiveBuffer @POPI TOIN
    @CALL SearchDictionary
    @IF_ZERO
       @PUSHI TempVal
@@ -1427,7 +1396,7 @@ M FNEXT @JMP next
    @MA2V 1 STATE
 @FNEXT
 #
-@DEFWORD "immediate" IMMEDIATEFUNC 0
+@DEFWORD "immediate" IMMEDIATEFUNC F_IMMEDIATE
 @LocalVar LFAddress 01
 @LocalVar LFOldValue 02
     @PUSHI LATEST
@@ -1463,7 +1432,7 @@ M FNEXT @JMP next
       @JMP ErrorReset
    @ENDIF
    @POPI TIB
-   @PUSHI TIB @SUBI INPUTBUFFER @POPI TOIN
+   @PUSHI TIB @SUBI ActiveBuffer @POPI TOIN
    @CALL SearchDictionary
    @IF_ZERO
       @PRTLN "Error: 201 Unknown word"
@@ -1624,8 +1593,29 @@ M FNEXT @JMP next
       @JMP ErrorReset
    @ENDIF
    @POPI TIB
-   @PUSHS @AND 0xff
+   @PUSHS
+   @AND 0xff
    @FPUSH
+@FNEXT
+#
+@DEFWORD "[char]" CHR2ASCIICOMPILE F_IMMEDIATE
+   @PUSHI TIB
+   @CALL GetNextWord
+   @IF_ZERO
+      @PRTLN "Error: Character needs to provided."
+      @JMP ErrorReset
+   @ENDIF
+   @IF_EQ_AV 0 STATE
+      @POPI TIB
+      @PUSHS
+      @AND 0xff
+      @FPUSH
+   @ELSE
+      @PUSH LITERAL @CALL Compile
+      @POPI TIB
+      @PUSHS @AND 0xff
+      @CALL Compile
+   @ENDIF
 @FNEXT
 #
 @DEFWORD "c," CHARCOMPILEFUNC 0
@@ -1697,6 +1687,47 @@ M FNEXT @JMP next
    @PUSHS   # Get value
    @FPUSH
 @FNEXT
+#
+# PARSE is way to read in from the source file but also operate on it
+@DEFWORD "parse" PARSE_FUNC 0
+@LocalVar Delim 01
+@LocalVar StartPtr 02
+@LocalVar CurPtr 03
+   @FPOP @POPI Delim     # Get Delimiter char
+   @MV2V TIB CurPtr
+   @MV2V TIB StartPtr
+   #
+   @PUSHII CurPtr @AND 0xff
+   @WHILE_NOTZERO
+      @IF_EQ_V Delim
+         @POPNULL
+         @PUSH 0
+      @ELSE
+         @POPNULL
+         @INCI CurPtr
+         @PUSHII CurPtr @AND 0xff
+      @ENDIF
+  @ENDWHILE
+  @POPNULL
+  @PUSHII CurPtr @AND 0xff
+  @WHILE_EQ_V Delim
+     @POPNULL
+     @INCI CurPtr
+     @PUSHII CurPtr @AND 0xff     
+  @ENDWHILE
+  @POPNULL
+
+  @MV2V CurPtr TIB               # Update TIB
+  @PUSHI TIB @SUBI ActiveBuffer @POPI TOIN   # Update TOIN
+  @PUSHI CurPtr @SUBI StartPtr   # Get Size for
+  @FPUSH
+  @PUSHI StartPtr
+  @FPUSH
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@FNEXT
+
 
 # Toggle on/off the Debug report 
 @DEFWORD "debug" DEBUGFUNC 0
@@ -1716,6 +1747,7 @@ M FNEXT @JMP next
 
 @FPUSH
 @FNEXT
+:ENDOFBUILTINS
 ####################
 # Function DCol
 # DCol is the execution loop used for colon defined words.
@@ -1723,7 +1755,6 @@ M FNEXT @JMP next
 @LocalVar MyIP 01
 #
 @PUSHII IP
-#@DUP @PUSH DumpString @CALL DumpFindName @IF_ZERO @POPNULL @PRT "DATA:" @PRTHEXTOP @POPNULL @ELSE @PRTSTR DumpString @POPNULL @PRTNL @ENDIF
 @IF_EQ_AV 1 DebugFLAG
    @PUSHI IP @PUSH 32
    @PRT "Hexdump: " @PRTHEXI IP @PRTNL
@@ -1741,7 +1772,7 @@ M FNEXT @JMP next
       @CALL execute
       @MV2V MyIP IP
    @ELSE
-#@DUP @PUSH DumpString @CALL DumpFindName @IF_ZERO @POPNULL @PRT "DATA:" @PRTHEXTOP @POPNULL @ELSE @PRTSTR DumpString @POPNULL @PRTNL @ENDIF
+
       @CALL execute
    @ENDIF   
    @INC2I IP
@@ -1766,6 +1797,7 @@ M FNEXT @JMP next
 @LocalVar Index01 05
    @POPI NameEnd
    @POPI NameStart
+   @PRT "New Word named: " @PRTSI NameStart @PRTNL
    #
    # Compute length
    # NameLen=NameEnd - NameStart
@@ -1878,6 +1910,7 @@ M FNEXT @JMP next
    @ForIA2B TV 0 InputBufferSize
       @PUSH 0 @PUSHI TV @ADDI INPUTBUFFER @POPS
    @Next TV
+   @MV2V INPUTBUFFER ActiveBuffer
 # Save at bottom of call stack, call to clean exit.
    @PUSH ExitCode
    @BPUSH
@@ -1888,8 +1921,207 @@ M FNEXT @JMP next
 @PRTLN "END OF CODE:"
 @END
 ########################################
-# Function GetNextWord(instr):[NULL,(WordPtr,out-instr)]
+# Function GNWSkipSpace(instr):(newinstr,done_flag)
+:GNWSkipSpace
+@PUSHRETURN
+@LocalVar instr 01
+@LocalVar Return1 02
+@LocalVar Return2 03
+#
+   @POPI instr
+   @MA2V 0 Return1
+   @MA2V 0 Return2
+   @PUSH 0
+   @WHILE_ZERO
+      @POPNULL     # get rid of previous loops 0's
+      @PUSHII instr @AND 0xff   # Replace with this character
+      @IF_ZERO
+         # NULL exit
+         @MV2V instr Return1
+         @MA2V 1 Return2
+         @POPNULL         # Removes this character stack now empty relative to WHILE_ZERO
+         @JMP GNWSExitWhile
+      @ENDIF
+      @SWITCH
+      @CASE " \0"
+         @INCI instr
+         @POPNULL @PUSH 0
+         @CBREAK
+      @CASE "\t\0"
+         @INCI instr
+         @POPNULL @PUSH 0         
+         @CBREAK
+      @CASE "\n\0"
+         @INCI instr
+         @POPNULL @PUSH 0
+         @CBREAK
+      @CASE "\\\0"
+         # Handle \ to end of line, skip possible newline.
+         @WHILE_NOTZERO
+            @IF_EQ_A "\n\0"
+                @POPNULL
+                @PUSH 0
+            @ELSE
+                @INCI instr
+                @POPNULL
+                @PUSHII instr @AND 0xff
+            @ENDIF
+         @ENDWHILE
+         @POPNULL       # WHILE_NOTZERO stack should now be emty.
+         @PUSHII instr @AND 0xff
+         @IF_EQ_A "\n\0"        # Handle case were exit character was newline.
+            @INCI instr
+         @ENDIF
+         @MV2V instr Return1
+         @MA2V 1 Return2
+         @POPNULL
+         @JMP GNWSExitWhile
+         @CBREAK
+      @CASE "(\0"
+         # Skip ()'s and comment between them.
+         @POPNULL            # Get rid of (
+         @INCI instr
+         @PUSHII instr @AND 0xff
+         @WHILE_NOTZERO
+            @IF_EQ_A ")\0"
+                @POPNULL
+                @INCI instr
+                @PUSH 0
+            @ELSE
+                @POPNULL
+                @INCI instr
+                @PUSHII instr @AND 0xff
+            @ENDIF
+         @ENDWHILE
+         @POPNULL            # Get rid of WHILE_NOTZERO test character
+         @PUSH 0         
+         @CBREAK             # Continue loop to end or line or next word
+      @CDEFAULT
+         # First non whilespace non comment is here.
+         @MV2V instr Return1
+         @MA2V 0 Return2           # Note returns false in second field to indicate we didn't hit end of line
+         @POPNULL
+         @JMP GNWSExitWhile
+         @CBREAK
+      @ENDCASE
+   @ENDWHILE
+   # Due to JMPS WHILE should never just drop out here.
+#  
+   :GNWSExitWhile
+   @PUSHI Return1
+   @PUSHI Return2
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+########################################
+# Function GNWExtractWord(instr)
+:GNWExtractWord
+@PUSHRETURN
+@LocalVar instr 01
+@LocalVar WordStart 02
+@LocalVar TermCode 03
+#
+# On entry, we require that instr has already 'skipped' any leading whitespace.
+    @POPI instr
+    @MV2V instr WordStart
+    # Skip until first space, nul or end of line.    
+    @WHEN         # WHEN are while with 'multiline' conditional tests, 0 or notzero
+       @PUSHII instr @AND 0xff
+       @IF_EQ_A " \0"
+          @POPNULL
+          @PUSH 0
+       @ELSE
+          @IF_EQ_A "\n\0"
+             @POPNULL
+             @PUSH 0
+          @ENDIF
+       @ENDIF
+       @DO_NOTZERO
+           @POPNULL
+           @INCI instr
+     @ENDWHEN
+     @POPNULL
+     # Check to see if terminator was space or newline
+     @PUSHII instr @AND 0xff      # Save Term Character
+     # Now replace it with 'null'
+     @PUSHII instr @AND 0xff00 @POPII instr
+     @IF_EQ_A 0
+        @MA2V 1 TermCode
+     @ELSE
+        @IF_EQ_A " \0"
+           @MA2V 1 TermCode        # Space means check for more words later.
+           @INCI instr
+        @ELSE
+           @MA2V 0 TermCode        # Newline treat as null
+        @ENDIF
+     @ENDIF
+     @POPNULL
+     # Return results
+     @PUSHI TermCode
+     @PUSHI instr
+     @PUSHI WordStart
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+##################################
+# Function GetNextWord(instr):(0, (wordptr, nextinstr))
 :GetNextWord
+@PUSHRETURN
+@LocalVar instr 01
+@LocalVar Result1 02
+@LocalVar DoneFlag 03
+@LocalVar WordStart 04
+@LocalVar NextPtr 05
+@LocalVar TermCode 06
+#
+    @POPI instr
+    #
+    @PUSHI instr @CALL GNWSkipSpace
+    @POPI DoneFlag
+    @IF_EQ_AV 1 DoneFlag
+       # No words found, reached end of line
+       @POPNULL
+       @PUSH 0
+    @ELSE
+       @POPI instr
+       @PUSHI instr @CALL GNWExtractWord
+       @POPI WordStart
+       @POPI NextPtr
+       @POPI TermCode
+       @IF_EQ_AV 0 TermCode
+           @PUSHII NextPtr @AND 0xff
+           @WHILE_EQ_A " \0"
+              @POPNULL
+              @INCI NextPtr
+              @PUSHII NextPtr @AND 0xff
+           @ENDWHILE
+           @POPNULL
+       @ENDIF
+       @PUSHI WordStart
+       @PUSHI NextPtr
+    @ENDIF
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+           
+       
+         
+     
+     
+   
+########################################
+# Function GetNextWord(instr):[NULL,(WordPtr,out-instr)]
+:OLDGetNextWord
    @PUSHRETURN
    @LocalVar instr 01
    @LocalVar Index1 02
@@ -1972,7 +2204,7 @@ M FNEXT @JMP next
          @CBREAK
       @ENDCASE
    @ENDWHILE
-   @POPNULL
+   @POPNULL   
    # Our output will either be Null or the string from WordStart to instr
    @IF_EQ_VV instr WordStart
       # empty strings means instr didn't move
@@ -1984,6 +2216,21 @@ M FNEXT @JMP next
          @POPII instr     # Zero out the space so word will be valid ASCIIZ string
          @INCI instr      # Move past the 'null' inserted in WordStart String
          @PUSHI WordStart
+         # We need to move instr to the next valid character and that might be end of line
+         @PUSHII instr @AND 0xff
+         @WHILE_NOTZERO
+             @IF_EQ_A " \0"
+               @POPNULL   
+               @INCI instr
+               @PUSHII instr @AND 0xff
+             @ELSE
+               # Not a space so exit loop.
+               @POPNULL
+               @PUSH 0
+             @ENDIF
+         @ENDWHILE
+         @POPNULL
+            
          @PUSHI instr
       @ELSE
          # TermCode=1 means end of line
@@ -2014,15 +2261,14 @@ M FNEXT @JMP next
    @MV2V INPUTBUFFER TIB
    @PUSH 0 @POPII TIB
    # Start Loop
-   @PUSH 0
    @PRT "Start of Interpreter: "
    @PRTHEXI LATEST
    @PRTNL
+   @PUSH 0   
    @WHILE_ZERO
-       @PUSHI TIB
-       @CALL GetNextWord
+       @POPNULL
+       @PUSHII TIB @AND 0xff
        @IF_ZERO
-          # Input was Null, get a new line
           @POPNULL
           @MV2V INPUTBUFFER TIB
           @PUSH 0 @POPII TIB   # Zero out any previous text
@@ -2030,15 +2276,56 @@ M FNEXT @JMP next
              @PRT "OK "
           @ENDIF
           @READSI TIB
-          @PUSHI TIB @CALL SanitizeText          
+          @PUSH 0
+       @ELSE
+          @POPNULL
+          @PUSHI TIB
+          @CALL Loader
+          @PUSH 0
+       @ENDIF
+   @ENDWHILE
+   @POPNULL
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+
+################################################
+# Common Parser but works for both interactive and noninteractive forth
+# Function  Loader(INPUTLINE)
+:Loader
+@PUSHRETURN
+@LocalVar Token 01
+@LocalVar DictEntry 02
+@LocalVar WordVal 03
+@LocalVar FlagVal 04
+@LocalVar ActiveLine 05
+   @POPI ActiveLine
+   @MV2V ActiveLine TIB
+   @MV2V ActiveLine ActiveBuffer
+   
+   @PUSH 0
+   @WHILE_ZERO
+       @POPNULL
+       @PUSHI TIB
+       @CALL GetNextWord
+       @IF_ZERO
+          @POPNULL
+          @PUSH 1           # Break Main While Loop, reached end of line.
+          @MV2V ActiveBuffer TIB
+          @PUSH 0 @POPII TIB
           @JMP InterContinue
        @ENDIF
        # We get here only if TOS has valid token info.
        # (Tolkien, new TIB)
 #       @PRTNL @PRTSI TIB @PRTNL @PUSHI TIB @PUSH 32 @CALL HexDump @PRTLN "----------------------" 
        @POPI TIB
-       @PUSHI TIB @SUBI INPUTBUFFER @POPI TOIN   # Where in input buffer we're currently
+       @PUSHI TIB @SUBI ActiveBuffer @POPI TOIN   # Where in input buffer we're currently
        @DUP @POPI WordVal
+#       @PRT "Searching: " @PRTSI WordVal @PRTNL
        @CALL SearchDictionary   # [ 0 | DictEntry LenFlag CodeEntry ]
        @IF_EQ_A 0
           # Fallback to try parsing as number
@@ -2071,13 +2358,15 @@ M FNEXT @JMP next
                 # TOS should have value of imediate number.
                 @CALL Compile
              @ENDIF
+             @PUSH 0             # number was valid, continue while loop
              @JMP InterContinue
          @ELSE
              # Null Entry means unknown word, handle as error.
              @POPNULL
              @PRT "301 Unknown Word.(" @PRTSI WordVal @PRT ")\n"
-             @MV2V INPUTBUFFER TIB
+             @MV2V ActiveBuffer TIB
              @PUSH 0 @POPII TIB
+             @PUSH 1            # number was not valid, let loop exit.
              @JMP InterContinue
           @ENDIF
        @ELSE
@@ -2087,11 +2376,25 @@ M FNEXT @JMP next
           @POPI DictEntry
        @ENDIF
        # Here means we have a valid Entry
-#       @PRT "Found Word: " @PRTHEXI IP @PRTNL @StackDump
        @IF_EQ_AV 0 STATE
           # Immediate Mode
+          @PUSHI FlagVal @AND F_IMMEDIATE
+          @IF_NOTZERO
+             # If a word has the COMPILEONLY Flag set then it can only be used
+             # when defining a new word and not interactively.
+             @PUSHI FlagVal @AND F_COMPILEONLY
+             @IF_NOTZERO
+                # Was not one of the execptions print error.
+                @POPNULL
+                @PRT "Error: Trying to use Compiled only word in interactive mode."                
+                @PRT " Name:" @PUSHI DictEntry @CALL PrintWV
+                @JMP ErrorReset
+             @ENDIF
+             @POPNULL
+          @ENDIF
           @PUSHI IP
           @CALL execute
+          @PUSH 0               # Successful execute, continue while loop
           @JMP InterContinue
        @ELSE
           # Compile Mode
@@ -2104,139 +2407,54 @@ M FNEXT @JMP next
              # Normal 'Compile'
              @PUSHI IP
              @CALL Compile
+             @PUSH 0            # Successful Compile, continue while loop
              @JMP InterContinue
           @ELSE
              @POPNULL
              # Exception, always Immediate.
              @PUSHI IP
              @CALL execute
+             @PUSH 0            # Successful execute, continue while loop
              @JMP InterContinue
           @ENDIF
        @ENDIF
-   :InterContinue
+       @PRT "Match issue:"
+       @PUSH 1
+   :InterContinue   
    @ENDWHILE
    @POPNULL
+@RestoreVar 05   
 @RestoreVar 04
 @RestoreVar 03
 @RestoreVar 02
 @RestoreVar 01
 @POPRETURN
 @RET
+#
+# Here is list of the addresses of the dictentries for words not allowed to be run
+# in interactive mode.
+:ExpListStart
+Word_IF_COMPILE
+Word_ELSE_COMPILE
+Word_THEN_COMPILE
+Word_DO_COMPILE
+Word_QDO_COMPILE
+Word_LOOP_COMPILE
+Word_BEGIN_COMPILE
+Word_UNTIL_COMPILE
+Word_AGAIN_COMPILE
+:ExpListStop
 
 ################################################
 # Function: Preloader
 # Basicly 'interpreter but not interactive.'
 :PreLoader
   @PUSHRETURN
-  @LocalVar Token 01
-  @LocalVar DictEntry 02
-  @LocalVar WordVal 03
-  @LocalVar FlagVal 04
-  
   @PRT "Reading in Preload:\n"
-  @PRTHEXI LATEST  
-  @MA2V PreLoadBuffer TIB
-  @PRT "Preload String: " @PRTSI TIB @PRTNL
-  @PUSH 0
-  @WHILE_ZERO
-     @PUSHII TIB
-     @PRT "\n"
-     @IF_ZERO
-        @POPNULL
-        @PUSH 1 # Break While Loop
-     @ELSE
-        @POPNULL
-        @PUSHI TIB
-        @CALL GetNextWord
-        @IF_NOTZERO
-           @POPI TIB
-           @PUSHI TIB @SUBI PreLoadBuffer @POPI TOIN
-           @DUP @POPI WordVal
-           @PRT " Current Word: " @PRTSI WordVal @PRTSP
-           @CALL SearchDictionary
-           @IF_EQ_A 0
-              @PRT " Number:"
-              # Fallback to try parsing as number
-              @POPNULL
-              @PUSHII WordVal @AND 0xff
-              @IF_EQ_A "-\0"
-                 @POPNULL
-                 @PUSH 0
-              @ELSE
-                 @IF_INRANGE_AB "0\0" "9\0"
-                     @POPNULL
-                     @PUSH 0
-                 @ELSE
-                     @POPNULL          
-                     @PUSH 1
-                 @ENDIF
-              @ENDIF
-              @IF_ZERO
-                 @POPNULL
-                 @PUSHI WordVal
-                 @CALL stoifirst    # Convert string to number
-                 @PRTTOP @PRTSP
-                 @IF_EQ_AV 0 STATE
-                    # Handle Imedate version of number in stream.
-                    @PUSH FNC_IMMEDIATE  # Point to function that moves HW stack # to SP Stack
-                    @CALL execute
-                 @ELSE
-                    # Compiling version of number in stream
-                    @PUSH LITERAL
-                    @CALL Compile
-                    # TOS should have value of imediate number.
-                    @CALL Compile
-                 @ENDIF
-                 @JMP PreLoadContinue
-              @ELSE
-                 # Null Entry means unknown word, handle as error.
-                 @POPNULL
-                 @PRT "401 Unknown Word.(" @PRTSI WordVal @PRT ")\n"
-                 @MV2V INPUTBUFFER TIB
-                 @PUSH 0 @POPII TIB
-                @JMP PreLoadContinue
-              @ENDIF
-           @ELSE
-              @POPI IP
-              @POPI FlagVal
-              @POPI DictEntry
-              @PRT "CALL: " @PRTHEXI IP @PRTSP
-           @ENDIF
-           @IF_EQ_AV 0 STATE
-              # Immediate Mode
-              @PUSHI IP
-              @CALL execute
-              @JMP PreLoadContinue
-           @ELSE
-              # Compile Mode.
-              @PUSHI FlagVal
-              @AND F_IMMEDIATE
-              @IF_ZERO
-                 @POPNULL
-                 @PUSHI IP
-                 @CALL Compile
-                 @JMP PreLoadContinue
-              @ELSE
-                 @POPNULL
-                 # Always Immediate
-                 @PUSHI IP
-                 @CALL execute
-                 @JMP PreLoadContinue
-             @ENDIF
-          @ENDIF
-       @ENDIF
-    @ENDIF
-  :PreLoadContinue
-  @ENDWHILE
-  @POPNULL
-  @PRTNL
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
-@POPRETURN
-@RET
-
+  @PUSH PreLoadBuffer
+  @CALL Loader
+  @POPRETURN
+  @RET
 
 
 #################################################
@@ -2266,15 +2484,15 @@ M FNEXT @JMP next
       @POPI Entry         # Points to Dictionary object
       #
       # Check for hidden
-      @PUSHI Entry @ADD 2 @PUSHS @AND F_HIDDEN  # mem[Entry+2] & F_HIDDEN
-      @IF_NOTZERO
-          @POPNULL
-          @PUSHII Entry    # First word in strct is ptr to next entry
-          @DUP             # Leave Copy of EntryPtr for next while
-          @POPI EntryPtr        
-          @JMP EndWhileCont
-      @ENDIF
-      @POPNULL
+#      @PUSHI Entry @ADD 2 @PUSHS @AND F_HIDDEN  # mem[Entry+2] & F_HIDDEN
+#      @IF_NOTZERO
+#          @POPNULL
+#          @PUSHII Entry    # First word in strct is ptr to next entry
+#          @DUP             # Leave Copy of EntryPtr for next while
+#          @POPI EntryPtr        
+#          @JMP EndWhileCont
+#      @ENDIF
+#      @POPNULL
       @PUSHI Entry @ADD 2 @PUSHS @AND LENMASK  # mem[Entry+2] & LENMASK
       @IF_EQ_V NameLength      
          # words are at least same length. Do strcmp
@@ -2340,7 +2558,14 @@ M FNEXT @JMP next
    #   @PRT "Built in Word: " @PRTHEXTOP @PRTNL
    @ENDIF
    @IF_EQ_A DCol
+       @IF_EQ_AV 1 DebugFLAG
+          @PRT "Starting new DCol loop at: " @PRTHEXI IP @PRTNL
+       @ENDIF
        @INC2I IP
+   @ENDIF
+   @IF_EQ_AV 1 DebugFLAG
+      @PRTHEXI IP @PRT ": Executing: " @PRTHEXTOP
+      @PRTSP @DUP @CALL PrintWV
    @ENDIF
 @JMPS
 
@@ -2383,6 +2608,9 @@ M FNEXT @JMP next
    @PUSHI SP
    @IF_GT_V Top
       @PRTLN "SP Stack OverFlow:"
+      @PRT "SP: " @PRTHEXI SP
+      @PRT "\nTop: " @PRTHEXI Top
+      @PRTNL
    @ELSE
       @IF_LT_V Base
          @PRTLN "SP Stack Underflow:"
@@ -2483,9 +2711,9 @@ M FNEXT @JMP next
          @PRT " "
        @ENDIF
        @POPNULL
-       @PUSH FlagInfo @AND 0x40
+       @PUSHI FlagInfo @AND 0x40
        @IF_NOTZERO
-           @PRT "H"
+           @PRT "C"
        @ELSE
           @PRT " "
        @ENDIF
@@ -2666,6 +2894,7 @@ M FNEXT @JMP next
    @Next TV
    # Zero out first word so first call to parse will always be null
    @MV2V INPUTBUFFER TIB
+   @MV2V INPUTBUFFER ActiveBuffer
    @PUSH 0 @POPII TIB
    @MA2V 0 TOIN
    @MA2V 0 STATE
@@ -2799,10 +3028,13 @@ M FNEXT @JMP next
 @LocalVar TMPWP 01
 @LocalVar ZIDX 02
 @LocalVar TMPIP 03
-@LocalVar Limiter 04
+@LocalVar Current 04
+@LocalVar EntryWP 05
+@LocalVar Upper 06
    @DUP
    @POPI TMPWP
-   @PUSHI TMPWP @ADD 3 @AND LENMASK @ADDI TMPWP @ADD 3 @POPI TMPIP
+   @MV2V TMPWP EntryWP
+   @PUSHI TMPWP @ADD 2 @PUSHS @AND LENMASK @ADDI TMPWP @ADD 3 @POPI TMPIP
    @IF_LT_V COMPILEBUFFER
       @PUSH DumpString
       @CALL DumpFindName
@@ -2815,42 +3047,45 @@ M FNEXT @JMP next
       @ENDIF
    @ELSE
       @POPNULL
-      @PUSHII TMPIP
-      @MA2V 0 Limiter
-      @WHILE_NEQ_A EXIT
-         # Zero out old string
-         @ForIA2B ZIDX 0 17
+      @MV2V LATEST Current
+      @MV2V DictPtr Upper
+      @PUSHI Current
+      # Work Way backwards until we find current word, dissassemble between here and previous word.
+      @WHILE_NOTZERO
+         @IF_EQ_V EntryWP
+            # Found the word, previous is end of dict entry
+            @POPNULL
             @PUSH 0
-            @PUSH DumpString @ADDI ZIDX
-            @POPS
-         @Next ZIDX            
-         @PUSH DumpString
-         @CALL DumpFindName
-         @PRTHEXI TMPIP @PRT ":"
-         @IF_ZERO
-            @POPNULL
-            @PRT " Value:" @PRTHEXTOP @PRTNL
-            @POPNULL
          @ELSE
-            @PRT " Word: "
-            @PRTS DumpString @PRTNL
-            @POPNULL
-         @ENDIF
-         @INC2I TMPIP
-         @PUSHII TMPIP
-         @PUSHI Limiter
-         @IF_UGT_A 50
-            @PRTLN "... word continues"
-            @POPNULL @POPNULL
-            @PUSH EXIT
-         @ELSE
-            @ADD 1
-            @POPI Limiter
+            # Not yet matched, move current Current to Previous
+            # Set Upper to next in list.
+            @POPNULL            
+            @MV2V Current Upper
+            @PUSHII Current
+            @DUP
+            @POPI Current
          @ENDIF
       @ENDWHILE
       @POPNULL
-      @PRTHEXI TMPIP @PRT " EXIT\n"
+      @PUSHI Upper @SUBI TMPIP
+      @IF_GT_A 50
+         # Limit us to 50 words in a dump
+         @PUSHI TMPIP @ADD 50 @POPI Upper
+      @ENDIF
+      @POPNULL
+ #     @PUSHI Current @ADD 2 @PUSHS @AND LENMASK @ADDI Current @ADD 3 @POPI TMPIP
+      @PUSHI TMPIP
+      @WHILE_LT_V Upper
+         @POPNULL
+         @PUSHII TMPIP
+         @CALL PrintWV   # Print Formated info about word
+         @INC2I TMPIP
+         @PUSHI TMPIP
+      @ENDWHILE
+      @POPNULL
    @ENDIF
+@RestoreVar 06
+@RestoreVar 05
 @RestoreVar 04
 @RestoreVar 03
 @RestoreVar 02
@@ -2858,6 +3093,33 @@ M FNEXT @JMP next
 @POPRETURN
 @RET
 :DumpString 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+######################################
+# Function PrintWV(address) Print Word or Val
+:PrintWV
+@PUSHRETURN
+@LocalVar TestAddr 01
+@LocalVar Index1 02
+    @POPI TestAddr
+    # Zero out any old string
+    @ForIA2B Index1 0 17 @PUSH 0 @PUSH DumpString @ADDI Index1 @POPS @Next Index1
+    @PUSHI TestAddr
+    @PUSH DumpString
+    @CALL DumpFindName
+    @PRTHEXI TestAddr @PRT ":"
+    @IF_ZERO
+       @POPNULL
+       @PRT " Value:" @PRTHEXTOP @PRTNL
+       @POPNULL
+    @ELSE
+       @PRT " Word: "
+       @PRTS DumpString @PRTNL
+       @POPNULL
+    @ENDIF
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
 #####################################
 # HexDump(start,length) prints in words hex from start to length
 #
@@ -2911,9 +3173,11 @@ M FNEXT @JMP next
 @POPRETURN
 @RET
 :PreLoadBuffer
-#": ?DO ( C: -- do-sys ) ( S: lim init -- )    POSTPONE 2DUP   POSTPONE = "
-#"POSTPONE IF     POSTPONE DROP  POSTPONE DROP   POSTPONE EXIT   POSTPONE THEN   POSTPONE DO "
-#"; IMMEDIATE "
+#' : .( ( -- ) immediate'
+#   ' char ) parse '
+#   ' type'
+#   ' ; '
+' : .( immediate [char] ) parse type ;'
 0
 @PreCodeVal
 0
