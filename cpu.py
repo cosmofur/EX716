@@ -65,7 +65,8 @@ CastWriteSectorI=26
 CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
-CastTapeWriteI=34
+CastTapeWrite=34
+CastTapeWriteI=5
 CastEnd=99
 CastDebugToggle=100
 CastStackDump=102
@@ -81,6 +82,7 @@ PollReadSectorI=26
 PollReadTapeI=23
 PollRewindTape=24
 PollReadTime=25
+PollReadTape=26
 DebugOut=sys.stderr
 PrevPC=0
 
@@ -1281,7 +1283,7 @@ class microcpu:
                 val = self.getwordstack(i*2)
                 safeprint(" %04x" % (val),file=DebugOut,end="")
             safeprint(" ]",file=DebugOut)
-        if cmd == CastTapeWriteI:
+        if cmd == CastTapeWrite:
             if context.DeviceHandle != None:
                 v=address
                 if v < MAXMEMSP-0x1ff:
@@ -1291,6 +1293,18 @@ class microcpu:
                 else:
                     self.raiseerror(
                         "039 Attempt to write from source memory past availabel memory")
+        if cmd == CastTapeWriteI:
+            if context.DeviceHandle != None:
+                v=self.getwordat(address)
+                if v < MAXMEMSP-0x1ff:
+                    block=self.memspace[v:v+512]
+                    context.DeviceFile.write(bytes(block))
+                    context.DeviceFile.flust()
+                else:
+                    self.raiseerror(
+                        "039 Attempt to write from source memory past availabel memory")
+
+                    
 
         sys.stdout.flush()
 
@@ -1399,9 +1413,21 @@ class microcpu:
                         tidx += 1
                 else:
                     self.raiseerror("042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
-        if cmd == PollReadTapeI:
+        if cmd == PollReadTape:
             if current_context.DeviceHandle != None:
                 v=address
+                block=current_context.DeviceFile.read(512)
+                tidx=v
+                if v<= MAXMEMSP-0x1ff:
+                    for i in block:
+                        self.memspace[tidx] = int(i) & 0xff
+                        tidx += 1
+                else:
+                    self.raiseerror(
+                        "043 Attempt to read Tape Block with insufficent memory")
+        if cmd == PollReadTapeI:
+            if current_context.DeviceHandle != None:
+                v=self.getwordmem(address)
                 block=current_context.DeviceFile.read(512)
                 tidx=v
                 if v<= MAXMEMSP-0x1ff:
@@ -2595,9 +2621,6 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     context.MacroPCount.update({key: 0})                    
                 elif line[0:2] == "MF" and CodeLength == 2:
                     # MF Macro is for setting, or freeing single value macros. For use as flags
-#                    print("MF Parse: Before(%s) " % line,end="")
-#                    print(" Step1: %s (%s)" % (key,line[size+1:]),end="")
-#                    print(" Step2: %s (%s)" % (value, line[size:]))
                     substr = line[2:]
                     (key,ksize) = nextword(substr)
                     substr=substr[ksize:].lstrip()
