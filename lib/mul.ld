@@ -8,6 +8,8 @@ G MULU
 # Define local storage (Registers)
 I common.mc
 L softstack.ld
+M SIZESINCECOMMENT mul-AfterLoader.ld
+@SIZESINCE
 :MULU
 =MM Var01
 =NN Var02
@@ -73,6 +75,6 @@ L softstack.ld
 @POPLOCAL SIGN
 @POPRETURN
 @RET
+M SIZESINCECOMMENT mul.ld
+@SIZESINCE
 ENDBLOCK
-
-

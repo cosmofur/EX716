@@ -3,7 +3,8 @@ M TOKENSKIP 1
 
 I common.mc
 L string.ld
-L softstack.ld 
+L softstack.ld
+M SIZESINCECOMMENT tokenizer.ld
 ###########
 # Global
 G GetNextWord
@@ -240,5 +241,5 @@ G Tokenize
 @POPLOCAL RR4 @POPLOCAL RR3 @POPLOCAL RR2 @POPLOCAL RR1
 @POPRETURN
 @RET
-
+@SIZESINCE
 ENDBLOCK

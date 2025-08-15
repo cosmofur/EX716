@@ -7,7 +7,6 @@ L softstack.ld
 = SizeObjectHead 3
 = ObjectPtrLocation 2
 = SizeFirstHead 7
-
 G HeapDefineMemory
 G HeapNewObject
 G HeapResizeObject
@@ -232,6 +231,7 @@ G HeapAppend
 @LocalVar NewObject 06
 
 #
+@POPI NewSizeInBytes
 @POPI ObjectID
 @POPI HeapID
 #
@@ -260,7 +260,7 @@ G HeapAppend
     @PUSHI IndexY
     # If the NewObject is smaller than the Old one we only want to copy NewSize bytes
     # otherwise if NewObject is larger, then we can safely copy the full length of OldSize
-    @IF_ULT_V NewSizeInBytes
+    @IF_UGT_V NewSizeInBytes
        # If NewSizeInBytes < OldSize, then we just copy NewSize number of bytes
        @MV2V NewSizeInBytes IndexY
        @POPNULL
@@ -529,11 +529,7 @@ G HeapAppend
 @RestoreVar 01
 @POPRETURN
 @RET
-
-
-   
-
-
-
+M SIZESINCECOMMENT heapmgt.ld
+@SIZESINCE
 ENDBLOCK
 

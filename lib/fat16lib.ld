@@ -4,6 +4,7 @@ I common.mc
 L heapmgr.ld
 L string.ld
 L lmath.ld
+M SIZESINCECOMMENT fat17lib.ld
 #
 # HeapObject is allocated memory of given size
 # BufferPtr is likely a HeapObheject but could also just be a fixed block of memory of size
@@ -2167,7 +2168,7 @@ ENDBLOCK
 =FTFatHead FTFileCache2+2        # Startng Fattable entry for first cluster.
 =FTFatEntry FTFatHead+2          # Current Fattable entry for active cluster.
 =FTTableSize FTFatEntry+2
-
+@SIZESINCE
 
 
 

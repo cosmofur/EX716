@@ -1,6 +1,7 @@
 #  32 bit math functions
 #
 ! LMATH_DONE
+M SIZESINCECOMMENT lstck.ld
 M LMATH_DONE 1
 M INC2I @PUSHI %1 @ADD 2 @POPI %1
 M DEC2I @PUSHI %1 @SUB 2 @POPI %1

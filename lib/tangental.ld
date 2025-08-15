@@ -3,6 +3,7 @@
 L div.ld
 ! SeenTangental
 M SeenTangental 1
+M SIZESINCECOMMENT tangental.ld
 G SIND
 G SINR
 G COSD
@@ -146,4 +147,5 @@ G COSR
 :YOLDAT2 0
 :ResultAT2 0
 :IndexAT2 0
+@SIZESICE
 ENDBLOCK

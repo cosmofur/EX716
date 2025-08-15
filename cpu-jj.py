@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 from functools import lru_cache
 import signal
@@ -22,29 +22,12 @@ import time
 import bisect
 from collections import defaultdict
 
-
 import sys
 import os
-import traceback
 
 
 # Constants
-class WatchedDict(dict):
-    def __init__(self, *args, **kwargs):
-        self.watch_keys = set()
-        super().__init__(*args, **kwargs)
 
-    def watch(self, key):
-        self.watch_keys.add(key)
-
-    def update(self, other, note=""):
-        for k, v in other.items():
-            if k in self.watch_keys:
-                print(f"[WATCH] FileLabels[{k}] = {v}  ({note})")
-                print("Stack trace (most recent call last):")
-                for line in traceback.format_stack(limit=10):  # limit for brevity
-                    print("   " + line.strip())
-            super().update({k: v})
 
 CastPrintStr=1
 CastPrintInt=2
@@ -65,8 +48,7 @@ CastWriteSectorI=26
 CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
-CastTapeWrite=34
-CastTapeWriteI=5
+CastTapeWriteI=34
 CastEnd=99
 CastDebugToggle=100
 CastStackDump=102
@@ -82,7 +64,6 @@ PollReadSectorI=26
 PollReadTapeI=23
 PollRewindTape=24
 PollReadTime=25
-PollReadTape=26
 DebugOut=sys.stderr
 PrevPC=0
 
@@ -91,55 +72,45 @@ if sys.platform == 'win32':
 
     def get_key():
         if msvcrt.kbhit():
-            ch=msvcrt.getch()
-            if ch in (b'\x00', b'\xe0'):
-                ch2=msvcrt.getch()
-                return 0x1000 | ch2[0]
-            else:
-                return ord(ch)
+            return msvcrt.getch().decode()
         else:
             return None
 
 elif sys.platform.startswith('linux'):
-    def get_key():
-        import sys, termios, fcntl, os, select
-        
-        fd = sys.stdin.fileno()
-        
-        # If queue already has data, return one char
-        if CPU.char_queue:
-            return CPU.char_queue.pop(0)
+    import termios
+    import fcntl
+    import os
 
-        # Save current settings
+    def get_key():
+        fd = sys.stdin.fileno()
+
+        # Save the current terminal settings
         old_attr = termios.tcgetattr(fd)
         old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
 
         try:
-            # Set raw input, non-blocking
+            # Set the terminal to non-blocking mode
             new_attr = termios.tcgetattr(fd)
-            new_attr[3] = new_attr[3] & ~(termios.ICANON | termios.ECHO)
+            new_attr[3] = new_attr[3] & ~termios.ICANON & ~termios.ECHO
             termios.tcsetattr(fd, termios.TCSANOW, new_attr)
+
+            # Set the file descriptor to non-blocking mode
             fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
 
-            # Check if input available
-            rlist, _, _ = select.select([fd], [], [], 0.01)
-            if not rlist:
-                return None
-
-            # Read as much as available (up to 128 bytes)
             try:
-                data = os.read(fd, 128)
-                CPU.char_queue = list(data.decode(errors="replace"))
-            except BlockingIOError:
+                # Attempt to read a single character
+                char = sys.stdin.read(1)
+                if len(char) == 0:
+                    char='\0'
+                return char
+            except IOError:
                 return None
 
         finally:
-            # Restore settings
+            # Restore the terminal settings and file descriptor flags
             termios.tcsetattr(fd, termios.TCSAFLUSH, old_attr)
             fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
 
-            # Return first character
-        return CPU.char_queue.pop(0) if CPU.char_queue else None
 else:
     raise NotImplementedError("Unsupported platform")
 
@@ -147,116 +118,48 @@ from pstats import SortKey
 
 from pathlib import Path
 
-
-current_context = None
-
-
-# Function to make sure already proccessed strings that removed escaped codes, will put them back.
-def quote_escape_string(s):
-    escmap = {
-        '\n': '\\n',
-        '\t': '\\t',
-        '\0': '\\0',
-        '\b': '\\b',
-        '\r': '\\r',
-        '\\': '\\\\',
-        '"': '\\"'
-    }
-    return '"' + ''.join(escmap.get(c, c) for c in s) + '"'
-
-def escape_for_reinsertion(s):
-    escmap = {
-        '\n': '\\n',
-        '\t': '\\t',
-        '\0': '\\0',
-        '\b': '\\b',
-        '\r': '\\r',
-        '\\': '\\\\',
-        '"': '\\"'
-    }
-    return ''.join(escmap.get(c, c) for c in s)
-
-
-class AssemblerContext:
-    def __init__(self):
-        # Memory and address state
-        self.StoreMem = np.zeros(0x10000, dtype=np.uint8)
-        self.address = 0
-        self.dataaddress = 0
-        self.highaddress = 0
-        self.Entry = 0
-        self.DEFMEMSIZE = 0x10000
-        self.AdminFlag = 0
-
-        # Labels and variables
-        self.FileLabels = {}
-        self.GlobeLabels = {}
-        self.FWORDLIST = []
-        self.FBYTELIST = []
-
-        # Macro state
-        self.MacroData = {}
-        self.MacroPCount = {}
-        self.MacroVars = ['0'] * 64
-
-        self.varcntstack = [0] * 16
-        self.varbaseSP = 0
-        self.varbaseNext = 0
-        self.ActiveMacro = False
-        self.ActiveMacroName = ""
-        self.MacroLine = ""
-        self.backfill = ""
-
-        # File and line tracking
-        self.ActiveFile = ""
-        self.DeviceFile = 0
-        self.FileLineNum = 0
-        self.UniqueLineNum = 0
-        self.LocalID = ""
-        self.LORGFLAG = 0
-        self.SkipBlock = 0
-        self.AddressedLinesSeen = set()
-        self.CurrentLineBeingParsed = 0
-
-        # Data segment state
-        self.ExpectData = 0
-        self.DataSegment = -1
-
-        # Debug/Options
-        self.Debug = 0
-        self.GlobalOptCnt = 0
-        self.Remote = False
-        self.watchwords = []
-
-
 path_root = os.path.abspath("lib")
 sys.path.append(str(path_root))
 
 
-
+StoreMem = np.zeros(0x10000, dtype=np.uint8)
+FileLabels = {}
+GlobeLabels = {}
+FWORDLIST = []
+FBYTELIST = []
+MacroData = {}
 MacroStack = []
 breakpoints = []
 tempbreakpoints = []
+MacroPCount = {}
+GlobalLineNum = 0
 UniqueLineNum = 0
+GlobalOptCnt = 0
+Entry = 0
 DeviceHandle = None
+DeviceFile = 0
+ActiveFile = ""
 EchoFlag = False
 UniqueID = 0
-LastMLen = 0
+SkipBlock = 0
+DataSegment=-1      # if DataSegment is -1 then Data and Address overlap.
+dataaddress = 0
 
 
 GLOBALFLAG = 1
 LOCALFLAG = 2
+watchwords = []
 MAXMEMSP = 0xffff
 MAXHWSTACK = 0xff - 2
-
+Debug = 0
 
 InDebugger = False
 RunMode = False
 GPC = 0
+LineAddrList = [[0, 0], [0, 0]]
 
 CPUPATH = os.getenv('CPUPATH')
 JSONFNAME = "CPU.json"
-
 if CPUPATH is None:
     CPUPATH = ".:../lib/:./lib/"
 for testpath in CPUPATH.split(":"):
@@ -279,12 +182,11 @@ for i in SymToValMap:
 
 
 def shandler(signum, frame):
-    global current_context
     # This is NOT (as yet) an interupt handler for the CPU, just a way to drop code into the debugger.
     #
     msg = "Ctrl-c"
     print(msg, end="", flush=True)
-    debugger("",current_context)
+    debugger(FileLabels,"")
 
 
 signal.signal(signal.SIGINT, shandler)
@@ -309,94 +211,85 @@ def create_new_filename(original_filename, new_extension):
 
 
 def create_new_unique():
-    global UniqueID,current_context,FileLineData
+    global UniqueID
     UniqueID = UniqueID+1
-    return "U_%06x%0x4_" % (UniqueID,current_context.address)
+    return "_U_%06x_" % UniqueID
 
 
 def validatestr(instr, typecode):
     # When we call int() function we must first make sure the string passed if value for that
     # numeric base. We support hex, octal, binary and 'decimal'
-    instr=instr.lower()
+    alpha = "0123456789xo"
     if typecode == 16:
         alpha = "0123456789abcdefABCDEF-+x"
     elif typecode == 2:
         alpha = "01+-xb"
     elif typecode == 8:
         alpha = "01234567+-xo"
-    elif typecode == 10:
-        alpha = "0123456789+-"
-    else:
-        CPU.raiseerror(f"Unknown base typecode: {typecode}")
+    newstr = ""
     for cc in instr:
         if not (cc in alpha):
-            CPU.raiseerror("String %s is not valid for base %d" % (instr, typecode))
-    return (int(instr, 0))
+            print("String %s is not valid for base %d" % (instr, typecode))
+        else:
+            newstr += cc
+    return (int(newstr, typecode))
 
 LocVarHist = {}
 
-
-
-def UpdateVarHistory(varname, value, address):
+def UpdateVarHistory(varname,value,address):
     global LocVarHist
-    LocVarHist.setdefault(varname, []).append((int(value), int(address)))
+    if varname in LocVarHist:
+        oldvallist=LocVarHist[varname]
+        oldvallist.append((value,address))
+    else:
+        newvallist=[(value,address)]
+        LocVarHist[varname]=newvallist
 
+def FindHistoricVal(varname, testaddress):
+    global LocVarHist,GlobeLabels
 
-def FindHistoricVal(varname, testaddress, context=None):
-    global LocVarHist
-    testaddress = int(testaddress)
-
-    # 1) Exact match wins.
-    candidates = LocVarHist.get(varname)
-    if candidates is None:
-        # 2) No exact match: gather all prefix matches: varname + "_"
-        prefix = f"{varname}_"
-        candidates = []
-        for k, vlist in LocVarHist.items():
-            if k.startswith(prefix):
-                candidates.extend(vlist)
-
-    if not candidates:
-        print(f"Error: {varname} not recognized.")
+    matchkeys=[]
+    bestmatch=0xffff
+    if varname in LocVarHist:           # exact match?
+        matchkeys.append(LocVarHist[varname])
+        for item_name in LocVarHist.keys():
+            if item_name.startswith(varname+"_"):
+                matchkeys.append(LocVarHist[item_name])
+    if len(matchkeys) == 0:
+        print("Error: %s not recognized." % varname)
         return 0
+    # Flatten the matches into one list
+    flatten = [ item for sublist in matchkeys for item in sublist]
+    sortedlist = sorted(flatten, key=lambda x: x[1], reverse=True)
+    for item in sortedlist:        # For local variables, we expect them to be defined before they are used. Not always true.
+        if int(item[1]) <= testaddress:
+            return int(item[0])
+    if len(item) > 0:     # This is for when item is defined in later memory, likely the main file.
+        return int(item[0])
+    return testaddress
 
-    # Normalize to ints, tolerate unsorted history.
-    # candidates: list[(value,address)]
-    eligible = [(int(v), int(a)) for (v, a) in candidates if int(a) <= testaddress]
-    if eligible:
-        # pick the one with the highest address <= testaddress
-        v, a = max(eligible, key=lambda t: t[1])
-        return v
-
-    # No past entry; pick the closest future entry (> testaddress), if any
-    future = [(int(v), int(a)) for (v, a) in candidates if int(a) > testaddress]
-    if future:
-        v, a = min(future, key=lambda t: t[1])
-        return v
-
-    # Nothing matched; define your fallback
-    return 0
-
-def FindLabelMatch(varname, context: AssemblerContext):
+def FindLabelMatch(varname):
+    global FileLabels
     varname=str(varname)
-    if varname in context.FileLabels:
-        return context.FileLabels[varname]
+    if varname in FileLabels:
+        return FileLabels[varname]
 
-    potential_matches = [ key for key in context.FileLabels.keys() if key.startswith(varname + "_")]
+    potential_matches = [ key for key in FileLabels.keys() if key.startswith(varname + "_")]
     if len(potential_matches) == 1:
-        return context.FileLabels[potential_matches[0]]
+        return FileLabels[potential_matches[0]]
+    if len(potential_matches) == 1:
+        return FileLabels[potential_matches[0]]
     if len(potential_matches) > 1:
         maxkeywidth=max(len(match) for match in potential_matches)
-        maxvaluewidth=max(len(f"{int(context.FileLabels[match]):04x}") for match in potential_matches)
+        maxvaluewidth=max(len(f"{int(FileLabels[match]):04x}") for match in potential_matches)
         table = f"Multiple matches found for '{varname}:\n"
         table += f"|{'Name':<{maxkeywidth}}|{'Value':<{maxvaluewidth}}|\n"
         table += f"|{'-'*maxkeywidth}|{'-'*maxvaluewidth}|\n"
         for match in potential_matches:
-            value = f"{int(context.FileLabels[match]):04x}"
+            value = f"{int(FileLabels[match]):04x}"
             table += f"|{match:<{maxkeywidth}}|{value:<{maxvaluewidth}}|\n"
         print(table)
     return None
-
 
 def Sort_And_Combine_Labels(inboundtext):
 
@@ -430,10 +323,6 @@ def Sort_And_Combine_Labels(inboundtext):
     groups["other"]=sorted(set(groups["other"]))
     return " ".join(groups["other"]+groups["M"])
 
-
-
-
-
 class InputFileData:
     def __init__(self):
         self.file_data={}  # map filenams to linenumber and memory
@@ -446,16 +335,13 @@ class InputFileData:
         if line_number not in self.file_data[filename]:
             self.file_data[filename][line_number] = []
         self.file_data[filename][line_number].append(memory_address)
-        if memory_address not in self.address_map:
-            bisect.insort(self.sorted_addresses, memory_address)
         self.address_map[memory_address] = (filename, line_number)
+        bisect.insort(self.sorted_addresses, memory_address)
 
-
-    def get_line_info(self, memory_address, exact=False):
+    def get_line_info(self, memory_address):
         if memory_address in self.address_map:
             return self.address_map[memory_address]
-        if exact:
-            return None
+
         pos=bisect.bisect_right(self.sorted_addresses, memory_address)
         if pos==0:
             return None
@@ -463,47 +349,27 @@ class InputFileData:
         return self.address_map[nearest_lower_address]
 
     def get_nearest_address(self, filename, line_number):
-        matching_files = [
-            afile for afile in self.file_data
-            if line_number in self.file_data[afile]
-        ]
-
         if filename not in self.file_data:
-            if len(matching_files) > 1:
-                print("Multiple Matches for Line:(%d) : Re-enter with one of the following." % line_number)
-                for afile in matching_files:
-                    addr = self.file_data[afile][line_number][0]
-                    print("%s:%d:%04x" % (afile, line_number, addr))
+            if len(self.file_data) > 1:
+                print("Multiple Matches for (%04x) : Re-enter with one of the following. " % line_number)
+                for afile in self.file_data:
+                    Result1 = self.get_nearest_address(afile, line_number)
+                    if Result1 != None:
+                        print("%s:%d:%04x" % (afile, line_number, Result1))
                 return None
-            elif len(matching_files) == 1:
-                filename = matching_files[0]
-            else:
-                return None
-
-        lines = sorted(self.file_data[filename].keys())
-
+            filename=self.file_data[0]
+        lines=sorted(self.file_data[filename].keys())
         closest_line = None
         for ln in lines:
             if ln >= line_number:
                 closest_line = ln
                 break
-
         if closest_line is None:
             return None
-
-        address = self.file_data[filename][closest_line][0]
-        return (filename, closest_line, address)
+        return self.file_data[filename][closest_line][0]
 
 FileLineData = InputFileData()
 
-def safeprint(*args, **kwargs):
-    try:
-        print(*args, **kwargs)
-    except Exception as e:
-        try:
-            print("Logging failed: ", e)
-        except:
-            pass  # Fail completely silently
 
 
 # I must admit it, I am not a 'natural' OO programmer.
@@ -524,9 +390,9 @@ class microcpu:
     def __init__(self, origin, memsize):
         self.pc = origin
         self.flags = 0    # B0 = ZF, B1=NF, B2=CF, B3=OF
+        self.memspace = np.zeros(memsize, dtype=np.uint8,)
         self.identity = next(self.cpu_id_iter)
         self.mb = np.zeros(256, dtype=np.uint8)
-        self.memspace = np.zeros(memsize, dtype=np.uint8)
         self.netqueue = []
         self.netapps = []
         self.hwtimer = 0
@@ -534,44 +400,17 @@ class microcpu:
         self.simtime = False
         self.clocksec = 1000
         self.Last_Filename_used = None
-        self.char_queue = ""
 
 
     def insertbyte(self, location, value):
         if location >= 65536:
             CPU.raiseerror("000 Address OverFlow %05x" % location)
-        CPU.memspace[location] = value
-
-    def getwordstack(self, index):
-        return (int(self.mb[index]) + (int(self.mb[index+1]) << 8))
-
-    def getwordmem(self, index):
-        return (int(self.memspace[index]) + (int(self.memspace[index+1]) << 8))    
-
-    def dumpstack(self,stack):
-        global FileLineData
-        print("")
-        if not isinstance(stack, np.ndarray):
-            raise TypeError("stack must be a NumPy array")
-        if len(stack) % 2 != 0:
-            stack=np.append(stack,0)
-        arr_words=stack.view(np.uint16)
-        newlist=[]
-        print("Stack Dump:")
-        for num in arr_words:
-            if num < 0xff:
-                newlist.append(f"0x{num:04x} ")
-            else:
-                tresult=FileLineData.get_line_info(num, False)
-                if tresult == None or len(tresult) < 2:
-                    newlist.append(f"0x{num:04x} ")
-                else:
-                    newlist.append(f"{tresult[0]}:{tresult[1]}")
-        print(" ".join(newlist))
+        self.memspace[location] = value
 
     def FindWhatLine(self, address):
         global FileLineData
-        tresult = FileLineData.get_line_info(address, False)
+
+        tresult = FileLineData.get_line_info(address)
         if tresult == None or len(tresult)< 2 :
             print("No good line match found for address %04x" % address)
             return " no-file "
@@ -579,97 +418,79 @@ class microcpu:
 
     def FindAddressLine(self, line_info):
         global FileLineData
+
         if (":" in line_info):
             parts=line_info.split(":")
-            OutFile = parts[0] if parts[0] else None
-            self.Last_Filename_used = OutFile
-            OutLine= int(digitsonly(parts[1]))
+            if len(parts[0]) == 0:
+                self.Last_Filename_used = None
+                OutFile=None
+            else:
+                self.Last_Filename_used = parts[0]
+                OutFile=self.Last_Filename_used
+            OutLine=int(digitsonly(parts[1]))
         else:
             OutFile=self.Last_Filename_used
             OutLine = int(digitsonly(line_info))
         return FileLineData.get_nearest_address(OutFile, OutLine)
 
     def raiseerror(self, idcode):
-        global GPC, RunMode, DebugOut
-
-        valid = -1
+        global GPC, RunMode, FileLabels
+        fd = sys.stdin.fileno()
+        new = termios.tcgetattr(fd)
+        new[3] = new[3] | termios.ECHO          # lflags
+        print("CPU State: ",file=DebugOut)
+        i=CPU.pc
+        if ( i+1 < 0xffff ):
+           optcode = StoreMem[i]
+           P1 = CPU.getwordat(i+1)
+           if (P1 > 0xfffe):
+               OUTLINE="Invalide number at address %04x[%06x] " % (i,P1)
+               P1=P1 & 0xfffe
+           PI = CPU.getwordat(P1)
+           PII = CPU.getwordat(PI)
+           ZF = 1 if CPU.flags & 1 else 0
+           NF = 1 if CPU.flags & 2 else 0
+           CF = 1 if CPU.flags & 4 else 0
+           OF = 1 if CPU.flags & 8 else 0
+           OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%1d N%1d C%1d O%1d" % \
+                (i, OPTSYM[optcode], P1, PI, PII,
+                 ZF, NF, CF, OF)
+           pline=CPU.FindWhatLine(i)
+           if pline != None:
+               print(f"Line: {pline}")
+        else:
+            OUTLINE="Invalid PC ( %06x ) " % i
+        print(OUTLINE, file=DebugOut)
+        if (self.mb[0xff]-1 > 0):
+            for i in range(self.mb[0xff]-1):
+                val = self.mb[i*2]+(0xff*self.mb[i*2+1])
+                print(" %04x" % (val),file=DebugOut,end="")
+            print(" ",file=DebugOut)
+            sys.stdout.flush()
+        else:
+            print("Stack Empty",file=DebugOut)
+            print("Stack Empty at %04x" % i)
+        if self.mb[0xff] > 0 and self.mb[0xff] < 255:
+            print("Invalid range for stack info: SP:%03x" % ( self.mb[0xff]-1))
+            self.mb[0xff]=0xf0
         try:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] | termios.ECHO
             termios.tcsetattr(fd, termios.TCSADRAIN, new)
-        except Exception as e:
-            safeprint("TTY Setup Error:", e, file=DebugOut)
+        except:
+            print("TTY Error: On No Echo", file=DebugOut)
 
-        try:
-            safeprint("CPU State:", file=DebugOut)
-            i = getattr(self, "pc", -1)
-            mem = getattr(self, "memspace", {})
-
-            if current_context is None:
-                safeprint("Emulator failed to startup. Code: %s" % idcode, file=DebugOut)
-                sys.exit(99)
-
-            if 0 <= i < 0xffff:
-                try:
-                    try:
-                        optcode = mem[i]
-                    except:
-                        optcode = 0
-                    P1 = self.getwordat(i+1)
-                    PI = self.getwordat(P1 & 0xfffe)
-                    PII = self.getwordat(PI)
-                    ZF = 1 if self.flags & 1 else 0
-                    NF = 1 if self.flags & 2 else 0
-                    CF = 1 if self.flags & 4 else 0
-                    OF = 1 if self.flags & 8 else 0
-                    opname = OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}"
-                    outline = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%d N%d C%d O%d" % (
-                        i, opname, P1, PI, PII, ZF, NF, CF, OF
-                    )
-                    safeprint(outline, file=DebugOut)
-                    pline = self.FindWhatLine(i)
-                    if pline is not None:
-                        safeprint(f"Line: {pline}", file=DebugOut)
-                except Exception as e:
-                    safeprint("Error printing instruction context:", e, file=DebugOut)
-            else:
-                safeprint("Invalid PC: %06x" % i, file=DebugOut)
-
-            # Dump stack if present
-            try:
-                sp = self.mb[0xff]
-                if 0 < sp < 255:
-                    for idx in range(sp - 1):
-                        val = self.mb[idx*2] + 0xff * self.mb[idx*2 + 1]
-                        safeprint(" %04x" % val, file=DebugOut, end="")
-                    safeprint(" ", file=DebugOut)
-                else:
-                    safeprint("Stack Empty or Invalid SP: %02x" % sp, file=DebugOut)
-                    self.mb[0xff] = 0xf0  # reset
-            except Exception as e:
-                safeprint("Stack dump error:", e, file=DebugOut)
-
-            # Print ID code
-            safeprint("Error Number: %s at PC:0x%04x" % (idcode, i), file=DebugOut)
-            safeprint("%s:%s" % (current_context.ActiveFile, current_context.FileLineNum))
-            if idcode[:3].isdigit():
-                valid = int(idcode[:3])
-        except Exception as e:
-            safeprint("Error decoding idcode:", e, file=DebugOut)
-            valid = -1
-
-        # Always try to enter the debugger if we're in dev mode
-        try:
-            safeprint("Entering debugger due to fatal error.", file=DebugOut)
-            debugger("", current_context)
-        except Exception as e:
-            safeprint("Debugger failed: %s" % e, file=DebugOut)
-            safeprint("Falling back to sys.exit(%d)" % valid, file=DebugOut)
+        print("Error Number: %s \n\tat PC:0x%04x " % (idcode, int(CPU.pc)),file=DebugOut)
+        if is_string_numeric(idcode[0:3]):
+            valid = int(idcode[0:3])
+        else:
+            valid=-1
+        if RunMode:
+            print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
+        print(new[3])
+        if not InDebugger:
             sys.exit(valid)
-
-
-
+        else:
+            print("At OpCount: %s,%s " % (self.FindWhatLine(GPC), GPC),file=DebugOut)
+            debugger(FileLabels,"")
 
     def lowbyte(self, invalue):
         invalue = int(invalue)
@@ -691,10 +512,10 @@ class microcpu:
         elif address != 0 and address <= CTPS:
             address = CTPS * 2 - (address+1) * 2
         else:
-            safeprint("Stack Empty.",file=DebugOut)
+            print("Stack Empty.",file=DebugOut)
             CPU.raiseerror("Stack Empty Fetch %04x " % address)
             return 0
-        return self.getwordstack(address)
+        return self.mb[address]+(self.mb[address+1] << 8)
 
     def StoreAcum(self, address, value):
         # Saves at top of stack the Acum value. Does not change stack.
@@ -717,7 +538,7 @@ class microcpu:
         if address >= MAXMEMSP:
             self.raiseerror("003 Invalid Address: %d, getwordat" % (address))
             return 0
-        a = self.getwordmem(address)
+        a = self.memspace[address] + (self.memspace[address+1] << 8)
         return a
 
     def putwordat(self, address, value):
@@ -733,7 +554,6 @@ class microcpu:
     def optPUSH(self, invalue):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.dumpstack(self.mb)
             self.raiseerror("005 MB Stack overflow, optpush")
         sp *= 2
         self.mb[sp] = self.lowbyte(invalue)
@@ -743,7 +563,6 @@ class microcpu:
     def optDUP(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.dumpstack(self.mb)
             self.raiseerror("006 MB Stack overflow, optpush")
         sp *= 2
         self.mb[sp] = self.lowbyte(self.mb[sp - 2])
@@ -753,7 +572,6 @@ class microcpu:
     def optPUSHI(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.dumpstack(self.mb)
             self.raiseerror("007 MB Stack overflow, optPUSHI")
         sp *= 2
         if (address+1 > MAXMEMSP):
@@ -767,7 +585,6 @@ class microcpu:
     def optPUSHII(self, address):
         sp = self.mb[0xff]
         if sp > (0xff/2 - 2):
-            self.dumpstack(self.mb)
             self.raiseerror("009 MB Stack overflow, optPUSHII")
         sp *= 2
         newaddress = self.getwordat(address)
@@ -810,7 +627,6 @@ class microcpu:
         sp -= 1
         sp *= 2
         if sp > (0xff/2 - 2):
-            self.dumpstack(self.mb)
             self.raiseerror("015 MB Stack overflow, optPOPI")
         self.insertbyte(address, self.mb[sp])
         if (address+1 <= MAXMEMSP):
@@ -853,23 +669,17 @@ class microcpu:
         global OF,CF
         OF=0
         CF=0
-        a16 = a & 0xffff
-        b16 = b & 0xffff
-        c16 = c & 0xffff
-
-        if (a16 + b16) > 0xffff:
-            CF=1
-
-        sa=(a16 & 0x8000) != 0
-        sb=(b16 & 0x8000) != 0
-        sc=(c16 & 0x8000) != 0
-        if IsSubStraction:
-            CF = 1 if a < b else 0
-            if (sa != sb) and (sc != sa):
-                OF=1
+# Check for overflow in signed subtraction
+        if (IsSubStraction != 0):
+            if (((a & 0x8000) != 0 and (b & 0x8000) == 0 and (c & 0x8000) == 0)
+                or ((a & 0x8000) == 0 and (b & 0x8000) != 0 and (c & 0x8000) != 0)):
+                OF = 1
         else:
-            if (sa == sb) and (sc != sa):
-                OF=1
+            if (((a & 0x8000) != 0 and (b & 0x8000) != 0 and (c & 0x8000) == 0) or
+                ((a & 0x8000) == 0 and (b & 0x8000) == 0 and (c & 0x8000) != 0)):
+                OF = 1
+        if ( c & 0xffff0000 ) > 0:
+            CF=1
         self.flags=self.flags | (CF << 2 | OF << 3)
 
 
@@ -1103,7 +913,7 @@ class microcpu:
         self.pc = newaddress
 
     def optCAST(self, address):
-        global Debug,  PrevPC
+        global Debug, DeviceHandle, DeviceFile, PrevPC
         # In the future 'CAST' will related to networking, for now it will just write to stdout
         # for now it acts as the stdout write tool
         # if Acum is 0, it will print a small dump of the memory of address and the current Stack
@@ -1133,7 +943,7 @@ class microcpu:
         cmd = self.fetchAcum(0)
         if cmd == 0:
             if self.mb[0xff] > 0:
-                safeprint("Stack: \n".join('%02x ' %
+                print("Stack: \n".join('%02x ' %
                       item for item in self.mb[0:self.mb[0xff]]))
             DissAsm(self.pc, 3, self)
         if cmd == CastPrintStr:
@@ -1141,31 +951,30 @@ class microcpu:
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
                 if c == 0:
-                    safeprint("Odd C is zero")
-                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30 and c!=9 and c!=8 ):
-                    sys.stdout.write("%02x" % c)
+                    print("Odd C is zero")
+                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30):
+                    sys.stdout.write("\%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
                 i += 1
         if cmd == CastPrintInt:
             sys.stdout.write("%d" % (address & 0xffff) )
         if cmd == CastPrintIntI:
-            v = self.getwordmem(address)
+            v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%d" % (v & 0xffff))
         if cmd == CastPrintSignI:
-            v = self.getwordmem(address)
+            v = self.memspace[address]+(self.memspace[address+1] << 8)
             v = v & 0xffff
             if ( v & 0x8000):
                 v = -((v - 1) ^ 0xffff)
             sys.stdout.write("%d" % v)
         if cmd == CastPrintBinI:
-            v = self.getwordmem(address)                        
-            
+            v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%s" % format(v, "016b"))
         if cmd == CastPrintChar:
             v = self.memspace[address]
             if (v < 31):
-                safeprint("%c" % v)
+                print("%c" % v)
             else:
                 sys.stdout.write(chr(v))
         if cmd == CastPrintStrI:
@@ -1173,9 +982,9 @@ class microcpu:
             while self.memspace[i] != 0 and i < MAXMEMSP:
                 c = self.memspace[i]
                 if c == 0:
-                    safeprint("0x0")
+                    print("0x0")
                 if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
-                    sys.stdout.write("%02x" % c)
+                    sys.stdout.write("\%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
                 i += 1
@@ -1183,7 +992,7 @@ class microcpu:
         if cmd == 12:
             sys.stdout.write("%d" % self.getwordat(address))
         if cmd == CastPrintCharI:
-            v = self.getwordmem(address)
+            v = self.memspace[address]+(self.memspace[address+1] << 8)
             sys.stdout.write("%c" % chr(v))
         if cmd == CastPrintHexI:
             v = self.getwordat(address)
@@ -1191,73 +1000,70 @@ class microcpu:
         if cmd == CastPrintHexII:
             v = self.getwordat(self.getwordat(address))
             sys.stdout.write("%04x" % v)
-        if current_context == None:
-            sys.stdout.write("<Stopped>")
-            return
-        context=current_context     # For readability
         if cmd == CastSelectDisk:            # 20
-            if context.DeviceHandle == None:
-                context.DeviceHandle = "DISK%02d.disk" % address
+            if DeviceHandle == None:
+                DeviceHandle = "DISK%02d.disk" % address
             try:
-                context.DeviceFile = open(context.DeviceHandle, "r+b")
+                DeviceFile = open(DeviceHandle, "r+b")
                 self.DiskPtr = 0
-                context.DeviceFile.seek(0)
+                DeviceFile.seek(0,0)
             except IOError:
                 self.raiseerror(
-                    "037 Error tying to open Random Device: %s" % context.DeviceHandle)
+                    "037 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSelectDiskI:
             v = self.getwordat(address)
-            if context.DeviceHandle == None:
-                context.DeviceHandle = "DISK%02d.disk" % v
+            if DeviceHandle == None:
+                DeviceHandle = "DISK%02d.disk" % v
             try:
-#                safeprint("Device Handle: %s set:" % context.DeviceHandle)
-                context.DeviceFile = open(context.DeviceHandle, "r+b")
+#                print("Device Handle: %s set:" % DeviceHandle)
+                DeviceFile = open(DeviceHandle, "r+b")
                 self.DiskPtr = 0
-                context.DeviceFile.seek(0,0)
+                DeviceFile.seek(0,0)
             except IOError:
                 self.raiseerror(
-                    "037 Error tying to open Random Device: %s" % context.DeviceHandle)
+                    "037 Error tying to open Random Device: %s" % DeviceHandle)
         if cmd == CastSeekDisk:
-            if context.DeviceHandle == None:
+            if DeviceHandle == None:
                 self.raiseerror("038 Attempted to Seek without selecting Disk")
             self.DiskPtr = address*0x200
-            context.DeviceFile.seek(self.DiskPtr)
+            DeviceFile.seek(self.DiskPtr, 0)
         if cmd == CastSeekDiskI:
             v = self.getwordat(address)
-            if context.DeviceHandle == None:
+            print("Debug: Seeking Disk Value: %04x" % v)
+            if DeviceHandle == None:
                 self.raiseerror("038 Attempted to Seek without selecting Disk")
             self.DiskPtr = v*0x200
-            context.DeviceFile.seek(self.DiskPtr)
+            DeviceFile.seek(self.DiskPtr, 0)
         if cmd == CastWriteSector:
-            if context.DeviceHandle == None:
+            if DeviceHandle == None:
                 self.raiseerror("038 Attempted to write without selecting Disk")
             v = address
             if v < MAXMEMSP-0x1ff:
                 block = self.memspace[v:v+512]
-                context.DeviceFile.seek(self.DiskPtr)
-                context.DeviceFile.write(bytes(block))
+                DeviceFile.seek(self.DiskPtr)
+                DeviceFile.write(bytes(block))
                 self.DiskPtr =+ 0x200
-                context.DeviceFile.flush()
+                DeviceFile.flush()
             else:
                 self.raiseerror(
                     "038 Attempted to write block larger than memory to storage")
         if cmd == CastWriteSectorI:
             v = self.getwordat(address)
-            if context.DeviceHandle == None:
+            if DeviceHandle == None:
                 self.raiseerror("038 Attempted to write without selecting Disk")
             if v < MAXMEMSP-0x1ff:
                 block = self.memspace[v:v+512]
-                context.DeviceFile.seek(self.DiskPtr)
-                context.DeviceFile.write(bytes(block))
+                DeviceFile.seek(self.DiskPtr)
+                DeviceFile.write(bytes(block))
                 self.DiskPtr =+ 0x200
-                context.DeviceFile.flush()
+                DeviceFile.flush()
             else:
                 self.raiseerror(
                     "038 Attempted to write block larger than memory to storage")
         if cmd == CastSyncDisk:
-            if context.DeviceHandle != None:
-                context.DeviceFile.close()
-                context.DeviceFile = open(context.DeviceHandle, "r+b")
+            if DeviceHandle != None:
+                DeviceFile.close()
+                DeviceFile = open(DeviceHandle, "r+b")
         if cmd == CastPrint32I:
             iaddr = address
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
@@ -1269,39 +1075,27 @@ class microcpu:
             v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
             sys.stdout.write("%d" % v)
         if cmd == CastEnd:
-            safeprint("\nEND of Run:(%d Opts)" % current_context.GlobalOptCnt)
+            print("\nEND of Run:(%d Opts)" % GlobalOptCnt)
             sys.exit(address)
         if cmd == CastDebugToggle:
-           current_context.Debug = 0 if current_context.Debug else 1
+            Debug = 0 if Debug else 1
         if cmd == CastStackDump:
-            safeprint(" %04x:Stack:(%d):%s [" %
+            print(" %04x:Stack:(%d):%s [" %
                              (PrevPC,self.mb[0xff]-1,CPU.FindWhatLine(PrevPC)), file=DebugOut,end="")
             for i in range(self.mb[0xff]-1):
-                val = self.getwordstack(i*2)
-                safeprint(" %04x" % (val),file=DebugOut,end="")
-            safeprint(" ]",file=DebugOut)
-        if cmd == CastTapeWrite:
-            if context.DeviceHandle != None:
+                val = self.mb[i*2]+((self.mb[i*2+1])<<8)
+                print(" %04x" % (val),file=DebugOut,end="")
+            print(" ]",file=DebugOut)
+        if cmd == CastTapeWriteI:
+            if DeviceHandle != None:
                 v=address
                 if v < MAXMEMSP-0x1ff:
                     block=self.memspace[v:v+512]
-                    context.DeviceFile.write(bytes(block))
-                    context.DeviceFile.flust()
+                    DeviceFile.write(bytes(block))
+                    DeviceFile.flust()
                 else:
                     self.raiseerror(
                         "039 Attempt to write from source memory past availabel memory")
-        if cmd == CastTapeWriteI:
-            if context.DeviceHandle != None:
-                v=self.getwordat(address)
-                if v < MAXMEMSP-0x1ff:
-                    block=self.memspace[v:v+512]
-                    context.DeviceFile.write(bytes(block))
-                    context.DeviceFile.flust()
-                else:
-                    self.raiseerror(
-                        "039 Attempt to write from source memory past availabel memory")
-
-                    
 
         sys.stdout.flush()
 
@@ -1335,7 +1129,7 @@ class microcpu:
             if int(justnum) < 65535 and int(justnum) >= -32767:
                 CPU.putwordat(address, int(justnum))
             else:
-                safeprint("Error: %s is not valid 16 bit number" % justnum,file=DebugOut)
+                print("Error: %s is not valid 16 bit number" % justnum,file=DebugOut)
                 CPU.putwordat(address, 0)
         if cmd == PollReadStrI:
             sys.stdout.flush()
@@ -1351,24 +1145,23 @@ class microcpu:
                         self.raiseerror(
                             "041 Insufficent space for Message Address at %d, optPOLL" % (i))
         if cmd == PollReadCharI:
-            if not self.char_queue:
-                if sys.stdin.isatty():
-                    try:
-                        c = readchar.readkey()
-                    except:
-                        c = ""
-                else:
-                    c = sys.stdin.read(1)
-                if not c:
-                    c = ""
-                elif len(c) > 1:
-                    self.char_queue = c[1:]
-                    c=c[0]
-            else:
-                c=self.char_queue[0]
-                self.char_queue=self.char_queue[1:]
-                    
-            self.putwordat(address, ord(c))
+            # Address must be at least 4 bytes for special code strings.
+            c = readchar.readkey()
+            if not (c):
+                c = ""
+#            c = keyboard.read_key()
+#            c = raw_input("")
+#            c = readchar.readkey()
+
+            if len(c) == 1:
+                self.putwordat(address, ord(c))
+            elif len(c) == 2:
+                self.putwordat(address, (ord(c[0])) << 8 + (ord(c[1])))
+                self.putwordat(address+2, 0)
+            elif len(c) == 3:
+                self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
+                # This will create a 3 char string null terminated
+                self.putwordat(address+2, (ord(c[2])))
         if cmd == PollSetNoEcho:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
@@ -1377,7 +1170,7 @@ class microcpu:
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                safeprint("TTY Error: On No Echo",file=DebugOut)
+                print("TTY Error: On No Echo",file=DebugOut)
         if cmd == PollSetEcho:
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
@@ -1386,38 +1179,29 @@ class microcpu:
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                safeprint("TTY Error: On Echo",file=DebugOut)
+                print("TTY Error: On Echo",file=DebugOut)
         if cmd == PollReadCINoWait:
-            if self.char_queue:
-                 c=self.char_queue[0]
-                 self.char_queue = self.char_queue[1:]
-            else:
-                k = get_key()
-                if k is None:
-                    c = ""
-                elif isinstance(k, str):
-                    if len(k) > 1:
-                        c = k[0]
-                        self.char_queue = k[1:]
-                    else:
-                        c = k
-                elif isinstance(k, int):
-                    try:
-                        c = chr(k & 0xFF)
-                    except ValueError:
-                        c = ""  # fallback if int not valid ASCII
-                else:
-                    c = ""                    
-            self.putwordat(address, ord(c) if c else 0 )
-        if current_context == None:
-            safeprint("CPU Stopped")
-            return
+            c='\0'
+            while True:
+                c=get_key()
+                if len(c) != '\0':
+                    break
+            if len(c)==1:
+                self.putwordat(address,ord(c))
+            elif len(c)==2:
+                self.putwordat(address, (ord(c[0])) << 8 + (ord(c[1])))
+                self.putwordat(address+2, 0)
+            elif len(c) == 3:
+                self.putwordat(address, (ord(c[1])) << 8 + (ord(c[1])))
+                # This will create a 3 char string null terminated
+                self.putwordat(address+2, (ord(c[2])))
         if cmd == PollReadSector:
-            if current_context.DeviceHandle != None:
+            if DeviceHandle != None:
                 v=address
+                print("Disk Read: %04x" % v)
                 if v <= MAXMEMSP-0x1ff:
-#                    current_context.DeviceFile.seek(self.DiskPtr)
-                    block = current_context.DeviceFile.read(512)
+                    DeviceFile.seek(self.DiskPtr,v)
+                    block = DeviceFile.read(512)
                     tidx = v
                     j=0
                     for i in block:
@@ -1430,33 +1214,28 @@ class microcpu:
                     self.raiseerror(
                         "042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
         if cmd == PollReadSectorI:
-            if current_context.DeviceHandle != None:
-                v = self.getwordmem(address)
+            if DeviceHandle != None:
+#                v = self.getwordat(address)
+                v = self.memspace[address]+(self.memspace[address+1] << 8)
+                print("Disk Read: %04x" % v)                
                 if v <= MAXMEMSP-0x1ff:
-                    current_context.DeviceFile.seek(self.DiskPtr)
-                    block = current_context.DeviceFile.read(512)
+                    print("Disk Sector: %04x" % (self.DiskPtr))
+                    DeviceFile.seek(self.DiskPtr,0)
+                    block = DeviceFile.read(512)
                     tidx = v
+                    j=0
                     for i in block:
                         self.memspace[tidx] = int(i) & 0xff
                         tidx += 1
+                        j += 1
+                        if ( j > 16):
+                            j=0
                 else:
                     self.raiseerror("042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
-        if cmd == PollReadTape:
-            if current_context.DeviceHandle != None:
-                v=address
-                block=current_context.DeviceFile.read(512)
-                tidx=v
-                if v<= MAXMEMSP-0x1ff:
-                    for i in block:
-                        self.memspace[tidx] = int(i) & 0xff
-                        tidx += 1
-                else:
-                    self.raiseerror(
-                        "043 Attempt to read Tape Block with insufficent memory")
         if cmd == PollReadTapeI:
-            if current_context.DeviceHandle != None:
-                v=self.getwordmem(address)
-                block=current_context.DeviceFile.read(512)
+            if DeviceHandle != None:
+                v=address
+                block=DeviceFile.read(512)
                 tidx=v
                 if v<= MAXMEMSP-0x1ff:
                     for i in block:
@@ -1466,12 +1245,11 @@ class microcpu:
                     self.raiseerror(
                         "043 Attempt to read Tape Block with insufficent memory")
         if cmd == PollRewindTape:
-            if current_context.DeviceHandle != None:
-                current_context.DeviceFile.seek(0)
+            if DeviceHandle != None:
+                DeviceFile.seek(0)
 
         if cmd == PollReadTime:
-            self.optPOPNULL(address)          # Most POLLs leave the Call CMD on stack to be poped.
-            v32=int(time.time())              # But time returns 32bit value, so needs to do the popnull.
+            v32=int(time.time())
             v1=v32 & 0xffff
             v2=v32 >> 16
             self.optPUSH(v1)
@@ -1501,16 +1279,16 @@ class microcpu:
         self.flags = (self.flags & 0xfffb) | NCF
         self.StoreAcum(0, R1)
 
-    def optSHR(self, unused):
-        # SHR mean shift Right and set carry CF to equal current lowest bit
+    def optRTR(self, unused):
+        # RTR mean rotat Right and set carry CF to equal current lowest bit
         R1 = self.fetchAcum(0)
         NCF = (1 if (R1 & 0x1 != 0) else 0) << 2
         R1 = R1 >> 1
         self.flags = (self.flags & 0xfffb) | NCF
         self.StoreAcum(0, R1)
 
-    def optSHL(self, unused):
-        # SHL mean shift Left and set carry CF to equal current Highest bit
+    def optRTL(self, unused):
+        # RTL mean rotat Left and set carry CF to equal current Highest bit
         R1 = self.fetchAcum(0)
         NCF = (1 if (R1 & 0x8000 != 0) else 0) << 2
         R1 = R1 << 1
@@ -1549,37 +1327,24 @@ class microcpu:
             self.raiseerror("045 Stack overflow, optFLOD")
         self.flags = self.mb[sp]
         self.mb[0xff] -= 1
-    def optADM(self,address):
-        # Toggle ADM Flag, but has to run < 16K for protection.
-        global current_context
-        if self.pc <= 0x4000:
-            current_context.AdminFlag = ~current_context.AdminFlag
-    def optSCLR(self,address):
-        # Empties Stack.
-        self.mb[0xff]=0
-    def optSRPT(self,address):
-        # Reports Stack size if < max-1 or -1 if >= max-1
-        if self.mb[0xff] < (0xff/2 - 3):
-            self.optPUSH(self.mb[0xff])
-        elif self.mb[0xff] == (0xff/2 - 3):
-            self.optPUSH(-1)
 
-    def evalpc(self, context: AssemblerContext):  # main evaluate current instruction at memeory[pc]
-        global GPC, PrevPC
+    def evalpc(self):  # main evaluate current instruction at memeory[pc]
+        global GPC, GlobalOptCnt, PrevPC
         pc = self.pc
         GPC = pc
         PrevPC=pc
         optcode = self.memspace[pc]
-        context.GlobalOptCnt += 1
+        GlobalOptCnt += 1
         if not (optcode in OPTLIST):
+            print(OPTLIST)
             self.raiseerror(
                 "046 Optcode %s at File %s, Address( %04x ), is invalid:" % (optcode,self.FindWhatLine(pc),pc))
-        if context.Debug > 0:
+        if Debug > 0:
             DissAsm(pc, 1, self)
             watchfield = ""
-            if context.watchwords:
+            if watchwords:
                 wfcomma = ""
-                for wb in context.watchwords:
+                for wb in watchwords:
                     nv = self.memspace[wb]
                     watchfield = (watchfield + wfcomma + "%04x" %
                                   self.getwordat(nv))
@@ -1613,123 +1378,61 @@ def removecomments(inline):
         cptr += 1
     return inline
 
+
 def GetQuoted(inline):
+    # Return both the quoted text (if any) and length of original line used by quote, including quotes and escapes
     inquote = False
     outputtext = ""
     inescape = False
     qsize = 0
-    maxlen = len(inline)
-
-
-    while qsize < maxlen:
-        c = inline[qsize]
-
-        if not inquote:
-            if c == '"':
-                inquote = True
-                qsize += 1
-            else:
-                # Not in a quote, and not a quote starter → invalid
-                return (0, "")
-            continue
-
-        if inescape:
-            escmap = {
-                'n': '\n',
-                't': '\t',
-                'e': chr(27),
-                '0': '\0',
-                'b': '\b',
-                '"': '"',
-                '\\': '\\'
-            }
-            outputtext += escmap.get(c, c)
+    if not inline:
+        return (qsize, "")
+    for c in inline:
+        if not (inquote) and c == '"':
+            inquote = True
             qsize += 1
-            inescape = False
-        elif c == '\\':
+        elif inquote and not (inescape) and c == '"':
+            inquote = False
+            break
+        elif not (inescape) and c == '\\':
             inescape = True
-            qsize += 1
-        elif c == '"':
-            qsize += 1  # count closing quote
-            break
-        else:
+        elif inescape:        # We support some but not all the \ codes 'c' does
+            if c == 'n':
+                outputtext += '\n'         # Newline
+            elif c == 't':
+                outputtext += '\t'         # Tab
+            elif c == 'e':
+                outputtext += chr(27)      # ESC
+            elif c == '0':
+                outputtext += '\0'         # Null
+            elif c == 'b':
+                outputtext += '\b'         # BackSpace
+            else:
+                outputtext += c
+            inescape = False
+            qsize += 2
+        elif inquote:
             outputtext += c
             qsize += 1
-#        print(f"Char[{qsize}] = {repr(c)}, escape={inescape}")
-    return (qsize, outputtext)
-
-def GetRawQuoted(inline):
-    outputtext=""
-    qsize=0
-    maxlen=len(inline)
-    while qsize < maxlen:
-        c=inline[qsize]
-        if c != "'":
-            outputtext += c
-            qsize += 1
-        else:
-            qsize += 1
-            break
-    return (qsize, outputtext)
-        
-
-
+    return (qsize if qsize == 0 else qsize + 1, outputtext)
 
 def nextwordplus(ltext):
-    if not ltext:
-        return ("", 0)
-    (result, rsize) = nextword(ltext)
-
-    # Only extend if there is more text and previous token didn’t end cleanly
-    if rsize < len(ltext) and ltext[rsize - 1] not in ' ,':
-        while rsize < len(ltext) and ltext[rsize] in "+-":
-            (nresult, nsize) = nextword(ltext[rsize:])
-            if not nresult:
-                break
-            result += nresult
-            rsize += nsize
-
-    return (result, rsize)
+    # This version of nextword treats "+" and "-" as part of the word. But has to end on " "
+    if (len(ltext) == 0 ):
+        return ("",0)
+    (result,rsize)=nextword(ltext)
+    if ( len(ltext) > (rsize-1) ):
+        if ltext[rsize-1] != " ":   # We only care about +/- if the previous character was NOT space.
+            while ((len(ltext)>rsize) and (ltext[rsize]=="+" or ltext[rsize]=="-")):
+                (nresult,nsize)=nextword(ltext[rsize:])
+                result+=nresult
+                rsize+=nsize
+                if len(ltext) < rsize:
+                    break
+    return (result,rsize)
 
 
 def nextword(ltext):
-    maxlen = len(ltext)
-    size = 0
-
-    # Skip leading whitespace and commas
-    while size < maxlen and ltext[size] in ' ,':
-        size += 1
-
-    if size >= maxlen:
-        return ("", 0)
-
-    start = size
-    c = ltext[size]
-
-    if c == '"':
-        (qsize, qtext) = GetQuoted(ltext[size:])  # includes opening quote
-        return ('"' + qtext + '"', size + qsize)
-    if c == "'":
-        (qsize, qtext) = GetRawQuoted(ltext[size+1:])
-        return("'"+qtext+"'" , size + qsize+2)
-
-    # Optional initial sign character
-    result = ""
-    if c in "+-":
-        result += c
-        size += 1
-        if size >= maxlen:
-            return (result, size)
-
-    # Consume until next delimiter
-    while size < maxlen and ltext[size] not in " ,+-":
-        result += ltext[size]
-        size += 1
-
-    return (result, size)
-
-
-def nextwordold(ltext):
     # Nextword skips past any heading whitespace
     # Ends when it find end of line, or more whitespace
     # If it finds "+" or "-" it exits, but backspaced out so not to include them.
@@ -1747,9 +1450,9 @@ def nextwordold(ltext):
         return ("",0)
     if c == '"':
         # Special case for quoted text
-#        print(f"RAW line: {repr(ltext)}")
-        (size, result) = GetQuoted(ltext)
-        return ('"'+result+'"',size)
+            (size, result) = GetQuoted(ltext)
+            result = '"'+result+'"'
+            return (result,size)
     if c in "+-" and size < maxlen:  #handle case where start character IS sign character
         result += c
         size +=1
@@ -1766,7 +1469,6 @@ def nextwordold(ltext):
     while c in " ," and size < maxlen:
         c = ltext[size:size+1]
         size += 1
-#    print("NextWord:%s \"%s\"(%s):%s" % (current_context.FileLineNum,result, maxlen,ltext))
     if size > maxlen:
         return (result,maxlen)
     return (result,size-1)
@@ -1780,46 +1482,45 @@ def Str2Word(instr):
 
 def Str32Word(instr):
     # Support for 0x, hex, 0b for binary and Oo for ocatal as well as decimal by default
-    global current_context
     result = 0
-
-    if not isinstance(instr, str):
-        return instr        # Already numberic just return as is.
-    instr=instr.strip()
+    if type(instr) != str:
+        # Conversion doesn't make sense if instr is not a string.
+        return instr
     if len(instr) < 3:
-        # Too short to have a prefix, treat a pure decimal
-        if instr.isdigit():
-            result=int(instr)
-        else:
-            CPU.raiseerror("048 Short numeric string %s is not a valid decimal value" % instr)
+        # Must be decimal as 0x0 is the smallest by length non decimal
+        result = int("".join(char for char in instr if char.isdigit()))
     else:
-        prefix=instr[:2].lower()
-        if prefix == "0x":
-            result = validatestr(instr,16)
-        elif prefix == "0b":
+        if instr[0:2] == "0x":            # Hex
+            result = validatestr(instr, 16)
+        elif instr[0:2] == "0b":          # Binary
             result = validatestr(instr, 2)
-        elif prefix == "0o":
+        elif instr[0:2] == "0o":          # Octal
             result = validatestr(instr, 8)
-        elif instr[0] == '"':  # Quoted character(s)
+        elif instr[0:1] == '"':           # Quoted text
             result = ord(instr[1:2])
-            if len(instr) > 3:
-                result += ord(instr[2:3]) << 8
-        elif instr[0].upper() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-            if instr in current_context.FileLabels:
-                result = current_context.FileLabels[instr]
+            if (len(instr) > 3):
+                result = result + (ord(instr[2:3]) << 8)
+        elif (instr[0:1].upper() >= "A" and instr[0:1].upper() <= "Z"):
+            if instr in FileLabels:
+                result = FileLabels[instr]
             else:
-                CPU.raiseerror("047 Use of fixed value(%s) as label before defined." % instr)
+                CPU.raiseerror(
+                    "047 Use of fixed value(%s) as label before defined." % instr)
         else:
-            if instr.isdigit():
+            valid = True
+            for i in instr:
+                if (i > '9' or i < '0'):
+                    valid = False
+                    break
+            if valid:
                 result = validatestr(instr, 10)
-            elif all(c in "0123456789ABCDEFabcdef" for c in instr):
-                safeprint("Ambiguous value '%s': Looks like hex, but missing 0x prefix." % instr)
-                result = validatestr("0x"+instr,16)
             else:
-                CPU.raiseerror("048 String %s is not a valid decimal value" % instr)
-
-    return int(result) & 0xffffffff
-
+                result = 0
+                CPU.raiseerror(
+                    "048 String %s is not a valid decimal value" % instr)
+#    result = int("".join(char for char in result if char.isdigit()))
+    result = int(result) & 0xffffffff
+    return result
 
 
 def Str2Byte(instr):
@@ -1832,10 +1533,9 @@ def DissAsm(start, length, CPU):
     # The need for the CPU.json file is just used by this module, (and debugger) so a 'speed optimized'
     # version of the code would not need CPU.json at all.
     #
-    global DebugOut, OPTDICT, InputFileData, current_context
+    global watchwords,DebugOut, OPTDICT, InputFileData
+    StoreMem = CPU.memspace
     i = start
-
-    context=current_context
 
     endstop=start+length
     P1=0
@@ -1844,7 +1544,7 @@ def DissAsm(start, length, CPU):
     while i < endstop:
         OUTLINE = ""
         FoundLabels = ""
-        optcode = CPU.memspace[i]
+        optcode = StoreMem[i]
         if str(optcode) in OPTDICT:
             if (OPTDICT[str(optcode)][2] == 3):
                 P1 = CPU.getwordat(i+1)
@@ -1860,9 +1560,9 @@ def DissAsm(start, length, CPU):
         sft = -1
         addr = 0 if CPU.mb[0xff] < 1 else (CPU.mb[0xff]-1)*2
         if CPU.mb[0xff] > 0 and addr <= 0xfe:
-            tos = CPU.getwordstack(addr)
+            tos = CPU.mb[addr]+(CPU.mb[addr+1] << 8)
         if CPU.mb[0xff] > 1:
-            sft = CPU.getwordstack(addr-2)
+            sft = CPU.mb[addr-2]+(CPU.mb[addr-1] << 8)
         tos = tos & 0xffff
         sft = sft & 0xffff
         if CPU.mb[0xff] == 0:
@@ -1872,14 +1572,14 @@ def DissAsm(start, length, CPU):
         DispRef = False
         # We are trying to find if the Direct value, Indirect and double indirect values are Labeled
         # File labels for current PC
-        Group1 = getkeyfromval(i, context.FileLabels).strip()
+        Group1 = getkeyfromval(i, FileLabels).strip()
         FoundLabels += " " + Group1
         # File labels for existing optcode argument
         if P1 != 0:
-            Group2=getkeyfromval(P1,context.FileLabels)
+            Group2=getkeyfromval(P1,FileLabels)
             FoundLabels += " " + Group2
         if PI != 0:
-            Group3 = getkeyfromval(PI, context.FileLabels).strip()
+            Group3 = getkeyfromval(PI, FileLabels).strip()
             FoundLabels += " " + Group3
         FoundLabels=Sort_And_Combine_Labels(FoundLabels)
         FoundLabels = CPU.FindWhatLine(i)+" " + FoundLabels
@@ -1893,23 +1593,23 @@ def DissAsm(start, length, CPU):
         if not (optcode in OPTLIST):
             bestmatch = 0xffff
             bestmatchcode=""
-            for name, iaddr in context.FileLabels.items():
+            for name, iaddr in FileLabels.items():
                 if isinstance(iaddr,int):
                     if iaddr > i and iaddr < bestmatch:
                         bestmatch=iaddr
                         bestmatchcode=name
-            safeprint("DATA-Segment:")
-            hexdump(i,min(i+15,bestmatch)-i,CPU)
+            print("DATA-Segment:")
+            hexdump(i,max(min(i+255,bestmatch),i+15),CPU)
 #            print("Label : %s" % bestmatchcode)
             i = bestmatch
         else:
             i = i + OPTDICT[str(optcode)][2]
         rstring = ""
         # When debugging we might setup some Watchs for changes in known memory locations.
-        if len(context.watchwords) > 0:
+        if len(watchwords) > 0:
             rstring = "Watch:"
             lastad = 0
-            for ii in context.watchwords:
+            for ii in watchwords:
                 if (lastad + 1) != ii:
                     rstring = rstring + "%04x:[%02x]" % (ii, CPU.memspace[ii])
                 else:
@@ -1917,7 +1617,7 @@ def DissAsm(start, length, CPU):
                 lastad = ii
                 rstring += "SD:(%d)" % CPU.mb[0xff]
 
-        safeprint("%s %s" % (OUTLINE, rstring),file=DebugOut)
+        print("%s %s" % (OUTLINE, rstring),file=DebugOut)
     return i
 
 def reverse_lookup(my_dict):
@@ -1959,38 +1659,26 @@ def getkeyfromval(val, my_dict):
         return ""   # Empty set case
     return
 
-def hexdump(startaddr, length, CPU):
-    endaddr = startaddr + length
-    safeprint("Range is %04x to %04x" % (startaddr, endaddr))
-
-    base = startaddr & ~0xF  # Align down to 16-byte boundary
-
-    header = "      " + " ".join(f"{x:02x}" for x in range(16)) + "  ASCII"
-    safeprint(header)
-
-    i = base
+def hexdump(startaddr, endaddr, CPU):
+    print("Range is %04x to %04x" % (startaddr, endaddr))
+    i = startaddr
+    header = "0  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F  .  .  .  .  5  .  .  .  .  A  .  .  .  .  F"
+    header = header[(startaddr % 16)*3:][0:47]
+    print("       %s" % header)
     while i < endaddr:
-        hex_part = ""
-        ascii_part = ""
-        line_has_data = False
-
-        for j in range(16):
-            addr = i + j
-            if addr < startaddr or addr >= endaddr or addr >= len(CPU.memspace):
-                hex_part += "   "
-                ascii_part += " "
+        Fstring = "%04x: " % int(i)
+        sys.stdout.write(Fstring)
+        for j in range(i, i+16 if (i + 16 <= len(CPU.memspace)) else len(CPU.memspace)):
+            sys.stdout.write("%02x " % CPU.memspace[j])
+        sys.stdout.write("   ")
+        for j in range(i, i+16 if (i + 16 <= len(CPU.memspace)) else len(CPU.memspace)):
+            c = CPU.memspace[j]
+            if ((c != 0x7f) & (((c & 0xc0) == 0x40) | ((c & 0xe0) == 0x20))):
+                sys.stdout.write("%c" % c)
             else:
-                line_has_data = True
-                byte = CPU.memspace[addr]
-                hex_part += f"{byte:02x} "
-                ascii_part += chr(byte) if 32 <= byte <= 126 else "_"
-
-        if not line_has_data:
-            break  # Don’t print blank rows after the range
-
-        safeprint(f"{i:04x}: {hex_part} {ascii_part}")
+                sys.stdout.write("_")
         i += 16
-
+        print(" ")
 
 # Allow use of the CPUPATH OS Enviroment variable to find library directories.
 def fileonpath(filename):
@@ -2002,28 +1690,29 @@ def fileonpath(filename):
     for testpath in CPUPATH.split(":"):
         if os.path.exists(testpath+"/"+filename):
             return testpath+"/"+filename
-    safeprint("Import Filename error, %s not found" % (filename),file=DebugOut)
+    print("Import Filename error, %s not found" % (filename),file=DebugOut)
     sys.exit(-1)
 
 
 # This is how we tell if a label been defined as global for local for library inserts.
-def IsLocalVar(inlabel,  context: AssemblerContext):
+def IsLocalVar(inlabel, LocalID, LORGFLAG):
     # The structure is that GlobeLabels if they match inlabel will always override the dynamic locallabels.
     # So to define a Globale, just add it to GlobeLabels, but it should become part of FileLabels until
     # really defined...ie with an '=' or a ':' code.
+    global GlobeLabels, UniqueLineNum
 
-    if inlabel in context.GlobeLabels:
+    if inlabel in GlobeLabels:
         return inlabel
     else:
-        if context.LORGFLAG == LOCALFLAG:
-#            return inlabel + "___" + str(context.LocalID) +"."+ str(context.UniqueLineNum)
-            return inlabel + "___" + str(context.LocalID)
+        if LORGFLAG == LOCALFLAG:
+#            return inlabel + "___" + str(LocalID) +"."+ str(UniqueLineNum)
+            return inlabel + "___" + str(LocalID)
         else:
             return inlabel
 
 
-def ReplaceMacVars(line,  filename, context: AssemblerContext):
-    global MacroStack, Debug, LastMLen
+def ReplaceMacVars(line, MacroVars, varcntstack, varbaseSP, filename):
+    global MacroStack, Debug
     i = 0
     newline = ""
     inquote = False
@@ -2044,19 +1733,10 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
         if c == "%" and not (inquote):
             Before = line[0:i-1]
             After = line[i+1:]
-            if (line[i:i+6] == "STRLEN"):
-                # Adding MS Macro concept of 'string len' for macros.
-                # Notation is %STRLEN symbol, saves most recent result in %%LEN
-                (tempkey,tempsize) = nextword(line[i+6:])
-                tempkey=ReplaceMacVars(tempkey, filename, context)
-                if tempkey[0] == '"' and tempkey[-1] == '"':
-                    (_,tempkey)=GetQuoted(tempkey)
-                LastMLen=len(tempkey)
-                i=i+6+tempsize
-            elif (line[i:i+1] == "P"):
+            if (line[i:i+1] == "P"):
                 # POP value from refrence stack...does not change newline
-                if context.Debug > 1:
-                    safeprint("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
+                if Debug > 1:
+                    print("Pop From MacroStack(%s,%s)" % (MacroStack,line[i:]),file=DebugOut)
                 if (not MacroStack):
                     CPU.raiseerror(
                         "049 Macro Refrence Stack Underflow: %s" % line)
@@ -2066,40 +1746,36 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
             elif (line[i:i+1] == "S"):
                 # Stores the current %0 value to refrence stack
                 # Does not change the newline
-                MacroStack.append(context.MacroVars[context.varcntstack[context.varbaseSP]])
-                if context.Debug > 1:
-                    safeprint("Push to MacroStack(%s,%s) Depth: %s" % (MacroStack,line[i:], len(MacroStack)),file=DebugOut)
+                MacroStack.append(MacroVars[varcntstack[varbaseSP]])
+                if Debug > 1:
+                    print("Push to MacroStack(%s,%s) Depth: %s" % (MacroStack,line[i:], len(MacroStack)),file=DebugOut)
                 i += 1
                 continue
             elif (line[i:i+1] == "V"):
                 # Insert into newline value that top of refrence stack...do not pop it
-                if context.Debug > 1:
-                    safeprint("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
+                if Debug > 1:
+                    print("Refrence top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack):
                     CPU.raiseerror(
-                        "050 Macro Refrence Stack Underflow: %s at %s:%s" % (line,filename,context.FileLineNum))
+                        "050 Macro Refrence Stack Underflow: %s at %s:%s" % (line,filename,GlobalLineNum))
                 newline = newline + MacroStack[-1]
                 i += 1
                 continue
             elif (line[i:i+1] == "W"):
                 # Insert into newline value that is second from top of refrense stack, do not pop it.
-                if context.Debug > 1:
-                    safeprint("Refrence second from top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
+                if Debug > 1:
+                    print("Refrence second from top of MacroStack(%s,%s,[%d])" % (MacroStack,line,i),file=DebugOut)
                 if (not MacroStack or len(MacroStack) < 2 ):
                     CPU.raiseerror(
                         "051 Macro Refrence Stack Underflow: %s" % line)
                 newline = newline + MacroStack[-2]
                 i += 1
-            elif (line[i:i+4] == "%LEN"):
-                newline = newline + str(LastMLen)
-                i += 4
             elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
                 varval = int(line[i:i+1])
-                if len(context.MacroVars) < varval:
+                if len(MacroVars) < varval:
                     CPU.raiseerror(
                         "052 Macro %v Var %s is not defined" % (varval, line))
-#                print("Macro-%s: %s" % (varval,context.MacroVars[context.varcntstack[context.varbaseSP] + varval]))
-                newline = newline+context.MacroVars[context.varcntstack[context.varbaseSP] + varval]
+                newline = newline+MacroVars[varcntstack[varbaseSP] + varval]
                 i = i + 1
         else:
             newline = newline + c
@@ -2110,265 +1786,219 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
 # code, and only is a 'value' used by the assembler. Then it CAN NOT be defered for a second pass.
 # We need that 'word' of storage to hold temporary values that will later be replaed. All other
 # values (such as when labels are themselves used a +/- modifiers) must resolve durring 1st pass.
-def FirstPassVal(instr,  context: AssemblerContext):
+def FirstPassVal(instr, address, FileLabels, LocalID, LORGFLAG,GlobalOptCnt):
     (value, size) = nextword(instr[1:])
     firstch=value[0:1]
     if firstch == "$":
-        value=context.address
+        value=address
     elif firstch.upper() >= "A" and firstch.upper() <= "Z":
-        if value[0:] in context.FileLabels.keys():
-            value=Str2Word(context.FileLabels[IsLocalVar(value[0:], context)])
+        if value[0:] in FileLabels.keys():
+            value=Str2Word(FileLabels[IsLocalVar(value[0:], LocalID, LORGFLAG)])
         else:
             CPU.raiseerror(
                 "055 Line %s, : %s Can not use label that is yet definied in first pass of assembler." %
-                           (context.GlobalOptCnt, value))
+                           (GlobalOptCnt, value))
     else:
         value=Str2Word(value)
     return (value, size)
 
-# This is a newer version of the core work item in DecodeStr but cocentrating on number processing
-
-
-import re
-
-def parse_expression(expr):
-    """
-    Splits expression into (prefix, base_expr, modifiers[]).
-    Example: '$$label+4-0x10' -> ('$$', 'label', ['+4', '-0x10'])
-    """
-    expr = expr.strip()
-    prefix_match = re.match(r'^(\${1,3})', expr)
-    prefix = prefix_match.group(1) if prefix_match else ''
-    rest = expr[len(prefix):]
-
-    tokens = []
-    current = ''
-    i = 0
-    while i < len(rest):
-        if rest[i] in '+-' and i > 0:
-            tokens.append(current)
-            current = rest[i]
-        else:
-            current += rest[i]
-        i += 1
-    tokens.append(current)
-
-    base_expr = tokens[0]
-    modifiers = tokens[1:]
-    return prefix, base_expr, modifiers
-
-
-def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
-    """
-    Decodes a single token — either a literal or label.
-    """
-
-    token = token.strip()
-
-    # Handle quoted string
-    if token.startswith('"') and token.endswith('"'):
-        if JUSTRESULT:
-            safeprint("String Values can't be modified with offsets:%s" % (token), file=DebugOut)
-            return 0
-        for c in token[1:-1]:
-            CPU.memspace[curaddress] = ord(c)
-            curaddress += 1
-        return ("string", curaddress)
-
-    # Determine base for numeric literal
-    base = 10
-    value = None
-    if token.startswith(('0x', '0X')):
-        base = 16
-        token = token[2:]
-    elif token.startswith(('0b', '0B')):
-        base = 2
-        token = token[2:]
-    elif token.startswith(('0o', '0O')):
-        base = 8
-        token = token[2:]
-
-    try:
-        value = int(token, base)
-        return ("value",value)
-    except ValueError:
-        pass  # not a numeric constant — try label
-
-    # Determine if it's a label
-    labelname = token
-    modval = 0
-    if labelname in context.FileLabels:
-        return ("value",Str2Word(context.FileLabels[labelname]))
-    localkey = IsLocalVar(labelname, context)
-    if localkey in context.FileLabels:
-        return ("value",Str2Word(context.FileLabels[localkey]))
-    else:
-        # Unresolved label — mark for second pass
-        newkey = localkey
-        context.FWORDLIST.append([newkey, curaddress, 0, f"{context.ActiveFile}:{context.FileLineNum}"])
-#        print("Debug: Key:%s Address %04x Line:%s:%s" % (newkey,curaddress,context.ActiveFile,context.FileLineNum))
-        return ("value",0)
-
-
-def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
-
-   # 📌 Direct string handling (base case, no parsing)
-    if ((instr.startswith('"') and instr.endswith('"')) or (instr.startswith("'") and instr.endswith("'"))) and not JUSTRESULT:
-        context = instr[1:-1]
-        for c in context:
-            CPU.memspace[curaddress] = (int(ord(c)) & 0xff)
+def DecodeStr(instr, curaddress, CPU, LocalID, LORGFLAG, JUSTRESULT):
+    global FileLabels, FWORDLIST, FBYTELIST, GlobeLabels, GlobalLineNum, ActiveFile, UniqueLineNum
+    # pass in string that is either a number, or a label, with possible modifiers
+    # possible results
+    #    instr is a label.
+    #          Determine if there is a +/- modifier
+    #          Determine if there is a '$', '$$', '$$$'  or 'b' modifier
+    #          If label was already defined, then save it to memory
+    #          If not yet defined  then return the information needed in return to add it to FWORDLIST
+    #    instr is a number
+    #          Identifty what base it is in (hex, decimal, ocatal or binary)
+    #          Determine if there is a '$', '$$', '$$$' or 'b' modifier
+    #
+    StoreMem = CPU.memspace
+    PNModifier = 0
+    ByteFlag = False
+    LongWordFlag = False
+    Result = 0
+    # Add some whitespace so we don't have to worry about testing for length
+    working = instr + "       "
+    if (working[0] == '$' and working[1] == '$' and working[2] != '$'):
+        ByteFlag = True
+    elif (working[0] == '$' and working[1] == '$' and working[2] == '$'):
+        LongWordFlag = True
+    # Handle possible quoted text
+    starti = 0
+    if working[starti] == '"' and not (JUSTRESULT):  # Handle quoted text
+        starti += 1
+        stopi = len(instr)
+        if working[stopi - 1] == '"':
+            stopi -= 1
+        for c in working[starti:stopi]:
+            StoreMem[int(curaddress)] = ord(c)
             curaddress += 1
         return curaddress
-    elif instr.startswith('"') and JUSTRESULT:
-        safeprint("String values can't be modified or used as numeric results", file=DebugOut)
+    # Can't do a JUSTRESULT for strings.
+    elif working[starti] == '"' and JUSTRESULT:
+        print("String Values can't be modifed with offsets",file=DebugOut)
         return 0
-
-    prefix, base_token, modifiers = parse_expression(instr)
-
-    # Evaluate base token
-    base_result = decode_token(base_token, curaddress, CPU, JUSTRESULT,  context)
-    if isinstance(base_result, tuple) and base_result[0] == "string":
-        return base_result[1]
-
-    result = base_result if not isinstance(base_result, tuple) else base_result[1]
-
-    # Apply modifiers
-    for mod in modifiers:
-        sign = 1 if mod[0] == '+' else -1
-        base_mod=decode_token(mod[1:], curaddress, CPU, JUSTRESULT, context)
-        # Should always be a truple but also should always be numeric.
-        if base_mod[0] != "value":
-            safeprint("Unexpected mix of strings and numbers.: %s" % (mod[1:]), file=DebugOut)
-            return 0
-        mod_val = base_mod[1]
-#        print("Modifying Base: %s: %04x with %4x = %04x" % (instr,result, mod_val, result+sign*mod_val))
-        result += sign * mod_val
-
+    # Skip past any remaining modifiers
+    while working[starti] == '$':
+        starti += 1
+    # If first 2 characters are in set "0x" "0o" "0b" then we know its a number in a given base. No Labels, no Post Modifiers
+    if working[starti] >= "0" and working[starti] <= "9" or (working[starti] == "-" or working[starti] == "+"):
+        BaseNum = 10
+        if working[starti:starti+2] == "0x":
+            BaseNum = 16
+            starti += 2
+        elif working[starti:starti+2] == "0o":
+            BaseNum = 8
+            starti += 2
+        elif working[starti:starti+2] == "0b":
+            BaseNum = 2
+            starti += 2
+        Result = int(working[starti:], BaseNum)
+    else:
+        # Here be declared labels, look them up, but also look for post modifiers
+        stopi = starti + 1
+        modval = 0
+        while working[stopi].isalnum() or working[stopi] == "_" or working[stopi] == ".":
+            stopi += 1
+        # in working[stopi+1] is a '+' or '-' then there is a modifier
+        modstart = stopi
+        modstop = modstart + 1
+        while working[modstart] == '+' or working[modstart] == '-':
+            if working[modstart] == "-":
+                modsign=-1
+            else:
+                modsign=1
+            modvalstr = ""
+            modstart = modstart + 1
+            while (working[modstop].isspace() == False and
+                   (working[modstop] != "+" and working[modstop] != "-")):
+                modstop += 1
+            modval = modval + DecodeStr(
+                working[modstart:modstop], curaddress, CPU, LocalID, LORGFLAG, True) * modsign
+            modstart=modstop
+            modstop=modstop + 1
+        if working[starti:stopi] in FileLabels.keys():
+            # First test for Global Labels
+            Result = Str2Word(FileLabels[working[starti:stopi]]) + modval
+        elif IsLocalVar(working[starti:stopi], LocalID, LORGFLAG) in FileLabels.keys():
+            # Now existing Local Labels
+            Result = Str2Word(FileLabels[IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)]) + modval
+        else:
+            # This is case where the label has not yet been defined, we will save it in FWORDLIST for 2nd pass.
+            Result = 0
+            newkey = IsLocalVar(working[starti:stopi], LocalID, LORGFLAG)
+            FWORDLIST.append([newkey, curaddress, modval, "%s:%s"%(ActiveFile,GlobalLineNum)])
+            # Labels that are not yet defined HAVE to be 16b
+            ByteFlag = False
+            LongWordFlag = False
     if JUSTRESULT:
-        return result
-
-    # Memory writing based on prefix
-    # $$ => byte (8bit)
-    # $$$ -> long (32bit)
-    # $ or none -> word (16 bit, default)
-    assert prefix in ('', '$', '$$', '$$$'), f"Unexpected size prefix: {prefix}"
-    if prefix == '$$':
-        CPU.memspace[curaddress] = result & 0xFF
+        # This is for cases were the assembler is not to save it into memory.
+        return Result
+    if ByteFlag:
+        StoreMem[curaddress] = (Result & 0xff)
         curaddress += 1
-    elif prefix == '$$$':
-        CPU.memspace[curaddress]     = result & 0xFF
-        CPU.memspace[curaddress + 1] = (result >> 8) & 0xFF
-        CPU.memspace[curaddress + 2] = (result >> 16) & 0xFF
-        CPU.memspace[curaddress + 3] = (result >> 24) & 0xFF
+    elif LongWordFlag:
+        StoreMem[curaddress] = (Result & 0xff)
+        StoreMem[curaddress + 1] = ((Result >> 8) & 0xff)
+        StoreMem[curaddress + 2] = ((Result >> 16) & 0xff)
+        StoreMem[curaddress + 3] = ((Result >> 24) & 0xff)
         curaddress += 4
-    else:  # default or $ (2-byte)
-        CPU.memspace[curaddress]     = result & 0xFF
-        CPU.memspace[curaddress + 1] = (result >> 8) & 0xFF
+    else:
+        StoreMem[curaddress] = (Result & 0xff)
+        StoreMem[curaddress + 1] = ((Result >> 8) & 0xff)
         curaddress += 2
-
     return curaddress
 
 # Load file is also the effective main loop for the assembler
 
 
-# def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContext):
-
-def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContext):
-    global FileLineData
-    prior_lorgflag = context.LORGFLAG
-    prior_localid = context.LocalID
-    prior_activefile = context.ActiveFile
-    context.LORGFLAG = LorgFlag
-    context.LocalID = LocalID
-    context.FileLineNum = 1
-    if context.Debug > 1:
-        if  context.LORGFLAG == LOCALFLAG:
-            safeprint("LOCAL:",end="",file=DebugOut)
+def loadfile(filename, offset, CPU, LORGFLAG, LocalID):
+    global GlobalLineNum, GlobalOptCnt, Debug, MacroData, MacroPCount, FileLabels, Entry, ActiveFile, FWORDLIST, FBYTELIST, GlobeLabels, SkipBlock, dataaddress, UniqueLineNum, FileLineData
+    if Debug > 1:
+        if LocalID == 1:
+            print("LOCAL:",end="",file=DebugOut)
         else:
-            safeprint("Global:",end="",file=DebugOut)
-        safeprint("FileLoad Start: %s Addr: %04x" % (filename, offset),file=DebugOut)
-    context.ActiveFile = filename
-    context.address = int(offset)
+            print("Global:",end="",file=DebugOut)
+        print("FileLoad Start: %s Addr: %04x" % (filename, offset),file=DebugOut)
+    ActiveFile = filename
+    StoreMem = CPU.memspace
+    address = int(offset)
     line = "#Start"
-    context.backfill = ""
-    context.highaddress = offset
-    context.ExpectData = 0                   # Used as flag and counter when seperate datasegment is in use.
+    backfill = ""
+    highaddress = offset
+    ExpectData = 0                   # Used as flag and counter when seperate datasegment is in use.
     wfilename = fileonpath(filename)
     with open(wfilename, "r") as infile:
-        if context.address > context.highaddress:
-            context.highaddress = context.address
-        context.FBYTELIST = []
-        context.ActiveMacro = False
+        if address > highaddress:
+            highaddress = address
+        FBYTELIST = []
+        ActiveMacro = False
+        MacroVars = ['0']*10
         varcnt = 0
-        context.varbaseSP = 0
-        context.varbaseNext = 0
-        context.varcntstack = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-#        context.SkipBlock = 0
+        varbaseSP = 0
+        varbaseNext = 0
+        varcntstack = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+#        SkipBlock = 0
         varcnt = 0
-        context.MacroLine = ""
+        MacroLine = ""
         varpos = 0
-        if context.Debug > 1:
-            safeprint("Reading Filename %s" % wfilename,file=DebugOut)
+        if Debug > 1:
+            print("Reading Filename %s" % wfilename,file=DebugOut)
         while True:
-            if context.ActiveMacro and line == "":
+            if ActiveMacro and line == "":
                 # If we are inside a Macro expansion keep reading here, until the macro is fully consumed.
-                if len(context.MacroLine) > 0:
-                    NewLine = {"M."+context.ActiveMacroName+" "+filename + ":" +
-                    str(context.FileLineNum): context.address}
-                    context.FileLabels.update(NewLine)
+                if len(MacroLine) > 0:
+                    NewLine = {"M."+ActiveMacroName+" "+filename + ":" +
+                    str(GlobalLineNum): address}
+                    FileLabels.update(NewLine)
 
-                    (PosParams, PosSize) = nextwordplus(context.MacroLine)
-#                    PosParams = quote_escape_string(PosParams)
+                    (PosParams, PosSize) = nextwordplus(MacroLine)
                     while (PosParams != "" and PosParams != "ENDMACENDMAC"):
-                        context.MacroLine = context.MacroLine[PosSize:]
+                        MacroLine = MacroLine[PosSize:]
                         line = line + " " + PosParams
-                        (PosParams, PosSize) = nextwordplus(context.MacroLine)
+                        (PosParams, PosSize) = nextwordplus(MacroLine)
 
 
                     # at this point line should contain the macro and its possible parameters
                     # Need to subsutute and %# that are not in quotes with varval
-                    line = ReplaceMacVars(line, filename, context)
-                    if context.Debug > 1:
-                        safeprint("Expanded Macro: %s(%40s)" % (line,context.MacroLine),file=DebugOut)
-                    context.MacroLine.strip()
-                    context.varbaseNext = context.varbaseSP
-                    context.varbaseSP -= 1 if context.varbaseSP > 0 else 0
+                    line = ReplaceMacVars(
+                        line, MacroVars, varcntstack, varbaseSP, filename)
+                    if Debug > 1:
+                        print("Expanded Macro: %s(%40s)" % (line,MacroLine),file=DebugOut)
+                    varbaseNext = varbaseSP
+                    varbaseSP -= 1 if varbaseSP > 0 else 0
                     if PosParams == "ENDMACENDMAC":
                         # As macro's may call other macros, we need to mark in the stream where they end.
-                        context.MacroLine = context.MacroLine[PosSize:]
-                    if context.Debug > 1:
-                        safeprint("End-Macro: [:]%s" % context.backfill,file=DebugOut)
-                    line = line + " " + context.backfill
-                    context.backfill = ""
-                    context.ActiveMacro = False
+                        MacroLine = MacroLine[PosSize:]
+                    if Debug > 1:
+                        print("End-Macro: [:]%s" % backfill,file=DebugOut)
+                    line = line + " " + backfill
+                    backfill = ""
+                    ActiveMacro = False
                 else:
-                    line = context.backfill
-                    if context.Debug > 1:
-                        safeprint("End-Macro: [:]%s" % context.backfill,file=DebugOut)
-                    context.backfill = ""
-                    context.ActiveMacro = False
+                    line = backfill
+                    if Debug > 1:
+                        print("End-Macro: [:]%s" % backfill,file=DebugOut)
+                    backfill = ""
+                    ActiveMacro = False
                     continue
             else:
                 # If we are macro, or in plain text, we still end up here.
                 if line == "":
                     ExitOut = False
                     GetAnother = True
-                    context.CurrentLineBeingParsed = context.FileLineNum
                     while GetAnother:
-#                        if filename == "foo9.asm":
-#                            safeprint("Line:",context.FileLineNum)
-                        context.FileLineNum += 1
-                        context.UniqueLineNum += 1
+                        GlobalLineNum += 1
+                        UniqueLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
-                        if context.Debug > 1 and context.SkipBlock == 0:
-                            safeprint("%s:%s> %60s:%2d" % (wfilename,str(context.FileLineNum),inline,context.SkipBlock), file=DebugOut)
-
-#                        print("Inserting Label: Filename: %s, %d, %04x" % (filename,context.CurrentLineBeingParsed, context.address))
-#                        if context.address not in context.AddressedLinesSeen:
-                        FileLineData.add_entry(filename, context.CurrentLineBeingParsed, context.address)
-                        context.AddressedLinesSeen.add(context.address)
-#                        if not (context.address in context.FileLabels):
+                        if Debug > 1 and SkipBlock == 0:
+                            print("%s:%s> %60s:%2d" % (wfilename,str(GlobalLineNum),inline,SkipBlock), file=DebugOut)
+                        if not (address in FileLabels):
+                            FileLineData.add_entry(filename, GlobalLineNum, address)
                         if inline:
                             if inline.strip()[-1:] == '\\':
                                 GetAnother = True
@@ -2379,21 +2009,21 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         else:
                             ExitOut = True
                             break
-                    if context.Debug > 1 and context.SkipBlock == 0:
-                        safeprint("%04x: %s:%2d" % (context.address, line,context.SkipBlock),file=DebugOut)
+                    if Debug > 1 and SkipBlock == 0:
+                        print("%04x: %s:%2d" % (address, line,SkipBlock),file=DebugOut)
                     if ExitOut:
                         break
             line = removecomments(line).strip()
-            if context.Debug > 1:
-                if context.ActiveMacro == False and context.SkipBlock == 0:
-                    safeprint("%04x: %s> %s" % (context.address, context.FileLineNum, line),file=DebugOut)
-                elif context.SkipBlock == 0:
-                    safeprint("%04x: M-%s> %s : %s" %
-                          (context.address, context.FileLineNum, line, context.MacroLine[:16]),file=DebugOut)
+            if Debug > 1:
+                if ActiveMacro == False and SkipBlock == 0:
+                    print("%04x: %s> %s" % (address, GlobalLineNum, line),file=DebugOut)
+                elif SkipBlock == 0:
+                    print("%04x: M-%s> %s : %s" %
+                          (address, GlobalLineNum, line, MacroLine[:16]),file=DebugOut)
                 else:
-                    safeprint("Skip.%s(%s)," % (filename, line[:5]),file=DebugOut,end="")
+                    print("S.",file=DebugOut,end="")
 
-            if context.SkipBlock != 0:
+            if SkipBlock != 0:
                 while (line != ""):
                     (key, size) = nextword(line)
                     # Because it's not a single letter command, ENDBLOCK is a bit of a outsider.
@@ -2403,17 +2033,17 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     # 3: Anything that's not outer ENDBLOCK is skipped.
                     if key == "!" or key == "?":
                         # Handle embeded or nested Blocks
-                        context.SkipBlock = context.SkipBlock + 1
+                        SkipBlock = SkipBlock + 1
                         line = line[size:]
                         continue
                     elif key != "ENDBLOCK":
                         line = line[size:]
                         continue
                     else:
-                        context.SkipBlock = context.SkipBlock - 1
-                        if context.SkipBlock <= 0:
+                        SkipBlock = SkipBlock - 1
+                        if SkipBlock <= 0:
                             line = line[size:]
-                            context.SkipBlock=0
+                            SkipBlock=0
                             break
                         else:
                             line = line[size:]
@@ -2422,99 +2052,81 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             elif line[:8] == "ENDBLOCK":
                 line = line[8:]
                 continue
-#            if context.FileLineNum == 212 and filename == "tests/forth.asm":
-#               safeprint("Break here:%s:",filename)
             if len(line) > 0:
                 IsOneChar = False
-                CodeLength = len(nextword(line)[0])
-                if CodeLength == 1:
+                if len(nextword(line)[0]) == 1:
                     IsOneChar = True
-                
                 if line[0] == "@":
                     # Use a defined Macro Remain words on line will become local variables
                     cpos = 1
-                    # Logic of context.varcntstack:
+                    # Logic of varcntstack:
                     # Initial vcs[0]==0, so vcs[1] should = # vars + 1
                     # So we alway set the n' top of vcs to vcs[n]+#vars in this macro
                     (macname, size) = nextword(line[cpos:])
-                    context.varbaseSP = context.varbaseNext
-                    context.MacroVars[context.varcntstack[context.varbaseSP]] = "_" + \
-                        create_new_unique() + str(len(context.MacroData))
-
+                    varbaseSP = varbaseNext
+                    MacroVars[varcntstack[varbaseSP]] = "__" + \
+                        create_new_unique() + str(len(MacroData))
                     cpos += size
-                    if macname in context.MacroData:
+                    if macname in MacroData:
                         # To understand what's going on here: We are making a stack that will
                         # store the local macro var values (%1-max) and macros that call other
                         # macros will just use a diffrent range in that same stack.
-                        context.MacroLine = context.MacroData[macname] + \
-                            " ENDMACENDMAC " + context.MacroLine
+                        MacroLine = MacroData[macname] + \
+                            " ENDMACENDMAC " + MacroLine
                         if cpos < len(line):
                             varcnt = 0
-#                            print("On Line: %s" % line)
-                            while (varcnt < context.MacroPCount[macname] and cpos < len(line)):
+                            for i in range(MacroPCount[macname]):
                                 (key, size) = nextwordplus(line[cpos:])
-#                                print(f"[param] Got key={repr(key)} size={size} remaining={repr(line[cpos:])}")
-                                raw=key[1:-1]
                                 varcnt += 1
-                                while (context.varcntstack[context.varbaseSP]+varcnt + 2) >= len(context.MacroVars):
-                                    context.MacroVars.append(['0'])
-                                if key.startswith('"') and key.endswith('"'):
-                                    context.MacroVars[varcnt +
-                                                      context.varcntstack[context.varbaseSP]] = \
-                                                         '"'+escape_for_reinsertion(raw)+'"'
-                                elif key.startswith("'") and key.endswith("'"):
-                                    context.MacroVars[varcnt +
-                                                      context.varcntstack[context.varbaseSP]] = \
-                                                         "'"+raw+"'"
-                                else:
-                                    context.MacroVars[varcnt +
-                                          context.varcntstack[context.varbaseSP]] = key
+                                while (varcntstack[varbaseSP]+varcnt + 2) >= len(MacroVars):
+                                    MacroVars.append(['0'])
+                                MacroVars[varcnt +
+                                          varcntstack[varbaseSP]] = key
                                 cpos += size
-                            if varcnt < context.MacroPCount[macname]:
+                            if varcnt < MacroPCount[macname]:
                                 # When Macro was defined we counted the max %# and now require that # Parms
                                 CPU.raiseerror("053 Insufficent required parameters (%s/%s) for Macro %s" %
-                                               (varcnt, context.MacroPCount[macname], macname))
-                        context.varcntstack[context.varbaseSP +
-                                    1] = context.varcntstack[context.varbaseSP]+varcnt + 1
-                        context.varbaseNext = context.varbaseSP + 1
-                        context.ActiveMacro = True
-                        context.ActiveMacroName = macname
-                        context.backfill = line[cpos:] + " " + context.backfill
+                                               (varcnt, MacroPCount[macname], macname))
+                        varcntstack[varbaseSP +
+                                    1] = varcntstack[varbaseSP]+varcnt + 1
+                        varbaseNext = varbaseSP + 1
+                        ActiveMacro = True
+                        ActiveMacroName = macname
+                        backfill = line[cpos:] + " " + backfill
                         line = ""
                     else:
-                        safeprint("Missing: ", macname,file=DebugOut)
+                        print("Missing: ", macname,file=DebugOut)
                         CPU.raiseerror(
                             "054  Macro %s is not defined" % (macname))
                 # Here is were we start the 'switch case' looking for commands.
                 elif line[0] == ":":
                     # The ":" is a label whos value is current address
                     (key, size) = nextword(line[1:])
-                    newitem = IsLocalVar(key, context)
-                    if context.Debug >1:
-                        safeprint(">>> adding %s at location %s with name: %s" %
-                              (newitem, hex(context.address),IsLocalVar(newitem,  context)),file=DebugOut)
+                    newitem = IsLocalVar(key, LocalID, LORGFLAG)
+                    if Debug >1:
+                        print(">>> adding %s at location %s with name: %s" %
+                              (newitem, hex(address),IsLocalVar(newitem, LocalID, LORGFLAG)),file=DebugOut)
 
-                    context.FileLabels.update({newitem:context.address})
-                    UpdateVarHistory(newitem,context.address,context.address)
+                    FileLabels.update({newitem:address})
+                    UpdateVarHistory(newitem,address,address)
                     line = line[size+1:]
                     continue
                 elif line[0] == ";":
-                    # The ';' version uses the DATA address but also requires 2 paramater the lable and size/string
                     (key, size) = nextword(line[1:])
                     line = line[size+1:]
                     (dsize,size) = nextword(line)
                     line = line[size:]
-                    if context.DataSegment != -1:
-                        # If context.DataSegment was defined, the we use a seperate dataaddress counter
-                        workingaddress=context.dataaddress
-                        context.ExpectData=Str2Word(dsize)   # Defines how many bytes to expect goes into the dataaddress
+                    if DataSegment != -1:
+                        # If DataSegment was defined, the we use a seperate dataaddress counter
+                        workingaddress=dataaddress
+                        ExpectData=Str2Word(dsize)   # Defines how many bytes to expect goes into the dataaddress
                     else:
-                        context.ExpectData=0
-                    if ("F."+filename+":"+str(context.FileLineNum) in context.FileLabels):
+                        ExpectData=0
+                    if ("F."+filename+":"+str(GlobalLineNum) in FileLabels):
                         # We created an internal label for each line number, but this label will replace it.
-                        del context.FileLabels["F."+filename+":"+str(context.FileLineNum)]
-                    newitem = {IsLocalVar(key,  context): workingaddress}
-                    context.FileLabels.update(newitem)
+                        del FileLabels["F."+filename+":"+str(GlobalLineNum)]
+                    newitem = {IsLocalVar(key, LocalID, LORGFLAG): workingaddress}
+                    FileLabels.update(newitem)
                     UpdateVarHistory(newitem,workingaddress,workingaddress)
 
                 elif line[0] == "=":
@@ -2522,97 +2134,88 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     line = line[size+1:]
                     (value, size) = nextwordplus(line)
                     if (not (value[0:len(value)].isdecimal())):
-                        value = DecodeStr(value, context.address, CPU, True, context)
-                    newitem=IsLocalVar(key, context)
-#                    safeprint("Setting Fixed Value: %s to %s: %s:line: %s(%s)\n" % ( newitem, value, filename,line, context.FileLineNum))
-                    context.FileLabels.update({newitem: value})
-                    UpdateVarHistory(newitem,value,context.address)
+                        value = DecodeStr(value, address, CPU,
+                                          LocalID, LORGFLAG, True)
+                    newitem=IsLocalVar(key, LocalID, LORGFLAG)
+                    FileLabels.update({newitem: value})
+                    UpdateVarHistory(newitem,value,address)
                     line = line[size:]
                     continue
-                elif ( line[0] == "." and IsOneChar) or (line[:4].upper() == ".ORG" and CodeLength == 4):
+                elif ( line[0] == "." and IsOneChar) or line[:4].upper() == ".ORG":
                     if line[:4].upper() == ".ORG":
                         line=line[4:]
                     else:
                         line=line[1:]
-                    (value, size) = FirstPassVal(line,  context)
+                    (value, size) = FirstPassVal(line, address, FileLabels, LocalID, LORGFLAG, GlobalOptCnt)
                     line = line[size+1:] # at this point value is #val of 1st label or constant.
                     # We should also allow labeld or constant values be modified with +/- another label or constant
                     if line[0:1] == "+" or line[0:1] == "-":
-                        (modvalue,size) = FirstPassVal(line, context)
+                        (modvalue,size) = FirstPassVal(line, address, FileLabels, LocalID, LORGFLAG, GlobalOptCnt)
                         if (line[0:1] == "+"):
                             value = Str2Word(value) + Str2Word(modvalue)
                         else:
                             value = Str2Word(value) - Str2Word(modvalue)
                         line = line[size+1:]    # if there was a second label or constant bump up line past it.
-                    context.address = Str2Word(value)
-                    context.Entry = context.address
+                    address = Str2Word(value)
+                    Entry = address
                     continue
-
-                elif ( line[:5].upper() == ".DATA" and CodeLength == 5):
+                elif ( line[:5].upper() == ".DATA" ):
                     line=line[5:]
-                    (Value, Size) = FirstPassVal(line, context)
-                    context.DataSegment = value
-                    context.dataaddress = context.DataSegment
+                    (value, size) = FirstPassVal(line, address, FileLabels, LocalID, LORGFLAG, GlobalOptCnt)
+                    DataSegment = value
+                    dataaddress = DataSegment
                     line=line[size+1:]
                     continue
                 elif line[0] == "L" and IsOneChar:
                     # Load a file into memory as a library, enable 'local' variables.
                     (newfilename, size) = nextword(line[1:])
-                    HoldGlobeLine = context.FileLineNum
-                    oldfilename = context.ActiveFile
-                    NewLocalID = str(context.UniqueLineNum)+newfilename
-                    context.highaddress = context.address = \
-                        loadfile(newfilename, context.address, CPU , LOCALFLAG, NewLocalID, context)
-                    context.ActiveFile = oldfilename
-                    context.FileLineNum = HoldGlobeLine
+                    HoldGlobeLine = GlobalLineNum
+                    GlobalLineNum = 0
+                    oldfilename = ActiveFile
+                    highaddress = address = loadfile(
+                        newfilename, address, CPU, LOCALFLAG, str(UniqueLineNum)+newfilename)
+                    ActiveFile = oldfilename
+                    GlobalLineNum = HoldGlobeLine
                     line = line[size+1:]
                     continue
                 elif line[0] == "I" and IsOneChar:
                     # Load a file, but keep it in the 'global' context
                     (newfilename, size) = nextword(line[1:])
-                    HoldGlobeLine = context.FileLineNum
-                    oldfilename = context.ActiveFile
-                    NewLocalID = str(context.UniqueLineNum)+newfilename
-                    # May need come back here and use context.LORGFLAG rather than GLOBALFLAG..test this.
-                    context.highaddress = context.address = \
-                        loadfile(newfilename, context.address, CPU , GLOBALFLAG, NewLocalID, context)
-                    context.ActiveFile = oldfilename
-                    context.FileLineNum = HoldGlobeLine
+                    HoldGlobeLine = GlobalLineNum
+                    GlobalLineNum = 0
+                    oldfilename = ActiveFile
+                    highaddress = address = loadfile(
+                        newfilename, address, CPU, GLOBALFLAG, str(UniqueLineNum)+newfilename)
+                    ActiveFile = oldfilename
+                    GlobalLineNum = HoldGlobeLine
                     line = line[size+1:]
                     continue
                 elif line[0] == "P" and IsOneChar:
                     # "P" Print debug messages durring assembly.
                     nline=""
                     for word in line[2:].split(" "):
-                        word=word.strip()
-                        if ( word.startswith("{") and word.endswith("}") ):
-                            PosVar=FindLabelMatch(word[1:-1],context)
-                            if (PosVar != None):
-                                nline=f"{nline} {PosVar} "
-                            else:
-                                if (word[1:-1] in context.MacroData):
-                                    nline=f"{nline}{context.MacroData[word[1:-1]]}"
-                                else:
-                                    nline=f"{nline} {word} "
+                        PosVar=FindLabelMatch(word.strip())
+                        if (PosVar != None):
+                            nline=f"{nline} {word.strip()}:{PosVar} "
                         else:
-                            nline=f"{nline} {word} "
-                    safeprint("%04x: %s" % (context.address, nline),file=DebugOut)
+                            nline=f"{nline} {word.strip()} "
+                    print("%04x: %s" % (address, nline),file=DebugOut)
                     line = ""
                     continue
                 elif line[0] == "!" and IsOneChar:    # If Macro does NOT exist, then eval until matching ENDBLOCK
                     (key, size) = nextword(line[1:])
-                    if key in context.MacroData:
-                        context.SkipBlock =+ 1
+                    if key in MacroData:
+                        SkipBlock =+ 1
                     line = line[size+1:]
                     continue
                 elif line[0] == "?" and IsOneChar:     # If Macro exists, then skip until next ENDBLOCK
                     L=nextword(line[1:])
                     key=L[0]
                     size=L[1]
-                    if key in context.MacroData:
+                    if key in MacroData:
                         L=1
                     else:
-                        context.SkipBlock += 1
+                        SkipBlock += 1
                     line = line[size+1:]
                 elif line[0] == "M" and IsOneChar:
                     # Macros
@@ -2621,7 +2224,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     # We identify how many arguments are used, by the max pcount value. (0-9)
                     # %0 doesn't count as that sys generated, and %'s do not count if quoted
                     # Minit state engine. var_num is next 0-9 after % unless '\' preceded %
-                    context.MacroData.update({key: line[size+1:]})        # +1 is for the 'M' which is skipped in call to nextword
+                    MacroData.update({key: line[size:]})
                     pcount = 0
                     inesc = False
                     invar = False
@@ -2636,95 +2239,79 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                             continue
                         if c == '%':
                             invar = True
-                    context.MacroPCount.update({key: pcount})
+                    MacroPCount.update({key: pcount})
                     line = ""
                     continue
-                elif line[0:2] == "MA" and CodeLength == 2:
-                    # MA macros append text to an existing macro.
-                    substr = line[2:]
-                    (key,ksize) = nextword(substr)
-                    substr=substr[ksize:].lstrip()
-                    (value,vsize) = nextword(substr)
-                    line=substr[vsize:].lstrip()
-                    oldval=context.MacroData[key]
-                    context.MacroData.update({key: oldval+" "+value})
-                    context.MacroPCount.update({key: 0})                    
-                elif line[0:2] == "MF" and CodeLength == 2:
+                elif line[0:2] == "MF" and not(IsOneChar):
                     # MF Macro is for setting, or freeing single value macros. For use as flags
-                    substr = line[2:]
-                    (key,ksize) = nextword(substr)
-                    substr=substr[ksize:].lstrip()
-                    (value,vsize) = nextword(substr)
-                    line=substr[vsize:].lstrip()
-                    if (value == '""'):
+                    (key,size) = nextword(line[2:])
+                    line=line[size+1:]
+                    (value,size) = nextword(line)
+                    line=line[size+1:]
+                    if (value == ""):
                         # empty string, erase existing macro named key, if any
-                        context.MacroData.pop(key,None)
-                        context.MacroPCount.pop(key,None)
+                        MacroData.pop(key,None)
                     else:
                         # Otherwise inerset a simple one word or value to enable the MacroKey
-                        context.MacroData.update({key: value})
-                        context.MacroPCount.update({key: 0})
+                        MacroData.update({key: value})
                 elif line[0] == "G" and IsOneChar:
                     # Globale labels are an override of 'Local' Labels by 'pre-defining them.
                     (key, size) = nextword(line[1:])
-                    context.GlobeLabels.update({key: context.address})
+                    GlobeLabels.update({key: address})
                     line = line[size+1:]
                     continue
                 else:
                     # Pretty much every else drops here to be evaulated as numbers or macros to be defined.
                     # Note than nearly everything here will take up some sort of storage, so address will
                     # be incremented. This is where labels become 'variables'
-                    context.CurrentLineBeingParsed = context.FileLineNum
+                    LineAddrList.append([address, GlobalLineNum, filename])
                     (key, size) = nextwordplus(line)
                     line = line[size:]
-                    if context.address > context.highaddress:
-                        context.highaddress = context.address
+                    if address > highaddress:
+                        highaddress = address
                     if len(key) > 0:
-                        if context.ExpectData > 0:
+                        if ExpectData > 0:
                             # We do this because after we define a custom dataaddress constant
                             # we may have a mix of values that will act as the initialization fill
                             # for that defined space. It might be made of more than one word
                             # do we keep subtracting from ExpectData until we've filled it all.
-                            prevval=context.dataaddress
-                            context.dataaddress = DecodeStr(key, dataaddress, CPU, False,  context)
-                            context.ExpectData -= (context.dataaddress - prevval)
+                            prevval=dataaddress
+                            dataaddress = DecodeStr(key, dataaddress, CPU,  LocalID, LORGFLAG, False)
+                            ExpectData -= (dataaddress - prevval)
                         else:
-                            context.address = DecodeStr(key, context.address, CPU, False, context)
-        for store in context.FWORDLIST:
+                            address = DecodeStr(key, address, CPU,  LocalID, LORGFLAG, False)
+        for store in FWORDLIST:
             key = store[0]
             vaddress = store[1]
-            if key in context.FileLabels.keys():
-                v = Str2Word(context.FileLabels[key])
+            if key in FileLabels.keys():
+                v = Str2Word(FileLabels[key])
                 if (len(store) > 2):
                     if store[2] != 0:
                         v = v + Str2Word(store[2])
                         # This extra bit logic handles the case of labels+## math.
-                CPU.memspace[int(vaddress)] = CPU.lowbyte(v)
-                CPU.memspace[int(vaddress + 1)] = CPU.highbyte(v)
-            elif key in context.GlobeLabels.keys():
-                v = Str2Word(context.GlobeLabels[key])
+                StoreMem[int(vaddress)] = CPU.lowbyte(v)
+                StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
+            elif key in GlobeLabels.keys():
+                v = Str2Word(GlobeLabels[key])
                 if (len(store) > 2):
                     if store[2] != 0:
                         v = v + Str2Word(store[2])
                         # This extra bit logic handles the case of labels+## math.
-                CPU.memspace[int(vaddress)] = CPU.lowbyte(v)
-                CPU.memspace[int(vaddress + 1)] = CPU.highbyte(v)
+                StoreMem[int(vaddress)] = CPU.lowbyte(v)
+                StoreMem[int(vaddress + 1)] = CPU.highbyte(v)
             else:
                 print(key, " is missing (SYM,ADDR,Delta,LineNum)", store,key,vaddress,file=DebugOut)
-    if context.Debug > 1:
+    if Debug > 1:
         i = 0
-    if context.address > context.highaddress:
-        context.highaddress = context.address
-    if context.dataaddress > context.highaddress:
-        highaddress = context.dataaddress
-    context.LORGFLAG = prior_lorgflag
-    context.LocalID = prior_localid
-    context.ActiveFile = prior_activefile
-    return context.highaddress
+    if address > highaddress:
+        highaddress = address
+    if dataaddress > highaddress:
+        highaddress = dataaddress
+    return highaddress
 
 
-def debugger(passline, context: AssemblerContext):
-    global InDebugger, breakpoints, tempbreakpoints, EchoFlag
+def debugger(FileLabels,passline):
+    global InDebugger, LineAddrList, watchwords, breakpoints, tempbreakpoints, GlobalOptCnt, EchoFlag, GlobalLineNum, ActiveFile
     startrange = 0
     stoprange = 0
     redoword = "Null"
@@ -2748,7 +2335,7 @@ def debugger(passline, context: AssemblerContext):
         sys.stdout.flush()
         if len(passline) != 0:
             # passline is a way debugger can be called and process some fixed commands before returning to user inputed commands.
-            safeprint("processing %s\n" % passline)
+            print("processing %s\n" % passline)
             cmdline=passline[0]
             passline=passline[1:]
         else:
@@ -2759,7 +2346,7 @@ def debugger(passline, context: AssemblerContext):
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                safeprint("TTY Error: On Echo On")
+                print("TTY Error: On Echo On")
         # To file redirection from 'scipted debug files' we also allow possible comments in those files.
         cmdline = removecomments(cmdline).strip()
         if cmdline != "":
@@ -2778,15 +2365,14 @@ def debugger(passline, context: AssemblerContext):
         while thisword != "":
             rawlist.append(thisword)
             if "A" <= thisword[0] <= "z":
-                if thisword in context.FileLabels:      # Exact match (global) only
-                    varval = FindHistoricVal(thisword, CPU.pc, context)
+                if thisword in FileLabels:
+                    varval = FindHistoricVal(thisword, CPU.pc)
                     arglist.append(varval)
                     argcnt += 1
-                    safeprint("%s found: %04x" % (thisword, varval))
+                    print("%s found: %04x" % (thisword, varval))
                 else:
-                    varval = FindLabelMatch(thisword, context)      # Partial Matches (local vars)
+                    varval = FindLabelMatch(thisword)
                     if varval != None:
-                        varval = FindHistoricVal(thisword, CPU.pc, context)
                         arglist.append(varval)
                         argcnt += 1
             else:
@@ -2794,7 +2380,7 @@ def debugger(passline, context: AssemblerContext):
                 if (thisword[0] if thisword and len(thisword) > 0 else "Invalid") in [ "+", "-"]:
                     # Handle case where user did label+/-value
                     Signval=1 if thisword[0]=="+" else -1
-                    thisword=thisword[1:]
+                    thisword=thisword[1:]                
                 # Convert to 16 bit number allow 0x formats
                 thisword = Str2Word(thisword)
                 if Signval != 0:
@@ -2803,7 +2389,7 @@ def debugger(passline, context: AssemblerContext):
                     else:
                         # Handle the odd case where first argument is +/- value
                         arglist.append(thisword * Signval)
-                        argcnt += 1
+                        argcnt += 1                        
                 else:
                     arglist.append(thisword)
                     argcnt += 1
@@ -2825,47 +2411,23 @@ def debugger(passline, context: AssemblerContext):
                 else:
                     startrange = CPU.pc
                 stoprange = startrange+42
-            safeprint("Range of DissAsmby %04x - %04x" % ( startrange, stoprange))
+            print("Range of DissAsmby %04x - %04x" % ( startrange, stoprange))
             stoprange = DissAsm(startrange, stoprange - startrange, CPU)
             continue
         if cmdword == "ps":
             if (CPU.mb[0xff] == 0):
-                safeprint("Empty Stack")
+                print("Empty Stack")
                 continue
-            safeprint("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
-            for i in range(0, min(CPU.mb[0xff]*2, 64), 2):                
-                v = CPU.getwordstack(i)
+            print("Print HW Stack, Depth (%d)" % CPU.mb[0xff])
+            for i in range(0, min(CPU.mb[0xff]*2, 64), 2):
+                v = CPU.mb[i] + (CPU.mb[i+1] << 8)
                 SInfo = "%04x:" % v
                 if (v > 0 and v < (len(CPU.memspace)-2)):
                     SInfo = SInfo+"[%0x]" % CPU.getwordat(v)
                     SInfo = SInfo+"[[%0x]]" % CPU.getwordat(CPU.getwordat(v))
                 else:
                     SInfo = SInfo + "[*]"
-                safeprint(SInfo)
-                continue
-        if cmdword == "spush":
-            if argcnt > 0:
-                if (CPU.mb[0xff] > (0xff/2 -2)):
-                    safeprint("Stack full")
-                    continue
-                if (arglist[0] & 0xfffff) < 0xffff:
-                    CPU.optPUSH(arglist[0])
-                else:
-                    safeprint("Invalid number:")
-                continue
-            else:
-                safeprint("Need an argument")
-                continue
-        if cmdword == "spop":
-            if argcnt == 0:
-                safeprint("POPNULL")
-                CPU.optPOPNULL(0)
-                continue
-            else:
-                if (arglist[0] & 0xfffff) > 0xffff:
-                    safeprint("Not valid address:")
-                    continue
-                CPU.optPOPI(arglist[0])
+                print(SInfo)
                 continue
         if cmdword == "p":
             if argcnt > 0:
@@ -2900,36 +2462,26 @@ def debugger(passline, context: AssemblerContext):
                            SInfo += "%c" % c
                        else:
                            SInfo += "_"
-                   safeprint(SInfo)
+                   print(SInfo)
             else:
-                safeprint("ERR: Need to specify what to print")
+                print("ERR: Need to specify what to print")
                 continue
         if cmdword == "pa":
-            # Filter labels
-            filtered_labels = {
-                key: value for key, value in context.FileLabels.items()
-                if not key.startswith("_") and not key.startswith("F.") and not key.startswith("M.")
-            }
+            if argcnt > 0:
+                for label in arglist:
+                    FindLabelMatch(label)
+            else:
+                # Handle prety print of all variables
+                filtered_labels = {key: value for key, value in FileLabels.items() if (not key.startswith("_") and not key.startswith("F.") and not key.startswith("M."))}
 
-            # Step 1: Collect rows based on rawlist filtering
-            import re
-            rows = []
-            for key, value in filtered_labels.items():
-                value_str = str(value)
-                if not rawlist or any(re.search(pattern, key) or re.search(pattern, value_str) for pattern in rawlist):
-                    rows.append((key, f"{int(value):04x}"))
+                table = "| Name | Value |\n"
+                table += "|------|-------|\n"
 
-            # Step 2: Determine column widths
-            name_width = max(len("Name"), max(len(k) for k, _ in rows)) if rows else len("Name")
-            value_width = max(len("Value"), max(len(v) for _, v in rows)) if rows else len("Value")
+                # Add each filtered label to the table
+                for key, value in filtered_labels.items():
+                    table += f"| {key} | {int(value):04x} |\n"
+                print(table)
 
-            # Step 3: Build the table
-            table = f"| {'Name'.ljust(name_width)} | {'Value'.ljust(value_width)} |\n"
-            table += f"|{'-' * (name_width + 2)}|{'-' * (value_width + 2)}|\n"
-            for key, val in rows:
-                table += f"| {key.ljust(name_width)} | {val.ljust(value_width)} |\n"
-
-            safeprint(table)
             continue
         if cmdword == "m":
             if argcnt >= 1:
@@ -2940,7 +2492,7 @@ def debugger(passline, context: AssemblerContext):
                     for iad in arglist[1:]:
                         mvalue = Str2Byte(iad)
                         CPU.memspace[maddr] = mvalue & 0xff
-                        mvalue = int(iad) >> 8
+                        mval = mvap >> 8
                         CPU.memspace[maddr + 1] = mvalue & 0xff
                         maddr += 2
                         DissAsm(int(arglist[0]), 1, CPU)
@@ -2976,7 +2528,6 @@ def debugger(passline, context: AssemblerContext):
                             if cmdline != ".":
                                 if (L[0][0:1] == '"'):
                                     (quotesize, quotetext) = GetQuoted(cmdline)
-#                                    print("Debug: Inserted text: Size: %d Result: %s" % ( quotesize, quotedtext))
                                     for iii in range(0, len(quotetext)):
                                         CPU.memspace[maddr] = ord(
                                             quotetext[iii]) & 0xff
@@ -3010,9 +2561,9 @@ def debugger(passline, context: AssemblerContext):
                                     if expectsize != 4:
                                         cmdline=cmdline[L[1]:]
                                         L=nextword(L[0][startnum:])
-                                        if (L[0] in context.FileLabels.keys()):
+                                        if (L[0] in FileLabels.keys()):
                                             newval = Str2Word(
-                                                context.FileLabels[L[0]])
+                                                FileLabels[L[0]])
                                         else:
                                             newval = Str2Word(
                                                 L[0])
@@ -3026,7 +2577,7 @@ def debugger(passline, context: AssemblerContext):
                                     L=("",0)
                                     continue
                                 except:
-                                    safeprint("Input %s not valid" % cmdline)
+                                    print("Input %s not valid" % cmdline)
                                     cmdline=""
                                 L=("",0)
                                 continue
@@ -3037,153 +2588,111 @@ def debugger(passline, context: AssemblerContext):
                                 print("End Modify")
                                 break
         if cmdword == "l":
-            startaddr = None
-            stopaddr = None
+            startaddr = 0
+            stopaddr = 30
             if argcnt > 0 or len(rawlist) > 0:
+                print(rawlist)
                 tresult = CPU.FindAddressLine(rawlist[0])
-                if tresult is None:
-                    safeprint("Start line not valid or is ambiguous: %s" % rawlist[0])
+                if tresult == None:
+                    print("Range 1(%s) not valid:" % rawlist[0])
+                    startaddr=0
                 else:
-                    (_, _, startaddr)=tresult
+                    startaddr=int(tresult)
                 if argcnt > 1:
                     tresult=CPU.FindAddressLine(rawlist[1])
                     if tresult == None:
-                        safeprint("End Line is not valid or is ambiguous: %s" % rawlist[1])
+                        print("Range 2(%s) not valid:" % rawlist[1])
+                        stopaddr=0
                     else:
-                        (_, _, stopaddr)=tresult
-            else:
-                startaddr = CPU.pc  # Default to current PC
-                stopaddr = (startaddr + 3) & 0xffff
-
-            # If only start address found, compute default end
-            if startaddr is not None and stopaddr is None:
-                stopaddr = (startaddr + 3) & 0xffff
-
-                # Validate range
-            if startaddr is not None and stopaddr is not None:
-                if stopaddr < startaddr:
-                    stopaddr = startaddr + abs(stopaddr)
-                elif stopaddr == startaddr:
-                    stopaddr = (startaddr + 3) & 0xffff
-
-                DissAsm(startaddr, stopaddr - startaddr, CPU)
-            else:
-                safeprint("Unable to disassemble; start or end address not resolved.")
+                        stopaddr=int(tresult)
+                else:
+                    if startaddr != 0:
+                        stopaddr=startaddr+30
+                    else:
+                        stopaddr=startaddr
+            if stopaddr < startaddr:     # Handle cases when labels are swapped.
+                stopaddr = startaddr + abs(stopaddr)
+            print("Dissasembly from src lines %04x to %04x" %
+                  (startaddr, stopaddr))
+            DissAsm(startaddr, stopaddr - startaddr, CPU)
             continue
         if cmdword == "hex":
             if argcnt > 0:
-                arglist[0]=int(arglist[0], 0) if isinstance(arglist[0], str) else arglist[0]
                 if argcnt == 1:
-                    startv = arglist[0]  # allows 0x...
-                    length = 16
+                    startv = int(arglist[0])
+                    stopv = startv + 16
                 else:
-                    arglist[1]=int(arglist[1], 0) if isinstance(arglist[1], str) else arglist[1]
-                    startv = arglist[0]
-                    length = arglist[1]
-                if length < 0:
-                    length = 0  # Avoid negatives
-                hexdump(startv, length, CPU)
+                    startv = int(arglist[0])
+                    stopv = int(arglist[1]) + 1
+                    if stopv < startv:
+                        stopv = startv + stopv + 1
+                hexdump(startv, stopv, CPU)
             else:
-                safeprint("ERR: Need to specify what to print")
-            continue
-        if cmdword == "hexi":
-            if argcnt > 0:
-                arglist[0]=int(arglist[0], 0) if isinstance(arglist[0], str) else arglist[0]
-                if argcnt == 1:
-                    startv = CPU.getwordat(arglist[0])  # dereference pointer
-                    length = 16
-                else:
-                    arglist[1]=int(arglist[1], 0) if isinstance(arglist[1], str) else arglist[1]
-                    startv = CPU.getwordat(arglist[0])
-                    length = arglist[1]
-                if length < 0:
-                    length = 0
-                hexdump(startv, length, CPU)
-            else:
-                safeprint("ERR: Need pointer label and optional length")
-            continue
+                print("ERR: Need to specify what to print")
+                continue
         if cmdword == "n":
             stepcnt = 1
             stoprange = 0
             if argcnt > 0:
                 stepcnt = arglist[0]
             for i in range(stepcnt):
-                CPU.evalpc(context)
+                CPU.evalpc()
                 DissAsm(CPU.pc, 1, CPU)
                 if CPU.pc in breakpoints or CPU.pc in tempbreakpoints:
-                    safeprint("Break Point %04x" % CPU.pc)
+                    print("Break Point %04x" % CPU.pc)
                     if CPU.pc in tempbreakpoints:
                         tempbreakpoints.remove(CPU.pc)
                     break
             continue
         if cmdword == "s":
-            CurrentAddress=CPU.pc
-            OriginalAddress = CurrentAddress
-            OriginalLine=int(CPU.FindWhatLine(CurrentAddress).split(':')[1])
-            is_call = False
-            StateCtrl=0
-            if "PUSH" in OPTDICT:
-                PUSHCODE=OPTDICT["PUSH"][0]
-                JMPCODE=OPTDICT["JMP"][0]
-                # At this time we'll not worry about CALLZ and CALLNZ as they are rare.
-                while CPU.pc <= 0xffff:
-                    # We only care about JMP if the previous Call was PUSH addr
-                    if CPU.memspace[CPU.pc] != JMPCODE and StateCtrl == 1:
-                        StateCtrl = 0
-                    if CPU.memspace[CPU.pc] == JMPCODE and StateCtrl == 1:
-                        is_call = True
-                        StateCtrl = 0
-                    if CPU.memspace[CPU.pc] == PUSHCODE:
-                        PossAddress = CPU.getwordmem(CPU.pc+1)
-                        if CPU.pc <= PossAddress <= CPU.pc+12:
-                            StateCtrl=1
-                    if is_call:
-                        # We are doing a call, loop until PossAddress = CurrentAddress for the RET
-                        while(PossAddress != CPU.pc):
-                            CPU.evalpc(context)
-                        is_call=False
-                        StateCtrl=0
-                    else:
-                        if OriginalLine != int(CPU.FindWhatLine(CPU.pc).split(':')[1]):
-                            DissAsm(CPU.pc,1,CPU)
-                            break
-                        else:
-                            CPU.evalpc(context)                            
+            TestFlag = False
+            stoprange = 0
+            for ii in SymToValMap:
+                if CPU.memspace[CPU.pc] == ii[0]:
+                    TestFlag = True
+            if TestFlag:
+                CurInstSize = SymToValMap[CPU.memspace[CPU.pc]][2]
+                tempbreakpoints.append(CPU.pc + CurInstSize)
+                print("Setting Temporary Break Point at %04x" %
+                      (CPU.pc + CurInstSize))
+                cmdword = "c"  # This only works because cmdword == "c" is bellow this 'if block'
+            else:
+                print("PC Not resting on valid Opt Code. Can not single step.")
         if cmdword == "c":
             stoprange = 0
             DissAsm(CPU.pc, 1, CPU)
             AtLeastOne = 1
             while CPU.pc <= 0xffff:
                 if (CPU.pc in breakpoints or CPU.pc in tempbreakpoints) and AtLeastOne != 1:
-                    safeprint("Break Point %04x" % CPU.pc)
+                    print("Break Point %04x" % CPU.pc)
                     if ( CPU.pc in tempbreakpoints):
                         tempbreakpoints.remove(CPU.pc)
                     DissAsm(CPU.pc, 1, CPU)
                     break
                 AtLeastOne = 0
-                context.GlobalOptCnt += 1
-                CPU.evalpc(context)
+                GlobalOptCnt += 1
+                CPU.evalpc()
         if cmdword == "r":
             stoprange = 0
             if argcnt < 1:
-                CPU.pc = context.Entry
+                CPU.pc = Entry
                 CPU.mb[0xff] = 0
-                safeprint("PC set to %0x4" % context.Entry)
+                print("PC set to %0x4" % Entry)
                 CPU.flags = 0
             else:
                 CPU.pc = arglist[0]
-                safeprint("PC set to %04x" % arglist[0])
+                print("PC set to %04x" % arglist[0])
             CPU.flags = 0
             CPU.mb[0xff] = 0
             continue
         if cmdword == "g":
             stoprange = 0
             if argcnt < 1:
-                safeprint("Need to provide an address to go to.")
+                print("Need to provide an address to go to.")
                 cmdword = "Null"
                 continue
             CPU.pc = arglist[0]
-            safeprint("PC set to %04x" % arglist[0])
+            print("PC set to %04x" % arglist[0])
             continue
         if cmdword == "tb":
             if argcnt < 1:
@@ -3195,33 +2704,29 @@ def debugger(passline, context: AssemblerContext):
         if cmdword == "b":
             if argcnt < 1:
                 if len(breakpoints) == 0:
-                    safeprint("No break points set")
+                    print("No break points set")
                 else:
-                    safeprint("Break Points:")
+                    print("Break Points:")
                     for ii in breakpoints:
-                        safeprint("%04x" % int(ii))
+                        print("%04x" % int(ii))
                 if len(tempbreakpoints) != 0:
                     for ii in tempbreakpoints:
-                        safeprint("Temp Break:%04x" % ii)
+                        print("Temp Break:%04x" % ii)
             else:
                 for ii in arglist:
                     breakpoints.append(ii)
             continue
 
         if cmdword == "cb":
-            safeprint("Clearing Breakpoints")
+            print("Clearing Breakpoints")
             breakpoints = []
             continue
         if cmdword == "w":
             if argcnt < 1:
-                safeprint(context.watchwords)
+                print(watchwords)
             else:
                 for ii in arglist:
-                    context.watchwords.append(Str2Word(ii))
-        if cmdword == "cw":
-            safeprint("Clearing watchs")
-            context.watchwords.clear()
-
+                    watchwords.append(Str2Word(ii))
         if cmdword == "L":
             if argcnt < 1:
                 sys.stdout.write("Filename: ")
@@ -3229,15 +2734,15 @@ def debugger(passline, context: AssemblerContext):
             else:
                 ii=arglist[0]
             if os.path.exists(ii):
-                HoldGlobeLine = context.FileLineNum
-                oldfilename = context.ActiveFile
-                NewLocalID = str(context.UniqueLineNum)+ii
-                context.highaddress = \
-                    loadfile(ii, 0, CPU , LOCALFLAG, NewLocalID, context)
-                context.ActiveFile = oldfilename
-                context.FileLineNum = HoldGlobeLine
+                HoldGlobeLine = GlobalLineNum
+                GlobalLineNum = 0
+                oldfilename = ActiveFile
+                highaddress = loadfile(
+                    ii, 0, CPU, LOCALFLAG, str(UniqueLineNum)+ii)
+                ActiveFile = oldfilename
+                GlobalLineNum = HoldGlobeLine
             else:
-                safeprint("File: %s Not found" % ii)
+                print("File: %s Not found" % ii)
             continue
         if cmdword == "I":
             if argcnt < 1:
@@ -3246,93 +2751,54 @@ def debugger(passline, context: AssemblerContext):
             else:
                 ii=arglist[0]
             if os.path.exists(ii):
-                HoldGlobeLine = context.FileLineNum
-                oldfilename = context.ActiveFile
-                NewLocalID = str(context.UniqueLineNum)+ii
-                context.highaddress = \
-                    loadfile(ii, 0, CPU , GLOBALFLAG, NewLocalID, context)
-                context.ActiveFile = oldfilename
-                context.FileLineNum = HoldGlobeLine
+                HoldGlobeLine = GlobalLineNum
+                GlobalLineNum = 0
+                oldfilename = ActiveFile
+                highaddress = loadfile(
+                    ii, 0, CPU, GLOBALFLAG, str(GlobalOptCnt)+filename)
+                ActiveFile = oldfilename
+                GlobalLineNum = HoldGlobeLine
             else:
-                safeprint("File: %s Not found" % ii)
+                print("File: %s Not found" % ii)
             continue
         if cmdword == "q":
-            safeprint("End Debugging.")
+            print("End Debugging.")
             fd = sys.stdin.fileno()
             new = termios.tcgetattr(fd)
             new[3] = new[3] | termios.ECHO          # lflags
             try:
                 termios.tcsetattr(fd, termios.TCSADRAIN, new)
             except:
-                safeprint("TTY Error: On No Echo")
+                print("TTY Error: On No Echo")
             sys.exit(0)
         if cmdword == "h":
-            help_commands = [
-                ("b", "break points"),
-                ("c", "continue [ $1 steps ]"),
-                ("cb", "clear breakpoints"),
-                ("d", "DissAsm $1 $2"),
-                ("g","goto $1"),
-                ("h", "this test"),
-                ("hex", "Print hexdump $1[-$2]"),
-                ("l", "DissAsm from line"),
-                ("m", "modify address starting with $1"),
-                ("n", "Do one step"),
-                ("p", "print values $1"),
-                ("pa", "Print all or some labels [pattern,pattern]"),
-                ("ps", "Print HW Stack"),
-                ("spush","Push $1 to Stack"),
-                ("spop","POPNULL stack | $1 saves to Address"),
-                ("pa", "Print all G lables | pa $1 print lable value"),
-                ("q", "quit debugger"),
-                ("r", "reset"),
-                ("w", "watch $1"),
-                ("cw", "clear watches"),
-            ]
-            help_commands.sort(key=lambda x: x[0])
-            num_columns = 2
-            half = (len(help_commands) + 1) // num_columns
-            col1 = help_commands[:half]
-            col2 = help_commands[half:]
-
-            # Pad second column if needed
-            if len(col2) < len(col1):
-                col2.append(("", ""))
-
-            # Format and print
-            safeprint("Debug Mode Commands:")
-            for left, right in zip(col1, col2):
-                safeprint(f"{left[0]:<4} - {left[1]:<30}    {right[0]:<4} - {right[1]}")
+            print("""
+Debug Mode Commands:
+b - break points        c - continue [ $1 steps ]
+cb - clear breakpoints  d - DissAsm $1 $2
+h  - this test          hex-Print hexdump $1[-$2]
+l  - DissAsm from line  m  - modify address starting wiht $1
+n  - Do one step        p - print values $1
+ps - Print HW Stacl     q - quit debugger
+r  - reset              w - watch $1 """)
         continue
 
 def main():
-    global CPU,  DebugOut, current_context
+    global Debug, CPU, GlobeLabels, watchwords, DebugOut, SkipBlock
 
+    # Setup some test filelabels
+    DEFMEMSIZE = 0x10000
+    Remote = False
+    SkipBlock = 0
+    Debug = 0
+    CPU = microcpu(0, DEFMEMSIZE)
 
-
-    context = AssemblerContext()
-    current_context = context        # GLobal for the functions that are too deeep to pass context too.
-    CPU = microcpu(0, context.DEFMEMSIZE)
-    context.DEFMEMSIZE = 0x10000
-    context.address = 0
-    context.ActiveFile = "start.ld"
-    context.LocalID = "main"
-    context.LORGFLAG = 0
-    context.SkipBlock = 0
-    context.Remote = False
-    context.watchword = []
-
-#    context.FileLabels = WatchedDict()     # ⬅ replace dict with subclass
-#    context.FileLabels.watch("HeapID___1169heapmgr.ld")      # ⬅ optional: monitor a specific key
-#    context.FileLabels.watch("Var04")      # ⬅ optional: monitor a specific key
-
-
-    CPU.pc = 0
-
-
-
-
+    CPUCNT = 0
     ListOut = False
+    breakafter = []
+    CPU.pc = 0
+    watchwords = []
+    watchbytes = []
     skipone = False
     prpcmd = 0
     files = []
@@ -3354,15 +2820,15 @@ def main():
         if skipone:
             skipone = False
             if prpcmd == 1:
-                current_context.watchwords.append(Str2Word(arg))
-                safeprint("New Watchwords %s" % (current_context.watchwords))
+                watchwords.append(Str2Word(arg))
+                print("New Watchwords %s" % (watchwords))
             if prpcmd == 2:
                 breakafter.append(Str2Word(arg))
             if prpcmd == 3:
                firstcmd+=[arg]
         else:
             if arg == "-d":
-                context.Debug = context.Debug + 1
+                Debug = Debug + 1
             elif arg == "-l":
                 ListOut = True
             elif arg == "-g":
@@ -3370,7 +2836,7 @@ def main():
                 DebugOut=sys.stdout
             elif arg == "-c":
                 OptCodeFlag = True
-                safeprint("Optcode flag set")
+                print("Optcode flag set")
             elif arg == "-O":
                 BinaryOutFlag = True
             elif arg == "-w":
@@ -3385,9 +2851,9 @@ def main():
                 UseDebugger = True
                 DebugOut=sys.stdout
             elif arg == "-r":
-                context.Remote = not (context.Remote)
+                Remote = not (Remote)
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n-e 'command' pass to debugger")
+                print("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-r Enable Remote PDB\n-h help, this listing\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
@@ -3395,19 +2861,16 @@ def main():
 #    Entry = 0
     maxusedmem = 0
     for curfile in files:
-        NewLocalID = curfile
-        maxusedmem = \
-            loadfile(curfile, maxusedmem, CPU , GLOBALFLAG, NewLocalID, context)
-    context.GlobalOptCnt = 0
+        maxusedmem = loadfile(curfile, maxusedmem, CPU, GLOBALFLAG, 0)
+    GlobalOptCnt = 0
 
     if len(files) == 0:
         # if no files given then drop to debugger for machine lang tests.
         # Default to common.mc to provide base macros
-        maxusedmem = \
-            loadfile("common.mc", maxusedmem, CPU, GLOBALFLAG, "common.mc",  context)
+        maxusedmem = loadfile("common.mc", maxusedmem, CPU, GLOBALFLAG, 0)
         UseDebugger = True
-    if context.Remote:
-        safeprint("RDB running on port 4444, use nc localhost 4444")
+    if Remote:
+        print("RDB running on port 4444, use nc localhost 4444")
         rpdb.set_trace()
     if OptCodeFlag:
         # Write the 'compiled' code as a hex dump file.
@@ -3451,10 +2914,10 @@ def main():
             i += 1
         f.write("\n#End Memory:\n")
 
-        for gkey in context.GlobeLabels:
-            if gkey in context.FileLabels:
-                f.write("=%s %s\nG %s\n" % (gkey, context.FileLabels[gkey], gkey))
-        f.write("\n# Set Entry:\n. 0x%04x\n" % (context.Entry))
+        for gkey in GlobeLabels:
+            if gkey in FileLabels:
+                f.write("=%s %s\nG %s\n" % (gkey, FileLabels[gkey], gkey))
+        f.write("\n# Set Entry:\n. 0x%04x\n" % (Entry))
         f.close()
         sys.exit()
     if BinaryOutFlag:
@@ -3466,7 +2929,7 @@ def main():
                 break
             limiter -= 1
         filler = 0x100 - (limiter % 0x100)
-        safeprint("Writeing Binary Output from %s with spacer of %s" %
+        print("Writeing Binary Output from %s with spacer of %s" %
               (limiter, filler))
         for i in range(0, limiter):
             cval = ((CPU.memspace[i]) & 0xff)
@@ -3478,17 +2941,17 @@ def main():
     i = 0
     SP = -1
     RunMode = True
-    CPU.pc = context.Entry
-    if context.Debug > 1:
-        safeprint("Start of Run: Debug: %s: Watch: %s" % (context.Debug, context.watchwords))
+    CPU.pc = Entry
+    if Debug > 1:
+        print("Start of Run: Debug: %s: Watch: %s" % (Debug, watchwords))
     if ListOut:
-        safeprint("-------0--Max:%04x------" % (maxusedmem),file=DebugOut)
+        print("-------0--Max:%04x------" % (maxusedmem),file=DebugOut)
         DissAsm(0, maxusedmem, CPU)
     elif UseDebugger:
-        debugger(firstcmd,context)
+        debugger(FileLabels,firstcmd)
     else:
         while True:
-            CPU.evalpc(context)
+            CPU.evalpc()
 
 
 if __name__ == '__main__':
@@ -3499,6 +2962,6 @@ if __name__ == '__main__':
     try:
         termios.tcsetattr(fd, termios.TCSADRAIN, new)
     except:
-        safeprint("TTY Error: On No Echo")
+        print("TTY Error: On No Echo")
 
 #    cProfile.run('main()')

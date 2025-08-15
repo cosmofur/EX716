@@ -58,7 +58,7 @@ void handle_ctrl_c(int sig) {
 
     void enable_nonblocking_input() {
         struct termios ttystate;
-        tcgetattr(STDIN_FILENO, &ttystate);
+p        tcgetattr(STDIN_FILENO, &ttystate);
         ttystate.c_lflag &= ~(ICANON | ECHO);
         tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
     }
@@ -122,7 +122,7 @@ void SetZNFlags(int testval);
 void OverCarryTest(int a, int b, int c, int IsSubtraction);
 void handleCast(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData, int CPC);
 void handlePoll(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData);
-int16_t ZF,NF,CF,OF, PC; /* Global values */
+int16_t ZF,NF,CF,OF, PC, AdminFlag; /* Global values */
 char DiskName[17] = {'\0'}; /* Allocat 16 bytes for temporary filenames and null the first character */
 FILE* DiskHandle = NULL;
 int DiskPtr = 0;
@@ -608,6 +608,21 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     if ( R1 & 0x8) { OF=1; }
     Opsize=1;
     break;
+  case OptValADM:
+    if (PC <= 0x4000) {
+      AdminFlag = ~AdminFlag;
+    }
+    break;
+  case OptValSCLR:
+    HWStack[HWSPIDX]=0;
+    break;
+  case OptValSRPT:
+    if (HWStack[HWSPIDX] < (MAXHWSTACK - 1)) {
+      pushstack(HWStack[HWSPIDX],optcode);
+    } else if (HWStack[HWSPIDX] == (MAXHWSTACK - 1)) {
+      pushstack(-1,optcode);
+    }
+    break;
   default:
     printf("Unknown OptCode %d at address %04x\n",OptCode,PC);
     PC++;
@@ -731,27 +746,34 @@ void SetZNFlags(int testval) {
 }
 
 void OverCarryTest(int a, int b, int c, int IsSubtraction) {
-  OF=0;
-  CF=0;
-  if (IsSubtraction != 0) {
-    // Check for overflow in signed subtraction
-    if (((a & 0x8000) != 0 && (b & 0x8000) == 0 && (c & 0x8000) == 0) ||
-        ((a & 0x8000) == 0 && (b & 0x8000) != 0 && (c & 0x8000) != 0)) {
-      OF = 1; // Overflow occurred
-    }
+  int a16,b16,c16,sa,sb,sc;
+    
+  OF=0;    /* Globals */
+  CF=0;    /* Globals */
+  a16 = a & 0xffff;
+  b16 = b & 0xffff;
+  c16 = c & 0xffff;
+  sa=(a16 & 0x8000) != 0;
+  sb=(b16 & 0x8000) != 0;
+  sc=(c16 & 0x8000) != 0;
+  if(IsSubtraction) {
+    if (a < b ){ CF=1; }
+    else     { CF=0; }
+    if ((sa != sb) && (sc !=sa)) {
+        OF=1;
+      }
   } else {
-    // Check for overflow in signed addition
-    if (((a & 0x8000) != 0 && (b & 0x8000) != 0 && (c & 0x8000) == 0) ||
-        ((a & 0x8000) == 0 && (b & 0x8000) == 0 && (c & 0x8000) != 0)) {
-        OF = 1; // Overflow occurred
-    }
-  }
 
-  if (( c & 0xf0000) > 0 ) {
-    CF=1;
+    if ((unsigned int)a16 + (unsigned int)b16 > 0xFFFF) {
+      CF = 1;
+    } else {
+      CF = 0;
+    }
+    if ((sa == sb) && (sc != sa)) {
+      OF = 1;
+    }
   }
 }
-
 void handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HWStack, int CPC) {
   int16_t i,c,a, tos, sft;
   int i32, TSP;

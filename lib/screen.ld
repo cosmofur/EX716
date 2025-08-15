@@ -1,15 +1,26 @@
 ! SCREEN_DONE
+I common.mc
 L heapmgr.ld
 L string.ld
+L div.ld
 M SCREEN_DONE 1
+# When DEBUGSCREEN is set the instead of issueing ESC codes it will print <ESC> as text, preventing
+# the ANSI codes from messinging up a debuging session.
+M DEBUGSCREEN
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot
 G WinHideCursor G WinShowCursor G ColorReset G ColorFGSet G ColorBGSet
-G CSICODE G WinNorth G WinSouth G WinEast G WinWest
+G CSICODE G WinNorth G WinSouth G WinEast G WinWest G WinResetScrollRegion
+G WinScrollUp G WinScrollDown G WinScrollRegion
 :WinWidth 80
 :WinHeight 24
 :CSICODE
-#"<ESC>["$$0
+! DEBUGSCREEN
 $$27 "[" $$0
+ENDBLOCK
+? DEBUGSCREEN
+"<ESC>["$$0
+ENDBLOCK
+
 # Windows Clear
 :WinClear
 @PRTS CSICODE @PRT "0m"
@@ -46,18 +57,18 @@ $$27 "[" $$0
 # Winplot(X0,Y0,X1,Y1,StrPtr
 :WinPlot
 @PUSHRETURN
-@PUSHLOCALI StrPtr
-@PUSHLOCALI X0
-@PUSHLOCALI X1
-@PUSHLOCALI Y0
-@PUSHLOCALI Y1
-@PUSHLOCALI DX
-@PUSHLOCALI DY
-@PUSHLOCALI SX
-@PUSHLOCALI SY
-@PUSHLOCALI ERR
-@PUSHLOCALI E2
-@PUSHLOCALI Direct
+@LocalVar StrPtr 01
+@LocalVar X0 02
+@LocalVar X1 03
+@LocalVar Y0 04
+@LocalVar Y1 05
+@LocalVar DX 06
+@LocalVar DY 07
+@LocalVar SX 08
+@LocalVar SY 09
+@LocalVar ERR 10
+@LocalVar E2 11
+@LocalVar Direct 12
 @POPI StrPtr
 @POPI Y1 @POPI X1 @POPI Y0 @POPI X0
 #@PUSHI X0 @SHL @SHL @SHR @POPI X0
@@ -88,13 +99,13 @@ $$27 "[" $$0
          @POPNULL @PUSH 0 @JMP WPEndLoop # Break
       @ENDIF
    @ENDIF
-   
+
    @PUSHI ERR @SHL @POPI E2
    @PUSHI E2
    @IF_GE_V DY
       @POPNULL
       @IF_EQ_VV X0 X1
-         @POPNULL @PUSH 0 @JMP WPEndLoop # Break      
+         @POPNULL @PUSH 0 @JMP WPEndLoop # Break
       @ENDIF
       @PUSHI ERR @ADDI DY @POPI ERR
       @PUSHI X0 @ADDI SX @POPI X0
@@ -102,96 +113,127 @@ $$27 "[" $$0
    @PUSHI E2
    @IF_LE_V DX
       @IF_EQ_VV Y0 Y1
-         @POPNULL @PUSH 0 @JMP WPEndLoop # Break      
-      @ENDIF      
+         @POPNULL @PUSH 0 @JMP WPEndLoop # Break
+      @ENDIF
       @PUSHI ERR @ADDI DX @POPI ERR
       @PUSHI Y0 @ADDI SY @POPI Y0
    @ENDIF
    @POPNULL
    @SUB 1
-#   @PRT "4" @StackDump      
+#   @PRT "4" @StackDump
    :WPEndLoop
 @ENDWHILE
 @POPNULL
-@PUSHLOCALI Direct
-@PUSHLOCALI E2
-@PUSHLOCALI ERR
-@PUSHLOCALI SY
-@PUSHLOCALI SX
-@PUSHLOCALI DY
-@PUSHLOCALI DX
-@PUSHLOCALI Y1
-@PUSHLOCALI Y0
-@PUSHLOCALI X1
-@PUSHLOCALI X0
-@PUSHLOCALI StrPtr
+@RestoreVar 12
+@RestoreVar 11
+@RestoreVar 10
+@RestoreVar 09
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
-:WPReturn 0
-:StrPtr 0
-:X0 0 :X1 0
-:Y0 0 :Y1 0
-:DX 0 :DY 0
-:SX 0 :SY 0
-:ERR 0 :E2 0
-:Direct 0
-
-
 
 :WinResize
 #
 # Windows Resize queries Terminal for it's size
+! DEBUGSCREEN
+@LocalVar TIBChar 01
+@LocalVar CurVal 02
 @PRTLN "------------Initilizing....<Hit Enter>"
 @PRTS CSICODE @PRT "s"
 @PRTS CSICODE @PRT "999;999H"
 @PRTS CSICODE @PRT "6n"
-@READS TermInfoBuffer
 @MA2V TermInfoBuffer TIBIndex
+@TTYNOECHO
+# Drain until we see 'ESC'
+@PUSH 1
+@WHILE_NOTZERO
+   @READCNW TIBChar
+   @IF_EQ_AV "\e\0" TIBChar
+      @POPNULL
+      @PUSH 0
+   @ENDIF
+@ENDWHILE
+@POPNULL
+@MA2V 0 WinHeight
+@MA2V 0 WinWidth
+@MA2V 0 CurVal
+@PUSH 0
+@WHILE_ZERO
+   @POPNULL
+   @READC TIBChar
+   @PUSHI TIBChar @AND 0xff
+   @IF_INRANGE_AB "0\0" "9\0"
+      @SUB "0\0"                           # Ascii to val
+      @PUSHI CurVal @SHL @DUP @SHL @SHL @ADDS   # Mul Cur*10
+      @ADDS
+      @POPI CurVal
+      @PUSH 0
+   @ELSE
+      @IF_EQ_A ";\0"
+          @POPNULL
+          @MV2V CurVal WinHeight
+          @MA2V 0 CurVal
+          @PUSH 0
+      @ELSE
+          @IF_EQ_A "R\0"
+             @POPNULL
+             @MV2V CurVal WinWidth
+             @PUSH 1
+          @ELSE
+             @POPNULL
+             @PUSH 0
+          @ENDIF          
+      @ENDIF
+   @ENDIF
+@ENDWHILE
+@POPNULL
+@TTYECHO
 @PRTS CSICODE @PRT "u"
-# At this point TermInfoBuffer should be "[[HH;WWR"
-# Search for ';'
-@PUSH 0x3b @PUSH TermInfoBuffer @CALL strfndc
-@POPI TIBIndex
-@PUSHII TIBIndex
-@AND 0xff00       #Turn ';' into a null
-@POPII TIBIndex
-@PUSH TermInfoBuffer     # Start string where '[' was
-@ADD 1                   # Move one over.	
-@CALL stoi
-@POPI WinHeight
-# Search for 'R'
-@INCI TIBIndex	   # Skip past the previously inserted null
-@PUSH 0x52 @PUSHI TIBIndex @CALL strfndc
-@PUSHI TIBIndex   # Save the old Index or start of second number spot
-#@ADD 1
-@SWP
-@POPI TIBIndex
-@PUSHII TIBIndex
-@AND 0xff00      # Turn 'R' into a null
-@POPII TIBIndex
-# the old index should be at TOS
-@CALL stoi
-@POPI WinWidth
 # We need to make sure values are not too big. Our limit is 80x50
-@PUSHI WinWidth @CMP 80 @POPNULL
-@JLE NotTooWide
-   @MA2V 80 WinWidth
-:NotTooWide
-@PUSHI WinHeight @CMP 50 @POPNULL
-@JLE NotTooTall
-  @MA2V 50 WinHeight
-:NotTooTall
+@PUSHI WinWidth
+@IF_GT_A 80
+   @POPNULL
+   @PUSH 80
+@ENDIF
+@IF_LT_A 5
+   @POPNULL
+   @PUSH 5
+@ENDIF
+@POPI WinWidth
+@PUSHI WinHeight
+@IF_GT_A 50
+   @POPNULL
+   @PUSH 50
+@ENDIF
+@IF_LT_A 5
+   @POPNULL
+   @PUSH 5
+@ENDIF
+@POPI WinHeight
+@RestoreVar 02
+@RestoreVar 01
 @RET
+ENDBLOCK
+? DEBUGSCREEN
+  @PRT "DEBUG MODE:"
+  @RET
+ENDBLOCK
+
 :TermInfoBuffer "                                                      " $$0
 :TIBIndex 0
 #
 # Function ColorBGSet(Color)
-:ANSICSI $$27 "[" $$0
 :ColorID 0
 :ColorBGSet
 @PUSHRETURN
 @POPI ColorID
-#@PRTS ANSICSI @PRT "48;5;" @PRTI ColorID @PRT "m"
 @PRTS CSICODE  @PRT "48;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
@@ -199,13 +241,12 @@ $$27 "[" $$0
 :ColorFGSet
 @PUSHRETURN
 @POPI ColorID
-#@PRTS ANSICSI @PRT "38;5;" @PRTI ColorID @PRT "m"
 @PRTS CSICODE @PRT "38;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
 # Function ColorReset()
 :ColorReset
-@PRTS ANSICSI @PRT "0m"
+@PRTS CSICODE @PRT "0m"
 @RET
 ########################### Direction
 # Function WinNorth()
@@ -236,8 +277,66 @@ $$27 "[" $$0
 @PRTTOP @POPNULL
 @PRT "D"
 @RET
+#######################################
+# Function WinScrollRegion(TopRow,BottomRow)
+:WinScrollRegion
+@PUSHRETURN
+@LocalVar TopRow 01
+@LocalVar BottomRow 02
+#
+# Setting region CSICODE toprow# ; bottomrow# r
+   @POPI BottomRow
+   @POPI TopRow
+   #
+   @PRTS CSICODE
+   @PRTI TopRow
+   @PRT ";"
+   @PRTI BottomRow
+   @PRT "r"
+   @PUSH TopRow @PUSH 1 @CALL WinCursor
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+########################################
+# Function: WinScrollUp(NumLines)
+:WinScrollUp
+@PUSHRETURN
+@LocalVar NumLines 01
+    @POPI NumLines
+    @PRTS CSICODE
+    @PRTI NumLines
+    @PRT "S"
+@RestoreVar 01
+@POPRETURN
+@RET
+
+########################################
+# Function: WinResetScrollRegion
+:WinResetScrollRegion
+   @PRTS CSICODE
+   @PRT "r"
+@RET
+
+########################################
+# WinScrollDown(N): Scroll down N lines in current scroll region
+:WinScrollDown
+@PUSHRETURN
+@LocalVar NumLines 01
+   @POPI NumLines
+   @PRTS CSICODE
+   @PRTI NumLines
+   @PRT "T"
+@RestoreVar 01
+@POPRETURN
+@RET
+      
 
 
 
-ENDBLOCK
+
+M SIZESINCECOMMENT screen.ld
+@SIZESINCE
 :ENDSCREEN
+ENDBLOCK

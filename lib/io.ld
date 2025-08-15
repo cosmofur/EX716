@@ -2,7 +2,7 @@
 ! IOLIB_DONE
 L string.ld
 M IOLIB_DONE 1
-
+M SIZESINCECOMMENT io.ld
 G StrReadToChar
 @JMP SkipToEnd     # Protects from start of code running in library space
 #
@@ -44,4 +44,5 @@ G StrReadToChar
 :SRCStrPtr 0
 :SRCReadCH 0 0  # Note we reserver 4 bytes ReadCH because READC might return small strings
 :SkipToEnd
+@SIZESINCE
 ENDBLOCK

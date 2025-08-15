@@ -51,6 +51,9 @@
 #define OptValFCLR 50
 #define OptValFSAV 51
 #define OptValFLOD 52
+#define OptValADM 53
+#define OptValSCLR 54
+#define OptValSRPT 55
 char *optcnames[] = {
 "NOP",
 "PUSH",
@@ -103,6 +106,9 @@ char *optcnames[] = {
 "COMP2",
 "FCLR",
 "FSAV",
-"FLOD" };
+"FLOD",
+"ADM",
+"SCLR",
+"SRPT"};
 
 
