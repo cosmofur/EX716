@@ -5,6 +5,7 @@
 M TIMELIBSeen 1
 I common.mc
 L lmath.ld
+I lmath.md
 L mul.ld
 L div.ld
 :LVar01 0 0
@@ -223,28 +224,24 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Function TimeCalabrate():int OpsPerUnit
 #     Goal is to calculate NOS per 1/256th of second
 # We'll need some 32 bit numbers
-:LCount
-:LowWord 0
-:HighWord 0
-:LSum 0 0
-:LRemainder 0 0
 #
 :TimeCalabrate
 @PUSHRETURN
-=Index1 Var01
-=Sec256th Var02
-=StartTime Var03
-=TargetTime Var04
-#
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
+@LocalVar Index1 01
+@LocalVar Sec256th 02
+@LocalVar StartTime 03
+@LocalVar TargetTime 04
+@LocalVar LCount 05
+=LowWord LCount
+@LocalVar HighWord 06
+@LocalVar LSum 07
+@LocalVar LSumHV 08
+@LocalVar LRemainder 09
+@LocalVar LRemainderHV 10
 #
 @MA2V 0 HighWord
 @MA2V 0 LowWord
+@MA2V 1 ClockCalib
 #
 # GETTIME returns two 16b words, we only care about the lower one
 # BUT we have to worry about if the count is close to an overflow
@@ -253,15 +250,10 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @PUSH 1
 @LOOP
   @POPNULL
-  @GETTIME  
-  @POPNULL
-  @IF_UGT_A 0xfff7     # We're < 8 seconds from roll over, loop until roll over finished.     
+  @GETTIME @POPNULL
+  @IF_UGT_A 0xfffc     # We're < 3 seconds from roll over, loop until roll over finished.
      @POPNULL
-     @POPNULL         # Need to get rid of the Poll Cmd as well
      @PUSH 0
-  @ELSE
-     @SWP
-     @POPNULL         # Result is above Poll cmd
   @ENDIF
 @UNTIL_NOTZERO
 @POPI StartTime
@@ -275,61 +267,43 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
    @GETTIME @POPNULL
    @IF_EQ_V StartTime
       @POPNULL
-      @POPNULL
       @PUSH 0
    @ELSE
       @POPI StartTime
-      @POPNULL
       @PUSH 1
    @ENDIF
 @UNTIL_NOTZERO
 @POPNULL
 @PUSHI StartTime @ADD 1 @POPI TargetTime
-# Now we count, as this might be a large number, we use 32 bit math
-# BUT we don't want the overhead of the Libary, so we'll do it the old way.
-#
-# Also to avoid hidden instructions and time waste, we'll use the 'old' way
-# of looping, not using the Structured macros as they might change timeing.
-# Note I'm also avoiding Macro defined opcodes that are more than just code optcodes. 
-#
-@GETTIME @POPI LRemainder+2
-@POPI LRemainder
-:CountLoop                              # cycles
-   @ForIA2B Index1 0 1000
-      @NOP
-   @Next Index1
-   @GETTIME @POPNULL                    # 3 +  1
-   @SWP @POPNULL                        # 2
-   @CMPI TargetTime                     # 3
+@MA2V 0 LRemainder
+@MA2V 0 LRemainder+2
+
+#  Loop until time has moved forward one second.
+@PUSH 0
+@WHILE_LT_V TargetTime
    @POPNULL
-   @JMPZ EndCountLoop                   # 3
-   #
-   @PUSHI LowWord                       # 3
-   @ADD 1                               # 3
-   @POPI LowWord                        # 3
-   @JMPC CarryTooHigh                   # 3
-   @JMP CountLoop
-:CarryTooHigh
-   @PUSHI HighWord                      # 1 in (0xffff - sub(above time) 3
-   @ADD 1                               # 3
-   @POPI HighWord                       # 3
-   @JMP CountLoop                       # 3
-:EndCountLoop
+   @IF_EQ_AV 0xffff LRemainder     # Lower Word of counter
+      @MA2V 0 LRemainder
+      @INCI LRemainder+2           # Add one to upper 32 bit count
+   @ELSE
+      @INCI LRemainder
+   @ENDIF
+   @GETTIME @POPNULL
+@ENDWHILE
 @POPNULL
-#                          Total Cycles = Count*22+(Count/22)*12)
-# LCount is same as combined Low and HighWords
-@GETTIME @POPI LRemainder+2
-@POPI LRemainder
+@PUSHI LRemainder                 # Most cases this will be < 64K
 #
-# This should be a 16b number for all but GHZ computers.
-@LONG2INTVV LCount ClockCalib
-#
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+:Break01
+@RestoreVar 10
+@RestoreVar 09
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 ################################################################
@@ -338,34 +312,32 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Sleep(seconds) Sleep in seconds
 :Sleep
 @PUSHRETURN
-=Index1 Var01
-=Count Var02
-=Index2 Var03
-=Limit Var04
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
+@LocalVar Count 01
+@LocalVar Limit 02
 #
 @POPI Count
 # Check if we need to calabrate
 @IF_EQ_AV 0 ClockCalib
    @PRT "Clock not yet Calabrated....Please wait."
    @CALL TimeCalabrate
-   @POPNULL
+   @PRT "Cal: " @PRTHEXTOP @POPNULL   
 @ENDIF
 #
-@ForIA2V Index1 0 Count
-   @ForIA2V Index2 0 ClockCalib
-      @ForIA2B Limit 0 1000
-        @NOP
-      @Next Limit
-   @Next Index2
-@Next Index1
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@GETTIME
+@POPNULL   # Get rid of the high word for now
+@ADDI Count
+@POPI Limit     # Note if current time is > 0xffff - Count, then it will wrap around to smaller number.
+#
+# Do not try to single step here, logic only works if time will eventuly be exactly Limit.
+# Single stepsing or debugging will make the count be too slow.
+@GETTIME @POPNULL
+@WHILE_NEQ_V Limit
+   @POPNULL
+   @GETTIME @POPNULL
+@ENDWHILE
+@POPNULL
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 ##################################################################
@@ -395,8 +367,6 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @POPLOCAL Var01
 @POPRETURN
 @RET
-
-
-
-
-
+M SIZESINCECOMMENT timetool.ld
+@SIZESINCE
+ENDBLOCK

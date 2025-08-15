@@ -4,6 +4,11 @@ MF COMMON_SEEN 1
 # Values which make up opcodes
 #
 # The '!' code marks a block to skip if already defined.
+:NewHereMem
+G SizeHereVar
+G NewHereMem
+G OldHereVar
+=OldHereVar NewHereMem
 :Var01 0
 :Var02 0
 :Var03 0
@@ -111,7 +116,8 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =CastWriteSectorI 26
 =CastSyncDisk 23
 =CastPrint32S 33
-=CastTapeWriteI 34
+=CastTapeWrite 34
+=CastTapeWriteI 35
 =PollReadIntI 1
 =PollReadStrI 2
 =PollReadCharI 3
@@ -212,11 +218,7 @@ M XORAV @PUSH %1 @PUSHI %2 @XORS
 
 
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
-M MC2M @PUSH %1 @POPI %2   # Another way to say it, move Constant A to Variable
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
-M MM2M @PUSHI %1 @POPI %2  # Another way to say it, Move Variable to Variable
-M MMI2M @PUSHII %1 @POPI %2
-M MM2IM @PUSHI %1 @POPII %2
 M JMPNZ @JMPZ $_%01 @JMP %1 :_%01        # A != B
 M JMPNZI @JMPZ $_%01 @JMPI %1 :_%0
 M JMPZI @JMPNZ $_%01 @JMPI %1 :_%0
@@ -252,8 +254,6 @@ M PRTUI @PUSH CastPrintIntUI @CAST %1 @POPNULL
 M PRTHEXI @PUSH CastPrintHexI @CAST %1 @POPNULL
 # Print value Pointer is pointing at in Hex
 M PRTHEXII @PUSH CastPrintHexII @CAST %1 @POPNULL
-# Print value of variable but surrounded with spaces for readability
-M PRTIC @PRT " " @PUSH CastPrintIntI @CAST %1 @POPNULL @PRT " "
 # Print string starting at address
 M PRTSTR @PUSH CastPrintStr @CAST %1 @POPNULL
 # Print string start at variable
@@ -350,8 +350,9 @@ M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
 M DISKREADI @PUSH PollReadSectorI @POLL %1 @POPNULL
 # We use the same logic for both Tape and Disk Select.
 M TAPESEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M TAPESELI @PUSHI %1 @POPI _%0_LOC @PUSH CastSelectDisk @CAST :_%0_LOC 0 @POPNULL
-M TAPEWRITE @PUSH CastTapeWriteI @PUSHI %1 @POPI _%0_LOC @CAST :_%0_LOC 0 @POPNULL
+M TAPESELI @PUSH CastSelectDiskI @CAST %1 @POPNULL
+M TAPEWRITE @PUSH CastTapeWrite @CAST %1 @POPNULL
+M TAPEWRITEI @PUSH CastTapeWriteI @CAST %1 @POPNULL
 M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI _%0_LOC @POLL :_%0_LOC 0 @POPNULL
 M TAPEREAD @PUSH PollReadTapeI @POLL %1 0 @POPNULL
 M TAPEREWIND @PUSH PollRewindTape @POLL 0 @POPNULL
@@ -359,6 +360,13 @@ M TAPEREWIND @PUSH PollRewindTape @POLL 0 @POPNULL
 
 # A way to enable/disable debugging in running code without requireing the -g option.
 M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
+# Size Reporting Macro
+M SIZESINCE :NewHereMem \
+             =SizeHereVar NewHereMem-OldHereVar \
+             =OldHereVar NewHereMem \
+             P StartAddress {SIZESINCECOMMENT} :Mem: {SizeHereVar} Bytes
+M SIZESINCECOMMENT common.mc             
+@SIZESINCE
 #
 # FOR NEXT WHILE and CASE logic structures can be found in this related file.
 I structure.asm

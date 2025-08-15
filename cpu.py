@@ -101,59 +101,45 @@ if sys.platform == 'win32':
             return None
 
 elif sys.platform.startswith('linux'):
-    import termios
-    import fcntl
-    import os
-
     def get_key():
+        import sys, termios, fcntl, os, select
+        
         fd = sys.stdin.fileno()
+        
+        # If queue already has data, return one char
+        if CPU.char_queue:
+            return CPU.char_queue.pop(0)
 
-        # Save the current terminal settings
+        # Save current settings
         old_attr = termios.tcgetattr(fd)
         old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
 
         try:
-            # Set the terminal to non-blocking mode
+            # Set raw input, non-blocking
             new_attr = termios.tcgetattr(fd)
-            new_attr[3] = new_attr[3] & ~termios.ICANON & ~termios.ECHO
+            new_attr[3] = new_attr[3] & ~(termios.ICANON | termios.ECHO)
             termios.tcsetattr(fd, termios.TCSANOW, new_attr)
-
-            # Set the file descriptor to non-blocking mode
             fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
 
-            def lread_char(timeout=0.05):
-                rlist, _, _ = select.select([fd], [], [], timeout)
-                return sys.stdin.read(1) if rlist else ''
-
-            ch1 = lread_char()
-            if not ch1:
+            # Check if input available
+            rlist, _, _ = select.select([fd], [], [], 0.01)
+            if not rlist:
                 return None
-            if ch1 != '\x1b':  # Escape
-                return ord(ch1)
-            ch2 = read_char()
 
-            if ch2 == '':
-                return 0x001b      # ESC alone
-            ch3 = read_char()
-            if ch2 == '[':
-                if ch3 == 'A': return 0x1048  # UP
-                if ch3 == 'B': return 0x1050  # Down
-                if ch3 == 'C': return 0x104D  # Right
-                if ch3 == 'D': return 0x104B  # Left
-                if ch3 == 'H': return 0x147   # Home
-                if ch3 == 'F': return 0x14F   # End
-            elif ch2 == 'O':                  # Xterm style F1-F4
-                if ch3 == 'P': return 0x13b   # F1
-                if ch3 == 'Q': return 0x13b   # F2
-                if ch3 == 'R': return 0x13b   # F3
-                if ch3 == 'S': return 0x13b   # F4
+            # Read as much as available (up to 128 bytes)
+            try:
+                data = os.read(fd, 128)
+                CPU.char_queue = list(data.decode(errors="replace"))
+            except BlockingIOError:
+                return None
 
-            return 0x1fff
         finally:
-            # Restore the terminal settings and file descriptor flags
+            # Restore settings
             termios.tcsetattr(fd, termios.TCSAFLUSH, old_attr)
             fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
 
+            # Return first character
+        return CPU.char_queue.pop(0) if CPU.char_queue else None
 else:
     raise NotImplementedError("Unsupported platform")
 
@@ -349,37 +335,47 @@ def validatestr(instr, typecode):
 
 LocVarHist = {}
 
-def UpdateVarHistory(varname,value,address):
-    global LocVarHist
-    if varname in LocVarHist:
-        oldvallist=LocVarHist[varname]
-        oldvallist.append((value,address))
-    else:
-        newvallist=[(value,address)]
-        LocVarHist[varname]=newvallist
 
-def FindHistoricVal(varname, testaddress,  context: AssemblerContext):
-    global LocVarHist
 
-    matchkeys=[]
-    bestmatch=0xffff
-    if varname in LocVarHist:           # exact match?
-        matchkeys.append(LocVarHist[varname])
-        for item_name in LocVarHist.keys():
-            if item_name.startswith(varname+"_"):
-                matchkeys.append(LocVarHist[item_name])
-    if len(matchkeys) == 0:
-        print("Error: %s not recognized." % varname)
+def UpdateVarHistory(varname, value, address):
+    global LocVarHist
+    LocVarHist.setdefault(varname, []).append((int(value), int(address)))
+
+
+def FindHistoricVal(varname, testaddress, context=None):
+    global LocVarHist
+    testaddress = int(testaddress)
+
+    # 1) Exact match wins.
+    candidates = LocVarHist.get(varname)
+    if candidates is None:
+        # 2) No exact match: gather all prefix matches: varname + "_"
+        prefix = f"{varname}_"
+        candidates = []
+        for k, vlist in LocVarHist.items():
+            if k.startswith(prefix):
+                candidates.extend(vlist)
+
+    if not candidates:
+        print(f"Error: {varname} not recognized.")
         return 0
-    # Flatten the matches into one list
-    flatten = [ item for sublist in matchkeys for item in sublist]
-    sortedlist = sorted(flatten, key=lambda x: x[1], reverse=True)
-    for item in sortedlist:        # For local variables, we expect them to be defined before they are used. Not always true.
-        if int(item[1]) <= testaddress:
-            return int(item[0])
-    if len(item) > 0:     # This is for when item is defined in later memory, likely the main file.
-        return int(item[0])
-    return testaddress
+
+    # Normalize to ints, tolerate unsorted history.
+    # candidates: list[(value,address)]
+    eligible = [(int(v), int(a)) for (v, a) in candidates if int(a) <= testaddress]
+    if eligible:
+        # pick the one with the highest address <= testaddress
+        v, a = max(eligible, key=lambda t: t[1])
+        return v
+
+    # No past entry; pick the closest future entry (> testaddress), if any
+    future = [(int(v), int(a)) for (v, a) in candidates if int(a) > testaddress]
+    if future:
+        v, a = min(future, key=lambda t: t[1])
+        return v
+
+    # Nothing matched; define your fallback
+    return 0
 
 def FindLabelMatch(varname, context: AssemblerContext):
     varname=str(varname)
@@ -538,6 +534,7 @@ class microcpu:
         self.simtime = False
         self.clocksec = 1000
         self.Last_Filename_used = None
+        self.char_queue = ""
 
 
     def insertbyte(self, location, value):
@@ -1354,9 +1351,23 @@ class microcpu:
                         self.raiseerror(
                             "041 Insufficent space for Message Address at %d, optPOLL" % (i))
         if cmd == PollReadCharI:
-            c = readchar.readkey()
-            if not (c):
-                c = ""
+            if not self.char_queue:
+                if sys.stdin.isatty():
+                    try:
+                        c = readchar.readkey()
+                    except:
+                        c = ""
+                else:
+                    c = sys.stdin.read(1)
+                if not c:
+                    c = ""
+                elif len(c) > 1:
+                    self.char_queue = c[1:]
+                    c=c[0]
+            else:
+                c=self.char_queue[0]
+                self.char_queue=self.char_queue[1:]
+                    
             self.putwordat(address, ord(c))
         if cmd == PollSetNoEcho:
             fd = sys.stdin.fileno()
@@ -1377,10 +1388,27 @@ class microcpu:
             except:
                 safeprint("TTY Error: On Echo",file=DebugOut)
         if cmd == PollReadCINoWait:
-            c='\0'
-            while True:
-                c=get_key()
-            self.putwordat(address,ord(c))
+            if self.char_queue:
+                 c=self.char_queue[0]
+                 self.char_queue = self.char_queue[1:]
+            else:
+                k = get_key()
+                if k is None:
+                    c = ""
+                elif isinstance(k, str):
+                    if len(k) > 1:
+                        c = k[0]
+                        self.char_queue = k[1:]
+                    else:
+                        c = k
+                elif isinstance(k, int):
+                    try:
+                        c = chr(k & 0xFF)
+                    except ValueError:
+                        c = ""  # fallback if int not valid ASCII
+                else:
+                    c = ""                    
+            self.putwordat(address, ord(c) if c else 0 )
         if current_context == None:
             safeprint("CPU Stopped")
             return
@@ -2188,7 +2216,7 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
     if ((instr.startswith('"') and instr.endswith('"')) or (instr.startswith("'") and instr.endswith("'"))) and not JUSTRESULT:
         context = instr[1:-1]
         for c in context:
-            CPU.memspace[curaddress] = ord(c)
+            CPU.memspace[curaddress] = (int(ord(c)) & 0xff)
             curaddress += 1
         return curaddress
     elif instr.startswith('"') and JUSTRESULT:
@@ -2213,6 +2241,7 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
             safeprint("Unexpected mix of strings and numbers.: %s" % (mod[1:]), file=DebugOut)
             return 0
         mod_val = base_mod[1]
+#        print("Modifying Base: %s: %04x with %4x = %04x" % (instr,result, mod_val, result+sign*mod_val))
         result += sign * mod_val
 
     if JUSTRESULT:
@@ -2301,6 +2330,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     line = ReplaceMacVars(line, filename, context)
                     if context.Debug > 1:
                         safeprint("Expanded Macro: %s(%40s)" % (line,context.MacroLine),file=DebugOut)
+                    context.MacroLine.strip()
                     context.varbaseNext = context.varbaseSP
                     context.varbaseSP -= 1 if context.varbaseSP > 0 else 0
                     if PosParams == "ENDMACENDMAC":
@@ -2561,7 +2591,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                                 nline=f"{nline} {PosVar} "
                             else:
                                 if (word[1:-1] in context.MacroData):
-                                    nline=f"{nline} {word[1:-1]}=\"{context.MacroData[word[1:-1]]}\""
+                                    nline=f"{nline}{context.MacroData[word[1:-1]]}"
                                 else:
                                     nline=f"{nline} {word} "
                         else:
@@ -2748,14 +2778,15 @@ def debugger(passline, context: AssemblerContext):
         while thisword != "":
             rawlist.append(thisword)
             if "A" <= thisword[0] <= "z":
-                if thisword in context.FileLabels:
+                if thisword in context.FileLabels:      # Exact match (global) only
                     varval = FindHistoricVal(thisword, CPU.pc, context)
                     arglist.append(varval)
                     argcnt += 1
                     safeprint("%s found: %04x" % (thisword, varval))
                 else:
-                    varval = FindLabelMatch(thisword, context)
+                    varval = FindLabelMatch(thisword, context)      # Partial Matches (local vars)
                     if varval != None:
+                        varval = FindHistoricVal(thisword, CPU.pc, context)
                         arglist.append(varval)
                         argcnt += 1
             else:

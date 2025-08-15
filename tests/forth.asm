@@ -39,12 +39,13 @@ L div.ld
 :RB_LATEST 0
 :DebugFLAG 0
 =HERE DictPtr     # Alias as HERE is more standard.
+=header_size 6
 = SoftHeapSize 1000
 = InputBufferSize 255
 = RP0Size 128
 = SP0Size 128
 = LP0Size 128
-= CodeBufferSize 1000
+= CodeBufferSize 20000
 = IFTAG 1
 = ELSETAG 2
 = THENTAG 3
@@ -163,6 +164,10 @@ M DEFPRELOAD \
 M FNEXT @JMP next
 # . ( -- )        Print integer at top of stack
 #P Start of First DEFWORD {LINK}
+
+M SIZESINCECOMMENT DEFWORD_Start
+@SIZESINCE
+
 @DEFWORD "." PRTDOT 0
    @FPOP
    @POPI TV
@@ -448,8 +453,14 @@ M FNEXT @JMP next
    @PUSHI STATE
    @FPUSH
 @FNEXT
+#
 @DEFWORD ">in" TOINVAR 0
    @PUSHI TOIN
+   @FPUSH
+@FNEXT
+#
+@DEFWORD "BL" BLANKFUNC 0
+   @PUSH "0 \"
    @FPUSH
 @FNEXT
 #
@@ -1420,7 +1431,9 @@ M FNEXT @JMP next
 # Execute is also for 'meta' programming. It runs the 'Code' portion of any word on SP stack
 @DEFWORD "execute" EXECUTEFUNC 0
    @FPOP
-   @FCALLS
+   @DUP
+   @POPI IP
+   @CALL execute
 @FNEXT
 #
 # Postpone is a way to define words that get compiled in only when condiitons are met.
@@ -1454,7 +1467,20 @@ M FNEXT @JMP next
    @ENDIF
 @FNEXT
 
+@DEFWORD ":noname" NONAMEFUNC F_IMMEDIATE
 
+    # Use this function sparingly as it never frees up memory if reused.
+    @PUSHI DictPtr
+    @ADD header_size
+    @FPUSH                          # Save XT of new temp work to stack
+
+    @PUSH 0 @CALL Compile           # Dummy link field (unlinked)
+    @PUSH 0 @CALL Compile           # Name length = 0 (anonymous)
+    @PUSH 0 @CALL Compile           # Flags = 0 (if applicable)
+    @PUSH DCol @CALL Compile
+
+    @MA2V -1 STATE                   # Enter compile mode
+ @FNEXT
 
 #
 #
@@ -1748,6 +1774,8 @@ M FNEXT @JMP next
 @FPUSH
 @FNEXT
 :ENDOFBUILTINS
+M SIZESINCECOMMENT DEFWORD_End
+@SIZESINCE
 ####################
 # Function DCol
 # DCol is the execution loop used for colon defined words.
@@ -1853,7 +1881,8 @@ M FNEXT @JMP next
 
 
 
-
+M SIZESINCECOMMENT StartMain
+@SIZESINCE
 
 :Main . Main
 :start
@@ -2332,6 +2361,7 @@ M FNEXT @JMP next
           @POPNULL
           @PUSHII WordVal @AND 0xff
           @IF_EQ_A "-\0"
+             @PRTLN "DEBUG: Found -"
              @POPNULL
              @PUSH 0
           @ELSE
@@ -3181,5 +3211,7 @@ Word_AGAIN_COMPILE
 0
 @PreCodeVal
 0
+M SIZESINCECOMMENT forth.asm
+@SIZESINCE
 :ENDOFCODE
 . Main

@@ -4,6 +4,7 @@ L softstack.ld
 L lmath.ld
 L mul.ld
 M RANDOM_SEEN 1
+M SIZESINCECOMMENT random.ld
 G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 
 :Seed
@@ -47,6 +48,17 @@ G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 @PUSHRETURN
 @POPI Seed32A
 @PUSH 0 @POPI Seed32A+2
+@CALL rnd16
+@WHILE_ZERO
+   @POPNULL
+   @PUSHI Seed32A+2
+   @PUSHI Seed32A
+   @OR 101
+   @POPI Seed32A+2
+   @POPI Seed32A
+   @CALL rnd16
+@ENDWHILE
+@POPNULL
 @POPRETURN
 @RET
 #
@@ -154,3 +166,5 @@ G rnd16 G rndint G rndsetseed G frnd16 G frndint G xorshift16
 @RET
 :S1Seed 0
 :SModified 0
+@SIZESINCE
+ENDBLOCK

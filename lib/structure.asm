@@ -76,6 +76,10 @@ M IF_EQ_S \
   @JMPZ _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
+M IF_NEQ_S \
+  @CMPS \
+  %S \
+  @JMPZ _%V_ENDIF
 # IF_EQ_A (A) = True if A == TOS
 M IF_EQ_A \
   @PUSH %1 \
@@ -83,6 +87,11 @@ M IF_EQ_A \
   @JMPZ _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
+M IF_NEQ_A \
+  @PUSH %1 \
+  %S \
+  @CMPS @POPNULL \
+  @JMPZ _%V_ENDIF
 # IF_EQ_V (V) = True if [V] == TOS
 M IF_EQ_V \
   @PUSHI %1 \
@@ -90,13 +99,23 @@ M IF_EQ_V \
   @JMPZ _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
+M IF_NEQ_V \
+  @PUSHI %1 \
+  %S \
+  @CMPS @POPNULL \
+  @JMPZ _%V_ENDIF
 # If V1 == V2 True
 M IF_EQ_VV \
   @PUSHI %1 @PUSHI %2 \
   @CMPS @POPNULL @POPNULL \
   @JMPZ _%0_True \
   %S @JMP _%V_ENDIF \
-  :_%0_True  
+  :_%0_True
+M IF_NEQ_VV \
+  @PUSHI %1 @PUSHI %2 \
+  %S \
+  @CMPS @POPNULL @POPNULL \
+  @JMPZ _%V_ENDIF \
 # If A == V1 True
 M IF_EQ_VA \
   @PUSHI %1 @PUSH %2 \
@@ -104,6 +123,11 @@ M IF_EQ_VA \
   @JMPZ _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
+M IF_NEQ_VA \
+  @PUSHI %1 @PUSH %2 \
+  %S \
+  @CMPS @POPNULL @POPNULL \
+  @JMPZ _%V_ENDIF
 # Reverse for readability
 M IF_EQ_AV \
   @PUSH %1 @PUSHI %2 \
@@ -111,6 +135,11 @@ M IF_EQ_AV \
   @JMPZ _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
+M IF_NEQ_AV \
+  @PUSH %1 @PUSHI %2 \
+  %S \
+  @CMPS @POPNULL @POPNULL \
+  @JMPZ _%V_ENDIF
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
    %S \

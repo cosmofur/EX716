@@ -1,3 +1,5 @@
+! SOFTSTACK_DONE
+M SOFTSTACK_DONE 1
 # Provides and Alternative small software stack
 
 # Used mostly so some simple low depth recursion can avoid reusing fixed storage
@@ -51,8 +53,6 @@
 # stacks are stored in memory, and offers a way to manage multiple stacks. 
 #
 #  SetSSStack(TopAddress,BottomAddress)
-! SOFTSTACK_DONE
-M SOFTSTACK_DONE 1
 @JMP SkipSoftStack
 #
 # Global key Soft Stack Values
@@ -214,4 +214,6 @@ M RestoreSSStackI @PUSHI %1 @CALL RestoreSSStack
 
 
 :SkipSoftStack
+M SIZESINCECOMMENT softstack.ld
+@SIZESINCE
 ENDBLOCK
