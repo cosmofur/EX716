@@ -10,24 +10,24 @@ concepts behind the Assembler and as an example, we'll use it not to
 do Assembly Language, but something more like Machine Language and
 build up from there.
 
-1) The core purpose of the Assembler is to turn instructions into code
+*1) The core purpose of the Assembler is to turn instructions into code
 and data, which as laid out in the memory of the CPU to hopefully do
 something useful when we execute it.
 
-2) The Assembler has very limited knowledge about the CPU and what it
+*2) The Assembler has very limited knowledge about the CPU and what it
 can do, so it trusts you the programmer to tell it what to do and will
 do it blindly. Or in other words, the Assembler will do what you TELL
 it to do, but that may not be the same as what you WANT it to do.
 
-3) The goal, in as much as it has one, of the Assembler is to put
+*3) The goal, in as much as it has one, of the Assembler is to put
 numbers into memory. Its most core logic loop is:
-     a) Has the user given me a valid number? If not can I turn it
+     1) Has the user given me a valid number? If not can I turn it
      into a number?
-     b) Is it a byte, word or perhaps something bigger?
-     c) Save it into memory at the current insertion point.
-     d) Move the insertion point forward by the number of bytes the
+     2) Is it a byte, word or perhaps something bigger?
+     3) Save it into memory at the current insertion point.
+     4) Move the insertion point forward by the number of bytes the
      data took up.
-     e) Repeat until you've run out of input.
+     5) Repeat until you've run out of input.
 
 Everything else the Assembler does is in service of this loop.
 That part of line 'a' that said 'If not can I turn it into a number?'
@@ -44,6 +44,7 @@ machine code.
 There are a bit over 50 machine code instructions the CPU can
 understand, but we'll work with a very limited subset for now.
 
+```
 Byte  Length  Common Name  Description
 0x01     3    PUSH         Push the direct parameter value onto the stack
 0x03     3    PUSHI        Pushes value stored at address to stack
@@ -55,6 +56,7 @@ Byte  Length  Common Name  Description
 0x24     3    JMP          Absolute jump to address
 0x25     3    CAST         Write output to device
 0x26     3    POLL         Read input from device
+```
 
 .ORG is used to move the insert point to a specific memory address.
 It also tells the emulator what address will be the start of the
@@ -66,17 +68,20 @@ halt and enabling I/O-based debugging. They receive a device code from
 the top of the stack and an argument for address or data.
 
 This is a limited subset of the device control codes for our test.
-
+```
 POLL table:
 Code   TOS      Argument
  0x1   Address  Allows user to enter +/- 16-bit decimal number
  0x2   Address  Reads line of raw text to Address
+```
 
+```
 CAST table:
  0x1   Address  Print null-terminated string at Address
  0x4   Address  Print signed number at Address
  0x63  —        Ends the program
  0x64  —        Drops to Debugger
+```
 
 Now we need to talk about numbers and their lengths.
 
@@ -92,29 +97,29 @@ the high byte is 0x27, so it appears 'backward' in memory—this is
 natural to the CPU but may look strange to us.
 
 You can enter 16-bit numbers in any of these formats:
-
+```
  10000         Decimal
  0x2710        Hexadecimal
  0o23420       Octal
  0b10011100010000  Binary
-
+```
 If you want to store an 8-bit value instead of 16-bit, prefix it with `$$`:
-
+```
  $$0x08      Backspace character
  $$0x32      ASCII code for '2'
  $$127       Largest positive signed value for a byte
  $$-3        Negative byte
-
+```
 32-bit values can be entered with `$$$`, but support is limited:
-
+```
  $$$2500000  Two million five hundred thousand
-
+```
 Strings are enclosed in double quotes:
-
+```
  "This is hello world"
  "This one is correctly null terminated\0"
  "This one \"has quotes inside\" the string"
-
+```
 ##################################################################
 Using just the above, we will write our first program.
 
@@ -127,7 +132,7 @@ Memory layout:
  4) Ending condition jumps to cleanup code
 
 
-
+```
 Address    OptCode           Note
 .ORG 0x64                    Index
 .ORG 0x66   "\n\0"           String for Linefeed
@@ -155,39 +160,45 @@ Address    OptCode           Note
            $$27   0x27       JMP 0x106
            $$01   63         PUSH 63
            $$2a   x64       CAST 0x64 exist shell
+```
 
 A hex dump of 0x100 to 0x132 should look like
+```
       00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f  ASCII
 0100: 01 00 00 08 64 00 03 64 00 01 0a 00 0c 06 06 23  ____d__d_______#
 0110: 2d 01 01 04 00 2a 64 00 01 01 00 2a 66 00 06 06  -____*d____*f___
 0120: 01 01 00 03 64 00 10 08 64 00 27 06 01 01 63 00  ____d___d_'___c_
 0130: 2a 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  *_______________
-
+```
 The way we can enter this in EX716 is to start cpu.py in the debug
 mode and use the debuggers memory editing tools.
 
 So start cpu with
-
+```
    cpu.py -g
 0000> >>                # This is the default prompt for the debugger.
-
+```
 We first want to add the Line Feed to memory address 0x66
 
 We do that with
+```
 0000> >>m 0x66 0x0a
 0000> >>hex 0x60
 Range is 0060 to 0070
       00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f  ASCII
 0060: 00 00 00 00 00 00 0a 00 00 00 00 00 00 00 00 00  ________________
+```
 
 Next we start to load the code, we'll use the interactive input mode
 of the 'm' command.
+```
 0000> >>m 0x100
+```
 Key: ### is decimal 0-9 Prepend 0x, 0o or 0b for hex, octal or binary format
 By default 16 bit integer, prepend $$ for 8 bit bytes or $$$ for 32 bit words
 8 bit ascii codes can be entered using double quotes
 Use '.' on line byself to exit back to main mode.
-
+```
 0100[b00,b00]:
 0100[b00,b00]: $$01
 $$01
@@ -262,21 +273,21 @@ $$0x2a
 0131[b00,b00]: .
 
 0000> >>
-
+```
 
 
 Once entered via debugger's memory input mode (`m 0x100`), you can
 verify with:
-
+```
  >> hex 0x100 0x31
-
+```
 If the dump matches expected bytes, run with:
-
+```
  >> r 0x100
  >> c
-
+```
 Expected output:
-
+```
  0
  1
  2
@@ -285,7 +296,7 @@ Expected output:
  9
 
 END of Run: (360 Opts)
-
+```
 
 
 ###############################################################
@@ -306,7 +317,7 @@ the full macro library yet.
 ---
 
 Put the following into a file named: example1.asm
-
+```
 #---------------------------------------------------------------
 # Define minimal opcode macros — just symbolic names for now.
 # These tell the assembler to treat them as 8-bit opcodes.
@@ -383,7 +394,7 @@ M POLL    $$0x2B
 :EndLoop
   @PUSH CASTEND
   @CAST 0
-
+```
 
 You now understand why Assembly is more productive than raw machine
 code. Our next lesson introduces macros for readability and control
