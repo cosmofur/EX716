@@ -108,7 +108,7 @@ logic and higher abstraction.
 ### 1A. Core adjactent macros.
 
 These macros operate like core instructions but use a single variable (indirect) as their source and/or destination. They follow the I suffix pattern from the core set but are implemented as compound macros. These are heavily used in loop control and common arithmetic tasks.
-
+| Instruction | Type Opcode | Description                        |
 |-------------|-------------|------------------------------------|
 | @INCI       | Compound    | Increment variable by 1            |
 | @DECI       | Compound    | Decrement variable by 1            |
