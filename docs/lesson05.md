@@ -84,9 +84,9 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
 ##################################################
 # Function: DoSomething(param1, param2)
 :DoSomething
-@PUSHRETURN               ; Save return address
-@LocalVar 01#             ; Local variable (acts like a register)
-@LocalVar 02#
+@PUSHRETURN              # Save return address
+@LocalVar 01             # Local variable (acts like a register)
+@LocalVar 02
 
    @POPI param1
    @POPI param2
@@ -113,8 +113,8 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
       @CBREAK
    @ENDCASE
 
-@RestoreVar 02#           ; Reverse order of LocalVar
-@RestoreVar 01#
+@RestoreVar 02           # Reverse order of LocalVar
+@RestoreVar 01
 @POPRETURN
 @RET
 ```
