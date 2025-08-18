@@ -18,7 +18,7 @@ Library files are included using the `L` directive and are meant to behave more 
 
 - **Automatic label mangling**: All labels in a library are internally renamed to avoid collisions unless marked as global.
 - **Private state**: Locals in the library are inaccessible to outside code unless exposed via `G`.
-- **One-time loading**: Use `!` guards to ensure libraries are only loaded once, even with nested includes.
+- **One-time loading**: Use `!` or '?' guards to ensure libraries are only loaded once, even with nested includes.
 
 > Library search paths are defined by the `CPUPATH` environment variable, and library files should be placed accordingly.
 
@@ -35,6 +35,7 @@ Here’s a pattern for a safe and reusable library file:
 ```asm
 ! MY_LIBRARY_GUARD          ; Prevent double-inclusion
 M MY_LIBRARY_GUARD true     ; Mark as already loaded
+MY_LIBRARY_GUARD should be a unique string based on your library's functions.
 
 G myfunc G sharedvar        ; Expose public functions/variables
 
@@ -85,27 +86,31 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
 # Function: DoSomething(param1, param2)
 :DoSomething
 @PUSHRETURN              # Save return address
-@LocalVar 01             # Local variable (acts like a register)
-@LocalVar 02
+@LocalVar param1 01             # Local variable (acts like a register)
+@LocalVar param2 02
+@Localvar Hidden 03
 
    @POPI param1
    @POPI param2
 
    @IF_A
       @PUSH "Valid"
+      @MA2V 100 Hidden
    @ELSE
       @PUSH "Invalid"
+      @MA2V 200 Hidden
    @ENDIF
 
    @WHILE_V
       ; Loop body
    @ENDWHILE
 
+   @PUSHI Hidden
    @SWITCH
-   @CASE 1
+   @CASE 100
       ; Handle case 1
       @CBREAK
-   @CASE 2
+   @CASE 200
       ; Handle case 2
       @CBREAK
    @CDEFAULT
@@ -113,6 +118,7 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
       @CBREAK
    @ENDCASE
 
+@RestoreVar 03
 @RestoreVar 02           # Reverse order of LocalVar
 @RestoreVar 01
 @POPRETURN
@@ -136,7 +142,7 @@ This structure allows visual scanning of the function shape and nesting depth.
 
 - Library guard macros: `! MYLIBNAME_LOADED`
 - Global symbols: `G MyLibrary.myfunc`
-- Local variables: `@LocalVar 01#` (comment the purpose nearby)
+- Local variables: `@LocalVar varname 01` #(comment the purpose nearby)
 - Labels inside library: keep simple (`:init`, `:loop`), since they get mangled automatically
 
 ---
