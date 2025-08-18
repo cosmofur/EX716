@@ -30,7 +30,7 @@ numbers into memory. Its most core logic loop is:
      5) Repeat until you've run out of input.
 
 Everything else the Assembler does is in service of this loop.
-That part of line 'a' that said 'If not can I turn it into a number?'
+That part of line '1' that said 'If not can I turn it into a number?'
 is where much of the meat and potato power of the Assembler comes
 from, and it's complex and extensive, so for now... we'll ignore it and
 for our first steps into the Assembly, we will only give it clear
