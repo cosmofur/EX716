@@ -19,6 +19,7 @@ These libraries are written in EX716 macro assembly and provide features traditi
 | `mul.ld`       | Integer multiply (signed/unsigned)      |
 | `random.ld`    | Simple pseudo-random generator          |
 | `screen.ld`    | ANSI terminal cursor/screen control     |
+| `mouse.ld`     | ANSI terminal mouse events tools        |
 | `softstack.ld` | Allocate and manage software stacks     |
 | `string.ld`    | String comparison, copy, length         |
 | `timetool.ld`  | Time calculations (epoch math, offsets) |
@@ -50,7 +51,7 @@ G HeapNewObject(heap_id, size)            → object
 G HeapResizeObject(heap_id, obj, size)    → object
 G HeapDeleteObject(heap_id, obj)          → status
 G HeapListMap(heap_id)                    → prints/inspects
-G GetObjectRealSize(heap_id, obj)         → size
+G GetObjectRealSize(heap_id, obj)         → size - hidden headers.
 G HeapAppend(obj1, obj2, offset)          → modifies obj1
 ```
 
@@ -83,7 +84,7 @@ G MULU(A, B)   → Unsigned result (16-bit)
 G MUL(A, B)    → Signed result (16-bit)
 ```
 
-Returns a single value. Use `lmath.ld` for wider results.
+Returns a single 16b value. Use `lmath.ld` for wider results.
 
 ---
 
@@ -120,6 +121,31 @@ G WinNorth          G WinSouth           G WinEast          G WinWest
 
 ---
 
+## 🖥️ `mouse.ld` — ANSI Mouse Control
+
+** Depends on: `common.md`, `heapmgr.ld` 
+Provides tools for dealing with mouse and event programming.
+
+### Core Functions
+```text
+G MouseInit         G KeyEnQueue             G KeyDeQueue   G KeyQueueSize
+G KeyReadMouseSeq   G KeySearchMouse         G KeySearchKeyBoard
+G KeySearchTimer    G MouseDisable           G MouseAddEvent
+G ReadKeyTimeOut    G MouseEventLoop 
+```
+### Core variables
+```
+G CSICODE           G LastEventType          G LastEventID  G LastEventTSLo
+G LastEventTSHi     G LastMouseX             G LastMouseY   G LastMouseBtn
+G LastMouseFlags    G LastMouseRawB          G LastMouseTerm
+G MF_PRESS          G MF_RELEASE             G MF_DRAG      G MF_WHEEL
+G MF_SHIFT          G MF_ALT                 G MF_CTRL      G LastKeyMatchPtr
+G LastKeyLen        G LastKeyChar            G LastTimerDur G LastTimeRep
+G LastTimerELap     G LastTimerSkip          G MouseEvent   G TimerEvent
+G KeyEvent
+```
+---
+
 ## 📥 `softstack.ld` — Software Stack Management
 
 **Depends on:** `common.mc`  
@@ -137,14 +163,14 @@ G __MOVE_HW_SS / __MOVE_SS_HW  → POP HW, PUSH SW or POP SW, PUSH HW
 ### Macros
 
 ```text
-M PUSHRETURN     → Push return and switch stack
-M PUSHHW         → Push value to HW stack
+M PUSHRETURN     → Saves return address to SW Stack (Alias PUSHHW)
+M PUSHHW         → Moves HW:TOS to SW:TOS
 M PUSHLOCAL      → Push constant to soft stack
 M PUSHLOCALI     → Push variable to soft stack
-M LocalVar = %1  → Define + push local var
-M RestoreVar     → Pop back to var
-M POPHW          → Pop soft stack, push to HW stack
-M POPRETURN      → Restores return to HW stack
+M LocalVar       → Defines Local variable, preserves old value.
+M RestoreVar     → Frees Local variable, restores previous value.
+M POPHW          → Moves SW:TOS to HW:TOS
+M POPRETURN      → Restores return form SW Stack (Alias POPHW)
 M POPLOCAL       → Pop Soft Stack directly to variable
 M POPLOCALII     → Pop Soft Stack to pointers location
 M TOPLOCAL       → DUP's Soft Stack, Pop copy to HW Stack
@@ -158,12 +184,35 @@ M TOPLOCAL       → DUP's Soft Stack, Pop copy to HW Stack
 Implements common C-style functions.
 
 ```text
-G strlen, strcpy, strncpy, strcat, strncat, strcmp, strncmp, strstr, strfndc
-G memcpy, itos, stoi, stoifirst, strtok, splitstr, SplitDelete
-G strUpCase, strLowCase, HexDump
-G ISAlpha, ISAlphaNum, ISNumeric
+strlen, strcpy, strncpy, strcat, strncat, strcmp, strncmp, strstr, strfndc
+memcpy, itos, stoi, stoifirst, strtok, splitstr, SplitDelete
+strUpCase, strLowCase, ISAlpha, ISAlphaNum, ISNumeric
 ```
-
+Main functions:
+```
+strlen(A)      → String Length
+strcpy(A,B)    → Copies StrB overwrite StrA
+strncpy(A,B,mx)→ Copies upto mx of strB over StrA
+strcat(A,B)    → Appends StrB to StrA (does not resize A)
+strncat(A,B,mx)→ Appens upto mx of StrB to StrA
+strcmp(A,B)    → Compairs A to B, A-B
+strncp(A,B,mx) → Compairs A[:mx] to B[:mx]
+strstr(A,B)    → where sub string B found in A or null
+strfndc(A,c)   → First instance of char c or null
+memcpy(A,B,mx) → Copy mx bytes from B to A. Not Null Terminated.
+itos(A,I,B)    → Turn value I into string A using base B 
+stoi(A)        → Returns integer value of A, support 0x# 0o# and 0b# default decimal
+stoifirst(A)   → like stoi but tolerant of non null string terminators
+strtok(A,ch)   → Walk though A finding tolkens deliinated by character ch.
+splitstr(A,B,HeapID) → Returns new Heap Array of A split by set in B, needs HeapID
+SplitDelete(Obj,HeapID) → Cleanup heap object created by splitstr
+strUpCase(A)    → Modify A so all alpha are uppercase
+strLowCase(A)   → Modify A so all alpha are lowercase
+ISAlpha(A)      → true if 1st char in A is in range [A-Z,A-z]
+IsAlphaNum(A)   → true if 1st char in A is in range [A-Z,A-z,0-9,_]
+ISNumeric(A)    → true if 1st character is in range [0-9]
+```
+  
 ---
 
 ## ⏰ `timetool.ld` — Time Functions
@@ -181,4 +230,3 @@ G Sleep, SleepMilli
 
 ---
 
-Let me know if you'd like to go into the full syntax, register usage, or calling conventions for any specific function set next.
