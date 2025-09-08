@@ -20,6 +20,7 @@ import pstats
 import io
 import time
 import bisect
+
 from collections import defaultdict
 
 
@@ -77,6 +78,9 @@ PollReadCharI=3
 PollSetNoEcho=4
 PollSetEcho=5
 PollReadCINoWait=6
+PollSetRawCode=7
+PollReSetRaw=8
+PollTTYStateCode=9
 PollReadSector=22
 PollReadSectorI=26
 PollReadTapeI=23
@@ -86,62 +90,76 @@ PollReadTape=26
 DebugOut=sys.stderr
 PrevPC=0
 
-if sys.platform == 'win32':
+
+
+
+if sys.platform == "win32":
     import msvcrt
 
     def get_key():
         if msvcrt.kbhit():
-            ch=msvcrt.getch()
-            if ch in (b'\x00', b'\xe0'):
-                ch2=msvcrt.getch()
+            ch = msvcrt.getch()
+            if ch in (b'\x00', b'\xe0'):   # special keys
+                ch2 = msvcrt.getch()
                 return 0x1000 | ch2[0]
             else:
-                return ord(ch)
-        else:
-            return None
+                return ch[0]
+        return None
 
-elif sys.platform.startswith('linux'):
-    def get_key():
-        import sys, termios, fcntl, os, select
-        
-        fd = sys.stdin.fileno()
-        
-        # If queue already has data, return one char
-        if CPU.char_queue:
-            return CPU.char_queue.pop(0)
+    def setup_raw():
+        """Windows: no setup needed, just use msvcrt"""
+        return None
 
-        # Save current settings
-        old_attr = termios.tcgetattr(fd)
+    def restore_tty(state):
+        """Windows: nothing to restore"""
+        pass
+
+else:  # POSIX (Linux, macOS, etc.)
+    import termios, fcntl, os
+
+    def setup_raw(fd=sys.stdin.fileno()):
+        old_attrs = termios.tcgetattr(fd)
         old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
 
-        try:
-            # Set raw input, non-blocking
-            new_attr = termios.tcgetattr(fd)
-            new_attr[3] = new_attr[3] & ~(termios.ICANON | termios.ECHO)
-            termios.tcsetattr(fd, termios.TCSANOW, new_attr)
-            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+        new_attrs = termios.tcgetattr(fd)
+        # iflag
+        new_attrs[0] &= ~(termios.BRKINT | termios.ICRNL |
+                          termios.INPCK | termios.ISTRIP | termios.IXON)
+        # oflag
+        new_attrs[1] &= ~termios.OPOST
+        # cflag
+        new_attrs[2] |= termios.CS8
+        # lflag
+        new_attrs[3] &= ~(termios.ICANON | termios.ECHO |
+                          termios.IEXTEN | termios.ISIG)
+        # cc
+        new_attrs[6][termios.VMIN] = 0
+        new_attrs[6][termios.VTIME] = 1   # 0.1s
 
-            # Check if input available
-            rlist, _, _ = select.select([fd], [], [], 0.01)
-            if not rlist:
-                return None
+        termios.tcsetattr(fd, termios.TCSANOW, new_attrs)
+        fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+        return (fd, old_attrs, old_flags)
 
-            # Read as much as available (up to 128 bytes)
-            try:
-                data = os.read(fd, 128)
-                CPU.char_queue = list(data.decode(errors="replace"))
-            except BlockingIOError:
-                return None
-
-        finally:
-            # Restore settings
-            termios.tcsetattr(fd, termios.TCSAFLUSH, old_attr)
+    def restore_tty(state):
+        if state:
+            fd, old_attrs, old_flags = state
+            termios.tcsetattr(fd, termios.TCSANOW, old_attrs)
             fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
 
-            # Return first character
-        return CPU.char_queue.pop(0) if CPU.char_queue else None
-else:
-    raise NotImplementedError("Unsupported platform")
+
+    def get_key(fd=sys.stdin.fileno()):
+        if CPU.char_queue:
+            return ord(CPU.char_queue.pop(0))
+        try:
+            data = os.read(fd, 128)
+            if not data:
+                return None
+            chars = list(data.decode(errors="replace"))
+            CPU.char_queue.extend(chars)
+        except BlockingIOError:
+            return None
+
+        return ord(CPU.char_queue.pop(0)) if CPU.char_queue else None            
 
 from pstats import SortKey
 
@@ -241,7 +259,7 @@ UniqueLineNum = 0
 DeviceHandle = None
 EchoFlag = False
 UniqueID = 0
-LastMLen = 0
+LastMLen = []
 
 
 GLOBALFLAG = 1
@@ -277,17 +295,96 @@ for i in SymToValMap:
     OPTDICT[str(i[0])] = [i[0], i[1].encode(
         'ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
 
+_fd = sys.stdin.fileno()
+old_settings = termios.tcgetattr(_fd)
+_saved_attrs = None
 
+def restore_tty():
+    try:
+        termios.tcsetattr(_fd, termios.TCSADRAIN, old_settings)
+    except Exception:
+        pass
+
+
+
+
+# --- Echo toggle only ---
+def PollSetNoEchoFunc(arg=None):
+    """Turn echo off, leave canonical mode as-is."""
+    attrs = termios.tcgetattr(_fd)
+    attrs[3] &= ~termios.ECHO
+    termios.tcsetattr(_fd, termios.TCSANOW, attrs)
+
+def PollSetEchoFunc(arg=None):
+    """Turn echo back on, leave canonical mode as-is."""
+    attrs = termios.tcgetattr(_fd)
+    attrs[3] |= termios.ECHO
+    termios.tcsetattr(_fd, termios.TCSANOW, attrs)
+
+# --- Raw mode ---
+def PollSetRawFunc(arg=None):
+    """Put terminal into full raw mode, save old settings."""
+    global _saved_attrs
+    print("PollSetRaw")        
+    if _saved_attrs is None:
+        _saved_attrs = termios.tcgetattr(_fd)
+
+    tty.setraw(_fd)
+
+    # Optional: tweak VMIN/VTIME so reads don’t block forever
+    attrs = termios.tcgetattr(_fd)
+    attrs[6][termios.VMIN]  = 0
+    attrs[6][termios.VTIME] = 1   # 0.1s
+    termios.tcsetattr(_fd, termios.TCSANOW, attrs)
+
+def PollReSetRawFunc(arg=None):
+    """Restore terminal to state before PollSetRaw was called."""
+    global _saved_attrs
+    print("PollReSetRaw")
+    if _saved_attrs is not None:
+        termios.tcsetattr(_fd, termios.TCSADRAIN, _saved_attrs)
+        _saved_attrs = None
+
+def PollTTYStateFunc(arg=None):
+    print("PollTTYState")    
+    attrs = termios.tcgetattr(_fd)
+    iflag, oflag, cflag, lflag, ispeed, ospeed, cc = attrs
+    print("iflag:", hex(iflag))
+    print("oflag:", hex(oflag))
+    print("cflag:", hex(cflag))
+    print("lflag:", hex(lflag))
+    print("cc[VMIN]:", cc[termios.VMIN], "cc[VTIME]:", cc[termios.VTIME])
+
+    # Human-friendly summary
+    print("ECHO:", bool(lflag & termios.ECHO))
+    print("ICANON:", bool(lflag & termios.ICANON))
+    print("ISIG:", bool(lflag & termios.ISIG))
+    print("IEXTEN:", bool(lflag & termios.IEXTEN))
+
+    
+
+
+
+
+def tty_reset(_fd=sys.stdin.fileno()):
+    """
+    Restore terminal state saved by tty_setraw.
+    """
+    global _saved_attrs
+    if _saved_attrs is not None:
+        termios.tcsetattr(_fd, termios.TCSANOW, _saved_attrs)
+        _saved_attrs = None
+
+atexit.register(restore_tty)
+    
 def shandler(signum, frame):
-    global current_context
-    # This is NOT (as yet) an interupt handler for the CPU, just a way to drop code into the debugger.
-    #
-    msg = "Ctrl-c"
-    print(msg, end="", flush=True)
-    debugger("",current_context)
-
+    restore_tty()
+    print("Ctrl-C\x1b[?1000l\x1b[?25h\n", flush=True)
+    debugger("",current_context)    
+    sys.exit(1)   # exit cleanly
 
 signal.signal(signal.SIGINT, shandler)
+
 
 def is_string_numeric(s):
     return str(s).isdigit()
@@ -381,8 +478,8 @@ def FindLabelMatch(varname, context: AssemblerContext):
     varname=str(varname)
     if varname in context.FileLabels:
         return context.FileLabels[varname]
-
-    potential_matches = [ key for key in context.FileLabels.keys() if key.startswith(varname + "_")]
+    pattern = re.compile(rf"^{re.escape(varname)}_+")
+    potential_matches = [ key for key in context.FileLabels.keys() if pattern.match(key)]
     if len(potential_matches) == 1:
         return context.FileLabels[potential_matches[0]]
     if len(potential_matches) > 1:
@@ -517,6 +614,8 @@ class microcpu:
     DiskPtr = -1
     OPTDICTFUNC={}
 
+
+
     def switcher(self, optcall, argument):
         return getattr(self, "opt" + OPTDICT[str(optcall)][1], lambda: default)(argument)
 
@@ -534,7 +633,7 @@ class microcpu:
         self.simtime = False
         self.clocksec = 1000
         self.Last_Filename_used = None
-        self.char_queue = ""
+        self.char_queue = []
 
 
     def insertbyte(self, location, value):
@@ -594,10 +693,7 @@ class microcpu:
 
         valid = -1
         try:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] | termios.ECHO
-            termios.tcsetattr(fd, termios.TCSADRAIN, new)
+            restore_tty()
         except Exception as e:
             safeprint("TTY Setup Error:", e, file=DebugOut)
 
@@ -1369,24 +1465,6 @@ class microcpu:
                 self.char_queue=self.char_queue[1:]
                     
             self.putwordat(address, ord(c))
-        if cmd == PollSetNoEcho:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] & ~termios.ECHO          # lflags
-            EchoFlag = True
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                safeprint("TTY Error: On No Echo",file=DebugOut)
-        if cmd == PollSetEcho:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] | termios.ECHO          # lflags
-            EchoFlag = False
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                safeprint("TTY Error: On Echo",file=DebugOut)
         if cmd == PollReadCINoWait:
             if self.char_queue:
                  c=self.char_queue[0]
@@ -1409,6 +1487,16 @@ class microcpu:
                 else:
                     c = ""                    
             self.putwordat(address, ord(c) if c else 0 )
+        if cmd == PollSetNoEcho:
+            PollSetNoEchoFunc()
+        if cmd == PollSetEcho:
+            PollSetEchoFunc()
+        if cmd == PollSetRawCode:
+            PollSetRawFunc()
+        if cmd == PollReSetRaw:
+            PollReSetRawFunc()
+        if cmd == PollTTYStateCode:
+            PollTTYStateFunc()
         if current_context == None:
             safeprint("CPU Stopped")
             return
@@ -1655,7 +1743,6 @@ def GetQuoted(inline):
         else:
             outputtext += c
             qsize += 1
-#        print(f"Char[{qsize}] = {repr(c)}, escape={inescape}")
     return (qsize, outputtext)
 
 def GetRawQuoted(inline):
@@ -1727,49 +1814,6 @@ def nextword(ltext):
         size += 1
 
     return (result, size)
-
-
-def nextwordold(ltext):
-    # Nextword skips past any heading whitespace
-    # Ends when it find end of line, or more whitespace
-    # If it finds "+" or "-" it exits, but backspaced out so not to include them.
-    signstart=True
-    size = 0
-    result = ""
-    maxlen=len(ltext)
-    if maxlen == 0:
-        return ("",0)
-    c=ltext[size:size+1]
-    while ((c== " " or c == ",") and (size < maxlen)):
-        size += 1
-        c=ltext[size:size+1]
-    if size >= maxlen:   # all while space
-        return ("",0)
-    if c == '"':
-        # Special case for quoted text
-#        print(f"RAW line: {repr(ltext)}")
-        (size, result) = GetQuoted(ltext)
-        return ('"'+result+'"',size)
-    if c in "+-" and size < maxlen:  #handle case where start character IS sign character
-        result += c
-        size +=1
-        c=ltext[size:size+1]
-    while ( not c in " ,+-" ) and size < maxlen:
-        result += c
-        size += 1
-        c = ltext[size:size+1]
-    # When we hit '+' or '-' return immeditly, but not if its the first character seen
-    if c in "+-":
-        return (result,size)
-    signstart=False
-    # cleanup tailing whitespace
-    while c in " ," and size < maxlen:
-        c = ltext[size:size+1]
-        size += 1
-#    print("NextWord:%s \"%s\"(%s):%s" % (current_context.FileLineNum,result, maxlen,ltext))
-    if size > maxlen:
-        return (result,maxlen)
-    return (result,size-1)
 
 def Str2Word(instr):
     # Both 32 and 16 bit string numbers have same rules just diffrent lengths.
@@ -1900,7 +1944,6 @@ def DissAsm(start, length, CPU):
                         bestmatchcode=name
             safeprint("DATA-Segment:")
             hexdump(i,min(i+15,bestmatch)-i,CPU)
-#            print("Label : %s" % bestmatchcode)
             i = bestmatch
         else:
             i = i + OPTDICT[str(optcode)][2]
@@ -2051,7 +2094,9 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
                 tempkey=ReplaceMacVars(tempkey, filename, context)
                 if tempkey[0] == '"' and tempkey[-1] == '"':
                     (_,tempkey)=GetQuoted(tempkey)
-                LastMLen=len(tempkey)
+                if context.Debug > 1:
+                    safeprint("DEBUG::::::STRLEN for %s is %s" % (tempkey,len(tempkey)))
+                LastMLen.append(len(tempkey))
                 i=i+6+tempsize
             elif (line[i:i+1] == "P"):
                 # POP value from refrence stack...does not change newline
@@ -2091,14 +2136,49 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
                 newline = newline + MacroStack[-2]
                 i += 1
             elif (line[i:i+4] == "%LEN"):
-                newline = newline + str(LastMLen)
+                if LastMLen:
+                    newline = newline + str(LastMLen.pop())
+                else:
+                    CPU.raiseerror("052 Macro %STRLEN/%LEN stack underflow")
                 i += 4
+            elif (line[i:i+6] == "REPEAT"):
+                i += 7
+                (count_str, size) = nextword(line[i:])
+                i += size
+                count_str=ReplaceMacVars(count_str, filename, context)
+                repeat_count = Str2Word(count_str)
+
+                nest = 1
+                block_start = i
+                search_pos = block_start
+                while nest > 0:
+                    next_repeat = line.find("%REPEAT", search_pos)
+                    next_endr   = line.find("%ENDR", search_pos)
+
+                    if next_endr == -1:
+                        CPU.raiseerror("Macro %REPEAT missing %ENDR terminator")
+
+                    if next_repeat != -1 and next_repeat < next_endr:
+                        nest += 1
+                        search_pos = next_repeat + 7
+                    else:
+                        nest -= 1
+                        search_pos = next_endr + 5
+
+                block_end = search_pos - 5   # now points to the matching END
+                block = line[block_start:block_end]
+
+                # Expand each iteration by recursively processing block
+                for rc in range(repeat_count):
+                    newline += ReplaceMacVars(block, filename, context)
+
+                # Advance past %ENDR
+                i = search_pos
             elif (line[i:i+1] >= "0" and line[i:i+1] <= "9"):
                 varval = int(line[i:i+1])
                 if len(context.MacroVars) < varval:
                     CPU.raiseerror(
                         "052 Macro %v Var %s is not defined" % (varval, line))
-#                print("Macro-%s: %s" % (varval,context.MacroVars[context.varcntstack[context.varbaseSP] + varval]))
                 newline = newline+context.MacroVars[context.varcntstack[context.varbaseSP] + varval]
                 i = i + 1
         else:
@@ -2206,7 +2286,6 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
         # Unresolved label — mark for second pass
         newkey = localkey
         context.FWORDLIST.append([newkey, curaddress, 0, f"{context.ActiveFile}:{context.FileLineNum}"])
-#        print("Debug: Key:%s Address %04x Line:%s:%s" % (newkey,curaddress,context.ActiveFile,context.FileLineNum))
         return ("value",0)
 
 
@@ -2241,7 +2320,6 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
             safeprint("Unexpected mix of strings and numbers.: %s" % (mod[1:]), file=DebugOut)
             return 0
         mod_val = base_mod[1]
-#        print("Modifying Base: %s: %04x with %4x = %04x" % (instr,result, mod_val, result+sign*mod_val))
         result += sign * mod_val
 
     if JUSTRESULT:
@@ -2329,7 +2407,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     # Need to subsutute and %# that are not in quotes with varval
                     line = ReplaceMacVars(line, filename, context)
                     if context.Debug > 1:
-                        safeprint("Expanded Macro: %s(%40s)" % (line,context.MacroLine),file=DebugOut)
+                        safeprint("Expanded Macro: %s(%s)" % (line,context.MacroLine.strip()),file=DebugOut)
                     context.MacroLine.strip()
                     context.varbaseNext = context.varbaseSP
                     context.varbaseSP -= 1 if context.varbaseSP > 0 else 0
@@ -2355,8 +2433,6 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     GetAnother = True
                     context.CurrentLineBeingParsed = context.FileLineNum
                     while GetAnother:
-#                        if filename == "foo9.asm":
-#                            safeprint("Line:",context.FileLineNum)
                         context.FileLineNum += 1
                         context.UniqueLineNum += 1
                         GetAnother = False
@@ -2364,11 +2440,8 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         if context.Debug > 1 and context.SkipBlock == 0:
                             safeprint("%s:%s> %60s:%2d" % (wfilename,str(context.FileLineNum),inline,context.SkipBlock), file=DebugOut)
 
-#                        print("Inserting Label: Filename: %s, %d, %04x" % (filename,context.CurrentLineBeingParsed, context.address))
-#                        if context.address not in context.AddressedLinesSeen:
                         FileLineData.add_entry(filename, context.CurrentLineBeingParsed, context.address)
                         context.AddressedLinesSeen.add(context.address)
-#                        if not (context.address in context.FileLabels):
                         if inline:
                             if inline.strip()[-1:] == '\\':
                                 GetAnother = True
@@ -2422,8 +2495,6 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             elif line[:8] == "ENDBLOCK":
                 line = line[8:]
                 continue
-#            if context.FileLineNum == 212 and filename == "tests/forth.asm":
-#               safeprint("Break here:%s:",filename)
             if len(line) > 0:
                 IsOneChar = False
                 CodeLength = len(nextword(line)[0])
@@ -2446,14 +2517,12 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         # To understand what's going on here: We are making a stack that will
                         # store the local macro var values (%1-max) and macros that call other
                         # macros will just use a diffrent range in that same stack.
-                        context.MacroLine = context.MacroData[macname] + \
+                        context.MacroLine = context.MacroData[macname].strip() + \
                             " ENDMACENDMAC " + context.MacroLine
                         if cpos < len(line):
                             varcnt = 0
-#                            print("On Line: %s" % line)
                             while (varcnt < context.MacroPCount[macname] and cpos < len(line)):
                                 (key, size) = nextwordplus(line[cpos:])
-#                                print(f"[param] Got key={repr(key)} size={size} remaining={repr(line[cpos:])}")
                                 raw=key[1:-1]
                                 varcnt += 1
                                 while (context.varcntstack[context.varbaseSP]+varcnt + 2) >= len(context.MacroVars):
@@ -2524,7 +2593,6 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     if (not (value[0:len(value)].isdecimal())):
                         value = DecodeStr(value, context.address, CPU, True, context)
                     newitem=IsLocalVar(key, context)
-#                    safeprint("Setting Fixed Value: %s to %s: %s:line: %s(%s)\n" % ( newitem, value, filename,line, context.FileLineNum))
                     context.FileLabels.update({newitem: value})
                     UpdateVarHistory(newitem,value,context.address)
                     line = line[size:]
@@ -2734,15 +2802,11 @@ def debugger(passline, context: AssemblerContext):
     # Main Loop of debugger
     while True:
         sys.stdout.write("%04x> " % CPU.pc)
-        fd = sys.stdin.fileno()
+        _fd = sys.stdin.fileno()
         if EchoFlag:
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] | termios.ECHO          # lflags
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                sys.stdout.write("TTY Error: On No Echo")
+            restore_tty()
+            safeprint("\x1b[?1000l\x1b[?25h\n")
+            EchoFlag=False
         else:
             sys.stdout.write(">>")
         sys.stdout.flush()
@@ -2753,13 +2817,6 @@ def debugger(passline, context: AssemblerContext):
             passline=passline[1:]
         else:
             cmdline = input()
-        if EchoFlag:
-            # If tty operations have disabled echo, which is needed by interactive prompts of the debugger
-            new[3] = new[3] & ~termios.ECHO
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                safeprint("TTY Error: On Echo On")
         # To file redirection from 'scipted debug files' we also allow possible comments in those files.
         cmdline = removecomments(cmdline).strip()
         if cmdline != "":
@@ -2976,7 +3033,6 @@ def debugger(passline, context: AssemblerContext):
                             if cmdline != ".":
                                 if (L[0][0:1] == '"'):
                                     (quotesize, quotetext) = GetQuoted(cmdline)
-#                                    print("Debug: Inserted text: Size: %d Result: %s" % ( quotesize, quotedtext))
                                     for iii in range(0, len(quotetext)):
                                         CPU.memspace[maddr] = ord(
                                             quotetext[iii]) & 0xff
@@ -3034,7 +3090,7 @@ def debugger(passline, context: AssemblerContext):
                                 cmdline = "BREAK"
                                 cmdword = ""
                                 L=("",0)
-                                print("End Modify")
+                                safeprint("End Modify")
                                 break
         if cmdword == "l":
             startaddr = None
@@ -3258,13 +3314,8 @@ def debugger(passline, context: AssemblerContext):
             continue
         if cmdword == "q":
             safeprint("End Debugging.")
-            fd = sys.stdin.fileno()
-            new = termios.tcgetattr(fd)
-            new[3] = new[3] | termios.ECHO          # lflags
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            except:
-                safeprint("TTY Error: On No Echo")
+            restore_tty()
+            print("\x1b[?1000l\x1b[?25h\n")
             sys.exit(0)
         if cmdword == "h":
             help_commands = [
@@ -3493,12 +3544,12 @@ def main():
 
 if __name__ == '__main__':
     main()
-    fd = sys.stdin.fileno()
-    new = termios.tcgetattr(fd)
+    _fd = sys.stdin.fileno()
+    new = termios.tcgetattr(_fd)
     new[3] = new[3] | termios.ECHO          # lflags
     try:
-        termios.tcsetattr(fd, termios.TCSADRAIN, new)
+        termios.tcsetattr(_fd, termios.TCSADRAIN, new)
     except:
         safeprint("TTY Error: On No Echo")
 
-#    cProfile.run('main()')
+

@@ -6,11 +6,11 @@ L div.ld
 M SCREEN_DONE 1
 # When DEBUGSCREEN is set the instead of issueing ESC codes it will print <ESC> as text, preventing
 # the ANSI codes from messinging up a debuging session.
-M DEBUGSCREEN
+#M DEBUGSCREEN
 G WinClear G WinCursor G WinWidth G WinHeight G WinResize G WinPlot
 G WinHideCursor G WinShowCursor G ColorReset G ColorFGSet G ColorBGSet
 G CSICODE G WinNorth G WinSouth G WinEast G WinWest G WinResetScrollRegion
-G WinScrollUp G WinScrollDown G WinScrollRegion
+G WinScrollUp G WinScrollDown G WinScrollRegion G WinBox
 :WinWidth 80
 :WinHeight 24
 :CSICODE
@@ -145,12 +145,12 @@ ENDBLOCK
 ! DEBUGSCREEN
 @LocalVar TIBChar 01
 @LocalVar CurVal 02
+@TTYRAW
 @PRTLN "------------Initilizing....<Hit Enter>"
 @PRTS CSICODE @PRT "s"
 @PRTS CSICODE @PRT "999;999H"
 @PRTS CSICODE @PRT "6n"
 @MA2V TermInfoBuffer TIBIndex
-@TTYNOECHO
 # Drain until we see 'ESC'
 @PUSH 1
 @WHILE_NOTZERO
@@ -194,7 +194,6 @@ ENDBLOCK
    @ENDIF
 @ENDWHILE
 @POPNULL
-@TTYECHO
 @PRTS CSICODE @PRT "u"
 # We need to make sure values are not too big. Our limit is 80x50
 @PUSHI WinWidth
@@ -221,6 +220,7 @@ ENDBLOCK
 @RestoreVar 01
 @RET
 ENDBLOCK
+@TTYRAWOFF
 ? DEBUGSCREEN
   @PRT "DEBUG MODE:"
   @RET
@@ -331,7 +331,42 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-      
+
+#######################################
+# WinBox(x1,y1,x2,y2)
+# Draw in ANSI a 'box' on the screen.
+:WinBox
+@PUSHRETURN
+@LocalVar X1 01 @LocalVar Y1 02 @LocalVar X2 03 @LocalVar Y2 04
+@LocalVar Index 05
+@POPI Y2 @POPI X2 @POPI Y1 @POPI X1
+
+@PUSHI X1 @PUSHI Y1 @CALL WinCursor
+@ForIV2V Index X1 X2
+  @PRT "-"
+@Next Index
+@PUSHI X1 @PUSHI Y2 @CALL WinCursor
+@ForIV2V Index X1 X2
+  @PRT "-"
+@Next Index
+@PUSHI X1 @PUSHI Y1 @CALL WinCursor
+@ForIV2V Index Y1 Y2
+   @PUSHI X1 @PUSHI Index @CALL WinCursor @PRT "|"
+   @PUSHI X2 @PUSHI Index @CALL WinCursor @PRT "|"
+@Next Index
+@PUSHI X1 @PUSHI Y1 @CALL WinCursor @PRT "+"
+@PUSHI X2 @PUSHI Y1 @CALL WinCursor @PRT "+"
+@PUSHI X1 @PUSHI Y2 @CALL WinCursor @PRT "+"
+@PUSHI X2 @PUSHI Y2 @CALL WinCursor @PRT "+"
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+
 
 
 

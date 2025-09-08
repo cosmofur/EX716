@@ -8,9 +8,6 @@ L lmath.ld
 I lmath.md
 L mul.ld
 L div.ld
-:LVar01 0 0
-:LVar02 0 0
-:LVar03 0 0
 :ClockCalib 0
 G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G SleepMilli
 #
@@ -21,8 +18,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Function IsLeapYear(int:year) returns 1 or 0 if given year is leap year or not.
 :IsLeapYear
 @PUSHRETURN
-=year Var01
-@PUSHLOCALI Var01
+@LocalVar year 01
 @POPI year
 #
 @PUSHI year
@@ -54,7 +50,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
    @POPNULL
    @PUSH 0          # Not mod(4)=0 so not a leap year.
 @ENDIF
-@POPLOCAL year
+@RestoreVar 01
 @POPRETURN
 @RET
 ####################################################################
@@ -78,10 +74,8 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 31 28 31 30 31 30 31 31 30 31 30 31
 :DaysInMonth
 @PUSHRETURN
-=year Var01
-=month Var02
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar year 01
+@LovalVar month 02
 @POPI year
 @POPI month
 #
@@ -110,12 +104,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
      @ENDIF
   @ENDIF
 @ENDIF
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #####################################################################
-# Function Time2Units(int32 seconds):(int year, int month, int day, int hour, int minute, int second)
+# Function Time2Units(int32Ptr seconds):(int year, int month, int day, int hour, int minute, int second)
 # Storage
 # 32 bit constants
 :SecondsMinute $$$60
@@ -123,25 +117,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 :SecondsDay $$$86400
 
 :Time2Units
-=Year Var01
-=Month Var02
-=Day Var03
-=Hour Var04
-=Minute Var05
-=Second Var06
-=days Var07
-=SecondsPtr Var08
-=LResult LVar01
-=LRemain LVar02
-=LRemaingSecs LVar03
 @PUSHRETURN
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
-@PUSHLOCALI Var07
+@LocalVar Year 01 @LocalVar Month 02 @LocalVar Day 03 @LocalVar Hour 04
+@LocalVar Minute 05 @LocalVar Second 06 @LocalVar days 07 @LocalVar SecondsPtr 08
+@LocalVar LResult 09 @LocalVar LResultHW 10 @LocalVar LRemain 11 @LocalVar LRemainHW 12
+@LocalVar LRemaingSec 13 @LocalVar LRemaingSecHW 14
+
 #
 # Top will be address where 32b seconds is stored.
 @POPI SecondsPtr
@@ -211,13 +192,9 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @PUSHI Hour
 @PUSHI Minute
 @PUSHI Second
-@POPLOCAL Var07
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 14 @RestoreVar 13 @RestoreVar 12 @RestoreVar 11 @RestoreVar 10
+@RestoreVar 09 @RestoreVar 08 @RestoreVar 07 @RestoreVar 06 @RestoreVar 05
+@RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
 ###################################################################################
@@ -227,17 +204,9 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 #
 :TimeCalabrate
 @PUSHRETURN
-@LocalVar Index1 01
-@LocalVar Sec256th 02
-@LocalVar StartTime 03
-@LocalVar TargetTime 04
-@LocalVar LCount 05
-=LowWord LCount
-@LocalVar HighWord 06
-@LocalVar LSum 07
-@LocalVar LSumHV 08
-@LocalVar LRemainder 09
-@LocalVar LRemainderHV 10
+@LocalVar Index1 01 @LocalVar Sec256th 02 @LocalVar StartTime 03 @LocalVar TargetTime 04
+@LocalVar LCount 05 @LocalVar HighWord 06 @LocalVar LSum 07 @LocalVar LSumHV 08
+@LocalVar LRemainder 09 @LocalVar LRemainderHV 10
 #
 @MA2V 0 HighWord
 @MA2V 0 LowWord
@@ -274,11 +243,11 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
    @ENDIF
 @UNTIL_NOTZERO
 @POPNULL
-@PUSHI StartTime @ADD 1 @POPI TargetTime
+@PUSHI StartTime @ADD 2 @POPI TargetTime
 @MA2V 0 LRemainder
 @MA2V 0 LRemainder+2
 
-#  Loop until time has moved forward one second.
+#  Loop until time has moved forward two seconds.
 @PUSH 0
 @WHILE_LT_V TargetTime
    @POPNULL
@@ -292,18 +261,11 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @ENDWHILE
 @POPNULL
 @PUSHI LRemainder                 # Most cases this will be < 64K
+@RSH
+@POPI ClockCalib
 #
-:Break01
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@RestoreVar 10 @RestoreVar 09 @RestoreVar 08 @RestoreVar 07 @RestoreVar 06
+@RestoreVar 05 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
 ################################################################
@@ -331,10 +293,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Do not try to single step here, logic only works if time will eventuly be exactly Limit.
 # Single stepsing or debugging will make the count be too slow.
 @GETTIME @POPNULL
-@WHILE_NEQ_V Limit
-   @POPNULL
-   @GETTIME @POPNULL
-@ENDWHILE
+@WHILE_NEQ_V Limit    @POPNULL   @GETTIME @POPNULL @ENDWHILE
 @POPNULL
 @RestoreVar 02
 @RestoreVar 01
