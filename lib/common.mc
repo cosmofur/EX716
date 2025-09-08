@@ -124,6 +124,9 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =PollSetNoEcho 4
 =PollSetEcho 5
 =PollReadCINoWait 6
+=PollSetRaw 7
+=PollReSetRaw 8
+=PollTTYState 9
 =PollReadSector 22
 =PollReadSectorI 26
 =PollReadTapeI 23
@@ -193,6 +196,53 @@ M FLOD $$FLOD
 M ADM $$ADM
 M SCLR $$SCLR
 M SRTP $$SRTP
+
+#     Our rotate and shift functions are someone limited, here some macros to imprve them
+#
+
+# ============================================================
+# Flag control macros
+# ============================================================
+
+# Clear Carry (CC)
+M CLC   @PUSH 1 @XOR 1 @XOR 1 @POPNULL
+# Set Carry (SC) - force a carry by adding max value + 1
+M SETC   @PUSH 0xFFFF @ADD 1 @POPNULL
+# Clear Overflow (CLO) - safe add with no overflow
+M CLO   @PUSH 0 @ADD 0 @POPNULL
+# Set Overflow (SETO) - force signed overflow
+M SETO  @PUSH 40000 @ADD 40000 @POPNULL
+# Clear Zero (CLZ) - push nonzero and compare
+M CLZ   @PUSH 1 @SUB 2 @POPNULL  # result = -1, not zero
+# Set Zero (SETZ) - subtract equal values
+M SETZ  @PUSH 1 @SUB 1 @POPNULL
+#
+# Rotate Left n bits (pure, deterministic)
+M ROL1 @CLC @RLTC
+M ROL2 @CLC @RLTC @RLTC
+M ROL3 @CLC @RLTC @RLTC @RLTC
+M ROL4 @CLC @RLTC @RLTC @RLTC @RLTC
+M ROL5 @CLC @RLTC @RLTC @RLTC @RLTC @RLTC
+M ROLN @CLC \
+     %REPEAT %1 @RLTC %ENDR
+# Rotate Right n bits (pure, deterministic)
+M ROR1 @CLC @RRTC
+M ROR2 @CLC @RRTC @RRTC
+M ROR3 @CLC @RRTC @RRTC @RRTC
+M ROR4 @CLC @RRTC @RRTC @RRTC @RRTC
+M ROR5 @CLC @RRTC @RRTC @RRTC @RRTC @RRTC
+M ROLN @CLC \
+     %REPEAT %1 @RRTC %ENDR
+# Logical Shifts (no carry involvement)
+M SHL2 @SHL @SHL
+M SHL4 @SHL @SHL @SHL @SHL
+M SHLN %REPEAT %1 @SHL %ENDR
+M SHR2 @SHR @SHR
+M SHR4 @SHR @SHR @SHR @SHR
+M SHR7 @SHR @SHR @SHR @SHR @SHR @SHR @SHR
+M SHRN %REPEAT %1 @SHR %ENDR
+
+
 
 
 # For compleatness we can proview VV VA AV versions of major math functions.
@@ -284,6 +334,8 @@ M PRTNL @JMP _%01 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0NL @POPNULL
 # Print a space by itself
 M PRTSP @JMP _%01J :_%0M " \0" :_%01J @PUSH CastPrintStr @CAST _%0M @POPNULL
 # Print immediate value (usefull to print value of pointer)
+# Print N number of spaces
+M PRTSPN  @JMP _%01  :_%0M  %REPEAT %1  " "  %ENDR $$0  :_%01 @PUSH CastPrintStr @CAST _%0M @POPNULL
 M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTI _%0M1
@@ -318,6 +370,12 @@ M READCNW @PUSH PollReadCINoWait @POLL %1 @POPNULL
 M TTYNOECHO @PUSH PollSetNoEcho @POLL %1 @POPNULL
 # Turn KeyBoard echo on
 M TTYECHO @PUSH PollSetEcho @POLL %1 @POPNULL
+# Turn on Raw Mode
+M TTYRAW @PUSH PollSetRaw @POLL %1 @POPNULL
+# Turn off Raw Mode
+M TTYRAWOFF @PUSH PollReSetRaw @POLL %1 @POPNULL
+# Report current TTY State
+M TTYSTATE  @PUSH PollTTYState @POLL %1 @POPNULL
 # End Program
 M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack

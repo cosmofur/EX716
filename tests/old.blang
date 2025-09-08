@@ -1,0 +1,445 @@
+I common.mc
+L string.ld
+L softstack.ld 
+###########
+# Global
+:LowMemStart 0
+:HighMemStop 0
+:StackMemTop 0
+:StackMemBottom 0
+:StackMemPtr 0
+:VarMemTop 0
+:VarMemBottom 0
+:VarMemUsed 0
+:InputBuffer1 0
+:ScratchBuffer1 0
+#
+###########
+# Reuse
+:R1 0
+:R2 0
+:R3 0
+:R4 0
+:R5 0
+:R6 0
+###########
+#
+# Languade PCODES
+=CLSCODE 1
+=IFCODE CLSCODE+1
+=THENCODE IFCODE+1
+=ELSECODE THENCODE+1
+=WHILECODE ELSECODE+1
+=WENDCODE WHILECODE+1
+=FORCODE WENDCODE+1
+=TOCODE FORCODE+1
+=NEXTCODE TOCODE+1
+=REMCODE NEXTCODE+1
+=PRINTCODE REMCODE+1
+=INPUTCODE PRINTCODE+1
+=ENDCODE INPUTCODE+1
+=QUITCODE ENDCODE+1
+=OPENPARENCODE QUITCODE+1
+=CLOSEPARENCODE OPENPARENCODE+1
+=EQUALCODE CLOSEPARENCODE+1
+=LESSTHANCODE EQUALCODE+1
+=GREATERCODE LESSTHANCODE+1
+=ASSIGNCODE GREATERCODE+1
+=NOTEQUALCODE ASSIGNCODE+1
+=NOTLESSTHANCODE NOTEQUALCODE+1
+=NOTGREATERCODE NOTLESSTHANCODE+1
+=ADDCODE NOTGREATERCODE+1
+=SUBCODE ADDCODE+1
+=MULCODE SUBCODE+1
+=DIVCODE MULCODE+1
+=ASSIGNCODE DIVCODE+1
+#
+# Function ISAplhaNum(String):T|F
+# Return T|F if first char in string is in set [A-Za-z0-9_]
+:ISAlphaNum
+@PUSHRETURN
+@PUSHS
+@AND 0xff
+@SWITCH
+@CASE_RANGE "a\0" "z\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "A\0" "Z\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "0\0" "9\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "_\0"
+   @PUSH 1
+   @CBREAK
+@CDEFAULT
+   @PUSH 0
+   @CBREAK
+@ENDCASE
+@SWP
+@POPNULL
+@POPRETURN
+@RET
+#
+# Function IsAlpha(string):T|F
+# Return T|F if first char in string is in set [A-Za-z]
+:ISAlpha
+@PUSHRETURN
+@PUSHS
+@AND 0xff
+@SWITCH
+@CASE_RANGE "a\0" "z\0"
+   @PUSH 1
+   @CBREAK
+@CASE_RANGE "A\0" "Z\0"
+   @PUSH 1
+   @CBREAK
+@CDEFAULT
+   @PUSH 0
+   @CBREAK
+@ENDCASE
+@SWP
+@POPNULL
+@POPRETURN
+@RET
+
+#
+# Function ISNumeric(String):T|F
+# Return T|F if first char in string is in set [0-9]
+@PUSHRETURN
+@PUSHS
+@AND 0xff
+@SWITCH
+@CASE_RANGE "0\0" "9\0"
+   @PUSH 1
+   @CBREAK
+@CDEFAULT
+   @PUSH 0
+   @CBREAK
+@ENDCASE
+@SWP
+@POPNULL
+@POPRETURN
+@RET
+#
+#
+# Function GetNextWord(string,returnbuffer,"Termination Characters","Seperator Characters"):length_consumed
+# Scan String for one 'word' and returns that word in the returnbuffer, which must be sufficent length
+# End of word is determined by matching either one of the Termination Characters or Seperator Characters, or EOS
+# If a Termination Character is found the return length will not include that character so next call will start on that spot
+# else if Seperator Character was found, returned length will include that character so it will be cutout from next call.
+# In addition to the normal 'word' extraction, also know about quoted text and return as single 'word' quoted strings.
+#
+:GetNextWord
+@PUSHRETURN
+# Define local variable names
+=TermCharPtr R1
+=SepCharPtr R2
+=StringInPtr R3
+=StringOutPtr R4
+=Consumed R5
+=BreakFlag R6
+@PUSHLOCAL R1 @PUSHLOCAL R2 @PUSHLOCAL R3 @PUSHLOCAL R4 @PUSHLOCAL R5 @PUSHLOCAL R6
+#
+@POPI SepCharPtr
+@POPI TermCharPtr
+@POPI StringOutPtr
+@POPI StringInPtr
+@MA2V 0 Consumed
+@PUSH 0 @POPII StringOutPtr     # Null out the Output string
+#@PRT "Input:" @PRTSI StringInPtr @PRT ":\n"
+#@PRT "Seperation Strings: " @PRTSI SepCharPtr @PRTNL
+#@PRT "Termination Strings: " @PRTSI TermCharPtr @PRTNL
+
+#
+@PUSHII StringInPtr @AND 0xff
+@IF_NOTZERO        # Skip whole logic is string is already empty
+    @CMP 34        # 34 is ascii double quote "
+    @IF_ZFLAG
+       # This block is for the case of quoted text
+       :Break1
+       @MA2V 0 BreakFlag
+       @PUSH 0          # Do the loop at least once.
+       @WHILE_ZERO
+          @POPNULL
+          @POPII StringOutPtr
+          @INCI StringInPtr
+          @INCI StringOutPtr
+          @INCI Consumed
+          @PUSHII StringInPtr @AND 0xff
+          @CMP 92     # Ascii code for backslash
+          @IF_ZFLAG   # This block will make sure what ever follows the backslash will be inserted into string. Even "
+                      # Maybe later I'll ask the codes for \n \m \r and \t but for now, they have to be explicitly entered.
+             @INCI StringInPtr
+             @INCI Consumed             
+             @PUSHII StringInPtr @AND 0xff
+          @ELSE
+             @IF_EQ_A 34
+                @POPNULL
+                @INCI Consumed
+                @MA2V 1 BreakFlag
+             @ENDIF
+         @ENDIF
+         @PUSHI BreakFlag
+      @ENDWHILE
+      @POPNULL
+      @PUSHI Consumed
+    @ELSE
+        # This block is for the case of 'normal' words
+        @PUSHI TermCharPtr
+        @SWP
+        @CALL strfndc
+        @IF_NOTZERO
+           @POPNULL
+           @PUSHII StringInPtr @AND 0xff   
+           @POPII StringOutPtr
+           @INCI Consumed
+           @PUSH 0
+        @ELSE
+           @POPNULL
+           @PUSH 1
+           @WHILE_NOTZERO
+             @POPNULL
+             @PUSHI SepCharPtr
+             @PUSHII StringInPtr @AND 0xff
+             @CALL strfndc
+             @IF_NOTZERO
+                @INCI StringInPtr
+                @INCI Consumed
+             @ENDIF
+           @ENDWHILE
+           @POPNULL
+           @PUSHII StringInPtr @AND 0xff   
+        @ENDIF
+        @WHILE_NOTZERO
+           @PUSHI SepCharPtr
+           @SWP         # order is (string,char) for strfndc, so swap them
+           @CALL strfndc
+           @IF_NOTZERO
+              # Case for found char in Seperation List
+              @POPNULL     # Remove the found address
+              # Found match in Terminat string
+              @INCI Consumed     # this extra incriment is what's diffrent between SepChar and TermChar
+              @PUSH 0      # This will terminate the while loop
+        #      @PRT "\nMatched Seperation String: " @PRTI Consumed @PRT "\n"
+           @ELSE
+              # Case for found char in Termination List
+              @POPNULL
+              @PUSHI TermCharPtr      
+              @PUSHII StringInPtr @AND 0xff
+              @CALL strfndc
+              @IF_NOTZERO
+                 @POPNULL
+                 @PUSH 0
+        #         @PRT "\nMatched Termination String: " @PRTI Consumed @PRT "\n"         
+              @ELSE
+                 # Last Case, character was not in either list.
+                 @POPNULL
+                 @PUSHII StringInPtr @AND 0xff
+                 @POPII StringOutPtr
+                 @INCI StringInPtr
+                 @INCI StringOutPtr
+                 @INCI Consumed
+                 @PUSHII StringInPtr @AND 0xff         
+              @ENDIF
+           @ENDIF
+        @ENDWHILE
+        @POPNULL
+        @PUSHI Consumed
+    @ENDIF
+@ELSE
+  @POPNULL    # String was empty
+  @PUSH 0
+@ENDIF
+@POPLOCAL R6 @POPLOCAL R5 @POPLOCAL R4 @POPLOCAL R3 @POPLOCAL R2 @POPLOCAL R1
+@POPRETURN
+@RET
+#
+# Function Tolkenize(string):[type, value]
+# 
+:Tolkenize
+@PUSHRETURN
+@PUSHLOCAL R1 @PUSHLOCAL R2 @PUSHLOCAL R3 @PUSHLOCAL R4
+=InputString R1
+=TolkenPtr R2
+=NextTolken R3
+=TolkenFound R4
+@POPI InputString
+@PUSHII InputString @AND 0xff
+@IF_NOTZERO
+   
+@MA2V KeyWordDataBase TolkenPtr
+@MA2V 0 TolkenFound
+@PUSHI TolkenPtr
+@WHILE_NEQ_A EndKeyWordData
+#   @PRT "Ptr: " @PRTI TolkenPtr @PRT " != " @PRTREF EndKeyWordData @PRTNL
+   @PUSHS
+   @POPI NextTolken
+   @INC2I TolkenPtr
+   @PUSHII TolkenPtr   # Save on stack the possible Tolken ID code
+   @INC2I TolkenPtr
+   @PUSHI TolkenPtr
+   @PUSHI InputString
+   @CALL strcmp
+   @IF_EQ_A 0
+      :Break4
+      @POPNULL
+      # On Stack should be the Tolken ID already
+      @PUSH EndKeyWordData # EndKeyWordData forces loop to exit
+      @POPI TolkenPtr
+      @MA2V 1 TolkenFound
+   @ELSE
+      @POPNULL @POPNULL  # Remove the strcmp result and the unneeded tolken ID
+      @MV2V NextTolken TolkenPtr
+   @ENDIF
+   @PUSHI TolkenPtr   
+:Break2   
+@ENDWHILE
+@POPNULL
+:Break3
+@PUSHI TolkenFound
+@IF_ZERO
+   @POPNULL
+   # If here, then keyword was not a tolkenized value
+   # For now just call it a lable
+   @PUSH 100
+@ELSE
+   @POPNULL
+@ENDIF
+@ELSE
+  @POPNULL
+  @PUSH 0
+@ENDIF
+@POPLOCAL R4 @POPLOCAL R3 @POPLOCAL R2 @POPLOCAL R1
+@POPRETURN
+@RET
+#
+# Memory Management Functions:
+# Function MemSpaceSet(lowmem, highmem, stacksize )
+#    sets the low and high mem ranges for the reserved storage
+#    Code Memory will start at lowmem
+#    Buffer for input and parcing will start at highmem - size_of_buffers
+#    Stack will start bellow that and grow to max of stacksize
+#    Vars will start at highmem - size_of_buffers - stacksize and grow downward
+:MemSpaceSet
+@SWP
+@PUSHLOCALI R1
+@POPI R1        # We'll use this to calculate StackMemTop/Bottom later
+@SWP @POPI HighMemStop
+@SWP @POPI LowMemStart
+# 
+@PUSHI HighMemStop
+@SUB 255
+@POPI InputBuffer1
+#
+@PUSHI InputBuffer1
+@SUB 255
+@POPI ScratchBuffer1
+#
+@PUSHI ScratchBuffer1
+@SUB 2
+@POPI StackMemTop
+#
+@PUSHI StackMemTop
+@SUBI R1
+@POPI StackMemBottom
+#
+@PUSHI StackMemBottom
+@SUB 2
+@POPI VarMemTop
+#
+@PUSH ENDOFCODE
+@POPI VarMemBottom
+@MA2V 0 VarMemUsed
+#
+@POPLOCAL R1
+# Now set the Software stack to use the defined spaces.
+@PUSHI StackMemTop @PUSHI StackMemBottom 
+@CALL SetSSStack
+# Return Address should still be at top of HW stack.
+@RET
+
+#
+# Test Data
+# 
+:SepString " ,:\0"
+:TermString "(<>=-+)^%$\0"
+:Main 
+@PUSH 0xfc00
+@PUSH 0xff00
+@PUSH 0xff
+@CALL MemSpaceSet
+#
+@PRT "BK-LANG01 Free:("
+@PUSHI HighMemStop @SUBI LowMemStart @SUB 0x3ff
+@PRTTOP @POPNULL @PRT ")\n"
+#
+@PUSH 1
+@WHILE_NOTZERO
+  @PRT "> "
+  @READSI InputBuffer1  
+  @WHILE_NOTZERO
+     @POPNULL
+     @PUSHI InputBuffer1 @PUSHI ScratchBuffer1 @PUSH TermString @PUSH SepString 
+     @CALL GetNextWord
+     @PRTSI InputBuffer1 @PRT " -- " @PRTTOP  @PRT " : "
+     @ADDI InputBuffer1 @POPI InputBuffer1
+     @PUSHI ScratchBuffer1
+     @CALL Tolkenize @PRTTOP @PRTNL
+     @SWITCH
+     @CASE 99
+        @END
+	@CBREAK
+     @CASE 100
+        @PRT "Dynamic: " @PRTSI ScratchBuffer1 @PRTNL
+        @POPNULL
+	@PUSH 1
+	@CBREAK
+     @CASE 0
+	@CBREAK
+     @CDEFAULT
+        @POPNULL     
+        @PUSH 1
+	@CBREAK
+     @ENDCASE
+  @ENDWHILE
+  @POPNULL
+@ENDWHILE
+@END
+
+M StoreKeyWord %0Next %1 %2 :%0Next 
+:KeyWordDataBase
+@StoreKeyWord CLSCODE "CLS\0" 
+@StoreKeyWord IFCODE "IF\0"
+@StoreKeyWord THENCODE "THEN\0"
+@StoreKeyWord ELSECODE "ELSE\0"
+@StoreKeyWord ENDIFCODE "ENDIF\0"
+@StoreKeyWord WHILECODE "WHILE\0"
+@StoreKeyWord WENDCODE "WEND\0"
+@StoreKeyWord FORCODE "FOR\0"
+@StoreKeyWord TOCODE "TO\0"
+@StoreKeyWord NEXTCODE "NEXT\0"
+@StoreKeyWord REMCODE "REM\0"
+@StoreKeyWord PRINTCODE "PRINT\0"
+@StoreKeyWord INPUTCODE "INPUT\0"
+@StoreKeyWord ENDCODE "END\0"
+@StoreKeyWord QUITCODE "QUIT\0"
+@StoreKeyWord OPENPARENCODE "(\0"
+@StoreKeyWord CLOSEPARENCODE ")\0"
+@StoreKeyWord EQUALCODE "==\0"
+@StoreKeyWord LESSTHANCODE "<\0"
+@StoreKeyWord GREATERCODE ">\0"
+@StoreKeyWord ASSIGNCODE "=\0"
+@StoreKeyWord NOTEQUALCODE "!=\0"
+@StoreKeyWord NOTLESSTHANCODE ">=\0"
+@StoreKeyWord NOTGREATERCODE "<=\0"
+@StoreKeyWord ADDCODE "+\0"
+@StoreKeyWord SUBCODE "-\0"
+@StoreKeyWord MULCODE "*\0"
+@StoreKeyWord DIVCODE "/\0"
+
+:EndKeyWordData
+EndKeyWordData 0 "END__notmatch__\0"         # This makes the 'next' address exactly EndKeyWordData
+:ENDOFCODE  # Managed Storage will exist past this point.
+. Main

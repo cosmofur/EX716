@@ -1,0 +1,59 @@
+\ Minimal tester.fr
+
+\ Save baseline state
+VARIABLE saved-depth
+CREATE saved-stack 16 CELLS ALLOT  \ Adjust size if needed
+
+: save-stack ( -- )
+  DEPTH DUP saved-depth !          \ Save depth
+  0 DO
+    I PICK saved-stack I CELLS + !
+  LOOP
+;
+
+: check-stack ( -- flag )
+  DEPTH saved-depth @ = IF
+    DEPTH 0 DO
+      I PICK saved-stack I CELLS + @ =
+      0= IF UNLOOP FALSE EXIT THEN
+    LOOP
+    TRUE
+  ELSE
+    FALSE
+  THEN
+;
+
+: restore-stack ( -- )
+  DEPTH saved-depth @ - 0 ?DO DROP LOOP
+;
+
+VARIABLE test-counter
+VARIABLE fail-counter
+
+: T{ ( -- )  \ Begin test
+  test-counter @ 1+ test-counter !
+  save-stack
+;
+
+: -> ( -- )  \ Marker before expected stack
+  restore-stack
+;
+
+: }T ( -- )  \ End test and compare
+  check-stack IF
+    ." Test " test-counter @ . ." OK" CR
+  ELSE
+    ." Test " test-counter @ . ." FAIL" CR
+    fail-counter @ 1+ fail-counter !
+    ."   Expected: "
+    saved-depth @ 0 DO saved-stack I CELLS + @ . LOOP CR
+    ."   Found:    "
+    DEPTH 0 DO I PICK . LOOP CR
+  THEN
+;
+
+: RESULTS ( -- )
+  CR
+  test-counter @ . ." total tests run." CR
+  fail-counter @ . ." failed." CR
+;

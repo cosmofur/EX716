@@ -1,0 +1,22 @@
+: test-arith
+  ." Testing /mod (17 / 5) = q r: " 
+  17 5 /mod . . cr
+
+  ." Testing */  (4 * 6 / 3) = q: "
+  4 6 3 */ . cr
+
+  ." Testing min  (7 3) = "
+  7 3 min . cr
+
+  ." Testing max  (7 3) = "
+  7 3 max . cr
+
+  ." Testing abs  (-5) = "
+  -5 abs . cr
+
+  ." Testing negate (5) = "
+  5 negate . cr
+;
+
+test-arith
+

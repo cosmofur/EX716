@@ -1,0 +1,95 @@
+cpu.py forth.asm -g
+cpu.py forth.asm -g
+cpu.py forth.asm -g
+4847> >>c
+c
+4847:    PUSH P1:484d [I]:5301 [II]:4553 TOS[ffff,ffff] Z0 N0 C0 O0 SS(0) # forth.asm:3182 Main start M.CALL M.PUSH 
+Reading in Preload:
+New Word named: .(
+Start of Interpreter: 6b7d
+OK : report if ." PASS" else ." fail" then cr;
+: report if ." PASS" else ." fail" then cr;
+New Word named: report
+301 Unknown Word.(cr;)
+;
+;
+OK : report if ." PASS" else ." fail" then cr ;
+: report if ." PASS" else ." fail" then cr ;
+New Word named: report
+OK 1 report
+1 report
+PASS
+OK 0 report
+0 report
+fail
+OK 1 2 swap
+1 2 swap
+OK 2 = 
+2 = 
+OK .s
+.s
+-- SP Stack --
+SP[0000]
+SP[0002]
+-- RP Stack --
+Range: 6a6e - 6a72
+RP[536f]
+RP[4a53]
+OK 1 = 
+1 = 
+OK .s
+.s
+-- SP Stack --
+SP[0000]
+SP[0002]
+-- RP Stack --
+Range: 6a6e - 6a72
+RP[536f]
+RP[4a53]
+OK 1 2
+1 2
+OK .s
+.s
+-- SP Stack --
+SP[0002]
+SP[0001]
+SP[0000]
+SP[0002]
+-- RP Stack --
+Range: 6a6e - 6a72
+RP[536f]
+RP[4a53]
+OK swap
+swap
+OK .s
+.s
+-- SP Stack --
+SP[0001]
+SP[0002]
+SP[0000]
+SP[0002]
+-- RP Stack --
+Range: 6a6e - 6a72
+RP[536f]
+RP[4a53]
+OK 2 =
+2 =
+OK .s
+.s
+-- SP Stack --
+SP[0000]
+SP[0002]
+SP[0000]
+SP[0002]
+-- RP Stack --
+Range: 6a6e - 6a72
+RP[536f]
+RP[4a53]
+OK exit
+exit
+
+END OF CODE:
+
+END of Run:(1069600 Opts)
+0
+backs1@W10-PF3WW8KS:~/github/personal/EX716/tests$ 

@@ -1,0 +1,18 @@
+I common.mc
+@MA2V 100 AVAL
+@MA2V 200 BVAL
+@WHEN
+   @IF_EQ_VV AVAL BVAL
+   @PUSH 0
+   @ELSE
+   PUSH 1
+   @ENDIF
+
+@DO_NOTZERO
+   @POPNULL
+   @DECI BVAL
+   @PRT "."
+@ENDWHEN
+@END
+:AVAL 0
+:BVAL 0
