@@ -1,0 +1,13 @@
+in linux to mount the DISK0#.disk files as local disk use
+sudo losetup -f -P DISK00.disk
+sudo losetup -l
+sudo mount /dev/loop0 /mnt/DISK00
+
+to unmount
+umount /mnt/DISK0#
+losetup -D
+
+sudo losetup -f -P DISK00.disk
+sudo losetup -l
+sudo mount /dev/loop0 /mnt/DISK00
+

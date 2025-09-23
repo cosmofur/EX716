@@ -1,9 +1,8 @@
 ! MOUSELIBSEEN
-L string.ld
 M MouseLibSeen 1
 G MouseInit G KeyEnQueue G KeyDeQueue G KeyQueueSize G KeyReadMouseSeq G KeySearchMouse
 G KeySearchKeyBoard G KeySearchTimer G MouseDisable G MouseAddEvent G ReadKeyTimeOut
-G MouseEventLoop G CSICODE
+G MouseEventLoop G CSICODE G MouseTest
 ########################################
 # Event Meta Data Struture:
 # While EventLoop returns an EventID, the extra informaton learned about events is stored here.
@@ -94,6 +93,21 @@ G LastTimerELap G LastTimerSkip G MouseEvent G TimerEvent G KeyEvent
 # 6               EventType (1:mouse,2:Key,3:Timer)
 # 8               EventExOneOff Timer Counter or Str Ptr
 # 10              EventExTwoOff Timer Max Value
+#
+# For MouseEvents
+
+# For MouseEvents:
+#   (Type=MouseEvent, X1, Y1, X2, Y2, EventID)
+#
+# For KeyboardEvents:
+#   (Type=KeyEvent, StrPtr, 0, 0, 0, EventID)
+#     - StrPtr points to string of keys to watch for
+#
+# For TimerEvents:
+#   (Type=TimerEvent, Duration(sec), RepeatFlag, 0, 0, EventID)
+#     - RepeatFlag = 0 one-shot, 1 periodic
+
+
 ########################################
 # Function: MouseDisable()
 :MouseDisable
@@ -106,8 +120,18 @@ G LastTimerELap G LastTimerSkip G MouseEvent G TimerEvent G KeyEvent
 M QuickMinI @PUSHI %1 @PUSHI %2 @IF_GT_S @SWP @POPI %2 @POPI %1 @ELSE @POPNULL @POPNULL @ENDIF
 #
 # Combines 1,2 into word so %1 is high byte and %2 is low.
-M EncodeLoc @PUSHI %1 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %2 @AND 0xff @ORS
+M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xff @ORS
 
+# For MouseEvents:
+#   (Type=MouseEvent, X1, Y1, X2, Y2, EventID)
+#
+# For KeyboardEvents:
+#   (Type=KeyEvent, StrPtr, 0, 0, 0, EventID)
+#     - StrPtr points to string of keys to watch for
+#
+# For TimerEvents:
+#   (Type=TimerEvent, Duration(sec), RepeatFlag, 0, 0, EventID)
+#     - RepeatFlag = 0 one-shot, 1 periodic
 
 ########################################
 # Function: MouseAddEvent(Type,X1,Y1,X2,Y2,EventID)
@@ -138,12 +162,14 @@ M EncodeLoc @PUSHI %1 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %2 @AND 0xf
     # See if EventID exists already, which case this is a replace.
     @MA2V -1 InsertSpot   # For cases with no matching EventID
     @ForIA2V Index2 0 MAESize
-        @PUSHI Index1 @ADD 4 @PUSHS   # EventID
+        @PUSHI Index1 @ADD EventIDOff @PUSHS   # EventID
         @IF_EQ_V EventID
            # Exact match
+           @POPNULL
            @MA2V Index1 InsertSpot
            @FORBREAK         # Note this only works because IF is 'top' level in loop
         @ELSE
+           @POPNULL
            @PUSHI Index1 @ADD MouseRecordSize @POPI Index1   # Move to next Entry
         @ENDIF
     @Next Index2
@@ -194,28 +220,29 @@ M EncodeLoc @PUSHI %1 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %2 @AND 0xf
       #
       @EncodeLoc X1 Y1
       @PUSHI InsertSpot @POPS           # InsertSpot[0,1] = MinLoc
-      @EncodeLoc Y2 X2
+      @EncodeLoc X2 Y2
       @PUSHI InsertSpot @ADD EventMaxLocOff  @POPS    # Save to InsertSpot[2,3]
       @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
       @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS       # InsertSpot[6,7]=Type
       # For mouse EventData1/2 are not used.
       @CBREAK
    @CASE KeyEvent # KeyBoard
-      # KeyBoard Event   
+      # KeyBoard Event
       # X1 = StrPtr to string listing what to key eye out for. Keys that do not match will be ignored.
-      # Y1 = StrPtr value of character key that triggered event.
       @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS
       @PUSHI X1   @PUSHI InsertSpot @ADD EventExOneOff @POPS
+      @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
       @CBREAK
    @CASE TimerEvent  # Timer
       # Timer Event
-      # Mouse MinLoc == Start time      
+      # Mouse MinLoc == Start time
       @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS
       @GETTIME
       @POPNULL # Drop High 16
       @PUSHI InsertSpot @ADD TimerStartOff @POPS
       @PUSHI X1   @PUSHI InsertSpot @ADD TimerDurOff @POPS
       @PUSHI Y1   @PUSHI InsertSpot @ADD TimerRepOff @POPS
+      @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
       @CBREAK
    @CDEFAULT
       @PRT "Error Not valid event type:"
@@ -352,7 +379,6 @@ M EncodeLoc @PUSHI %1 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %2 @AND 0xf
     @WHILE_ZERO
        @POPNULL
        @CALL ReadKeyTimeOut  @AND 0xff
-       @PRT "."
        @SWITCH
        @CASE ";\0"
           @POPNULL
@@ -469,10 +495,10 @@ M Between_U \
     @MA2V -1 Result
     @PUSHII MouseTable @POPI MTSize
     @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
-    @ForIA2V Rec 0 MTSize
+    @ForIV2A Rec MTSize 0
        # Skip any non-mouse event
        @PUSHI Base @ADD EventTypeOff @PUSHS
-       @IF_NEQ_A 1
+       @IF_NEQ_A MouseEvent
           @POPNULL
        @ELSE
           @POPNULL
@@ -480,7 +506,6 @@ M Between_U \
           @ExtractYMin Base @POPI MinY  #Min Y
           @ExtractXMax Base @POPI MaxX  #Max X
           @ExtractYMax Base @POPI MaxY  #Max Y
-#          @PRT "Is " @PRTI X1 @PRT "," @PRTI Y1 @PRT " Between X:" @PRTI MinX @PRT " - " @PRTI MaxX @PRT " and Y: " @PRTI MinY @PRT " - " @PRTI MaxY @PRTNL
           @Between_U X1 MinX MaxX
           @IF_NOTZERO
              @POPNULL
@@ -498,7 +523,7 @@ M Between_U \
           @ENDIF
       @ENDIF
       @PUSHI Base @ADD MouseRecordSize @POPI Base
-   @Next Rec
+   @NextBy Rec -1
    @IF_EQ_AV -1 Result
       @PUSH 0      # Return null if no match
    @ELSE
@@ -518,42 +543,78 @@ M Between_U \
 @RET
 
 ########################################
+# Function FindCh(String,Char):(0|Ptr)
+# Retirs ptr to where in String Char is, or 0
+:FindCh
+@PUSHRETURN
+@LocalVar Index1 01
+@LocalVar CharIn 02
+@LocalVar StringPtr 03
+@LocalVar Result 04
+@POPI CharIn
+@POPI StringPtr
+   @MA2V 0 Result
+   @PUSHII StringPtr @AND 0xff
+   @WHILE_NOTZERO
+       @IF_EQ_V CharIn
+          @MV2V StringPtr Result
+          @POPNULL
+          @PUSH 0
+       @ELSE
+          @POPNULL
+          @INCI StringPtr
+          @PUSHII StringPtr @AND 0xff
+       @ENDIF
+   @ENDWHILE
+   @POPNULL
+   @PUSHI Result
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+@POPRETURN
+@RET
+
+########################################
 # Function: KeySearchKeyBoard(ch) -> EventID|0
 :KeySearchKeyBoard
 @PUSHRETURN
-@LocalVar CH     01
+@LocalVar CHR     01
 @LocalVar MTSize 02
 @LocalVar Base   03
 @LocalVar InPtr  04
 @LocalVar C      05
 @LocalVar Rec    06
 @LocalVar Result 07
-@POPI CH
+@POPI CHR
    @MA2V -1 Result
    @PUSHII MouseTable @POPI MTSize
    @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
-   @ForIA2V Rec 0 MTSize
+   @INCI MTSize
+   @ForIV2A Rec MTSize 0
       @PUSHI Base @ADD EventTypeOff @PUSHS
       # Skip non keyboard events
-      @IF_NEQ_A 2
+      @IF_NEQ_A KeyEvent
           @POPNULL
       @ELSE
+         @POPNULL
          @PUSHI Base @ADD EventExOneOff @PUSHS @POPI InPtr
          @PUSHI InPtr
-         @PUSHI CH
-         @CALL strstr
+         @PUSHI CHR
+         @CALL FindCh
          @IF_NOTZERO
-            @POPNULL
+            @POPI LastKeyMatchPtr
+            @MV2V CHR LastKeyChar
             # Input Matches Event
             @PUSHI Base @ADD EventIDOff @PUSHS
             @POPI Result
-            @MV2V MTSize Rec   # Break For loop
+            @PUSHI MTSize @SUB 1 @POPI Rec # Break For loop
          @ELSE
             @POPNULL
          @ENDIF
       @ENDIF
       @PUSHI Base @ADD MouseRecordSize @POPI Base
-   @Next Rec
+   @NextBy Rec -1
    @IF_EQ_AV -1 Result
       @PUSH 0
    @ELSE
@@ -585,10 +646,9 @@ M Between_U \
    @MA2V -1 Result
    @PUSHI MouseTable @PUSHS @POPI MTSize
    @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
-
-   @ForIA2V Rec 0 MTSize
+   @ForIV2A Rec MTSize 0
        @PUSHI Base @ADD EventTypeOff @PUSHS
-       @IF_NEQ_A 3
+       @IF_NEQ_A TimerEvent
           @POPNULL
        @ELSE
           @POPNULL
@@ -596,6 +656,7 @@ M Between_U \
           @IF_EQ_AV 0 Dur
              # Do Nothing.
           @ELSE
+          
              @PUSHI Base @ADD TimerStartOff @PUSHS @POPI Start
              @PUSHI Base @ADD TimerRepOff   @PUSHS @POPI Rep
              # Now = low16(Unix time)
@@ -604,7 +665,7 @@ M Between_U \
              @POPI Now
 
              # Elap = (Now - Start) Mod 0xffff (wrap safe)
-             @PUSHI Now @PUSHI Start @SUBS @POPI Elap
+             @PUSHI Now @SUBI Start @POPI Elap
 
              # If Dur <= Elap then event fire
              @PUSHI Dur
@@ -612,14 +673,16 @@ M Between_U \
                 # Event detected Push EventID to result
                 @POPNULL
                 @PUSHI Base @ADD EventIDOff @PUSHS @POPI Result
-
                 @IF_EQ_AV 0 Rep
                     # One Time timer, mark as disabled.
                     @PUSH 0 @PUSHI Base @ADD EventTypeOff @POPS
+                    @MV2V 0 LastTimeRep
                 @ELSE
                    # periodic: advance Start forward by k*Dur past Now
                    # while Elap >= Dur: Start += Dur; Elap -= Dur
                    # This allows events to more closely match real time incriments.
+                   @MV2V 1 LastTimeRep
+                   @MA2V 0 LastTimerSkip                   
                    @PUSH 0
                    @WHILE_ZERO
                       @POPNULL
@@ -628,6 +691,7 @@ M Between_U \
                           @POPNULL
                           @PUSHI Start @ADDI Dur @POPI Start
                           @PUSHI Elap @SUBI Dur @POPI Elap
+                          @INCI LastTimerSkip                          
                           @PUSH 0
                       @ELSE
                           @POPNULL
@@ -636,16 +700,20 @@ M Between_U \
                    @ENDWHILE
                    @POPNULL
                    # Save the updated Start time in record
+                   @MV2V Elap LastTimerELap
+                   @MV2V Dur LastTimerDur
                    @PUSHI Start @PUSHI Base @ADD TimerStartOff @POPS
                 @ENDIF
-                @MV2V Rec MTSize      # Break Outer loop
+                @PUSHI MTSize @SUB 1 @POPI Rec # Break Outer loop
              @ELSE
                 @POPNULL
              @ENDIF
          @ENDIF
      @ENDIF
      @PUSHI Base @ADD MouseRecordSize @POPI Base
-  @Next Rec
+  @NextBy Rec -1
+
+
   @IF_EQ_AV -1 Result
      @PUSH 0
   @ELSE
@@ -669,24 +737,17 @@ M Between_U \
 # Mouse Event.
 :MouseEventLoop
 @PUSHRETURN
-@LocalVar MouseXVal 01
-@LocalVar MouseYVal 02
-@LocalVar MouseEvent 03
-
+@LocalVar MouseXVal 01 @LocalVar MouseYVal 02 @LocalVar MouseEventCode 03
    # Fast exit if there nothing in MouseTable to search for.
-   @PUSHI MouseTable @PUSHS
-   @MA2V 0 MouseEvent
+   @MA2V 0 MouseEventCode
+   @PUSHI MouseTable @PUSHS  # Mouse table will be zero if never defined.
    @IF_ZERO
       # nothing to do, just exit with zero as event id.
    @ELSE
-      @TTYNOECHO
-      # We start At StateIdle
-      @POPNULL
-      # Setup flags and state
-#      @READCNW KeyBuffer
+      @POPNULL        # OK Mouse Table has some data, we'll review it later.
       @CALL ReadKeyTimeOut
-#      @STRSET "\e[0;10;10M" KeyBuffer
       @IF_EQ_A 0
+         @POPNULL
          # Zero on first char read, do nothing
       @ELSE
          @IF_EQ_A "\e\0"
@@ -712,11 +773,10 @@ M Between_U \
                     @IF_NOTZERO
                        @POPI MouseYVal
                        @POPI MouseXVal
-                       @MA2V 1 MouseEvent      # Flags that there is a mouse event to check
+                       @MA2V 1 MouseEventCode      # Flags that there is a mouse event to check
                     #
                        # If Mouse sequence was invalid, leaves 0 on stack.
                     @ENDIF
-
                 @ELSE
                     # Was not a Mouse event, so queue it up so can be decord by calling functions.
                     @PUSH "\e\0" @CALL KeyEnQueue
@@ -724,7 +784,6 @@ M Between_U \
                     # What ever it was still on stack
                     @CALL KeyEnQueue
                 @ENDIF
-
                 @CBREAK
              @CDEFAULT
                 # Not a <ESC>[ sequeucne so just put it on the queue
@@ -743,30 +802,76 @@ M Between_U \
       @ENDIF
       # When we get here, we should now know if there was a mouse or key event and queue it up.
       # We handle MouseEvents before Key Events.
-      @IF_EQ_AV 1 MouseEvent
+      @IF_EQ_AV 1 MouseEventCode
           @PUSHI MouseXVal @PUSHI MouseYVal
           @CALL KeySearchMouse
-      @ENDIF
-
-      # After Mouse events, check for Keyboard events.
-      #
-      @CALL KeyQueueSize
-      @IF_ZERO
-        # That will also be our result.
-        @POPNULL
       @ELSE
-        # Not zero there is a key to deal with.
-        @POPNULL
-        @CALL KeyDeQueue
-        @CALL KeySearchKeyBoard
+          @CALL KeyQueueSize
+          @IF_ZERO
+             @POPNULL
+             @CALL KeySearchTimer
+          @ELSE
+             # Not zero there is a key to deal with.
+             @POPNULL
+             @CALL KeyDeQueue
+             @CALL KeySearchKeyBoard
+         @ENDIF
       @ENDIF
    @ENDIF
-   @TTYECHO
- @RestoreVar 03
- @RestoreVar 02
- @RestoreVar 01
+ @RestoreVar 03  @RestoreVar 02  @RestoreVar 01
  @POPRETURN
  @RET
+###########################
+# Mouse Test
+:MouseTest
+@PUSHRETURN
+@LocalVar MTSize   01
+@LocalVar Index    02
+@LocalVar Base     03
+@LocalVar X1       04
+@LocalVar Y1       05
+@LocalVar X2       06
+@LocalVar Y2       07
+@LocalVar EventID  08
+@LocalVar Type     09
+
+   # Load header values
+   @PUSHI MouseTable @PUSHS @POPI MTSize       # number of used entries
+   @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
+
+   @PRTNL
+   @PRT "MouseTable (" @PRTHEXI MTSize @PRT " records)" @PRTNL
+
+   @ForIA2V Index 0 MTSize
+      # Decode min/max coords
+      @ExtractXMin Base @POPI X1
+      @ExtractYMin Base @POPI Y1
+      @ExtractXMax Base @POPI X2
+      @ExtractYMax Base @POPI Y2
+
+      # EventID
+      @PUSHI Base @ADD EventIDOff @PUSHS @POPI EventID
+
+      # Type
+      @PUSHI Base @ADD EventTypeOff @PUSHS @POPI Type
+
+      # Print line
+      @PRT "Event:ID=" @PRTHEXI EventID
+      @PRT " T=" @PRTHEXI Type
+      @PRT " X1=" @PRTHEXI X1
+      @PRT " Y1=" @PRTHEXI Y1
+      @PRT " X2=" @PRTHEXI X2
+      @PRT " Y2=" @PRTHEXI Y2
+      @PRTNL
+
+      # Next record
+      @PUSHI Base @ADD MouseRecordSize @POPI Base
+   @Next Index
+
+@RestoreVar 09 @RestoreVar 08 @RestoreVar 07 @RestoreVar 06
+@RestoreVar 05 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
+@POPRETURN
+@RET
 
 M SIZESINCECOMMENT mouse.ld
 @SIZESINCE

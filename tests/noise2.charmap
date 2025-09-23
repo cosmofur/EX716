@@ -1,0 +1,55 @@
+# This file just creates the indexed array for the character map.
+:CHARMAP
+# Address 0
+Field00
+Field01
+Field02
+Field03
+Field04
+Field05
+Field06
+Field07
+Field08
+Field09
+Field10
+Field11
+Field12
+Field13
+Field14
+Field15
+Field16
+Field17
+Field18
+Field19
+Field20
+Field21
+Field22
+Field23
+
+
+:Field00 "0\0"
+:Field01 "1\0"
+:Field02 "2\0"
+:Field03 "3\0"
+:Field04 "4\0"
+:Field05 "5\0"
+:Field06 "6\0"
+:Field07 "7\0"
+:Field08 "8\0"
+:Field09 "9\0"
+:Field10 "A\0"
+:Field11 "B\0"
+:Field12 "C\0"
+:Field13 "D\0"
+:Field14 "E\0"
+:Field15 "F\0"
+:Field16 "!\0"
+:Field17 "@\0"
+:Field18 "#\0"
+:Field19 "$\0"
+:Field20 "%\0"
+:Field21 "^\0"
+:Field22 "&\0"
+:Field23 "*\0"
+
+

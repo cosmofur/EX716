@@ -3,15 +3,13 @@
 #
 ! TIMELIBSeen
 M TIMELIBSeen 1
+M SIZESINCECOMMENT timetool.ld
 I common.mc
 L lmath.ld
 I lmath.md
 L mul.ld
 L div.ld
-:LVar01 0 0
-:LVar02 0 0
-:LVar03 0 0
-:ClockCalib 0
+:ClockCalib 0 0   # 32 bit Calibration value
 G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G SleepMilli
 #
 #
@@ -21,8 +19,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Function IsLeapYear(int:year) returns 1 or 0 if given year is leap year or not.
 :IsLeapYear
 @PUSHRETURN
-=year Var01
-@PUSHLOCALI Var01
+@LocalVar year 01
 @POPI year
 #
 @PUSHI year
@@ -54,7 +51,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
    @POPNULL
    @PUSH 0          # Not mod(4)=0 so not a leap year.
 @ENDIF
-@POPLOCAL year
+@RestoreVar 01
 @POPRETURN
 @RET
 ####################################################################
@@ -78,10 +75,8 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 31 28 31 30 31 30 31 31 30 31 30 31
 :DaysInMonth
 @PUSHRETURN
-=year Var01
-=month Var02
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar year 01
+@LocalVar month 02
 @POPI year
 @POPI month
 #
@@ -110,12 +105,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
      @ENDIF
   @ENDIF
 @ENDIF
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #####################################################################
-# Function Time2Units(int32 seconds):(int year, int month, int day, int hour, int minute, int second)
+# Function Time2Units(int32Ptr seconds):(int year, int month, int day, int hour, int minute, int second)
 # Storage
 # 32 bit constants
 :SecondsMinute $$$60
@@ -123,25 +118,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 :SecondsDay $$$86400
 
 :Time2Units
-=Year Var01
-=Month Var02
-=Day Var03
-=Hour Var04
-=Minute Var05
-=Second Var06
-=days Var07
-=SecondsPtr Var08
-=LResult LVar01
-=LRemain LVar02
-=LRemaingSecs LVar03
 @PUSHRETURN
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
-@PUSHLOCALI Var07
+@LocalVar Year 01 @LocalVar Month 02 @LocalVar Day 03 @LocalVar Hour 04
+@LocalVar Minute 05 @LocalVar Second 06 @LocalVar days 07 @LocalVar SecondsPtr 08
+@LocalVar LResult 09 @LocalVar LResultHW 10 @LocalVar LRemain 11 @LocalVar LRemainHW 12
+@LocalVar LRemaingSecs 13 @LocalVar LRemaingSecHW 14
+
 #
 # Top will be address where 32b seconds is stored.
 @POPI SecondsPtr
@@ -211,13 +193,9 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @PUSHI Hour
 @PUSHI Minute
 @PUSHI Second
-@POPLOCAL Var07
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 14 @RestoreVar 13 @RestoreVar 12 @RestoreVar 11 @RestoreVar 10
+@RestoreVar 09 @RestoreVar 08 @RestoreVar 07 @RestoreVar 06 @RestoreVar 05
+@RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
 ###################################################################################
@@ -227,85 +205,81 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 #
 :TimeCalabrate
 @PUSHRETURN
-@LocalVar Index1 01
-@LocalVar Sec256th 02
-@LocalVar StartTime 03
-@LocalVar TargetTime 04
-@LocalVar LCount 05
-=LowWord LCount
-@LocalVar HighWord 06
-@LocalVar LSum 07
-@LocalVar LSumHV 08
-@LocalVar LRemainder 09
-@LocalVar LRemainderHV 10
-#
-@MA2V 0 HighWord
-@MA2V 0 LowWord
-@MA2V 1 ClockCalib
-#
-# GETTIME returns two 16b words, we only care about the lower one
-# BUT we have to worry about if the count is close to an overflow
-# as we will be using a delta between being and end times and don't
-# want the begin to be higher than the end.
-@PUSH 1
+@LocalVar StartTime 01
+@LocalVar CurTime 02
+@LocalVar Index01 03
+
+@MA2V 0 ClockCalib       # Zero out 32 bit clock calibration
+@MA2V 0 ClockCalib+2
+
+# FIrst make sure we are at a 'safe' starting point for time timese. (not too close to a roll over)
 @LOOP
-  @POPNULL
-  @GETTIME @POPNULL
-  @IF_UGT_A 0xfffc     # We're < 3 seconds from roll over, loop until roll over finished.
-     @POPNULL
-     @PUSH 0
-  @ENDIF
-@UNTIL_NOTZERO
-@POPI StartTime
-#
-# Now find the bottom 'edge' of the second counter
-# We do this by repeativly getting the time, until value is not same as first query.
-#
-@PUSH 1
-@LOOP
-   @POPNULL
-   @GETTIME @POPNULL
-   @IF_EQ_V StartTime
+   @GETTIME
+   @POPNULL    # discard high word.
+   @IF_UGE_A 0xfffc
       @POPNULL
       @PUSH 0
    @ELSE
-      @POPI StartTime
-      @PUSH 1
+      @POPI CurTime
+      @PUSH 1  # Break Loop
    @ENDIF
 @UNTIL_NOTZERO
 @POPNULL
-@PUSHI StartTime @ADD 1 @POPI TargetTime
-@MA2V 0 LRemainder
-@MA2V 0 LRemainder+2
+@MV2V CurTime StartTime
+@PRT "Now: " @PRTI CurTime @PRT ":"
 
-#  Loop until time has moved forward one second.
-@PUSH 0
-@WHILE_LT_V TargetTime
-   @POPNULL
-   @IF_EQ_AV 0xffff LRemainder     # Lower Word of counter
-      @MA2V 0 LRemainder
-      @INCI LRemainder+2           # Add one to upper 32 bit count
+# Now poll until StartTime != GETTIME to make sure we're at start of a given second
+@LOOP
+   @GETTIME      # 2 Words on stack
+   @POPNULL      # 1 Word on Stack
+   @PRTTOP  @PRT " .. "
+   @IF_EQ_V StartTime
+      @POPNULL   # 0 words on stack
+      @PUSH 1    # 1 word on stack
    @ELSE
-      @INCI LRemainder
+      @POPNULL   # 0 words on stack
+      @PUSH 0    # 1 word on stack
    @ENDIF
-   @GETTIME @POPNULL
+@UNTIL_NOTZERO   # Still 1 word on stack
+@POPNULL         # 0 words on stack
+#
+# Now count how long it takes to get to the next second flip
+@INC2I CurTime  # Count until 2 seconds pass.
+@PRT "Looking for: " @PRTI CurTime @PRTNL
+@PUSH 1
+@WHILE_NOTZERO
+   @POPNULL
+   @GETTIME
+   @POPNULL
+   @IF_NEQ_V CurTime
+      @POPNULL   
+      @INCI ClockCalib
+      @IF_EQ_AV 0 ClockCalib
+         # Rolled over so inc high word
+         @INCI ClockCalib+2
+      @ENDIF
+      @PUSH 1
+   @ELSE
+      @POPNULL
+      @PUSH 0
+   @ENDIF
 @ENDWHILE
 @POPNULL
-@PUSHI LRemainder                 # Most cases this will be < 64K
-#
-:Break01
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
+# Now ClockCalib is 32 bit work with total count for 2 seconds, SHR to make it sutable for 1 second.
+@CLC    # Clear Carry
+# We want our ClockCalib about equal to 1 millsec so div by 1024
+@ForIA2B Index01 0 10
+  @PUSHI  ClockCalib+2        # High Word
+  @RRTC  @POPI  ClockCalib+2
+  @PUSHI ClockCalib
+  @RRTC @POPI ClockCalib     # Low Word
+@Next Index01
 @RestoreVar 03
 @RestoreVar 02
 @RestoreVar 01
 @POPRETURN
 @RET
+
 ################################################################
 ## The Sleep Functions are only aproximations. Not exact times.
 #################################################################
@@ -315,6 +289,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @LocalVar Count 01
 @LocalVar Limit 02
 #
+
 @POPI Count
 # Check if we need to calabrate
 @IF_EQ_AV 0 ClockCalib
@@ -331,10 +306,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Do not try to single step here, logic only works if time will eventuly be exactly Limit.
 # Single stepsing or debugging will make the count be too slow.
 @GETTIME @POPNULL
-@WHILE_NEQ_V Limit
-   @POPNULL
-   @GETTIME @POPNULL
-@ENDWHILE
+@WHILE_NEQ_V Limit    @POPNULL   @GETTIME @POPNULL @ENDWHILE
 @POPNULL
 @RestoreVar 02
 @RestoreVar 01
@@ -344,29 +316,30 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # SleepMilli(MilliSeconds) Sleep for number of millisecond
 :SleepMilli
 @PUSHRETURN
-=Index1 Var01
-=Count Var02
-=Index2 Var03
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
+@LocalVar Index1 01
+@LocalVar Index2 02
+@LocalVar Index3 03
+@LocalVar Count 04
 #
 @POPI Count
 @IF_EQ_AV 0 ClockCalib
    @PRT "Clock not yet Calabrated....Please wait."
    @CALL TimeCalabrate
-   @POPNULL
 @ENDIF
+@POPNULL
 #
 @ForIA2V Index1 0 Count
-   @ForIA2V Index2 0 ClockCalib
+   @ForIA2V Index2 -1 ClockCalib+2   # if Highword is 0, still loop once.
+     @ForIA2V Index3 0 ClockCalib       # Lowword does most of the work.
+       # Do Nothing
+     @Next Index3
    @Next Index2
 @Next Index1
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
-M SIZESINCECOMMENT timetool.ld
 @SIZESINCE
 ENDBLOCK

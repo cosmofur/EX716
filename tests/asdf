@@ -1,0 +1,66 @@
+Ref %P is pop MS, %S is Push MS, %V is Top MS, %W is SFT
+
+
+801: @WHILE_NOTZERO ___U_001cbe_457_LoopTop ----------+
+    809: @IF_ZERO ____U_001cd0_457_ENDIF      ------+ |
+    817: @ELSE ____U_001cd0_457_ElseBlock          |  |
+        825: IF_NOTZERO ____U_001ce4_458_ENDIF --+ |  |
+        828: @ELSE ____U_001ce4_458_ElseBlock    | |  |
+        831: @ENDIF ____U_001ce4_458_ENDIF     --+ |  |
+    832: @ENDIF ____U_001cd0_457_ENDIF       ------+  |
+ 833: @ENDWHILE ____U_001cbe_457_LoopTop   -----------+
+
+ 898: @WHILE_ZERO ____U_001d65_459_LoopTop ---------------------+
+    905: @IF_EQ_AV ____U_001d7a_459_ENDIF -------------------+  |
+        912: @IF_GT_A ____U_001d88_459_ENDIF---+             |  |
+        914: @ENDIF ____U_001d88_459_ENDIF  ---+             |  |
+        917: @IF_EQ_AV ____U_001d94_459_ENDIF--------------+ |  |
+        919: @ELSE ____U_001d94_459_ElseBlock              | |  |
+            921: @SWITCH ___U_001d65_459 ---------------+  | |  | 
+            922: @CASE ____U_001da6_460_DoCase1         |  | |  |
+            926: @CBREAK  ____U_001dac_460              |  | |  |
+            927: @CASE ____U_001db0_460_DoCase1         |  | |  |
+            936: @CBREAK  ____U_001dd4_461              |  | |  |
+            937: @CASE ____U_001dd8_461_DoCase1         |  | |  |
+                939: @IF_EQ_AV ____U_001ddc_461_ENDIF-+ |  | |  |
+                945: @ELSE ____U_001ddc_461_ElseBlock | |  | |  |
+                951: @ENDIF ____U_001ddc_461_ENDIF ---+ |  | |  |
+            952: @CBREAK ____U_001e08_462_              |  | |  |
+            953: @CASE ____U_001e0c_462_DoCase1         |  | |  |
+                955: @IF_EQ_AV ____U_001e10_462_ENDIF-+ |  | |  |
+                962: @ELSE ____U_001e10_462_ElseBlock | |  | |  |
+                968: @ENDIF____U_001e10_462_ENDIF-----+ |  | |  |
+            971: @CBREAK ____U_001e30_463               |  | |  |
+            972: @CASE ____U_001e34_463_DoCase1         |  | |  |
+                974: @IF_EQ_AV ____U_001e38_463_ENDIF-+ |  | |  |
+                979: @ELSE ____U_001e38_463_ElseBlock | |  | |  +---------+
+                984: @ENDIF ____U_001e38_463_ENDIF----+ |  | +----------+ |
+            987: @CBREAK ____U_001e52_464               |  +----------+ | |
+            988: @CASE ____U_001e56_464_DoCase1         +-----------+ | | |
+                990: @IF_EQ_AV ____U_001e5a_464_ENDIF     --------+ | | | |
+                993: @ELSE ____U_001e5a_464_ElseBlock             | | | | |
+                    997: @IF_EQ_AV  ____U_001e6f_465_ENDIF--+     | | | | |
+                    999: @ENDIF ____U_001e6f_465_ENDIF------+     | | | | |
+                   1001: @ForIV2V ____U_001e7f_465_ForTop-------+ | | | | |
+                       1011: @IF_LT_V ____U_001e94_465_ENDIF--+ | | | | | |
+                       1014: @ENDIF ____U_001e94_465_ENDIF----+ | | | | | |
+                   1019: @Next ____U_001e7f_465_ForTop ---------+ | | | | |
+                1020: @ENDIF ____U_001e5a_464_ENDIF --------------+ | | | |
+            1021: @CBREAK ____U_001ec8_465                          | | | |
+            1022: @CASE ____U_001ecc_465_DoCase1                    | | | |
+            1033: @CBREAK ____U_001f02_465                          | | | |
+            1034: @CDEFAULT ____U_001db0_460_NextCase               | | | |
+            1036: @CBREAK ____U_001f0c_465                          | | | |
+            1037: @ENDCASE ____U_001db0_460_EndCASE ----------------+ | | |
+            1038: @ENDIF :____U_001da5_460_ENDIF----------------------+ | |
+            1039: @ELSE ____U_001d94_459_ElseBlock                      | |
+                1040: @IF_EQ_AV ____U_001f15_465_ENDIF ---------------+ | |
+                   1043: @IF_EQ_A ____U_001f1e_465_ENDIF     ------+  | | |
+                   1045: @ELSE ____U_001f1e_465_ElseBlock          |  | | |
+                   1049: @ENDIF :____U_001f1e_465_ENDIF -----------+  | | |
+                1050: @ELSE  ____U_001f1e_465_ElseBlock               | | |
+                1054: @ENDIF ____U_001f15_465_ENDIF  -----------------+ | |
+            1055: @ENDIF ____U_001d94_459_ENDIF ------------------------+ |
+        1060: @ENDWHILE  ____U_001d7a_459_ExitLoop    --------------------+
+                 
+            

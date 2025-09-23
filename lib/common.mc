@@ -124,12 +124,15 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =PollSetNoEcho 4
 =PollSetEcho 5
 =PollReadCINoWait 6
+=PollSetRaw 7
+=PollReSetRaw 8
+=PollTTYState 9
 =PollReadSector 22
-=PollReadSectorI 26
 =PollReadTapeI 23
 =PollRewindTape 24
 =PollReadTime 25
-
+=PollReadSectorI 26
+=PollReadTape 27
 
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
@@ -194,6 +197,53 @@ M ADM $$ADM
 M SCLR $$SCLR
 M SRTP $$SRTP
 
+#     Our rotate and shift functions are someone limited, here some macros to imprve them
+#
+
+# ============================================================
+# Flag control macros
+# ============================================================
+
+# Clear Carry (CC)
+M CLC   @PUSH 1 @XOR 1 @XOR 1 @POPNULL
+# Set Carry (SC) - force a carry by adding max value + 1
+M SETC   @PUSH 0xFFFF @ADD 1 @POPNULL
+# Clear Overflow (CLO) - safe add with no overflow
+M CLO   @PUSH 0 @ADD 0 @POPNULL
+# Set Overflow (SETO) - force signed overflow
+M SETO  @PUSH 40000 @ADD 40000 @POPNULL
+# Clear Zero (CLZ) - push nonzero and compare
+M CLZ   @PUSH 1 @SUB 2 @POPNULL  # result = -1, not zero
+# Set Zero (SETZ) - subtract equal values
+M SETZ  @PUSH 1 @SUB 1 @POPNULL
+#
+# Rotate Left n bits (pure, deterministic)
+M ROL1 @CLC @RLTC
+M ROL2 @CLC @RLTC @RLTC
+M ROL3 @CLC @RLTC @RLTC @RLTC
+M ROL4 @CLC @RLTC @RLTC @RLTC @RLTC
+M ROL5 @CLC @RLTC @RLTC @RLTC @RLTC @RLTC
+M ROLN @CLC \
+     %REPEAT %1 @RLTC %ENDR
+# Rotate Right n bits (pure, deterministic)
+M ROR1 @CLC @RRTC
+M ROR2 @CLC @RRTC @RRTC
+M ROR3 @CLC @RRTC @RRTC @RRTC
+M ROR4 @CLC @RRTC @RRTC @RRTC @RRTC
+M ROR5 @CLC @RRTC @RRTC @RRTC @RRTC @RRTC
+M ROLN @CLC \
+     %REPEAT %1 @RRTC %ENDR
+# Logical Shifts (no carry involvement)
+M SHL2 @SHL @SHL
+M SHL4 @SHL @SHL @SHL @SHL
+M SHLN %REPEAT %1 @SHL %ENDR
+M SHR2 @SHR @SHR
+M SHR4 @SHR @SHR @SHR @SHR
+M SHR7 @SHR @SHR @SHR @SHR @SHR @SHR @SHR
+M SHRN %REPEAT %1 @SHR %ENDR
+
+
+
 
 # For compleatness we can proview VV VA AV versions of major math functions.
 
@@ -243,87 +293,97 @@ M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
-M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1 @POPNULL
+M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1
 # Print simple test message with no variables no linefeed
-M PRT @JMP _J%0J1 :_%0M1 %1 0 :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1 @POPNULL
+M PRT @JMP _J%0J1 :_%0M1 %1 0 :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1
 # Print value of variable
-M PRTI @PUSH CastPrintIntI @CAST %1 @POPNULL
+M PRTI @PUSH CastPrintIntI @CAST %1
 # Print Value of unsigned variable
-M PRTUI @PUSH CastPrintIntUI @CAST %1 @POPNULL
+M PRTUI @PUSH CastPrintIntUI @CAST %1
 # Print value of variable in Hex
-M PRTHEXI @PUSH CastPrintHexI @CAST %1 @POPNULL
+M PRTHEXI @PUSH CastPrintHexI @CAST %1
 # Print value Pointer is pointing at in Hex
-M PRTHEXII @PUSH CastPrintHexII @CAST %1 @POPNULL
+M PRTHEXII @PUSH CastPrintHexII @CAST %1
 # Print string starting at address
-M PRTSTR @PUSH CastPrintStr @CAST %1 @POPNULL
+M PRTSTR @PUSH CastPrintStr @CAST %1
 # Print string start at variable
-M PRTSTRI @PUSH CastPrintStrI @CAST %1 @POPNULL
+M PRTSTRI @PUSH CastPrintStrI @CAST %1
 # Alternative name for PRTSTR
-M PRTS @PUSH CastPrintStr @CAST %1 @POPNULL
+M PRTS @PUSH CastPrintStr @CAST %1
 # Alternative name for PRTSTRI
-M PRTSI @PUSH CastPrintStrI @CAST %1 @POPNULL
+M PRTSI @PUSH CastPrintStrI @CAST %1
 # Print given Character
-M PRTCH @PUSH CastPrintChar @CAST %1 @POPNULL
+M PRTCH @PUSH CastPrintChar @CAST %1
 # Print Character at Variable
-M PRTCHI @PUSH CastPrintCharI @CAST %1 @POPNULL
+M PRTCHI @PUSH CastPrintCharI @CAST %1
 # Print Character on Stack
 M PRTCHS @JMP _%0SkipF \
      :_%0Data 0 \
-     :_%0SkipF @DUP @AND 0xff @POPI _%0Data @PUSH CastPrintChar @CAST _%0Data @POPNULL 
+     :_%0SkipF @DUP @AND 0xff @POPI _%0Data @PUSH CastPrintChar @CAST _%0Data
 # Print string whos address is on the stack
 M PRTSS @JMP _%0Skip :_%0ptr 0 :_%0Skip @POPI _%0Ptr @PUSH CastPrintCharI @CAST _%0ptr 0
 # Print value Pointer is pointing at.
 M PRTII @PUSHII %1 @POPI _%0Store \
-        @PUSH CastPrintInt @CAST :_%0Store 0 @POPNULL
+        @PUSH CastPrintInt @CAST :_%0Store 0
 # Print value with sign '-' if negative
-M PRTSGNI @PUSH CastPrintSignI @CAST %1 @POPNULL
+M PRTSGNI @PUSH CastPrintSignI @CAST %1
 # Print value in binary
-M PRTBINI @PUSH CastPrintBinI @CAST %1 @POPNULL
+M PRTBINI @PUSH CastPrintBinI @CAST %1
 # Print Line feed
-M PRTNL @JMP _%01 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0NL @POPNULL
+M PRTNL @JMP _%01 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0NL
 # Print a space by itself
-M PRTSP @JMP _%01J :_%0M " \0" :_%01J @PUSH CastPrintStr @CAST _%0M @POPNULL
+M PRTSP @JMP _%01J :_%0M " \0" :_%01J @PUSH CastPrintStr @CAST _%0M
 # Print immediate value (usefull to print value of pointer)
-M PRTREF @PUSH CastPrintInt @CAST %1 @POPNULL
+# Print N number of spaces
+M PRTSPN  @JMP _%01  :_%0M  %REPEAT %1  " "  %ENDR $$0  :_%01 @PUSH CastPrintStr @CAST _%0M
+M PRTREF @PUSH CastPrintInt @CAST %1
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTI _%0M1
 # Print Top valine in Hex
 M PRTHEXTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTHEXI _%0M1
+# Print Direct value as Hex
+M PRTHEXREF @PUSH %1 @PRTHEXTOP @POPNULL
 # Print Top with Sign
 M PRTSGNTOP @DUP @POPI _%0Store @PRTSGNI _%0Store @JMP _%0Skip :_%0Store 0 :_%0Skip
 # Print 32bit number starting at address
-M PRT32 @PUSH CastPrint32I @CAST %1 @POPNULL
-M PRT32I @PUSH CastPrint32II @CAST %1 @POPNULL
+M PRT32 @PUSH CastPrint32I @CAST %1
+M PRT32I @PUSH CastPrint32II @CAST %1
 #M PRT32I @JMP _%0Jmp :_%0store1 0 :_%0store2 0 \
 #   :_%0Jmp @PUSHII %1 @POPI _%0store1 \
 #   @PUSHI %1 @ADD 2 @PUSHS @POPI _%0store2 \
-#   @PUSH CastPrint32I @CAST _%0store1 @POPNULL
+#   @PUSH CastPrint32I @CAST _%0store1
 # Print 32bit number that tos is pointing to.
-M PRT32S @PUSH CastPrint32S @CAST 0 @POPNULL
+M PRT32S @PUSH CastPrint32S @CAST 0
 #
 # Read an Integer from keyboard
-M READI @PUSH PollReadIntI @POLL %1 @POPNULL
+M READI @PUSH PollReadIntI @POLL %1
 # Print Prompt string, then read integer.
 M PROMPT @PRT %1 @READI %2
 # Read a String from Keyboard
 # Param of READS is lable of the buffer
-M READS @PUSH PollReadStrI @POLL %1 @POPNULL
+M READS @PUSH PollReadStrI @POLL %1
 # Param of READSI is lable that contains pointer to buffer
-M READSI @PUSHI %1 @POPI _%0ADDR @PUSH PollReadStrI @POLL :_%0ADDR 0xffff @POPNULL
+M READSI @PUSHI %1 @POPI _%0ADDR @PUSH PollReadStrI @POLL :_%0ADDR 0xffff
 # Read a unechoed character from keyboard
-M READC @PUSH PollReadCharI @POLL %1 @POPNULL
+M READC @PUSH PollReadCharI @POLL %1
 # Read character from keyboard with no wait if none ready.
-M READCNW @PUSH PollReadCINoWait @POLL %1 @POPNULL
+M READCNW @PUSH PollReadCINoWait @POLL %1
 # Turn Keyboard echo off
-M TTYNOECHO @PUSH PollSetNoEcho @POLL %1 @POPNULL
+M TTYNOECHO @PUSH PollSetNoEcho @POLL 0
 # Turn KeyBoard echo on
-M TTYECHO @PUSH PollSetEcho @POLL %1 @POPNULL
+M TTYECHO @PUSH PollSetEcho @POLL 0
+# Turn on Raw Mode
+M TTYRAW @PUSH PollSetRaw @POLL 0
+# Turn off Raw Mode
+M TTYRAWOFF @PUSH PollReSetRaw @POLL 0
+# Report current TTY State
+M TTYSTATE  @PUSH PollTTYState @POLL 0
 # End Program
 M END @PUSH 99 @CAST 0
 # Like POPI but leaves copy of value on stack
 M TOP @DUP @POPI %1
 # Print a debug dump of the stack
-M StackDump @JMP _%0J :_%0J @PUSH 102 @CAST 0 @POPNULL
+M StackDump @JMP _%0J :_%0J @PUSH 102 @CAST 0
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
@@ -339,27 +399,27 @@ M ABSI @PUSH 0x8000 @ANDI %1 @CMP 0 @POPNULL @PUSHI %1 @JMPZ _%0IsPos @COMP2 :_%
 M GETTIME @PUSH PollReadTime @POLL 0
 
 # Disk IO Group
-M DISKSEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M DISKSELI @PUSH CastSelectDiskI @CAST %1 @POPNULL
-M DISKSEEK @PUSH CastSeekDisk @CAST %1 @POPNULL
-M DISKSEEKI @PUSH CastSeekDiskI @CAST %1 @POPNULL
-M DISKWRITE @PUSH CastWriteSector @CAST %1 @POPNULL
-M DISKWRITEI @PUSH CastWriteSectorI @CAST %1 @POPNULL
-M DISKSYNC @PUSH CastSyncDisk @CAST 0 @POPNULL
-M DISKREAD @PUSH PollReadSector @POLL %1 @POPNULL
-M DISKREADI @PUSH PollReadSectorI @POLL %1 @POPNULL
+M DISKSEL @PUSH CastSelectDisk @CAST %1
+M DISKSELI @PUSH CastSelectDiskI @CAST %1
+M DISKSEEK @PUSH CastSeekDisk @CAST %1
+M DISKSEEKI @PUSH CastSeekDiskI @CAST %1
+M DISKWRITE @PUSH CastWriteSector @CAST %1
+M DISKWRITEI @PUSH CastWriteSectorI @CAST %1
+M DISKSYNC @PUSH CastSyncDisk @CAST 0
+M DISKREAD @PUSH PollReadSector @POLL %1
+M DISKREADI @PUSH PollReadSectorI @POLL %1
 # We use the same logic for both Tape and Disk Select.
-M TAPESEL @PUSH CastSelectDisk @CAST %1 @POPNULL
-M TAPESELI @PUSH CastSelectDiskI @CAST %1 @POPNULL
-M TAPEWRITE @PUSH CastTapeWrite @CAST %1 @POPNULL
-M TAPEWRITEI @PUSH CastTapeWriteI @CAST %1 @POPNULL
-M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI _%0_LOC @POLL :_%0_LOC 0 @POPNULL
-M TAPEREAD @PUSH PollReadTapeI @POLL %1 0 @POPNULL
-M TAPEREWIND @PUSH PollRewindTape @POLL 0 @POPNULL
+M TAPESEL @PUSH CastSelectDisk @CAST %1
+M TAPESELI @PUSH CastSelectDiskI @CAST %1
+M TAPEWRITE @PUSH CastTapeWrite @CAST %1
+M TAPEWRITEI @PUSH CastTapeWriteI @CAST %1
+M TAPEREADI @PUSH PollReadTapeI @PUSHI %1 @POPI _%0_LOC @POLL :_%0_LOC 0
+M TAPEREAD @PUSH PollReadTape @POLL %1 0
+M TAPEREWIND @PUSH PollRewindTape @POLL 0
 
 
 # A way to enable/disable debugging in running code without requireing the -g option.
-M DEBUGTOGGLE @PUSH 100 @CAST 0 @POPNULL
+M DEBUGTOGGLE @PUSH 100 @CAST 0
 # Size Reporting Macro
 M SIZESINCE :NewHereMem \
              =SizeHereVar NewHereMem-OldHereVar \

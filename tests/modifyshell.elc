@@ -1,0 +1,60 @@
+(defvar my-shell-output-accumulator "")
+
+(defun my-shell-debug-linemove (output)
+  "Monitor shell output and move the passive cursor based on a pattern."
+  (interactive "e")
+  (setq my-shell-output-accumulator (concat my-shell-output-accumulator output))
+  (my-debug-message (format "Input Line:%s\n" output))
+  (let ((lines (split-string my-shell-output-accumulator "\n")))
+    (dolist (line lines)
+      (my-debug-message (format "Trying :%s:\n" line))
+      (if (string-match "# \\([^:]+\\):\\([0-9]+\\)" line)
+          (progn
+            (my-debug-message "Found Match")
+            (let ((other-buffer-name (match-string 1 line))
+                  (line-number (string-to-number (match-string 2 line))))
+              (my-debug-message (format "Calculated LineNum: %s" line-number))
+              (when (get-buffer other-buffer-name)
+                (let ((buffer (get-buffer other-buffer-name)))
+                  (unless (get-buffer-window buffer)
+                    (display-buffer buffer))
+                  (with-selected-window (get-buffer-window buffer)
+                    (let ((inhibit-read-only t))
+                      (goto-char (point-min))
+                      (forward-line (1- line-number))
+                      (hl-line-mode 1)
+                      (set-face-background 'hl-line "blue")
+                      (recenter)
+                      (sit-for 0.1)))))))
+        (my-debug-message (format "No match found in line: %s" line))))
+    ;; Clear the accumulator if the last line ends with a newline
+    (if (string-suffix-p "\n" my-shell-output-accumulator)
+        (progn
+          (my-debug-message "Newline detected at the end of the output.")
+          (setq my-shell-output-accumulator ""))
+      ;; Otherwise, keep the last partial line in the accumulator and log a debug message
+      (progn
+        (my-debug-message (format "No newline at end of output: %s" (car (last lines))))
+        (setq my-shell-output-accumulator (car (last lines)))))))
+
+(defun my-comint-watch-shell-output ()
+  "Add a process filter to watch for shell output patterns."
+  (let ((proc (get-buffer-process (current-buffer))))
+    (when proc
+      (set-process-filter
+       proc
+       (lambda (process output)
+         ;; Print the output to confirm it's the latest shell output
+         (my-debug-message (format "Shell output: %s" (substring output 0 (min 50 (length output)))))
+         ;; Call the default comint filter to display output in the buffer
+         (comint-output-filter process output)
+         ;; Call your custom function to handle the output
+         (my-shell-debug-linemove output))))))
+
+(defun my-debug-message (msg)
+  "Send debug messages to a dedicated debug buffer."
+  (with-current-buffer (get-buffer-create "*my-debug-output*")
+    (goto-char (point-max))
+    (insert msg "\n")))
+
+(add-hook 'shell-mode-hook 'my-comint-watch-shell-output)

@@ -81,13 +81,13 @@ We replaced multiple labels with a single `@WHILE` loop and nested `@IF`. It's e
 
 EX716 uses suffix notation to indicate what is being compared. Here's how to read it:
 
-| Suffix | Meaning                   | Example               |
-| ------ | ------------------------- | --------------------- |
-| `_A`   | Immediate constant        | `@IF_EQ_A 0`          |
-| `_V`   | Variable (memory address) | `@IF_GT_V Score`      |
-| `_S`   | Value that is on stack    | `@IF_EQ_S`            |
-| `_AV`  | Constant vs. Variable     | `@IF_LT_AV 5 Max`     |
-| `_VV`  | Variable vs. Variable     | `@IF_EQ_VV Var1 Var2` |
+| Suffix | Meaning                          | Example               |
+| ------ | -------------------------------- | --------------------- |
+| `_A`   | TOS vs Immediate constant        | `@IF_EQ_A 0`          |
+| `_V`   | TOS vs Variable (memory address) | `@IF_GT_V Score`      |
+| `_S`   | SFT vs TOS Values                | `@IF_EQ_S`            |
+| `_AV`  | Constant vs. Variable            | `@IF_LT_AV 5 Max`     |
+| `_VV`  | Variable vs. Variable            | `@IF_EQ_VV Var1 Var2` |
 
 Examples:
 
@@ -103,23 +103,23 @@ Examples:
 You can't write complex expressions like Python:
 
 ```python
-if ((a == b) and (a > 100)) or (b == 0):
+if ((a1 == b1) and (a1 > 100)) or (b1 == 0):
 ```
 
 But you can express it in EX716 like this:
 
 ```asm
 @PUSH 0
-@IF_EQ_VV Var1 Var2
-   @IF_GT_VA Var1 100
+@IF_EQ_VV a1 b1
+   @IF_GT_VA a11 100      # Nested IF's are like ANDs
       @POPNULL @PUSH 1
    @ENDIF
 @ENDIF
-@IF_EQ_AV 0 Var2
+@IF_EQ_AV 0 b1            # OR logic by using stack.
    @POPNULL @PUSH 1
 @ENDIF
-@IF_NOTZERO
-   do true block
+@IF_NOTZERO               # That way stack will be 1
+   do true block          # if either branch is true.
 @ELSE
    do false block
 @ENDIF
@@ -172,7 +172,8 @@ The `FOR` macro family combines index setup, loop condition, and step logic.
 @Next Index
 ```
 
-This prints 0 through 9.
+This prints 0 through 9. 
+Loop exits when Index=10, so the body is skipped on 10
 
 ### FOR Macro Variants
 

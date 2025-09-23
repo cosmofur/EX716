@@ -13,11 +13,11 @@ instruction or a higher-level macro.
 
 Core instructions use suffixes to indicate **how the operand is resolved**:
 
-| Suffix   | Meaning                     |
-|----------|-----------------------------|
-| _(none)_ | Direct value (literal)      |
-| `I`      | Indirect (fixed variable)   |
-| `II`     | Double indirect (pointer)   |
+| Suffix   | Meaning                               |
+|----------|---------------------------------------|
+| _(none)_ | Direct value (literal/Immediate)      |
+| `I`      | Indirect (fixed variable)             |
+| `II`     | Double indirect (pointer)             |
 
 These instructions operate in a **stack-based** context, where the first operand is always the **top of the stack (TOS)**. The suffix
 defines how to fetch the second operand.
@@ -30,6 +30,7 @@ Example:
 This is simple, compact, and ideal for low-level instructions.
 
 ---
+But when more complex macros need to distinguish between Variables and Direct/Imediate values, we use V for variables and A or B for the direct values. 
 Examples:
 - `@ADDVV` — Add variable to variable
 - `@CMPVA` — Compare variable to direct value
@@ -218,7 +219,7 @@ These simulate external smart printers or terminals that can handle full numbers
 *Historical Note:* 
 While uncommon in modern systems, many early computers and embedded systems from the 1960s and 70s offloaded display formatting to hardware or peripheral devices. For example, the Apollo Guidance Computer sent raw numerical data to the DSKY interface, which handled the conversion and display of human-readable digits. Similarly, early microcomputers like the COSMAC ELF and Altair 8800 used hex displays and segment drivers that directly interpreted binary or BCD values without CPU-based string formatting.
 
-This emulator follows that tradition: output macros simulate smart I/O devices that handle formatting internally—just as early hardware might have used dedicated logic or microcontrollers to convert binary values into readable output.
+This emulator follows that tradition: output macros simulate smart I/O devices that handle formatting internally—just as early hardware might have used dedicated logic or microcontrollers to convert binary values into readable output. 
 
 ---
 
