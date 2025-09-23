@@ -1,0 +1,348 @@
+I common.mc
+
+M OPTEST 
+:Main . Main
+M OPTEST  @PRT "\nOptCode: " @PRTHEXREF %1 @PRTSP
+
+# =====================================================
+#  Diagnostic Program – Exercises all 55 EX716 opcodes
+#  Each section begins with @OPTEST <opcodeID>
+# =====================================================
+
+# ---- 0 NOP ----
+@OPTEST 0x0000
+@NOP
+
+# ---- 1 PUSH ----
+@OPTEST 0x0001
+@PUSH 0x1234
+
+# ---- 2 DUP ----
+@POPNULL
+@OPTEST 0x0002
+@PUSH 0x1234
+@DUP
+
+# ---- 3 PUSHI ----
+@POPNULL
+@OPTEST 0x0003
+@PUSHI JunkStore
+
+# ---- 4 PUSHII ----
+@POPNULL
+@OPTEST 0x0004
+@PUSHII JunkStorePtr
+
+# ---- 5 PUSHS ----
+@POPNULL
+@OPTEST 0x0005
+@PUSH 1
+@PUSHS
+
+# ---- 6 POPNULL ----
+@OPTEST 0x0006
+@PUSH 1
+@POPNULL
+
+# ---- 7 SWP ----
+@POPNULL
+@OPTEST 0x0007
+@PUSH 0x1111
+@PUSH 0x2222
+@SWP
+
+# ---- 8 POPI ----
+@POPNULL
+@OPTEST 0x0008
+@POPI JunkStore
+
+# ---- 9 POPII ----
+@OPTEST 0x0009
+@PUSH 101
+@POPII JunkStorePtr
+
+# ---- 10 POPS ----
+@OPTEST 0x000A
+@PUSH 101 @PUSH JunkStore
+@POPS
+
+# ---- 11 CMP ----
+@OPTEST 0x000B
+@PUSH 0x1234
+@CMP  0x1234   # expect ZF=1
+@PUSH 0x7FFF
+@CMP  0x8000   # expect NF=1
+
+# ---- 12 CMPS ----
+@POPNULL
+@OPTEST 0x000C
+@PUSH 0x1230
+@PUSH 0x1234
+@CMPS
+@POPNULL
+
+# ---- 13 CMPI ----
+@POPNULL
+@OPTEST 0x000D
+@PUSHI JunkStore
+@CMPI  JunkStore
+
+# ---- 14 CMPII ----
+@POPNULL
+@OPTEST 0x000E
+@PUSHII JunkStorePtr
+@CMPII  JunkStorePtr
+
+# ---- 15 ADD ----
+@POPNULL
+@OPTEST 0x000F
+@PUSH 0xFFFF
+@ADD  0x0001   # Carry
+@PUSH 0x7FFF
+@ADD  0x0001   # Overflow
+
+# ---- 16 ADDS ----
+@POPNULL
+@OPTEST 0x0010
+@PUSH 0x0001
+@PUSH 0x0001
+@ADDS
+
+# ---- 17 ADDI ----
+@POPNULL
+@OPTEST 0x0011
+@ADDI JunkStore
+
+# ---- 18 ADDII ----
+@POPNULL
+@OPTEST 0x0012
+@ADDII JunkStorePtr
+
+# ---- 19 SUB ----
+@POPNULL
+@OPTEST 0x0013
+@PUSH 0x0000
+@SUB  0x0001   # Carry
+@PUSH 0x8000
+@SUB  0x0001   # Overflow
+
+# ---- 20 SUBS ----
+@POPNULL
+@OPTEST 0x0014
+@PUSH 0x0002
+@PUSH 0x0001
+@SUBS
+
+# ---- 21 SUBI ----
+@POPNULL
+@OPTEST 0x0015
+@SUBI JunkStore
+
+# ---- 22 SUBII ----
+@POPNULL
+@OPTEST 0x0016
+@PUSH 0x0002
+@SUBII JunkStorePtr
+
+# ---- 23 OR ----
+@POPNULL
+@OPTEST 0x0017
+@PUSH 0xAAAA
+@OR   0x5555
+
+# ---- 24 ORS ----
+@POPNULL
+@OPTEST 0x0018
+@PUSH 0x0001
+@PUSH 0x0002
+@ORS
+
+# ---- 25 ORI ----
+@POPNULL
+@OPTEST 0x0019
+@PUSH 101
+@ORI JunkStore
+
+# ---- 26 ORII ----
+@POPNULL
+@OPTEST 0x001A
+@PUSH 101
+@ORII JunkStorePtr
+
+# ---- 27 AND ----
+@POPNULL
+@OPTEST 0x001B
+@PUSH 0xAAAA
+@AND  0x5555
+
+# ---- 28 ANDS ----
+@POPNULL
+@OPTEST 0x001C
+@PUSH 0x0003
+@PUSH 0x0001
+@ANDS
+
+# ---- 29 ANDI ----
+@POPNULL
+@OPTEST 0x001D
+@PUSH 101
+@ANDI JunkStore
+
+# ---- 30 ANDII ----
+@POPNULL
+@OPTEST 0x001E
+@PUSH 101
+@ANDII JunkStorePtr
+
+# ---- 31 XOR ----
+@POPNULL
+@OPTEST 0x001F
+@PUSH 0xFFFF
+@XOR  0x00FF
+
+# ---- 32 XORS ----
+@POPNULL
+@OPTEST 0x0020
+@PUSH 0x0003
+@PUSH 0x0001
+@XORS
+
+# ---- 33 XORI ----
+@POPNULL
+@OPTEST 0x0021
+@PUSH 101
+@XORI JunkStore
+
+# ---- 34 XORII ----
+@POPNULL
+@OPTEST 0x0022
+@PUSH 101
+@XORII JunkStorePtr
+
+# ---- 35 JMPZ ----
+@POPNULL
+@OPTEST 0x0023
+@PUSH 0x0000
+@ADD 0
+@JMPZ JZ_LABEL
+@POPNULL @PRT "JMPZ FAIL\n"
+:JZ_LABEL
+
+# ---- 36 JMPN ----
+@POPNULL
+@OPTEST 0x0024
+@PUSH 0x8000
+@SUB 0
+@JMPN JN_LABEL
+@POPNULL @PRT "JMPN FAIL\n"
+:JN_LABEL
+
+# ---- 37 JMPC ----
+@POPNULL
+@OPTEST 0x0025
+@PUSH 0xFFFF
+@ADD  0x0001   # set CF
+@JMPC JC_LABEL
+@POPNULL @PRT "JMPC FAIL\n"
+:JC_LABEL
+
+# ---- 38 JMPO ----
+@POPNULL
+@OPTEST 0x0026
+@PUSH 0x7FFF
+@ADD  0x0001   # set OF
+@JMPO JO_LABEL
+@POPNULL @PRT "JMPO FAIL\n"
+:JO_LABEL
+
+# ---- 39 JMP ----
+@POPNULL
+@OPTEST 0x0027
+@JMP JMP_LABEL
+@POPNULL @PRT "JMP FAIL\n"
+:JMP_LABEL
+
+# ---- 40 JMPI ----
+@OPTEST 0x0028
+@JMPI JMPILABELVAL
+@POPNULL @PRT "JMPI FAIL\n"
+:JMPILABELVAL JMPILABEL
+:JMPILABEL
+
+# ---- 41 JMPS ----
+@OPTEST 0x0029
+@PUSH JMPSKIPStack
+@JMPS
+@POPNULL @PRT "JMPS FAIL\n"
+:JMPSKIPStack
+
+# ---- 44 RRTC ----
+@OPTEST 0x002C
+@PUSH 0x8001
+@RRTC 1
+
+# ---- 45 RLTC ----
+@POPNULL
+@OPTEST 0x002D
+@PUSH 0x8001
+@RLTC 1
+
+# ---- 46 SHR ----
+@POPNULL
+@OPTEST 0x002E
+@PUSH 0x8000
+@SHR 1
+
+# ---- 47 SHL ----
+@POPNULL
+@OPTEST 0x002F
+@PUSH 0x0001
+@SHL 1
+
+# ---- 48 INV ----
+@POPNULL
+@OPTEST 0x0030
+@PUSH 0xAAAA
+@INV
+
+# ---- 49 COMP2 ----
+@POPNULL
+@OPTEST 0x0031
+@PUSH 0x0001
+@COMP2
+
+# ---- 50 FCLR ----
+@POPNULL
+@OPTEST 0x0032
+@FCLR
+
+# ---- 51 FSAV ----
+@POPNULL
+@OPTEST 0x0033
+@FSAV
+
+# ---- 52 FLOD ----
+@POPNULL
+@OPTEST 0x0034
+@FLOD
+
+# ---- 53 ADM ----
+@POPNULL
+@OPTEST 0x0035
+@ADM
+
+# ---- 54 SCLR ----
+@OPTEST 0x0036
+@SCLR
+
+# ---- 55 SRTP ----
+@OPTEST 0x0037
+@SRTP
+
+# ---- End ----
+@POPNULL
+@OPTEST 0xFFFF
+@END
+
+:JunkStorePtr JunkStore
+:JunkStore 0
