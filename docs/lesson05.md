@@ -90,6 +90,7 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
 @LocalVar param2 02
 @Localvar Hidden 03
 
+
    @POPI param1
    @POPI param2
 
@@ -118,7 +119,6 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
       @CBREAK
    @ENDCASE
 
-@RestoreVar 03
 @RestoreVar 02           # Reverse order of LocalVar
 @RestoreVar 01
 @POPRETURN
