@@ -89,6 +89,17 @@ PollReadSectorI=26
 PollReadTape=27
 DebugOut=sys.stderr
 PrevPC=0
+#  Error and Command codes sent between C and Python modules.
+RC_END_PROGRAM=-1
+RC_USER_HALT=-4
+RC_STACK_UNDERFLOW=-2
+RC_STACK_OVERFLOW=-3
+RC_INVALID_INPUT=-5
+RC_DISK_SEEK_FAIL=-6
+RC_DEVICE_READ_FAIL=-7
+RC_DEVICE_MEM_FAIL=-8
+RC_DEVICE_WRITE_FAIL=-9
+RC_DEVICE_GENERAL_FAIL=-10
 
 
 
@@ -297,14 +308,20 @@ for i in SymToValMap:
         'ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
 
 _fd = sys.stdin.fileno()
-old_settings = termios.tcgetattr(_fd)
+old_settings = None
 _saved_attrs = None
-
-def restore_tty():
-    try:
-        termios.tcsetattr(_fd, termios.TCSADRAIN, old_settings)
-    except Exception:
+if sys.stdin.isatty():
+    old_settings = termios.tcgetattr(_fd)
+    def restore_tty():
+        try:
+            termios.tcsetattr(_fd, termios.TCSADRAIN, old_settings)
+        except Exception:
+            pass    
+else:
+    def restore_tty():
         pass
+
+
 
 
 
@@ -1236,12 +1253,6 @@ class microcpu:
             self.raiseerror(
                 "036 Insufficent space for Message Address at %d, optCAST" % (address))
         cmd = self.fetchAcum(0)
-        if cmd == CastDebugToggle:
-            self.optPOPNULL(address)
-            if self.mb[0xff] > 0:
-                safeprint("Stack: \n".join('%02x ' %
-                      item for item in self.mb[0:self.mb[0xff]]))
-            DissAsm(self.pc, 3, self)
         if cmd == CastPrintStr:
             self.optPOPNULL(address)            
             i = address
@@ -1850,67 +1861,30 @@ class microcpu:
                 func(argument)
         return 0
     
-
-    def _evalpc_pyOLD(self, context, dosteps):
-        global PrevPC
-        pc = self.pc & 0xffff
-        PrevPC = pc
-        ReturnCode=0
-        if dosteps == -1:
-            while True:                
-                optcode = self.memspace[self.pc]
-                func = self.op_func[optcode]
-                if func is None:
-                    self.raiseerror(
-                        f"046 Optcode {optcode:02x} at File {self.FindWhatLine(self.pc)}, Address({self.pc:04x}), is invalid"
-                    )
-                    
-                if context.Debug > 0:
-                    DissAsm(self.pc, 1, self)
-                    
-                context.GlobalOptCnt += 1
-                
-                if self.op_size[optcode] == 3:
-                    argument = self.getwordat(self.pc + 1)
-                else:
-                    argument = 0
-                self.pc += self.op_size[optcode]
-                func(argument)
-        else:
-            # Fixed number of steps
-            for _ in range(dosteps):
-                optcode = self.memspace[self.pc]
-                func = self.op_func[optcode]
-                if func is None:
-                    self.raiseerror(
-                        f"046 Optcode {optcode:02x} at File {self.FindWhatLine(self.pc)}, Address({self.pc:04x}), is invalid"
-                    )
-                    
-                if context.Debug > 0:
-                    DissAsm(self.pc, 1, self)
-
-                context.GlobalOptCnt += 1
-                
-                if self.op_size[optcode] == 3:
-                    argument = self.getwordat(self.pc + 1)
-                else:
-                    argument = 0
-
-                self.pc += self.op_size[optcode]
-                func(argument)
-        return 0
-
+    
     def _handle_return_code(self, code):
-        if code == -1:
+        if code == RC_END_PROGRAM:
             print("Normal Exit:")
             sys.exit(0)
-        elif code == -2:
+        elif code == RC_STACK_UNDERFLOW:
             print(f"Stack Underflow: {self.pc:04x}")
-        elif code == -3:
+        elif code == RC_STACK_OVERFLOW:
             print(f"Stack Overflow: {self.pc:04x}")
-        elif code == -4:
+        elif code == RC_USER_HALT:
             print(f"^C at {self.pc:04x}")
             debugger(FileLabels, "")
+        elif code == RC_INVALID_INPUT:
+            print(f"Non numeric User Input")
+        elif code == RC_DISK_SEEK_FAIL:
+            print(f"Failed to select track on device.")
+        elif code == RC_DEVICE_READ_FAIL:
+            print(f"Device hard read error.")
+        elif code == RC_DEVICE_MEM_FAIL:
+            print(f"Device requested invalid memory.")
+        elif code == RC_DEVICE_WRITE_FAIL:
+            print(f"Device hard write error.")
+        elif code == RC_DEVICE_GENERAL_FAIL:
+            print(f"Device Error (general)")
         else:
             print("Return Code:", code)
 
@@ -3911,12 +3885,12 @@ def main():
 
 if __name__ == '__main__':
     main()
-    _fd = sys.stdin.fileno()
-    new = termios.tcgetattr(_fd)
-    new[3] = new[3] | termios.ECHO          # lflags
-    try:
-        termios.tcsetattr(_fd, termios.TCSADRAIN, new)
-    except:
-        safeprint("TTY Error: On No Echo")
 
-
+    if sys.stdin.isatty():
+        _fd = sys.stdin.fileno()
+        try:
+            new = termios.tcgetattr(_fd)
+            new[3] = new[3] | termios.ECHO   # turn echo back on
+            termios.tcsetattr(_fd, termios.TCSADRAIN, new)
+        except termios.error:
+            safeprint("TTY Error: Unable to restore echo")

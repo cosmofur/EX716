@@ -226,7 +226,9 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @UNTIL_NOTZERO
 @POPNULL
 @MV2V CurTime StartTime
-@PRT "Now: " @PRTI CurTime @PRT ":"
+@PRT "Now: "
+@PRTI CurTime
+@PRT ":"
 
 # Now poll until StartTime != GETTIME to make sure we're at start of a given second
 @LOOP

@@ -17,10 +17,29 @@
 #define BLOCK_SIZE 512
 #define MAXHWSTACK 0x100
 
+/* Error and return codes sent about hardware or monitor important events */
+
+// Control codes
+#define RC_END_PROGRAM     -1
+#define RC_USER_HALT       -4
+// Stack Related
+#define RC_STACK_UNDERFLOW -2
+#define RC_STACK_OVERFLOW -3
+// input related
+#define RC_INVALID_INPUT -5
+//  DISK/Tape IO
+#define RC_DISK_SEEK_FAIL -6
+#define RC_DEVICE_READ_FAIL -7
+#define RC_DEVICE_MEM_FAIL -8
+#define RC_DEVICE_WRITE_FAIL -9
+#define RC_DEVICE_GENERAL_FAIL -10
+
+
+
 int returncode;
 void handle_ctrl_c(int sig) {
-  printf("\nCaught SIGINT (Ctrl-C). Exiting...\n");
-  returncode=-4;
+  printf("\nCaught SIGINT %d (Ctrl-C). Exiting...\n",sig);
+  returncode=RC_USER_HALT;
 }
 
 
@@ -172,7 +191,7 @@ void tty_state() {
 
 
 
-void EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPURegData, int *CPUFlags, int *index1);
+void EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPURegData, int *CPUFlags);
 int get16memat(int InLocation, uint8_t *CPUMemory);
 void put16atmem(int locateaddr,int val, uint8_t *CPUMemory);
 int popstack(uint8_t  *CPUStackData);
@@ -182,11 +201,11 @@ int sftstack(uint8_t *CPUStackData);
 void pushstack(int invalue, uint8_t *CPUStackData);
 void ReadFlags(int *CurrentFlags);
 void WriteFlags(int *CurrentFlags);
-void SetFlags(int testval, int WasSubt);
+void SetFlags(int result );
 void OverCarryTest(int a, int b, int c, int IsSubtraction);
 int handleCast(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData, int CPC);
 int handlePoll(int Param, int ParamI, int ParamII, uint8_t *CPUMemData, uint8_t *CPUStackData);
-int16_t ZF,NF,CF,OF, PC, AdminFlag; /* Global values */
+uint16_t ZF,NF,CF,OF, PC, AdminFlag; /* Global values */
 char DiskName[17] = {'\0'}; /* Allocat 16 bytes for temporary filenames and null the first character */
 FILE* DiskHandle = NULL;
 FILE* TapeHandle = NULL;
@@ -206,7 +225,6 @@ void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUF
   
   PyArrayObject* np_array1 = (PyArrayObject*)PyArray_FROM_O(CPUMemory);
   PyArrayObject* np_array2 = (PyArrayObject*)PyArray_FROM_O(CPUHWStack);
-  //  PyArrayObject* np_array3 = (PyArrayObject*)PyArray_FROM_O(CPURegisters);
   
   if (np_array1 == NULL || np_array2 == NULL  ) {
     PyErr_SetString(PyExc_TypeError, "Invalid input arrays");
@@ -220,24 +238,26 @@ void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUF
   //  uint8_t* CPURegData = (uint8_t*)PyArray_DATA(np_array3);
   signal(SIGINT, handle_ctrl_c);
   returncode=0;
-  if (*index1 == -1){
-    opcount=0;
-    while(returncode == 0) {
-      *index1=0;
+  if (*index1 == -1) {
+    opcount = 0;
+    while (returncode == 0) {
       opcount++;
-      /* Loop until normal exit */
-      EvalOne(CPUMemData,CPUStackData, CPUPC, CPUFlags, index1);
+      // Loop until normal exit
+      EvalOne(CPUMemData, CPUStackData, CPUPC, CPUFlags);
     }
-    printf("\nOpt Count: %d\n",opcount);
+    printf("\nOpt Count: %d\n", opcount);
   } else {
-    /* loop controled by index1 flag */
-    EvalOne(CPUMemData,CPUStackData, CPUPC, CPUFlags, index1);
+    // Loop controlled by index1 value
+    for (int ii = 0; (ii < *index1) && returncode == 0; ii++) {
+      opcount++;
+      EvalOne(CPUMemData, CPUStackData, CPUPC, CPUFlags);
+    }
+    // Reset index1 to 0 so caller knows loop is complete
+    *index1 = 0;
   }
   Py_XDECREF(np_array1);
   Py_XDECREF(np_array2);
-  *returnval=returncode;
-  //  Py_XDECREF(np_array3);  
-
+  *returnval = returncode;
 }
 
 
@@ -245,10 +265,9 @@ void EvalSteps(PyObject* CPUMemory, PyObject* CPUHWStack, int*  CPUPC, int* CPUF
 //
 // Define the required support functions.
 
-static PyObject* c_EvalOne(PyObject* self, PyObject* args) {
+static PyObject* c_EvalOne(PyObject* self __attribute__((unused)), PyObject* args) {
   PyObject* array1;
   PyObject* array2;
-  PyObject* array3;    
   int index1,CPUFlags,CPUPC, extra;
 
   if (!PyArg_ParseTuple(args, "OOiiii", &array1, &array2, &CPUPC,  &CPUFlags, &index1, &extra )) {
@@ -272,7 +291,11 @@ static struct PyModuleDef cpuCfunc = {
   "cpuCfunc",
   NULL,
   -1,
-  cpuCfuncMethods
+  cpuCfuncMethods,
+  NULL,  /* m_slots */
+  NULL,  /* m_traverse */
+  NULL,  /* m_clear */
+  NULL   /* m_free */
 };
 
 PyMODINIT_FUNC PyInit_cpuCfunc(void) {
@@ -281,10 +304,9 @@ PyMODINIT_FUNC PyInit_cpuCfunc(void) {
   return PyModule_Create(&cpuCfunc);
 }
 
-void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *CurrentFlags, int *index1) {
-  int a,b,c;
-  int Param, ParamI, ParamII,Opsize,OptCode,nbr1,nbr2,OCS,NCF,TF,TSP;
-  int tos,sft,A1, A2, B1, B2, R1, R2, OCF;
+void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *CurrentFlags) {
+  int Param, ParamI, ParamII,Opsize,OptCode,NCF,TF,TSP;
+  int tos,sft,A1, A2, B1,  R1, OCF;
 
   PC=(*CPUPC) & 0xffff;
   Opsize=1;
@@ -293,7 +315,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
   ParamI=get16memat(Param, CPUMemData);
   ParamII=get16memat(ParamI, CPUMemData);
   OptCode=CPUMemData[PC];
-  //  printf("At %04x Param=%04x, ParamI=%04x, ParamII=%04x OPCODE=%02x\n",PC,Param,ParamI,ParamII,OptCode);  
+
   TSP=CPUStackData[HWSPIDX];
   tos = -1;
   sft = -1;
@@ -305,7 +327,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
   sft = sft & 0xffff;
   ReadFlags(CurrentFlags);
   
-  
+
   switch(OptCode) {
   case OptValNOP:
     Opsize=1;
@@ -362,7 +384,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     B1=tos;
     A1=B1-Param;
     A1=A1 & 0xffff;
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(B1,Param,A1,1);
     Opsize=3;
     break;
@@ -370,7 +392,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     B1=tos;
     A1=B1-ParamI;
     A1=A1 & 0xffff;
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(B1,ParamI,A1,1); 
     Opsize=3;
     break;
@@ -378,7 +400,7 @@ void   EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPUPC, int *Curren
     B1=tos;
     A1=B1-ParamII;
     A1=A1 & 0xffff;
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(B1,ParamII,A1,1);
     Opsize=3;
     break;
@@ -387,7 +409,7 @@ case OptValCMPS:
     A2 = sft;                          // left operand (second on stack)
     B1 = tos;                          // right operand (top of stack)
     A1 = (A2 - B1) & 0xffff;           // result
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(A2, B1, A1, 1);      // left - right
     Opsize=1;
     break;
@@ -396,7 +418,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=Param + B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     OverCarryTest(Param,B1,A1,0);
     Opsize=3;
@@ -405,7 +427,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamI + B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     OverCarryTest(ParamI,B1,A1,0);	 
     Opsize=3;
@@ -414,7 +436,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamII + B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     OverCarryTest(ParamII,B1,A1,0);
     Opsize=3;
@@ -424,7 +446,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=A2 + B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     OverCarryTest(A2,B1,A1,0);
     Opsize=1;
@@ -434,7 +456,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=B1-Param;
     A1=A1 & 0xffff;
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(B1,Param,A1,1);
     pushstack(A1,CPUStackData);
 
@@ -444,7 +466,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=B1-ParamI;
     A1=A1 & 0xffff;
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(B1,ParamI,A1,1);	 
     pushstack(A1,CPUStackData);
 
@@ -454,7 +476,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=B1-ParamII;
     A1=A1 & 0xffff;
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(B1,ParamII,A1,1);	 
     pushstack(A1,CPUStackData);
 
@@ -464,7 +486,7 @@ case OptValCMPS:
     B1 = popstack(CPUStackData);       // right operan
     A2 = popstack(CPUStackData);       // left operand
     A1 = (A2 - B1) & 0xffff;           // result
-    SetFlags(A1,1);
+    SetFlags(A1);
     OverCarryTest(A2, B1, A1, 1);      // left - right
     pushstack(A1,CPUStackData);
     Opsize=1;
@@ -474,7 +496,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=Param & B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -482,7 +504,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamI & B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -490,7 +512,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamII & B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -499,7 +521,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=A2 & B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=1;
     break;
@@ -507,7 +529,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=Param ^ B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;	 
@@ -515,7 +537,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamI ^ B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -523,7 +545,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamII ^ B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -532,7 +554,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=A2 ^ B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=1;
     break;
@@ -541,7 +563,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=Param | B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;	 
@@ -549,7 +571,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamI | B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -557,7 +579,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=ParamII | B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=3;
     break;
@@ -566,7 +588,7 @@ case OptValCMPS:
     B1=popstack(CPUStackData);
     A1=A2 | B1;
     A1=A1 & 0xffff;
-    SetFlags(A1,0);
+    SetFlags(A1);
     pushstack(A1,CPUStackData);
     Opsize=1;
     break;
@@ -608,11 +630,13 @@ case OptValCMPS:
     PC=popstack(CPUStackData);
     break;	 	   
   case OptValCAST:
-    handleCast(Param,ParamI,ParamII, CPUMemData, CPUStackData,PC);
+    if (handleCast(Param,ParamI,ParamII, CPUMemData, CPUStackData,PC) != 0) {
+      fprintf(stderr, "Device State Message sent by CAST"); }
     Opsize=3;
     break;
   case OptValPOLL:
-    handlePoll(Param,ParamI,ParamII, CPUMemData, CPUStackData);
+    if (handlePoll(Param,ParamI,ParamII, CPUMemData, CPUStackData) != 0) {      
+      fprintf(stderr, "Device State Message sent by POLL");      }
     Opsize=3;
     break;
   case OptValRRTC:
@@ -626,7 +650,7 @@ case OptValCMPS:
     CF=NCF > 0 ? 1:0;
     pushstack(B1,CPUStackData);
     Opsize=1;
-    break;	 
+    break;
   case OptValRLTC:
     R1=popstack(CPUStackData);
     NCF=0;
@@ -658,7 +682,7 @@ case OptValCMPS:
   case OptValINV:
     R1=~(popstack(CPUStackData));
     pushstack(R1,CPUStackData);
-    SetFlags(R1,0);
+    SetFlags(R1);
     CF=0; OF=0;
     Opsize=1;
     break;
@@ -666,7 +690,7 @@ case OptValCMPS:
     R1=popstack(CPUStackData);
     R1= ((~R1 & 0xffff) + 1) & 0xffff;
     pushstack(R1,CPUStackData);
-    SetFlags(R1,0);
+    SetFlags(R1);
     CF=0; OF=0;
     Opsize=1;
     break;
@@ -705,24 +729,16 @@ case OptValCMPS:
     break;
   default:
     printf("Unknown OptCode %d at address %04x\n",OptCode,PC);
+    returncode=RC_DEVICE_GENERAL_FAIL;
     PC++;
     break;
   }
-  
-  WriteFlags(CurrentFlags);
-  //  if ( *index1 > 1 ) {
-  //      printf(" %04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%04x,%04x] Z%1d N%1d C%1d O%1d SS(%d)\n",
-  //	     PC,optcnames[OptCode],Param,ParamI,ParamII,tos,sft,ZF,NF,CF,OF,CPUStackData[HWSPIDX]);
-  //     fflush(stdout);
-  //  }
-  PC=PC+Opsize;    
-  *CPUPC=PC;
 
+  WriteFlags(CurrentFlags);
+  PC=PC+Opsize;    
+  *CPUPC=PC;    
 }
     
-   
-    
-
   
 int get16memat(int InLocation, uint8_t *CPUMemData)
 {
@@ -736,14 +752,14 @@ void put16atmem(int locateaddr,int val,uint8_t  *CPUMemData) {
 }
 
 int popstack(uint8_t *CPUStackData) {
-  int lsp,csp;  
+  int lsp;  
   lsp=CPUStackData[HWSPIDX];
   if ( lsp > 0 ) {
     CPUStackData[HWSPIDX] -= 1;
     lsp=CPUStackData[HWSPIDX];
     return CPUStackData[(lsp*2)]+(CPUStackData[(lsp*2)+1]<<8);
   } else {
-    returncode=-2;
+    returncode=RC_STACK_UNDERFLOW;
     return -1;
   }
 }
@@ -765,7 +781,12 @@ int topstack(uint8_t *CPUStackData,int nofail) {
     return CPUStackData[lsp*2]+(CPUStackData[(lsp*2)+1]<<8);
   }
   else {
-    return -1;
+    if (nofail == 1) {
+      return -1; }
+    else {
+      returncode=RC_STACK_UNDERFLOW;
+      return -1; 
+    }
   }
 }
 
@@ -785,7 +806,7 @@ void pushstack(int invalue, uint8_t *CPUStackData) {
   lsp=CPUStackData[HWSPIDX];
   if (lsp >= 0x7e) {
     printf("HW Stack OverFlow\n");
-    returncode=-3;    
+    returncode=RC_STACK_OVERFLOW; 
     return;
   }  
   csp=lsp*2;
@@ -824,13 +845,12 @@ void WriteFlags(int *CurrentFlags) {
 
 
 // Set Zero and Negative flags only
-void SetFlags(int A1, int WasSubt) {
-    int B2;
-    ZF = 0; NF = 0; CF = 0; OF = 0;   // <-- add CF reset here
-    B2 = abs(A1) & 0xffff;
-    ZF = (B2 == 0) ? 1 : 0;
-    NF = ((A1 & 0xffff) & 0x8000) ? 1 : 0;
-    // CF/OF will be set later by OverCarryTest for arithmetic ops
+void SetFlags(int result) {
+  // Zero
+  ZF = (result & 0xFFFF) == 0;
+
+  // Negative (sign bit of result)
+  NF = (result & 0x8000) != 0;
 }
 // Set Carry and Overflow only
 void OverCarryTest(int a, int b, int c, int IsSubtraction) {
@@ -870,8 +890,8 @@ void OverCarryTest(int a, int b, int c, int IsSubtraction) {
 }
 
 int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HWStack, int CPC) {
-  int16_t i,c,a, tos, sft;
-  int i32, TSP;
+  uint16_t i,c,a, tos, sft;
+  int i32;
 #define CastDebugToggle 0
 #define CastPrintStr 1
 #define CastPrintInt 2
@@ -997,6 +1017,8 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
     POPNULLCHK(HWStack);
     if (DiskHandle != NULL ) {
       fclose(DiskHandle);
+    } else {
+      returncode = RC_DEVICE_GENERAL_FAIL;
     }
     snprintf(DiskName,sizeof(DiskName), "DISK%02d.disk", Param);
     DiskHandle = fopen(DiskName, "r+b");
@@ -1004,16 +1026,19 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
       DiskPtr = 0;
       fseek(DiskHandle, 0, SEEK_SET);
     } else {
+      returncode=RC_DEVICE_READ_FAIL;
       fprintf(stderr,"Error accessing DISK device: %d\n",Param);
     }
     break;
   case CastSeekDisk:   //CastSeekDisk
     POPNULLCHK(HWStack);
     if (DiskHandle == NULL) {
+      returncode=RC_DISK_SEEK_FAIL;
       fprintf(stderr,"Error, Attempted to Seek before selecting Disk.\n");
     }
     DiskPtr = Param * BLOCK_SIZE;
     if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0){
+      returncode=RC_DISK_SEEK_FAIL;
       fprintf(stderr,"Erorr seeking block %d on disk.\n",DiskPtr);
     }
     break;
@@ -1021,22 +1046,27 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
       unsigned char block[BLOCK_SIZE];
       memcpy(block, &memory[Param], BLOCK_SIZE);
       if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+	returncode=RC_DEVICE_READ_FAIL;
         fprintf(stderr, "Error seeking disk sector %d\n",DiskPtr);
       }
       if (fwrite(block,1,BLOCK_SIZE, DiskHandle) != BLOCK_SIZE) {
         fprintf(stderr, "Error writing to Disk.");
+	returncode=RC_DEVICE_WRITE_FAIL;
       }
       DiskPtr += BLOCK_SIZE;
       if (fflush(DiskHandle) != 0) {
         fprintf(stderr, "Error flushing HW Disk Buffer\n");
+	returncode=RC_DEVICE_WRITE_FAIL;	
       }
     } else {
       fprintf(stderr, "038 Attempted to write to disk block larger than memory available\n");
+      returncode=RC_DEVICE_MEM_FAIL;
     }
     break;
   case CastSyncDisk:   // CastSyncDisk
     POPNULLCHK(HWStack);
     if (fflush(DiskHandle) != 0) {
+      returncode=RC_DEVICE_GENERAL_FAIL;
       fprintf(stderr, "Error flushing HW Disk Buffer\n");
     }
     break;
@@ -1051,6 +1081,7 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
       DiskPtr = 0;
       fseek(DiskHandle, 0, SEEK_SET);
     } else {
+      returncode=RC_DISK_SEEK_FAIL;
       fprintf(stderr,"Error accessing DISK device: %d",ParamI);
     }
     break;    
@@ -1058,33 +1089,40 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
   case CastSeekDiskI:   // CastSeekDiskI
     POPNULLCHK(HWStack);
     if (DiskHandle == NULL) {
+      returncode=RC_DISK_SEEK_FAIL;
       fprintf(stderr,"Error, Attempted to Seek before selecting Disk.\n");
     }
     DiskPtr = ParamI * BLOCK_SIZE;
     if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0){
+      returncode=RC_DISK_SEEK_FAIL;
       fprintf(stderr,"Erorr seeking block %d on disk.\n",DiskPtr);
     }
     break;        
   case CastWriteSectorI:   //CastWriteSectorI
     POPNULLCHK(HWStack);
     if (DiskHandle == NULL) {
+      returncode=RC_DEVICE_GENERAL_FAIL;
       fprintf(stderr,"038 Attempted to write to disk without selecting Disk\n");
     }
     if ( ParamI < MAXMEMP - BLOCK_SIZE+1) {
       unsigned char block[BLOCK_SIZE];
       memcpy(block, &memory[ParamI], BLOCK_SIZE);
       if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+	returncode=RC_DISK_SEEK_FAIL;	
         fprintf(stderr, "Error seeking disk sector %d\n",DiskPtr);
       }
       if (fwrite(block,1,BLOCK_SIZE, DiskHandle) != BLOCK_SIZE) {
+	returncode=RC_DEVICE_WRITE_FAIL;
         fprintf(stderr, "Error writing to Disk.");
       }
       DiskPtr += BLOCK_SIZE;
       if (fflush(DiskHandle) != 0) {
+	returncode=RC_DEVICE_WRITE_FAIL;	
         fprintf(stderr, "Error flusing HW Disk Buffer\n");
       }
     } else {
       fprintf(stderr, "038 Attempted to write to disk block larger than memory available\n");
+      returncode=RC_DEVICE_MEM_FAIL;
     }  
     break;
   case CastTapeWrite:   // CastTapeWrite
@@ -1096,12 +1134,15 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
         memcpy(block, &memory[Param], BLOCK_SIZE);
         if (fwrite(block, 1, BLOCK_SIZE, TapeHandle) != BLOCK_SIZE) {
             fprintf(stderr, "Error writing to tape.\n");
+	    returncode=RC_DEVICE_WRITE_FAIL;
         }
         if (fflush(TapeHandle) != 0) {
             fprintf(stderr, "Error flushing tape buffer\n");
+	    returncode=RC_DEVICE_WRITE_FAIL;	    
         }
     } else {
         fprintf(stderr,"039 Attempt to write from source memory past available memory\n");
+	returncode=RC_DEVICE_MEM_FAIL;
     }
     break;
 
@@ -1113,13 +1154,16 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
         unsigned char block[BLOCK_SIZE];
         memcpy(block, &memory[ParamI], BLOCK_SIZE);
         if (fwrite(block, 1, BLOCK_SIZE, TapeHandle) != BLOCK_SIZE) {
+	  returncode=RC_DEVICE_WRITE_FAIL;	  
             fprintf(stderr, "Error writing to tape.\n");
         }
         if (fflush(TapeHandle) != 0) {
             fprintf(stderr, "Error flushing tape buffer\n");
+	    returncode=RC_DEVICE_WRITE_FAIL;	    
         }
     } else {
         fprintf(stderr,"039 Attempt to write from source memory past available memory\n");
+	returncode=RC_DEVICE_MEM_FAIL;
     }
     break;
 
@@ -1142,7 +1186,7 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
     
   case CastEnd:
     POPNULLCHK(HWStack);
-    returncode=-1;
+    returncode=RC_END_PROGRAM;
     break;
   case CastStackDump:
     int t1;
@@ -1156,6 +1200,7 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
     break;
       
   default:
+    returncode=RC_DEVICE_GENERAL_FAIL;    
     printf("Error No such Cast Code(%d).\n",tos);
     break;
   }
@@ -1163,9 +1208,11 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
   return 0;
 }
 int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWStack) {
-  int a,i,pc,c, TSP, tos, sft;
+  int a,c, tos, sft;
+
   char inlines[255];
   time_t seconds;
+  (void) ParamII;      /* Possible future poll */
   tos = -1;
   sft = -1;  
   tos=topstack(HWStack,1);
@@ -1192,25 +1239,53 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
   switch (tos) {
   case PollReadIntI:
     POPNULLCHK(HWStack);
-    scanf("%d",&a);
+    if (scanf("%d",&a) != 1) {
+      fprintf(stderr, "Invalid input\n");
+      returncode=RC_INVALID_INPUT;
+      return -1;
+    }
     put16atmem(Param,a, memory);
     break;
+
   case PollReadStrI:
-    POPNULLCHK(HWStack);                        // consume POLL arg
-    fgets(inlines, 254, stdin);
-    pc = ParamI;
-    for(i = 0; i < strlen(inlines); i++) {
-        if ((unsigned char)inlines[i] > 31) {
-            memory[pc++] = (unsigned char)inlines[i];
-        }
+
+    POPNULLCHK(HWStack);   // consume POLL arg
+    size_t strpc=ParamI;
+    
+    char *res = fgets(inlines, sizeof(inlines), stdin);
+
+    
+    // res will only equal NULL if EOF character was typed on empty line.
+    if (res == NULL) {
+      // we tell the user EOF by setting memory[Param]=0
+      a=0;
+      put16atmem(ParamI,a, memory);
     }
-    memory[pc] = 0;                          // explicit null terminator
+    else {
+      // now our question is was the an empty line with <ENTER> or valid text.
+      size_t len = strlen(inlines);
+      if ( len > 1 && inlines[len-1] == '\n') {
+	// Strip the /n and make it the null terminator
+	inlines[--len] = '\0';
+      } else if ( len == 1) {
+	// case when empty line with <enter>
+	inlines[0]='\n';
+	inlines[1]='\0';
+      }
+      for(size_t i = 0; i<len; i++ ) {
+	unsigned char c = (unsigned char) inlines[i];
+	if (c > 31) { // printable characters only
+	  memory[strpc++] = c;
+	}
+      }
+    }
+    memory[strpc]='\0';
     break;
   case PollReadCharI:
     POPNULLCHK(HWStack);                        // consume POLL arg
     c = getc(stdin);
     if (c == EOF) c = 0;                     // map EOF to null char
-    put16atmem(Param, (int)c, memory);
+    put16atmem(ParamI, (int)c, memory);
     break;
   case PollReadCINoWait:
     POPNULLCHK(HWStack);                        // consume POLL arg
@@ -1246,11 +1321,13 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
     if (DiskHandle != NULL ) {
       if ( Param <= MAXMEMP-0x200) {
         if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+	  returncode=RC_DISK_SEEK_FAIL;
           fprintf(stderr, "Error Seeking in disk failed.\n");
         }
         unsigned char block[BLOCK_SIZE];
         size_t bytesRead = fread(block, 1, BLOCK_SIZE, DiskHandle);
         if (bytesRead != BLOCK_SIZE) {
+	  returncode=RC_DEVICE_READ_FAIL;
           fprintf(stderr, "Error reading from disk.\n");
         }
         unsigned int tidx = Param;
@@ -1258,6 +1335,7 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
           memory[tidx++] = block[i] & 0xff;
         }
       } else {
+	returncode=RC_DEVICE_MEM_FAIL;
         fprintf(stderr, "042 Attempted to read block with insufficen memory address %04x\n",Param);
       }
     }
@@ -1267,11 +1345,13 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
     if (DiskHandle != NULL ) {
       if ( ParamI <= MAXMEMP-0x200) {
         if (fseek(DiskHandle, DiskPtr, SEEK_SET) != 0) {
+	  returncode=RC_DISK_SEEK_FAIL;
           fprintf(stderr, "Error Seeking in disk failed.\n");
         }
         unsigned char block[BLOCK_SIZE];
         size_t bytesRead = fread(block, 1, BLOCK_SIZE, DiskHandle);
         if (bytesRead != BLOCK_SIZE) {
+	  returncode=RC_DEVICE_READ_FAIL;
           fprintf(stderr, "Error reading from disk.\n");
         }
         unsigned int tidx = ParamI;
@@ -1279,9 +1359,10 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
           memory[tidx++] = block[i] & 0xff;
         }
       } else {
+	returncode=RC_DEVICE_MEM_FAIL;
         fprintf(stderr, "042 Attempted to read block with insufficen memory address %04x\n",Param);
       }
-    }
+    }    
     break;
   case PollReadTape:
     POPNULLCHK(HWStack);
@@ -1290,16 +1371,19 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
             unsigned char block[BLOCK_SIZE];
             size_t bytesRead = fread(block, 1, BLOCK_SIZE, TapeHandle);
             if (bytesRead != BLOCK_SIZE) {
-                fprintf(stderr, "Error reading tape block.\n");
+	      returncode=RC_DEVICE_READ_FAIL;
+	      fprintf(stderr, "Error reading tape block.\n");
             }
             unsigned int tidx = Param;
             for (size_t i = 0; i < bytesRead; ++i) {
-                memory[tidx++] = block[i] & 0xff;
+	      memory[tidx++] = block[i] & 0xff;
             }
-        } else {
-            fprintf(stderr, "043 Attempt to read Tape Block with insufficient memory\n");
         }
-    }
+	else {
+	  returncode=RC_DEVICE_MEM_FAIL;	  
+	  fprintf(stderr, "043 Attempt to read Tape Block with insufficient memory\n");
+        }
+    } 
     break;
 
   case PollReadTapeI:
@@ -1309,7 +1393,8 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
             unsigned char block[BLOCK_SIZE];
             size_t bytesRead = fread(block, 1, BLOCK_SIZE, TapeHandle);
             if (bytesRead != BLOCK_SIZE) {
-                fprintf(stderr, "Error reading tape block.\n");
+	      returncode=RC_DEVICE_READ_FAIL;
+	      fprintf(stderr, "Error reading tape block.\n");
             }
             unsigned int tidx = ParamI;
             for (size_t i = 0; i < bytesRead; ++i) {
@@ -1317,6 +1402,7 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
             }
         } else {
             fprintf(stderr, "043 Attempt to read Tape Block with insufficient memory\n");
+	    returncode=RC_DEVICE_MEM_FAIL;
         }
     }
     break;
@@ -1328,7 +1414,7 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
     }
     break;
   
-           
+             
 
   case PollReadTime:
     POPNULLCHK(HWStack);          // consume POLL argument
@@ -1338,7 +1424,10 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
     break;
     
   default:
+    returncode=RC_DEVICE_GENERAL_FAIL;
     printf("Poll Code not implmented");
   }
   return 0;
 }
+
+

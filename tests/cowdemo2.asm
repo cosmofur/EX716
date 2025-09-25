@@ -98,7 +98,7 @@ L random.ld        # for random direction changes
   @PUSHI WinHeight @SHR @SUB 3 @POPI CowY
   @MA2V 10 Distance
 
-  @ForIA2B Index01 0 100
+  @ForIA2B Index01 0 2
      # Reverse direction if we near an edge
      @PUSHI CowX
      @ADDI CowDX
