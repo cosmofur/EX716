@@ -162,7 +162,30 @@ Support for structured programming, similar to C-like control structures:
 ```
 
 ---
+## Function Call Helpers
 
+To simplify common @CALL patterns, shorthand macros exist for up to four parameters:
+
+```
+Call(##)   → expands to @PUSH / @PUSHI + @CALL
+
+
+Each letter in ## describes an argument type:
+
+Symbol	Meaning
+A	Immediate constant
+v	Simple variable
+```
+Example:
+
+| Macro                | Equivalent                    |
+|----------------------|-------------------------------|
+| Call(A) F 123        | @PUSH 123 @CALL F             |
+| Call(Av) F 45 Cat    | @PUSH 45 @PUSHI Cat @CALL F   |
+| Call(v) F Dog        | @PUSHI Dog @CALL F            |
+| Call(vv) F Dog Cat   | @PUSHI Dog @PUHSI Cat @CALL F |
+
+---
 ## Emulator (`cpu.py`)
 
 ### Usage
@@ -203,6 +226,7 @@ Support for structured programming, similar to C-like control structures:
 | `n`     | Next instruction                                 |
 | `s`     | Step over (skip over function call)              |
 | `p`     | Print address contents                           |
+| `pa`    | Print Any (optional pattern) search lables       |
 | `ps`    | Print hardware stack contents                    |
 | `q`     | Quit debugger                                    |
 | `r`     | Reset program counter                            |

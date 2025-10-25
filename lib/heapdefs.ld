@@ -1,3 +1,5 @@
+! HeapMgrDefs
+M HeapMgrDefs
 # ----------------------------------------------------------------------
 # heapdefs.ld
 # ----------------------------------------------------------------------
@@ -17,11 +19,12 @@
 # Heap Manager internal constants
 # ------------------------------
 
-=MinObjectSize   1      # Smallest allocatable object (bytes)
+=MinObjectSize   2      # Smallest allocatable object (bytes)
 =SizeHeapHead    4      # Words used by the heap header (per heap)
 =SizeObjectHead  3      # Words used by object header (per object)
 =ObjectPtrOffset 2      # Offset (negative) from object base to pointer
 =SizeFirstHead   7      # Combined size of first object + heap header
+=MinSplitSize SizeObjectHead+MinObjectSize    # Don't split an object if less than N size
 
 # Offsets relative to HeapID
 =HeapOff_FirstObj 0
@@ -52,3 +55,4 @@
 #
 # On failure, functions return one of the error codes above (< 100).
 # ------------------------------
+ENDBLOCK

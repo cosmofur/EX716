@@ -264,10 +264,23 @@ M IF_UGT_V \
    %S \
    @JMPC _%V_ENDIF \
    @JMPZ _%V_ENDIF
+M IF_UGT_VV \
+   @PUSHI %1 \
+   @CMPI %2 \
+   @POPNULL \
+   %S \
+   @JMPC _%V_ENDIF \
+   @JMPZ _%V_ENDIF
 M IF_UGE_V \
    @CMPI %1 \
    %S \   
    @JMPC _%V_ENDIF
+M IF_UGE_VV \
+   @PUSHI %1 \
+   @CMPI %2 \
+   @POPNULL \
+   %S \   
+   @JMPC _%V_ENDIF   
 M IF_UGT_A \
    @CMP %1 \
    %S \

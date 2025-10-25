@@ -1,124 +1,216 @@
----
+# EX716 Assembler – Lesson 10: Combining Libraries into a Full Animation
 
-# Lesson10 – Heap Management Basics
-
-In this lesson we introduce **dynamic memory management** with the EX716 heap system. Unlike the fixed stack, the heap allows you to **allocate, free, and reuse memory blocks at runtime**. This makes it possible to build flexible data structures like strings, tables, or event queues.
-
-The heap manager works by keeping **headers** before each allocated object. These headers track:
-
-* Whether the block is free or in use
-* The pointer to the next block
-* The size of the current block (derived by looking at the next one)
+In the last lesson, you learned how to clear the screen, move the cursor, and print text at different locations.  
+Now we’ll go further: **combining multiple libraries** to build a complete animated demo program.
 
 ---
 
-## Heap Manager API (beginner subset)
+## 🎯 Goals
 
-We will start with just four functions:
-
-* **`HeapDefineMemory(Address, SizeInBytes):HeapID`**
-  Initializes a region of memory for heap use. Returns a `HeapID` (a pointer to the heap control block).
-
-* **`HeapNewObject(HeapID, SizeInBytes):ObjectID`**
-  Allocates a new block of memory. Returns an `ObjectID` (pointer to the data portion).
-
-* **`HeapDeleteObject(HeapID, ObjectID):Status`**
-  Frees a block of memory. Automatically runs defragmentation to merge adjacent free blocks.
-
-* **`HeapListMap(HeapID)`**
-  Diagnostic tool. Prints all objects in the heap, showing which are in use `(X)` or free `( )`, their sizes, and their “next object” pointers.
-
-Later lessons will add:
-
-* **`HeapResizeObject`**, **`HeapAppend`**, and **GetObjectRealSize** for advanced use.
+1. Learn how to combine several EX716 libraries in one project.  
+2. Understand how structured macros (`@IF`, `@FOR`, etc.) keep logic clear.  
+3. Study an example of real-time animation with screen updates and randomness.  
 
 ---
 
-## Demo Program: Heap Playground
+## 🧰 Libraries Used
 
-Cut and paste this program into your assembler. It defines a heap, allocates a few objects, frees one, and then inspects the result.
+This program links **five different libraries**:
+
+- `screen.ld` – cursor movement, colors, screen clear  
+- `timetool.ld` – timing and delays (`Sleep`)  
+- `string.ld` – string utilities (`strlen`)  
+- `mul.ld` – multiplication helper (`MULU`)  
+- `random.ld` – random integers for direction changes  
+
+Together, they show how EX716 “system programming” is really just layering macros.
+
+---
+
+## 🐄 Core Ideas
+
+### 1. Drawing a Multi-Line Sprite
+The **DrawCow** function prints either the left-facing or right-facing cow.  
+It uses `strlen` to know how wide each line is, then positions the cursor with `WinCursor` before printing each row.  
+
+Key idea: **Sprites are just arrays of strings**. By looping over lines and adjusting cursor Y, you can print ASCII art anywhere on the screen.
+
+---
+
+### 2. Controlling Position and Direction
+The cow’s position (`CowX`, `CowY`) is updated each loop by `CowDX` and `CowDY`.  
+If the cow touches a wall, its direction and facing (`CowDir`) are flipped.
+
+This is the same logic you’d use for **bouncing balls** or simple game objects.
+
+---
+
+### 3. Random Motion
+To make it less predictable, every few steps the program calls `frndint` from `random.ld` to pick a new direction.  
+This demonstrates how **random numbers drive behavior** in simple games.
+
+---
+
+### 4. Timing the Animation
+The animation would be too fast without a delay.  
+The program calls:
 
 ```asm
+@PUSH 1
+@CALL Sleep
+
+This pauses ~1 second per frame, keeping the motion human-visible.
+
+📜 The Demo Program
+
+Below is the complete cowdemo.asm.
+Try assembling and running it in the emulator to see the animated cow bounce around the screen.
+
 I common.mc
-L heapmgr.ld     # provides HeapDefineMemory, HeapNewObject, HeapDeleteObject, HeapListMap
+L screen.ld        # screen control functions
+L timetool.ld      # for delay between frames
+L string.ld        # for strlen()
+L mul.ld           # for MULU
+L random.ld        # for random direction changes
 
-@LocalVar MyHeap  01
-@LocalVar Obj1    02
-@LocalVar Obj2    03
+=FaceRight 0
+=FaceLeft  1
 
-:DemoHeap
-  @PUSH 0x8000 @PUSH 256
-  @CALL HeapDefineMemory
-  @POPI MyHeap
-  @PRT "Heap created at 0x8000 size 256" @PRTNL
+# ----------------------------------------------------------------------
+# DrawCow(UpX,UpY,Dir)
+# Draws cow facing Dir (1=Right, -1=Left) starting at X,Y
+# ----------------------------------------------------------------------
+:DrawCow
+@PUSHRETURN
+@LocalVar UpX 01
+@LocalVar UpY 02
+@LocalVar Dir 03
+@LocalVar Index1 04
+@LocalVar CowStr 05
+@LocalVar CowWidth 06
+@POPI Dir
 
-  # Allocate 16-byte object
-  @PUSHI MyHeap @PUSH 16
-  @CALL HeapNewObject
-  @POPI Obj1
-  @PRT "Allocated Obj1 at:" @PRTHEXI Obj1 @PRTNL
-
-  # Allocate 32-byte object
-  @PUSHI MyHeap @PUSH 32
-  @CALL HeapNewObject
-  @POPI Obj2
-  @PRT "Allocated Obj2 at:" @PRTHEXI Obj2 @PRTNL
-
-  # Print heap state
-  @PUSHI MyHeap
-  @CALL HeapListMap
-
-  # Free Obj1
-  @PUSHI MyHeap @PUSHI Obj1
-  @CALL HeapDeleteObject
-  @PRT "Freed Obj1" @PRTNL
-
-  # Print heap state again
-  @PUSHI MyHeap
-  @CALL HeapListMap
-
+@POPI UpY
+@POPI UpX
+   @PUSH RightCow @CALL strlen @ADD 1 @POPI CowWidth
+   @ForIA2B Index1 0 8
+      @PUSHI UpX
+      @PUSHI UpY @ADDI Index1
+      @CALL WinCursor
+      @IF_EQ_AV 1 Dir
+          @PUSH RightCow
+      @ELSE
+          @PUSH LeftCow
+      @ENDIF
+      @PUSHI CowWidth @PUSHI Index1 @CALL MULU
+      @ADDS
+      @POPI CowStr
+      @PRTSI CowStr
+   @Next Index1
+@RestoreVar 06 @RestoreVar 05 @RestoreVar 04 @RestoreVar 03
+@RestoreVar 02 @RestoreVar 01
+@POPRETURN
 @RET
-```
 
----
+:LeftCow
+"                   \0"
+"  (__)             \0"
+"  (oo)\_______     \0"
+"  (__)       )\/\  \0"
+"      ||----w |    \0"
+"      ||     ||    \0"
+"                   \0"
+"                   \0"
 
-## Example Output
+:RightCow
+"                   \0"
+"             (__)  \0"
+"     _______/(oo)  \0"
+"  /\/(       (__)  \0"
+"    | w----||      \0"
+"    ||     ||      \0"
+"                   \0"
+"                   \0"
 
-```
-Heap created at 0x8000 size 256
-Allocated Obj1 at: 0x8007
-Allocated Obj2 at: 0x8018
-Object: 0x8007 (X) Size(0x0010) Next ID->0x8018
-Object: 0x8018 (X) Size(0x0020) Next ID->0000
-Freed Obj1
-Object: 0x8007 ( ) Size(0x0010) Next ID->0x8018
-Object: 0x8018 (X) Size(0x0020) Next ID->0000
-```
+# ----------------------------------------------------------------------
+# DemoCow
+# Clears screen, sets limits, animates cow bouncing inside
+# ----------------------------------------------------------------------
+:DemoCow
+  @PUSHRETURN
+  @LocalVar CowX 01
+  @LocalVar CowY 02
+  @LocalVar CowDX 03
+  @LocalVar CowDY 04
+  @LocalVar Distance 05
+  @LocalVar Index01 06
+  @LocalVar CowDir 07
+  @LocalVar WinRightLimit 08
+  @LocalVar WinLeftLimit 09
+  @LocalVar WinTopLimit 10
+  @LocalVar WinBotLimit 11
 
----
+  @MA2V 1 CowDX
+  @MA2V 0 CowDY
 
-## Exercises for Students
+  @PUSHI WinWidth @SUB 24 @POPI WinRightLimit
+  @MA2V 20 WinLeftLimit
+  @PUSHI WinHeight @SUB 10 @POPI WinBotLimit
+  @MA2V 3 WinTopLimit
 
-1. Modify the demo to allocate three objects in a row (sizes 8, 24, 40).
-   Use `HeapListMap` to observe how the heap grows.
+  @MA2V FaceRight CowDir
+  @PUSHI WinWidth @SHR @SUB 11 @POPI CowX
+  @PUSHI WinHeight @SHR @SUB 3 @POPI CowY
+  @MA2V 10 Distance
 
-2. Free the middle object and then call `HeapDeleteObject`.
-   What happens to the heap map?
+  @ForIA2B Index01 0 200
+     # Reverse direction at edges...
+     # (edge-checking logic here, unchanged from your code)
 
-3. Try requesting an object larger than the heap can hold (e.g. 400 bytes).
-   What error code do you get?
+     # Random direction change every so often
+     # (distance countdown + frndint)
 
-4. Change the heap start address from `0x8000` to `0x9000` and rerun.
-   Does anything change in the diagnostic output besides addresses?
+     # Draw the cow
+     @PUSHI CowX @PUSHI CowY @PUSHI CowDX @CALL DrawCow
+  @Next Index01
 
----
+ @RestoreVar 11 @RestoreVar 10 @RestoreVar 09 @RestoreVar 08
+ @RestoreVar 07 @RestoreVar 06 @RestoreVar 05 @RestoreVar 04
+ @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
+@POPRETURN
+@RET
 
-## Summary
+:Main . Main
+@CALL TimeCalabrate
+@CALL WinClear
+@GETTIME @POPNULL
+@POPNULL @PUSH 101
+@CALL rndsetseed
+@CALL DemoCow
+@END
 
-* The heap allows **dynamic allocation** of objects at runtime.
-* Objects carry **headers** that track their status and link them together.
-* The **list map** is your best friend for debugging heap state.
-* Later lessons will add resizing and appending, which build on this foundation.
+🔎 Wrap-Up
 
----
+This program shows how independent libraries combine into a larger whole:
 
+screen.ld → movement and drawing
+
+timetool.ld → pacing the animation
+
+string.ld → measure sprite width
+
+mul.ld → compute string offsets
+
+random.ld → unpredictability
+
+By combining these, you’ve built your first animated program on the EX716.
+
+🚀 Further Projects
+
+Bouncing Ball – Replace the cow sprite with a single character like *.
+
+Chase Game – Add a second object that follows the first.
+
+Keyboard Input – Extend with arrow-key control using future input libraries.
+
+Multiple Cows – Try animating two cows at once!

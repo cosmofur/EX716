@@ -31,6 +31,10 @@ G WinPlot G WinBox
 G WinScrollRegion G WinResetScrollRegion
 G WinScrollUp G WinScrollDown
 
+# Text Effects
+G WinUnderLineOn G WinUnderLineOff
+G WinBoldOn G WinBoldOff
+
 # Misc
 G CSICODE
 
@@ -186,6 +190,8 @@ ENDBLOCK
       @ENDIF
       @PUSHI ERR @ADDI DY @POPI ERR
       @PUSHI X0 @ADDI SX @POPI X0
+   @ELSE
+      @POPNULL
    @ENDIF
    @PUSHI E2
    @IF_LE_V DX
@@ -617,6 +623,61 @@ ENDBLOCK
 @RestoreVar 02
 @RestoreVar 01
 @POPRETURN
+@RET
+# ----------------------------------------------------------------------
+# Function : WinUnderLineOn
+# Purpose  : Enable underlining for subsequent printed text.
+# Inputs   : (none)
+# Outputs  : (none)
+# SideFX   :
+#   - Emits CSI 4m
+#   - All following text will appear underlined until disabled.
+# Example  : CALL WinUnderLineOn ; begin underlined output
+# ----------------------------------------------------------------------
+:WinUnderLineOn
+   @PRTS CSICODE
+   @PRT "4m"
+@RET
+# ----------------------------------------------------------------------
+# Function : WinUnderLineOff
+# Purpose  : Disable underlining previously enabled by WinUnderLineOn.
+# Inputs   : (none)
+# Outputs  : (none)
+# SideFX   :
+#   - Emits CSI 24m
+#   - Stops underlining without resetting other attributes.
+# Example  : CALL WinUnderLineOff ; end underlined output
+# ----------------------------------------------------------------------
+:WinUnderLineOff
+   @PRTS CSICODE
+   @PRT "24m"
+@RET
+# ----------------------------------------------------------------------
+# Function : WinBoldOn
+# Purpose  : Enable bold or high-intensity text output.
+# Inputs   : (none)
+# Outputs  : (none)
+# SideFX   :
+#   - Emits CSI 1m
+# Example  : CALL WinBoldOn
+# ----------------------------------------------------------------------
+:WinBoldOn
+   @PRTS CSICODE
+   @PRT "1m"
+@RET
+
+# ----------------------------------------------------------------------
+# Function : WinBoldOff
+# Purpose  : Disanable bold or high-intensity text output.
+# Inputs   : (none)
+# Outputs  : (none)
+# SideFX   :
+#   - Emits CSI 1m
+# Example  : CALL WinBoldOn
+# ----------------------------------------------------------------------
+:WinBoldOff
+   @PRTS CSICODE
+   @PRT "22m"
 @RET
 
 

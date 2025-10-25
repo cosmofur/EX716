@@ -1329,7 +1329,10 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
         if (bytesRead != BLOCK_SIZE) {
 	  returncode=RC_DEVICE_READ_FAIL;
           fprintf(stderr, "Error reading from disk.\n");
+        } else {
+          DiskPtr += BLOCK_SIZE;
         }
+        
         unsigned int tidx = Param;
         for(int i = 0; i < BLOCK_SIZE; ++i) {
           memory[tidx++] = block[i] & 0xff;
@@ -1353,7 +1356,9 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
         if (bytesRead != BLOCK_SIZE) {
 	  returncode=RC_DEVICE_READ_FAIL;
           fprintf(stderr, "Error reading from disk.\n");
-        }
+        } else {
+          DiskPtr += BLOCK_SIZE;
+        }        
         unsigned int tidx = ParamI;
         for(int i = 0; i < BLOCK_SIZE; ++i) {
           memory[tidx++] = block[i] & 0xff;

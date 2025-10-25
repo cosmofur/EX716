@@ -218,6 +218,7 @@ class AssemblerContext:
         self.AdminFlag = 0
         self.Fast = False
         self.CrossCheck = False
+        self.DeviceHandle = None
 
         # Labels and variables
         self.FileLabels = {}
@@ -269,7 +270,6 @@ MacroStack = []
 breakpoints = []
 tempbreakpoints = []
 UniqueLineNum = 0
-DeviceHandle = None
 EchoFlag = False
 UniqueID = 0
 LastMLen = []
@@ -343,7 +343,6 @@ def PollSetEchoFunc(arg=None):
 def PollSetRawFunc(arg=None):
     """Put terminal into full raw mode, save old settings."""
     global _saved_attrs
-    print("PollSetRaw")        
     if _saved_attrs is None:
         _saved_attrs = termios.tcgetattr(_fd)
 
@@ -358,10 +357,25 @@ def PollSetRawFunc(arg=None):
 def PollReSetRawFunc(arg=None):
     """Restore terminal to state before PollSetRaw was called."""
     global _saved_attrs
-    print("PollReSetRaw")
     if _saved_attrs is not None:
         termios.tcsetattr(_fd, termios.TCSADRAIN, _saved_attrs)
+        print("Cleaning up caches")
+
+        old_flags = fcntl.fcntl(_fd, fcntl.F_GETFL)
+        fcntl.fcntl(_fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+        try:
+            while True:
+                rlist, _, _ = select.select([_fd], [], [], 0)
+                if not rlist:
+                    break
+                os.read(_fd, 1024)
+                print("#")
+        except Exception:
+            pass
+        finally:
+            fcntl.fcntl(_fd, fcntl.F_SETFL, old_flags)
         _saved_attrs = None
+        
 
 def PollTTYStateFunc(arg=None):
     print("PollTTYState")    
@@ -764,7 +778,7 @@ class microcpu:
                 sp = self.mb[0xff]
                 if 0 < sp < 255:
                     for idx in range(sp - 1):
-                        val = self.mb[idx*2] + 0xff * self.mb[idx*2 + 1]
+                        val = int(self.mb[idx*2]) | (int(self.mb[idx*2 + 1]) << 8)
                         safeprint(" %04x" % val, file=DebugOut, end="")
                     safeprint(" ", file=DebugOut)
                 else:
@@ -1150,20 +1164,20 @@ class microcpu:
         if (newaddress > MAXMEMSP):
             self.raiseerror("030 Invalid Address %d, optANDII" % (address))
         self.optANDI(newaddress)
-    def optXOR(self, ivalue):
+    def optXOR(self, ivalue):        
         R1 = self.fetchAcum(0)
-        R2 = ivalue
-        A1 = R1 ^ R2
+        R2 = ivalue & 0xffff
+        A1 = (R1 ^ R2) & 0xffff
         self.SetFlags(A1,0)
-        A1 = A1 & 0xffff
         self.StoreAcum(0, A1)
 
     def optXORS(self, ivalue):
         R1 = self.fetchAcum(0)
-        R2 = self.fetchAcum(1)
-        A1 = R1 ^ R2
+        R2 = self.fetchAcum(1) & 0xffff
+        A1 = (R1 ^ R2) & 0xffff
         self.SetFlags(A1,0)
-        A1 = A1 & 0xffff
+        self.StoreAcum(0, A1)
+
         self.mb[0xff] -= 1
         self.StoreAcum(1, A1)
 
@@ -1402,8 +1416,10 @@ class microcpu:
             sys.stdout.write("%s" % v)
         if cmd == CastPrint32S:
             self.optPOPNULL(address)            
-            iaddr = self.fetchAcum(1)
-            v = self.getwordat(iaddr) + (self.getwordat(iaddr + 2) << 16)
+            hval=self.fetchAcum(0) & 0xffff
+            lval=self.fetchAcum(1) & 0xffff
+            v = (hval << 16) + lval
+            self.mb[0xff] -= 2
             sys.stdout.write("%d" % v)
         if cmd == CastEnd:
             self.optPOPNULL(address)            
@@ -1413,13 +1429,20 @@ class microcpu:
             self.optPOPNULL(address)            
             current_context.Debug = 0 if current_context.Debug else 1
         if cmd == CastStackDump:
-            self.optPOPNULL(address)            
-            safeprint(" %04x:Stack:(%d):%s [" %
-                             (PrevPC,self.mb[0xff]-1,CPU.FindWhatLine(PrevPC)), file=DebugOut,end="")
-            for i in range(self.mb[0xff]-1):
-                val = self.getwordstack(i*2)
-                safeprint(" %04x" % (val),file=DebugOut,end="")
-            safeprint(" ]",file=DebugOut)
+            self.optPOPNULL(address)
+            depth = int(self.mb[0xff])
+            if depth == 0:
+                safeprint(" %04x:Stack:(empty):%s [---,---]" %
+                          (PrevPC, CPU.FindWhatLine(PrevPC)),
+                          file=DebugOut)
+            else:
+                safeprint(" %04x:Stack:(%d):%s [" %
+                          (PrevPC, depth-1, CPU.FindWhatLine(PrevPC)),
+                          file=DebugOut,end="")
+                for i in range(depth):
+                    val = self.getwordstack(i*2)
+                    safeprint(" %04x" % val, file=DebugOut,end="")
+                safeprint(" ]", file=DebugOut)
         if cmd == CastTapeWrite:
             self.optPOPNULL(address)            
             if context.DeviceHandle != None:
@@ -1987,7 +2010,7 @@ def nextword(ltext):
     size = 0
 
     # Skip leading whitespace and commas
-    while size < maxlen and ltext[size] in ' ,':
+    while size < maxlen and ltext[size] in ' ,[]':
         size += 1
 
     if size >= maxlen:
@@ -2013,7 +2036,7 @@ def nextword(ltext):
 
     # Consume until next delimiter
     start = size
-    while size < maxlen and ltext[size] not in " ,+-":
+    while size < maxlen and ltext[size] not in " ,+-[]":
         result += ltext[size]
         size += 1
 
@@ -2152,14 +2175,19 @@ def DissAsm(start, length, CPU):
         # When debugging we might setup some Watchs for changes in known memory locations.
         if len(context.watchwords) > 0:
             rstring = "Watch:"
-            lastad = 0
-            for ii in context.watchwords:
-                if (lastad + 1) != ii:
-                    rstring = rstring + "%04x:[%02x]" % (ii, CPU.memspace[ii])
-                else:
-                    rstring = rstring + "[%02x]" % (CPU.memspace[ii])
-                lastad = ii
-                rstring += "SD:(%d)" % CPU.mb[0xff]
+            ii_list = sorted(context.watchwords)
+            for idx in range(0, len(ii_list), 1):
+                ii = ii_list[idx]
+                value = CPU.memspace[ii] | (CPU.memspace[ii+1].astype(int) << 8)
+                rstring += " %04x:[%04x]" % (ii, value)
+#            lastad = 0
+#            for ii in context.watchwords:
+#                if (lastad + 2) != ii:
+#                    rstring = rstring + "%04x:[%04x]" % (ii, CPU.memspace[ii]+(CPU.memspace[ii+1]<<8))
+#                else:
+#                    rstring = rstring + "[%04x]" % (CPU.memspace[ii]+(CPU.memspace[ii+1]<<8))
+#                lastad = ii
+#                rstring += "SD:(%d)" % CPU.mb[0xff]
 
         safeprint("%s %s" % (OUTLINE, rstring),file=DebugOut)
     return i
@@ -3660,6 +3688,11 @@ def debugger(passline, context: AssemblerContext):
             restore_tty()
             print("\x1b[?1000l\x1b[?25h\n")
             sys.exit(0)
+        if cmdword == "ttyreset":
+            PollReSetRawFunc()
+            PollSetEchoFunc()
+        if cmdword == "ttyraw":
+            PollSetRawFunc()
         if cmdword == "h":
             help_commands = [
                 ("b", "break points"),
@@ -3680,6 +3713,8 @@ def debugger(passline, context: AssemblerContext):
                 ("pa", "Print all G lables | pa $1 print lable value"),
                 ("q", "quit debugger"),
                 ("r", "reset"),
+                ("ttyreset","Resets terminal that was in raw mode."),
+                ("ttyraw","Changes terminal into raw mode.",),
                 ("w", "watch $1"),
                 ("cw", "clear watches"),
             ]

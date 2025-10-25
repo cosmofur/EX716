@@ -1,18 +1,68 @@
 ! MOUSELIBSEEN
 M MouseLibSeen 1
-G MouseInit G KeyEnQueue G KeyDeQueue G KeyQueueSize G KeyReadMouseSeq G KeySearchMouse
-G KeySearchKeyBoard G KeySearchTimer G MouseDisable G MouseAddEvent G ReadKeyTimeOut
-G MouseEventLoop G CSICODE G MouseTest
+L heapmgr.ld
+L mul.ld
+#########################
+# These are the main public Functions.
+#
+G TermMouseDisable          # Disable Mouse, puts back into default mode ()
+G TermMouseEnable           # Enable Mouse, clicks generate ANSI Location info ()
+G EventAdd                  # Add event to Event Table (Type,X1,Y1,X2,Y2,EventID)
+G EventPoll                 # Polls an Event Table returns 0, or ID of matched event. ():EventID
+G EventList                 # Prints for debugging Event Table ()
+G EventTableNew             # Creates a New Event table (HeapID):EventTableID
+G EventSetActive            # Switches current active eventtable to Active  (EventTableID)
+G EventGetActive            # Returns the current Active eventtable ():EventTableID
+G CSICODE                   # Points to the CSICODE "<ESC>[" string
+##########################
+# These are public meta data to recall additional information about last registed event.
+# These are Variables, not functions.
+# Gets updated with each call to EventPoll
+G LastEventType         # One of [MouseEvent,KeyEvent,TimerEvent]
+G LastEventID           # EventID of the latest event
+G LastEventTSLo         # For 32 bit Time data, Low word
+G LastEventTSHi         # For 32 bit Time data, High word
+G LastMouseX            # location of last mouse click X
+G LastMouseY            # location of last mouse click Y
+G LastMouseBtn          # Which mouse button was clicked.
+G LastMouseFlags        # OR'ed [MF_PRESS|MF_RELEASE|MF_DRAG|MF_WHEEL|MF_ALT|MF_CTRL]
+G LastMouseRawB         # Raw byte from Mouse click value
+G LastMouseTerm         # Raw String data from mouse
+G MF_PRESS              # Codes for Mouse Click
+G MF_RELEASE
+G MF_DRAG
+G MF_WHEEL
+G MF_SHIFT
+G MF_ALT
+G MF_CTRL
+G LastKeyMatchPtr       # Ptr into string match for keyboard events
+G LastKeyLen            # N.U.
+G LastKeyChar           # ASCII code of last key (Single byte events only)
+G LastTimerDur          # Seconds of Duraction based on request
+G LastTimeRep           # 0/1 if it was set to auto repeat
+G LastTimerELap         # Elapsed file time (real vs requested duration)
+G LastTimerSkip         # How many periods where skipped this poll
+G MouseEvent            # Mouse event 'constant'
+G TimerEvent            # Timer event 'constant'
+G KeyEvent              # Key event 'constant'
+
+# These functions manage the event queue for caching events.
+G ReadKeyTimeOut
+G KeyEnQueue G KeyDeQueue G KeyQueueSize G KeyReadMouseSeq G KeySearchMouse
+G KeySearchKeyBoard G KeySearchTimer
+
+
+# ActiveEventTable is a pointer to active event loop,
+# You can query it directly for status, but use the EventSetActive and EventGetActive for sanity checks.
+G ActiveEventTable
+# If you plan on using multiple EventTables, remember to update your copy of the EventID with EventGetActive
+# after any change to the table, such as with EventAdd
+#
+
 ########################################
 # Event Meta Data Struture:
 # While EventLoop returns an EventID, the extra informaton learned about events is stored here.
 #
-# Globablize all the Meta data values for recall
-G LastEventType G LastEventID G LastEventTSLo G LastEventTSHi G LastMouseX
-G LastMouseY G LastMouseBtn G LastMouseFlags G LastMouseRawB G LastMouseTerm
-G MF_PRESS G MF_RELEASE G MF_DRAG G MF_WHEEL G MF_SHIFT G MF_ALT G MF_CTRL
-G LastKeyMatchPtr G LastKeyLen G LastKeyChar G LastTimerDur G LastTimeRep
-G LastTimerELap G LastTimerSkip G MouseEvent G TimerEvent G KeyEvent
 #   Common Headers
 :LastEventType 0
 :LastEventID 0
@@ -25,6 +75,7 @@ G LastTimerELap G LastTimerSkip G MouseEvent G TimerEvent G KeyEvent
 :LastMouseFlags 0       # Bitfield Press/Relase/Drag/Shift/Alt/Ctrl/Wheel
 :LastMouseRawB 0        # Raw Button info
 :LastMouseTerm 0        # M or m for click vs Relase
+:ActiveEventTable 0     # Global Stored Active Event Table
 =MF_PRESS   0x0001
 =MF_RELEASE 0x0002
 =MF_DRAG    0x0004
@@ -35,66 +86,82 @@ G LastTimerELap G LastTimerSkip G MouseEvent G TimerEvent G KeyEvent
 =MouseEvent 1
 =TimerEvent 2
 =KeyEvent 3
+#
+#
+# Strucure of Event Table entries.
+=EventRecordSize 12
+=ActiveEventTableHeaderSize 6
+=EventMaxUsedHeadOff 2
+=EventBackupHeapOff 4
+=EventMaxLocOff 2
+=EventIDOff 4
+=EventTypeOff 6
+=EventExOneOff 8
+=EventExTwoOff 10
+=TimerStartOff 0
+=TimerDurOff 8
+=TimerRepOff 10
+
 
 #   Keyboard Meta Data
 :LastKeyMatchPtr 0
 :LastKeyLen 0
-:LastKeyChar 0          # Only for single byte keyboard events.
+:LastKeyChar 0          # 2 byte string Only for single byte keyboard events.
 #   Timer Metadata
 :LastTimerDur 0         # Seconds of Duraction based on request
 :LastTimeRep  0         # 0/1 if it was set to auto repeat
 :LastTimerELap 0        # Elapsed file time (real vs requested duration)
 :LastTimerSkip 0        # How many periods where skipped this poll
-
 ########################################
-# function: MouseInit(HeapID)
-:MouseInit
+# function EventTableNew(HeapID):EventTable
+# Creates an EventTable which will contain a unique list of events to monitor
+:EventTableNew
 @PUSHRETURN
 @LocalVar HeapID 01
-#
 @POPI HeapID
-   @IF_EQ_AV 0 MouseTable
-      # Define MouseTable
-      # MouseTable[0:1] = MouseTableSize
-      # MouseTable[2:3] = MaxUsedTableSize (tells when we need to resize)
-      # MouseTable[4:5] = Backup copy of HeapID for destory or resize events
-      # Real table data will tart at MouseTable[6:]
-      =MouseRecordSize 12
-      =MouseTableHeaderSize 6
-      =MouseMaxUsedHeadOff 2
-      =MouseBackupHeapOff 4
-      =EventMaxLocOff 2
-      =EventIDOff 4
-      =EventTypeOff 6
-      =EventExOneOff 8
-      =EventExTwoOff 10
-      =TimerStartOff 0
-      =TimerDurOff 8
-      =TimerRepOff 10
-      @PUSHI HeapID @PUSH MouseRecordSize+MouseTableHeaderSize
-      @CALL HeapNewObject  @IF_ULT_A 100 @PRT "Memory Error 330" @END @ENDIF
-      @POPI MouseTable
-      @PUSH 1 @PUSHI MouseTable @ADD MouseMaxUsedHeadOff @POPS   # Sets allocated rows in table
-      @PUSHI HeapID @PUSHI MouseTable @ADD MouseBackupHeapOff @POPS  # Saves HeapID for later resizes.
-      @PUSH 0 @POPI QBufferHead       # Clear out Queue
-   @ENDIF
-   @PUSH 0 @POPII MouseTable  # Zeros out number active rows.
-   @PRTS CSICODE @PRT "?1000h"
-   @PRTS CSICODE @PRT "?1006h"
+   @Call(vA) HeapNewObject HeapID EventRecordSize+ActiveEventTableHeaderSize
+   @POPI ActiveEventTable
+   @PUSH 1 @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @POPS   # Sets allocated rows in table
+   @PUSHI HeapID @PUSHI ActiveEventTable @ADD EventBackupHeapOff @POPS  # Saves HeapID for later resizes.
+   @PUSHI ActiveEventTable
 @RestoreVar 01
 @POPRETURN
 @RET
-:MouseTable 0         # only one word store used if mouse functions never initilzied.
-# Structures
-# Offset          Field
-# 0               MinLoc(X1,Y1<<8)
-# 2               MaxLoc(X2,Y2<<8)
-# 4               EventID
-# 6               EventType (1:mouse,2:Key,3:Timer)
-# 8               EventExOneOff Timer Counter or Str Ptr
-# 10              EventExTwoOff Timer Max Value
-#
-# For MouseEvents
+#########################################
+# function: EventTableFree(EventTableID)
+:EventTableFree
+@PUSHRETURN
+@LocalVar EventTableID 01
+@POPI EventID
+   @IF_EQ_AV 0 EventTableID
+      # Event table not setup, nothing to kill.
+   @ELSE
+      @PUSHI EventID @ADD EventBackupHeapOff @POPS   # Get HeapID
+      @PUSHI EventTableID
+      @CALL HeapDeleteObject @IF_NOTZERO
+         @PRT "Memory Error deleteing Event Table:" @PRTTOP
+         @END
+      @ENDIF
+   @ENDIF
+   @MA2V 0 ActiveEventTable
+@RestoreVar 01
+@POPRETURN
+@RET
+##########################################
+# function: EventSetActive(EventTableID)
+# This function sets the ActiveEventTable
+:EventSetActive
+@SWP
+@POPI ActiveEventTable
+@RET
+##########################################
+# function: EventGetActive():EventTableID
+# Queries what the current ActiveEventTable is.
+:EventGetActive
+@PUSHI ActiveEventTable
+@SWP
+@RET
+
 
 # For MouseEvents:
 #   (Type=MouseEvent, X1, Y1, X2, Y2, EventID)
@@ -109,13 +176,21 @@ G LastTimerELap G LastTimerSkip G MouseEvent G TimerEvent G KeyEvent
 
 
 ########################################
-# Function: MouseDisable()
-:MouseDisable
+# Function: TermMouseDisable()
+:TermMouseDisable
 @PRTS CSICODE @PRT "?1000l"
 @PRTS CSICODE @PRT "?1006l"
 @RET
+########################################
+# Function: TermMouseEnable()
+:TermMouseEnable
+@PRTS CSICODE @PRT "?1000h"
+@PRTS CSICODE @PRT "?1006h"
+@RET
+
+
 #######################################
-# Macros for MouseAddEvent
+# Macros for EventAdd
 # Ensures (%1, %2) such that %1 <= %2 Both must be variable lables, not constants.
 M QuickMinI @PUSHI %1 @PUSHI %2 @IF_GT_S @SWP @POPI %2 @POPI %1 @ELSE @POPNULL @POPNULL @ENDIF
 #
@@ -134,10 +209,10 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 #     - RepeatFlag = 0 one-shot, 1 periodic
 
 ########################################
-# Function: MouseAddEvent(Type,X1,Y1,X2,Y2,EventID)
+# Function: EventAdd(Type,X1,Y1,X2,Y2,EventID)
 #
 #
-:MouseAddEvent
+:EventAdd
 @PUSHRETURN
 @LocalVar Type 01       # 1 = mouse, 2 = timer, 3 = Keyboard
 @LocalVar X1 02         # Mouse: X1, Timer: Max Seconds, Keyboard:StrPtr(In)
@@ -154,10 +229,10 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 #
 @POPI EventID @POPI Y2 @POPI X2 @POPI Y1 @POPI X1 @POPI Type
     # Extract table header data
-    @PUSHI MouseTable @PUSHS @POPI MAESize                  # Current Number of used records
-    @PUSHI MouseTable @ADD MouseMaxUsedHeadOff @PUSHS @POPI MAEMaxSize # Max possible without resize
-    @PUSHI MouseTable @ADD MouseBackupHeapOff @PUSHS @POPI MTHeapID    # HeapID for resizeing
-    @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Index1           # First Record after headers
+    @PUSHI ActiveEventTable @PUSHS @POPI MAESize                  # Current Number of used records
+    @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @PUSHS @POPI MAEMaxSize # Max possible without resize
+    @PUSHI ActiveEventTable @ADD EventBackupHeapOff @PUSHS @POPI MTHeapID    # HeapID for resizeing
+    @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Index1           # First Record after headers
     #
     # See if EventID exists already, which case this is a replace.
     @MA2V -1 InsertSpot   # For cases with no matching EventID
@@ -170,7 +245,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
            @FORBREAK         # Note this only works because IF is 'top' level in loop
         @ELSE
            @POPNULL
-           @PUSHI Index1 @ADD MouseRecordSize @POPI Index1   # Move to next Entry
+           @PUSHI Index1 @ADD EventRecordSize @POPI Index1   # Move to next Entry
         @ENDIF
     @Next Index2
     @IF_EQ_AV -1 InsertSpot
@@ -178,26 +253,27 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
        @IF_EQ_VV MAESize MAEMaxSize
            # Time to expand the table with HeapResize
            @PUSHI MTHeapID
-           @PUSHI MouseTable
+           @PUSHI ActiveEventTable
            @PUSHI MAEMaxSize       # Need to turn max size into bytes in table space.
            @ADD 10                # Allocate 10 new cells for growth.
-           @PUSH MouseRecordSize
+           @PUSH EventRecordSize
            @CALL MUL              # Multiply
-           @ADD MouseTableHeaderSize     # Add the Header part.
+           @ADD ActiveEventTableHeaderSize     # Add the Header part.
            @CALL HeapResizeObject
            @IF_ULT_A 100
                @PRT "Error Can not allocate memory for mouse table growth."
                @END
            @ENDIF
-           @POPI MouseTable
+           @POPI ActiveEventTable
            @PUSHI MAEMaxSize @ADD 10     # Reset Max size record to new size
-           @PUSHI MouseTable @ADD MouseMaxUsedHeadOff @POPS  # Writes new max size
+           @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @POPS  # Writes new max size
            #
        @ENDIF
-       @PUSHI MAESize @PUSH MouseRecordSize @CALL MUL @ADDI MouseTable
-       @ADD MouseTableHeaderSize @POPI InsertSpot
+       @PUSHI MAESize @PUSH EventRecordSize @CALL MUL
+       @ADDI ActiveEventTable
+       @ADD ActiveEventTableHeaderSize @POPI InsertSpot
        @INCI MAESize
-       @PUSHI MAESize @PUSHI MouseTable  @POPS # Save it in header First record is used record count.
+       @PUSHI MAESize @PUSHI ActiveEventTable  @POPS # Save it in header First record is used record count.
    @ELSE
        # Here means  InsertSpot has a non -1 value, so there is pre-existing EventID Cell
    @ENDIF
@@ -458,7 +534,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @POPRETURN
 @RET
 ############################################
-# Helper Macros for the MouseTable Search functions
+# Helper Macros for the ActiveEventTable Search functions
 M ExtractXMin @PUSHII %1 @AND 0xff
 M ExtractYMin @PUSHI %1 @ADD 1 @PUSHS @AND 0xff
 M ExtractXMax @PUSHI %1 @ADD 2 @PUSHS @AND 0xff
@@ -493,8 +569,8 @@ M Between_U \
 @POPI Y1
 @POPI X1
     @MA2V -1 Result
-    @PUSHII MouseTable @POPI MTSize
-    @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
+    @PUSHII ActiveEventTable @POPI MTSize
+    @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
     @ForIV2A Rec MTSize 0
        # Skip any non-mouse event
        @PUSHI Base @ADD EventTypeOff @PUSHS
@@ -522,7 +598,7 @@ M Between_U \
              @POPNULL
           @ENDIF
       @ENDIF
-      @PUSHI Base @ADD MouseRecordSize @POPI Base
+      @PUSHI Base @ADD EventRecordSize @POPI Base
    @NextBy Rec -1
    @IF_EQ_AV -1 Result
       @PUSH 0      # Return null if no match
@@ -588,8 +664,8 @@ M Between_U \
 @LocalVar Result 07
 @POPI CHR
    @MA2V -1 Result
-   @PUSHII MouseTable @POPI MTSize
-   @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
+   @PUSHII ActiveEventTable @POPI MTSize
+   @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
    @INCI MTSize
    @ForIV2A Rec MTSize 0
       @PUSHI Base @ADD EventTypeOff @PUSHS
@@ -604,7 +680,8 @@ M Between_U \
          @CALL FindCh
          @IF_NOTZERO
             @POPI LastKeyMatchPtr
-            @MV2V CHR LastKeyChar
+            @PUSHI CHR @AND 0xff @POPI LastKeyChar
+#            @MV2V CHR LastKeyChar
             # Input Matches Event
             @PUSHI Base @ADD EventIDOff @PUSHS
             @POPI Result
@@ -613,7 +690,7 @@ M Between_U \
             @POPNULL
          @ENDIF
       @ENDIF
-      @PUSHI Base @ADD MouseRecordSize @POPI Base
+      @PUSHI Base @ADD EventRecordSize @POPI Base
    @NextBy Rec -1
    @IF_EQ_AV -1 Result
       @PUSH 0
@@ -644,8 +721,8 @@ M Between_U \
 @LocalVar Elap   08
 @LocalVar Result 09
    @MA2V -1 Result
-   @PUSHI MouseTable @PUSHS @POPI MTSize
-   @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
+   @PUSHI ActiveEventTable @PUSHS @POPI MTSize
+   @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
    @ForIV2A Rec MTSize 0
        @PUSHI Base @ADD EventTypeOff @PUSHS
        @IF_NEQ_A TimerEvent
@@ -710,7 +787,7 @@ M Between_U \
              @ENDIF
          @ENDIF
      @ENDIF
-     @PUSHI Base @ADD MouseRecordSize @POPI Base
+     @PUSHI Base @ADD EventRecordSize @POPI Base
   @NextBy Rec -1
 
 
@@ -733,14 +810,14 @@ M Between_U \
 
 
 ########################################
-# Function: MouseEventLoop:EventID
+# Function: EventPoll:EventID
 # Mouse Event.
-:MouseEventLoop
+:EventPoll
 @PUSHRETURN
 @LocalVar MouseXVal 01 @LocalVar MouseYVal 02 @LocalVar MouseEventCode 03
-   # Fast exit if there nothing in MouseTable to search for.
+   # Fast exit if there nothing in ActiveEventTable to search for.
    @MA2V 0 MouseEventCode
-   @PUSHI MouseTable @PUSHS  # Mouse table will be zero if never defined.
+   @PUSHII ActiveEventTable   # Mouse table will be zero if never defined.
    @IF_ZERO
       # nothing to do, just exit with zero as event id.
    @ELSE
@@ -823,7 +900,7 @@ M Between_U \
  @RET
 ###########################
 # Mouse Test
-:MouseTest
+:EventList
 @PUSHRETURN
 @LocalVar MTSize   01
 @LocalVar Index    02
@@ -836,11 +913,11 @@ M Between_U \
 @LocalVar Type     09
 
    # Load header values
-   @PUSHI MouseTable @PUSHS @POPI MTSize       # number of used entries
-   @PUSHI MouseTable @ADD MouseTableHeaderSize @POPI Base
+   @PUSHI ActiveEventTable @PUSHS @POPI MTSize       # number of used entries
+   @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
 
    @PRTNL
-   @PRT "MouseTable (" @PRTHEXI MTSize @PRT " records)" @PRTNL
+   @PRT "ActiveEventTable (" @PRTHEXI MTSize @PRT " records)" @PRTNL
 
    @ForIA2V Index 0 MTSize
       # Decode min/max coords
@@ -865,7 +942,7 @@ M Between_U \
       @PRTNL
 
       # Next record
-      @PUSHI Base @ADD MouseRecordSize @POPI Base
+      @PUSHI Base @ADD EventRecordSize @POPI Base
    @Next Index
 
 @RestoreVar 09 @RestoreVar 08 @RestoreVar 07 @RestoreVar 06

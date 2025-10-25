@@ -38,6 +38,11 @@ L div.ld
 :IP 0
 :RB_LATEST 0
 :DebugFLAG 0
+:DiskActive 0
+:DiskBuffer 0
+:DiskBlockSize 512
+:DiskCurBlock -1
+:DiskDevice 1
 =HERE DictPtr     # Alias as HERE is more standard.
 =header_size 6
 = SoftHeapSize 1000
@@ -662,7 +667,7 @@ M SIZESINCECOMMENT DEFWORD_Start
    @FPOP
    @FPOP
    @SWP
-   @IF_GT_S
+   @IF_GE_S
      @POPNULL @POPNULL
      @PUSH -1
    @ELSE
@@ -864,11 +869,12 @@ M SIZESINCECOMMENT DEFWORD_Start
       @POPNULL
       @FPOP    # ForceExit
       @FPOP    # LoopTop
-      @FPOP    # Limit
       @FPOP    # Start
+      @FPOP    # Limit
+      @SWP
       # Now move to LP Stack
-      @LPUSH 
-      @LPUSH 
+      @LPUSH   # Start
+      @LPUSH   # Limit
       @LPUSH
       @LPUSH
       @PUSH DOTAG @LPUSH  # TAG
@@ -885,7 +891,7 @@ M SIZESINCECOMMENT DEFWORD_Start
 @LocalVar ForceExit 02
 @LocalVar TmpVal 03
    #
-   # On Entry SP stack will have (Start, Limit) put in code to add
+   # On Entry SP stack will have (Limit, Start) put in code to add
    # Our goal for the Compile stage is to set up the following:
    #
    # Pass a message to future compile stage 'loop' that this is where we return to
@@ -989,8 +995,7 @@ M SIZESINCECOMMENT DEFWORD_Start
    @LocalVar LoopTop 03
    @LocalVar ForceExit 04
    @LocalVar TagHolder 05
-   @LPOP
-   @POPI TagHolder
+   @LPOP   @POPI TagHolder #  @PRTLN "Pop: TagHolder: " @PRTI TagHolder @PRTSP
 
    # Error if neither DOTAG or QDOTAG are not here.
    @IF_EQ_AV DOTAG TagHolder
@@ -1000,14 +1005,15 @@ M SIZESINCECOMMENT DEFWORD_Start
        @JMP ErrorReset
    @ENDIF
    # Move Values to HW Stack
-   @LPOP  @POPI ForceExit
-   @LPOP  @POPI LoopTop
-   @LPOP  @POPI LimitVar     # Save Limit
-   @LPOP  @POPI StartVar     # Save Start
+   @LPOP  @POPI ForceExit #  @PRT "\nPop: ForceExit: " @PRTI ForceExit @PRTSP
+   @LPOP  @POPI LoopTop   # @PRT "\nPop: LoopTop: " @PRTI LoopTop @PRTSP
+   @LPOP  @POPI LimitVar  # @PRT "\nPop: LimitVar: " @PRTI LimitVar @PRTSP  # Save Limit
+   @LPOP  @POPI StartVar  #  @PRT "\nPop: StartVar: " @PRTI StartVar @PRTSP  # Save Start
 
+#   @PRT "\nBefore INCI StartVar" @PRTI StartVar @PRT " " @PRTI LimitVar 
    @INCI StartVar
-
-   @IF_EQ_VV StartVar LimitVar
+#   @PRT "\nAfter INCI StartVar" @PRTI StartVar @PRT " " @PRTI LimitVar
+   @IF_UGE_VV StartVar LimitVar
       # Loop is finished, just drop to exit.
    @ELSE
       # Now recreate the LS entries for next loop
@@ -1754,6 +1760,77 @@ M SIZESINCECOMMENT DEFWORD_Start
 @RestoreVar 01
 @FNEXT
 
+#######################
+# Disk IO Words
+# disk-read ( sector#  -- addr)
+# Returns buffer with disk block. This is system level storage, so can and will be overwritten
+# if any additional disk-read's occure. Preserve what you need to befoe doing additional reads.
+@DEFWORD "disk-read" DISKREAD_FUNC 0
+   @LocalVar Block 01
+   @LocalVar ScndSector 02
+   @FPOP
+   @POPI Block
+    @IF_EQ_AV 0 DiskActive     # Global variable >0 if disk has been used already.
+       @DISKSELI DiskDevice
+       @MA2V 1 DiskActive
+       @Call(vA) HeapNewObject MainHeap 1024    # Create a 1K buffer
+       @POPI DiskBuffer                  # Create more than one?
+    @ENDIF
+    @IF_EQ_VV Block DiskCurBlock
+       # Its already the lastest read...perhaps need way to force read.
+    @ELSE
+       @DISKSEEKI Block
+       @DISKREADI DiskBuffer
+       @PUSHI DiskBuffer
+       @ADDI 512
+       @POPI ScndSector
+       @DISKREADI ScndSector
+       @MV2V Block DiskCurBlock
+    @ENDIF
+    @PUSHI DiskBuffer
+    @FPUSH
+    @RestoreVar 02
+    @RestoreVar 01
+ @FNEXT
+
+# disk-write(secotor# address -- )
+ @DEFWORD "disk-write" DISKWRITE_FUNC 0
+   @LocalVar Block 01
+   @LocalVar Address 02
+   
+   @FPOP @POPI Address 
+   @FPOP @POPI Block
+
+   @IF_EQ_AV 0 DiskActive
+       @DISKSELI DiskDevice
+       @MA2V 1 DiskActive
+       @CALL MainHeap 1024
+       @POPI DiskBuffer
+   @ENDIF
+
+   @DISKSEEKI Block
+   @DISKWRITEI Address
+   @PUSHI Address
+   @ADDI 512
+   @POPI Address
+   @DISKWRITEI Address   
+   @MV2V Block DiskCurBlock
+   
+   @RestoreVar 02
+   @RestoreVar 01
+@FNEXT
+
+@DEFWORD "DiskDevice" DISKDEVVAR 0
+   @PUSHI DiskDevice
+   @FPUSH
+@FNEXT
+
+@DEFWORD "set-device" SETDISKDEV 0
+   @FPOP
+   @POPI TV             # or @POPI DiskTemp
+   @MV2V TV DiskDevice
+   @FNEXT
+
 
 # Toggle on/off the Debug report 
 @DEFWORD "debug" DEBUGFUNC 0
@@ -2361,7 +2438,7 @@ M SIZESINCECOMMENT StartMain
           @POPNULL
           @PUSHII WordVal @AND 0xff
           @IF_EQ_A "-\0"
-             @PRTLN "DEBUG: Found -"
+#             @PRTLN "DEBUG: Found -"
              @POPNULL
              @PUSH 0
           @ELSE
