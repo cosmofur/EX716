@@ -7,6 +7,8 @@
 #include <time.h>
 #include <stdint.h>
 #include <signal.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include "speedCPU.h"
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -22,6 +24,7 @@
 // Control codes
 #define RC_END_PROGRAM     -1
 #define RC_USER_HALT       -4
+#define RC_DEBUG_TOGGLE    -11
 // Stack Related
 #define RC_STACK_UNDERFLOW -2
 #define RC_STACK_OVERFLOW -3
@@ -189,6 +192,12 @@ void tty_state() {
 }
 
 
+// Raw, non-blocking, returns -1 if no input
+static inline int read_one_char_nowait() {
+    unsigned char ch;
+    int n = read(STDIN_FILENO, &ch, 1);
+    return (n == 1) ? ch : -1;
+}
 
 
 void EvalOne(uint8_t *CPUMemData,uint8_t *CPUStackData,int *CPURegData, int *CPUFlags);
@@ -300,7 +309,7 @@ static struct PyModuleDef cpuCfunc = {
 
 PyMODINIT_FUNC PyInit_cpuCfunc(void) {
   import_array();  // Initialize NumPy
-
+  setvbuf(stdin, NULL, _IONBF,0);
   return PyModule_Create(&cpuCfunc);
 }
 
@@ -661,24 +670,22 @@ case OptValCMPS:
     pushstack(R1,CPUStackData);
     Opsize=1;
     break;
-  case OptValSHR:
-    R1=popstack(CPUStackData);
-    B1=0;
-    if ( R1 & 0x1) { B1=1;}
-    R1=R1 >> 1;
-    CF=B1;
-    pushstack(R1,CPUStackData);	 
-    Opsize=1;
-    break;
-  case OptValSHL:
-    R1=popstack(CPUStackData);
-    B1=0;
-    if ( R1 & 0x8000) { B1=1;}
-    R1=R1 << 1;
-    CF=B1;
-    pushstack(R1,CPUStackData);	 
-    Opsize=1;
-    break;	   
+  case OptValSHR: {
+    uint16_t R1 = (uint16_t) popstack(CPUStackData);
+    uint8_t B1 = (R1 & 0x1) ? 1 : 0;
+    R1 = (R1 >> 1) & 0xFFFF;
+    CF = B1;
+    pushstack(R1, CPUStackData);
+    Opsize = 1;
+    break; }
+  case OptValSHL: {
+    uint16_t R1 = (uint16_t) popstack(CPUStackData);
+    uint8_t B1 = (R1 & 0x8000) ? 1 : 0;
+    R1 = (uint16_t)((R1 << 1) & 0xFFFF);
+    CF = B1;
+    pushstack(R1, CPUStackData);
+    Opsize = 1;
+    break; }
   case OptValINV:
     R1=~(popstack(CPUStackData));
     pushstack(R1,CPUStackData);
@@ -892,7 +899,6 @@ void OverCarryTest(int a, int b, int c, int IsSubtraction) {
 int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HWStack, int CPC) {
   uint16_t i,c,a, tos, sft;
   int i32;
-#define CastDebugToggle 0
 #define CastPrintStr 1
 #define CastPrintInt 2
 #define CastPrintIntI 3
@@ -917,6 +923,7 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
 #define CastTapeWrite 34
 #define CastTapeWriteI 35
 #define CastEnd 99
+#define CastDebugToggle 100
 #define CastStackDump 102
 
   
@@ -927,11 +934,8 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
   switch (tos) {
   case CastDebugToggle:
     POPNULLCHK(HWStack);
-    printf("Stack Dump: ");
-    for(i=0;i<(HWStack[HWSPIDX] << 1);i++) {
-      printf("%04x ",HWStack[i<<1]+(HWStack[(i<<1)+1]));
-    }
-    printf("\n");
+    returncode=RC_DEBUG_TOGGLE;
+    break;
   case CastPrintStr:           // CastPrintStr 1
     POPNULLCHK(HWStack);    
     i=Param;
@@ -1282,19 +1286,16 @@ int handlePoll(int Param, int ParamI, int ParamII,uint8_t *memory, uint8_t *HWSt
     memory[strpc]='\0';
     break;
   case PollReadCharI:
-    POPNULLCHK(HWStack);                        // consume POLL arg
-    c = getc(stdin);
-    if (c == EOF) c = 0;                     // map EOF to null char
-    put16atmem(ParamI, (int)c, memory);
+    POPNULLCHK(HWStack);
+    c = read_one_char_nowait();
+    if (c < 0) c = 0;
+    put16atmem(Param, c, memory);
     break;
   case PollReadCINoWait:
-    POPNULLCHK(HWStack);                        // consume POLL arg
-    c = 0;
-    enable_nonblocking_input();
-    if (kbhit()) {
-        c = getch();
-    }
-    put16atmem(Param, (int)c, memory);
+    POPNULLCHK(HWStack);
+    c = read_one_char_nowait();
+    if (c < 0) c = 0;
+    put16atmem(Param, c, memory);
     break;
   case PollSetNoEcho:
     POPNULLCHK(HWStack);

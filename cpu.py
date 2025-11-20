@@ -92,6 +92,7 @@ PrevPC=0
 #  Error and Command codes sent between C and Python modules.
 RC_END_PROGRAM=-1
 RC_USER_HALT=-4
+RC_DEBUG_TOGGLE=-11
 RC_STACK_UNDERFLOW=-2
 RC_STACK_OVERFLOW=-3
 RC_INVALID_INPUT=-5
@@ -249,6 +250,7 @@ class AssemblerContext:
         self.SkipBlock = 0
         self.AddressedLinesSeen = set()
         self.CurrentLineBeingParsed = 0
+        self.LastLineText = ""
 
         # Data segment state
         self.ExpectData = 0
@@ -1063,10 +1065,10 @@ class microcpu:
 
     def optADDII(self, address):
         if address >= MAXMEMSP:
-            self.raiseerror("021 Invalid Address: %d, optANDII" % (address))
+            self.raiseerror("021 Invalid Address: %d, optADDII" % (address))
         newaddress = self.getwordat(address)
         if (newaddress > MAXMEMSP):
-            self.raiseerror("022 Invalid Address %d, optANDII" % (address))
+            self.raiseerror("022 Invalid Address %d, optADDII" % (address))
         self.optADDI(newaddress)
 
     def optSUB(self, invalue):
@@ -1265,7 +1267,7 @@ class microcpu:
 
         if address >= (MAXMEMSP-11):
             self.raiseerror(
-                "036 Insufficent space for Message Address at %d, optCAST" % (address))
+                "036 Insufficent space for Message Address at %d, optCAST %s:%d" % (address, filename, get_line_info(address)))
         cmd = self.fetchAcum(0)
         if cmd == CastPrintStr:
             self.optPOPNULL(address)            
@@ -1294,8 +1296,7 @@ class microcpu:
                 v = -((v - 1) ^ 0xffff)
             sys.stdout.write("%d" % v)
         if cmd == CastPrintBinI:
-            self.optPOPNULL(address)            
-            v = self.getwordmem(address)            
+            v = self.getwordmem(address)
             sys.stdout.write("%s" % format(v, "016b"))
         if cmd == CastPrintChar:
             self.optPOPNULL(address)            
@@ -1665,18 +1666,19 @@ class microcpu:
 
     def optSHR(self, unused):
         # SHR mean shift Right and set carry CF to equal current lowest bit
-        R1 = self.fetchAcum(0)
-        NCF = (1 if (R1 & 0x1 != 0) else 0) << 2
-        R1 = R1 >> 1
-        self.flags = (int(self.flags) & 0xfffb) | NCF
+        
+        R1 = self.fetchAcum(0) & 0xFFFF
+        NCF = 0x4 if (R1 & 0x0001) else 0
+        R1 = (R1 >> 1) & 0xFFFF
+        self.flags = (self.flags & ~0x4) | NCF
         self.StoreAcum(0, R1)
-
+        
     def optSHL(self, unused):
         # SHL mean shift Left and set carry CF to equal current Highest bit
-        R1 = self.fetchAcum(0)
-        NCF = (1 if (R1 & 0x8000 != 0) else 0) << 2
-        R1 = R1 << 1
-        self.flags = (int(self.flags) & 0xfffb) | NCF
+        R1 = self.fetchAcum(0) & 0xFFFF
+        NCF = 0x4 if (R1 & 0x8000) else 0  # carry in bit 2
+        R1 = ((R1 << 1) & 0xFFFF)          # mask to 16 bits
+        self.flags = (self.flags & ~0x4) | NCF
         self.StoreAcum(0, R1)
 
     def optINV(self, address):
@@ -1778,7 +1780,7 @@ class microcpu:
         else:
             return self._evalpc_py(context, dosteps)
 
-    def _evalpc_c(self, context, dosteps):
+    def _evalpc_c_OLD(self, context, dosteps):
         global  PrevPC
         pc = self.pc
         PrevPC = self.pc
@@ -1808,6 +1810,127 @@ class microcpu:
         if ReturnCode != 0:
             self._handle_return_code(ReturnCode)
         return ReturnCode
+
+    def _evalpc_c(self, context, dosteps):
+        global PrevPC
+
+        PrevPC = self.pc
+        ReturnCode = 0
+
+        # --------------------------------------------------------------
+        # Helper: single instruction step
+        # --------------------------------------------------------------
+        def step_one():
+            nonlocal ReturnCode
+
+            PrevPC = self.pc
+
+            # Optional debug disassembly
+            if context.Debug > 0:
+                DissAsm(self.pc, 1, self)
+                context.GlobalOptCnt += 1
+
+            (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
+                self.memspace,
+                self.mb,
+                self.pc,
+                self.flags,
+                1,
+                ReturnCode
+            )
+
+            return ReturnCode
+
+        # total steps to run (in normal mode)
+        steps_remaining = dosteps if dosteps > 0 else None  # None = unlimited
+
+        # --------------------------------------------------------------
+        #  MAIN EXECUTION LOOP (state machine)
+        #
+        #  States:
+        #    Debug mode       -> context.Debug > 0
+        #    Normal mode      -> context.Debug == 0
+        # --------------------------------------------------------------
+        while True:
+
+            # -------------------------------
+            #    NORMAL MODE
+            # -------------------------------
+            if context.Debug == 0:
+
+                # Fast-path for multi-step run, but only if:
+                #   - more than 1 step remaining
+                #   - AND no pending debug events
+                if steps_remaining is not None and steps_remaining > 1:
+                    # use the C batch executor for speed
+                    batch = steps_remaining
+                    (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
+                        self.memspace, self.mb, self.pc, self.flags, batch, ReturnCode
+                    )
+                    context.GlobalOptCnt += batch
+
+                    # interpret result
+                    if ReturnCode == -11:  # toggle -> enter debug mode
+                        context.Debug = 1
+                        steps_remaining -= batch
+                        ReturnCode = 0
+                        continue
+
+                    if ReturnCode != 0:
+                        break  # exit condition
+
+                    # batch OK
+                    steps_remaining = 0 if steps_remaining is not None else None
+                    if steps_remaining == 0:
+                        break
+                    continue
+
+                # Otherwise fall back to single-step normal execution
+                rc = step_one()
+
+                if rc == -11:
+                    # toggle into debug
+                    context.Debug = 1
+                    ReturnCode = 0
+                    continue
+
+                if rc != 0:
+                    break
+
+                if steps_remaining is not None:
+                    steps_remaining -= 1
+                    if steps_remaining <= 0:
+                        break
+
+                continue
+
+            # -------------------------------
+            #    DEBUG MODE
+            # -------------------------------
+            else:
+                rc = step_one()
+
+                if rc == -11:
+                    # toggle back to normal mode
+                    context.Debug = 0
+                    ReturnCode = 0
+                    continue
+
+                if rc != 0:
+                    break
+
+                # unlimited steps in debug mode
+                # (normal "dosteps" does not apply unless restored after toggle)
+                continue
+
+        # --------------------------------------------------------------
+        # Final exit code handler
+        # --------------------------------------------------------------
+        if ReturnCode not in (0, -11):
+            self._handle_return_code(ReturnCode)
+
+        return ReturnCode
+    
 
     
     def _evalpc_py(self, context, dosteps):
@@ -1908,25 +2031,76 @@ class microcpu:
             print(f"Device hard write error.")
         elif code == RC_DEVICE_GENERAL_FAIL:
             print(f"Device Error (general)")
+        elif code == RC_DEBUG_TOGGLE:
+            print(f"Debug Toggle")
+            current_context.Debug = 0 if current_context.Debug else 1 
         else:
             print("Return Code:", code)
 
 def removecomments(inline):
-    # Return inline up to to any '#' that is not inside quotes, else return full inline.
+    out = []
     inquote = False
-    cptr = 0
-    for c in inline:
-        if c == '"' and not (inquote):
+    i = 0
+    L = len(inline)
+
+    while i < L:
+        c = inline[i]
+
+        # -------------------------
+        # Escape handling INSIDE quotes
+        # -------------------------
+        if inquote and c == '\\':
+            # Copy '\' and the next char literally (if any)
+            if i + 1 < L:
+                out.append(c)
+                out.append(inline[i + 1])
+                i += 2
+                continue
+            else:
+                # '\' at end of line — keep it
+                out.append(c)
+                break
+
+        # -------------------------
+        # Quote toggles
+        # -------------------------
+        if c == '"' and not inquote:
             inquote = True
+            out.append(c)
+            i += 1
+            continue
         elif c == '"' and inquote:
             inquote = False
-        elif c == '#' and not (inquote):
-            if cptr == 0:
-                return ""
-            else:
-                return inline[:cptr]
-        cptr += 1
-    return inline
+            out.append(c)
+            i += 1
+            continue
+
+        # -------------------------
+        # Outside quotes
+        # -------------------------
+        if not inquote:
+
+            # Comment starts
+            if c == '#':
+                break  # discard rest of input
+
+            # Remove brackets only outside quotes
+            if c in '()[]':
+                i += 1
+                continue
+
+            # Normal character outside quotes
+            out.append(c)
+            i += 1
+            continue
+
+        # -------------------------
+        # Inside quotes, normal char
+        # -------------------------
+        out.append(c)
+        i += 1
+    return ''.join(out).rstrip()    
+
 
 def GetQuoted(inline):
     inquote = False
@@ -2424,6 +2598,9 @@ def ReplaceMacVars(line,  filename, context: AssemblerContext):
                 else:
                     CPU.raiseerror("052 Macro %STRLEN/%LEN stack underflow")
                 i += 4
+            elif (line[i:i+5] == "%LINE"):
+                newline = newline + "\""+  f"{context.ActiveFile}:{context.FileLineNum}" + "\""
+                i += 5
             elif (line[i:i+6] == "REPEAT"):
                 i += 7
                 (count_str, size) = nextword(line[i:])
@@ -2777,6 +2954,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     continue
             else:
                 # If we are macro, or in plain text, we still end up here.
+                context.LastLineText = line
                 if line == "":
                     ExitOut = False
                     GetAnother = True
@@ -2790,11 +2968,11 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                             safeprint("%s:%s> %60s:%2d" % (wfilename,str(context.FileLineNum),inline,context.SkipBlock), file=DebugOut)
 
                         FileLineData.add_entry(filename, context.CurrentLineBeingParsed, context.address)
-                        context.AddressedLinesSeen.add(context.address)
+                        context.AddressedLinesSeen.add(context.address)                        
                         if inline:
+                            inline = removecomments(inline).strip()
                             if inline.strip()[-1:] == '\\':
                                 GetAnother = True
-                                inline = removecomments(inline).strip()
                                 line = line + inline.strip()[:-1]
                             else:
                                 line = line + inline.strip()
@@ -2916,8 +3094,8 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                                     context.MacroVars[varcnt + context.varcntstack[context.varbaseSP]] = key
                         # Argument count check (runs even for 0-arg macros)
                         if varcnt < context.MacroPCount[macname]:
-                            CPU.raiseerror("053 Insufficient required parameters (%s/%s) for Macro %s" %
-                                           (varcnt, context.MacroPCount[macname], macname))
+                            CPU.raiseerror("053 Insufficient required parameters (%s/%s) for Macro %s %s:%s" %
+                                           (varcnt, context.MacroPCount[macname], macname, filename, context.FileLineNum))
 
                         # Bookkeeping — always run
                         context.varcntstack[context.varbaseSP + 1] = context.varcntstack[context.varbaseSP] + varcnt + 1
@@ -2934,7 +3112,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
 
                     else:
                         safeprint("Missing macro: ", macname, file=DebugOut)
-                        CPU.raiseerror("054 Macro %s is not defined" % (macname))
+                        CPU.raiseerror("054 Macro %s is not defined %s:%s" % (macname,filename, context.FileLineNum))
                 elif line[0] == ":":
                     # The ":" is a label whos value is current address
                     (key, size) = nextword(line[1:])
@@ -2952,13 +3130,14 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     (key, size) = nextword(line[1:])
                     line = line[size+1:]
                     (dsize,size) = nextword(line)
-                    line = line[size:]
+                    line = line[size:]                    
                     if context.DataSegment != -1:
                         # If context.DataSegment was defined, the we use a seperate dataaddress counter
                         workingaddress=context.dataaddress
                         context.ExpectData=Str2Word(dsize)   # Defines how many bytes to expect goes into the dataaddress
                     else:
                         context.ExpectData=0
+                        workingaddress=context.address
                     if ("F."+filename+":"+str(context.FileLineNum) in context.FileLabels):
                         # We created an internal label for each line number, but this label will replace it.
                         del context.FileLabels["F."+filename+":"+str(context.FileLineNum)]

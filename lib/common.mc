@@ -272,28 +272,124 @@ M XORAV @PUSH %1 @PUSHI %2 @XORS
 
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
-M JMPNZ @JMPZ $_%01 @JMP %1 :_%01        # A != B
-M JMPNZI @JMPZ $_%01 @JMPI %1 :_%0
-M JMPZI @JMPNZ $_%01 @JMPI %1 :_%0
-M JMPNC @JMPC $_%0SKIP @JMP %1 :_%0SKIP  # No Carry
-M JMPNO @JMPO $_%01 @JMP %1 :_%01        # No Overflow
+M JMPNZ @JMPZ %01_SKIP @JMP %1 :%01_SKIP        # A != B
+M JMPNZI @JMPZ %01 @JMPI %1 :%01_SKIP
+M JMPZI @JMPNZ %01_SKIP @JMPI %1 :%01_SKIP
+M JMPNC @JMPC %01_SKIP @JMP %1 :%01_SKIP   # No Carry
+M JMPNO @JMPO %01_SKIP @JMP %1 :%01_SKIP        # No Overflow
+M JMPNN @JMPO %01_SKIP @JMP %1 :%01_SKIP   # Not Negative
 #  For this group, remeber the flags are based on the B-A
 #  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
 #          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
-M JGT @JMPZ _%0_Skip \
-      @JMPN _%0_Skip \
-      @JMP %1 \
-      :_%0_Skip                          # GT true if Both Z and N are false
-M JGE @JMPN %1 @JMPZ %1                  # A=A-B, if B>=A or A<B JMP %1
-M JLT @JMPZ _%0Skp @JMPN _%0Skp @JMP %1 :_%0Skp   #  if B<A or A>=B JMP %1
-M JLE @JMPN _%0Skp @JMP %1 :_%0Skp         # A=A-B, if B<=A or A>B JMP %1
+# ---------------------------------------------------------------
+# Signed Jump Helpers (for use after CMP/CMPI)
+# ---------------------------------------------------------------
+# Signed Logic Tables
+#    NF          OF       ZF           Means
+#    0           0        0             >
+#    0           0        1            ==
+#    0           1        0             <
+#    1           0        0             <
+#    1           1        0             >
+#    -           -        1            ==
+#
+# LT = (NF=1, OF=0) OR (NF=0, OF=1)   (Xor NF and OF)
+M CheckSignedLess \
+  @JMPN %0_Test1 \ # If NF=1 -> Check OF next
+  @JMPO %1        \ # NF=0,O=0 -> Skip else fall though
+  @JMP %2 \         # NF=0, OF=1 -> Less true
+  :%0_Test1 \
+  @JMPO %2 \        # NF=1 OF=1 -> Not Less, False
+  @JMP %1         # NF=1, OF=0 -> is Less, True
+
+
+M JLT \
+  @JMPZ _%0_Skip \  # Equal -> Not Less, False
+  @CheckSignedLess %1 _%0_Skip \
+  :_%0_Skip 
+M JLE \
+  @JMPZ %1 \        # Equal -> Always true.
+  @CheckSignedLess %1 _%0_Skip \
+  :_%0_Skip         # Not true, continue next.
+# GT = (NF=1, OF=1, ZF=0) or ( NF=0, OF=0, ZF=0)
+# GT = same as NF=OF and ZF=0
+M CheckSignedGreater \
+  @JMPN %0_Test1 \   # If NF=1 -> Check OF
+  @JMPO %2 \          # NF=0, OF=1  So not GT
+  @JMP %1 \           # NF=OF==0, So GT True
+  :%0_Test1 \
+  @JMPO %1 \          # NF=1 OF=1 so both are equal
+  @JMP %2             # NF!=OF so Not Greater than
+
+M JGT \
+  @JMPZ _%0_Skip \    # Equal -> Not Greater Than, False
+  @JMPN %0_Test1 \    # If NF=1 -> Check OF
+  @JMPO _%0_Skip \    # NF=0, OF=1  So not GT
+  @JMP %1 \           # NF=OF==0, So GT True
+  :%0_Test1 \
+  @JMPO %1 \          # NF=1 OF=1 so both are equal
+  @JMP _%0_Skip \     # NF!=OF so Not Greater than  
+  :_%0_Skip
+  
+M JGE \
+  @JMPZ %1      \    # Equal ->  Then Always true
+  @JMPN %0_Test1 \    # If NF=1 -> Check OF
+  @JMPO _%0_Skip \    # NF=0, OF=1  So not GT
+  @JMP %1 \           # NF=OF==0, So GT True
+  :%0_Test1 \
+  @JMPO %1 \          # NF=1 OF=1 so both are equal
+  @JMP _%0_Skip \     # NF!=OF so Not Greater than  
+  :_%0_Skip
+
+# ---------------------------------------------------------------
+# Unsigned Jump Helpers (for use after CMP/CMPI)
+# ---------------------------------------------------------------
+# ============================================================
+# Jump if A < B (unsigned)
+# CF=1 (borrow)
+# ============================================================
+M JULT \
+  @JMPNC _%0_skip \        # Skip if CF=0 (A ≥ B)
+  @JMP %1          \       # Jump if CF=1 (A < B)
+  :_%0_skip
+
+# ============================================================
+# Jump if A <= B (unsigned)
+# CF=1 (borrow) OR Z=1 (equal)
+# ============================================================
+M JULE \
+  @JMPZ %1          \       # Equal → jump
+  @JMPNC _%0_skip   \       # Skip if CF=0 (A ≥ B)
+  @JMP %1           \       # CF=1 (A < B) → jump
+  :_%0_skip
+
+# ============================================================
+# Jump if A >= B (unsigned)
+# CF=0 (no borrow)
+# ============================================================
+M JUGE \
+  @JMPNC %1          \      # Jump if CF=0 (A ≥ B)
+
+# ============================================================
+# Jump if A > B (unsigned)
+# CF=0 (no borrow) AND Z=0 (not equal)
+# ============================================================
+M JUGT \
+  @JMPZ _%0_skip     \      # Equal → skip
+  @JMPC _%0_skip     \      # Borrow (A < B) → skip
+  @JMP %1            \      # Jump if CF=0 and Z=0 → A > B
+  :_%0_skip
+# --------------------------------------------------------------
+# CALL and Return Functions
+# --------------------------------------------------------------
 M CALL @PUSH $_%01 @JMP %1 :_%01
 M CALLZ @PUSH $_%0_Loc @JMPZ _%0_Do @JMP _%0_After :_%0_Do @JMP %1 :_%0_Loc :_%0_After
 M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
-#M RET @POPI $com%0D @JMPI $_%0D :_%0D 0
+
 M RET @JMPS
 M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
+
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
 M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1

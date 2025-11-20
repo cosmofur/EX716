@@ -161,6 +161,102 @@ Support for structured programming, similar to C-like control structures:
 @FORIA2B, @FORIV2A, @NEXT, @NEXTBY  
 ```
 
+Macro Function System
+
+The EX716 assembler includes an inline macro expression evaluator that allows limited arithmetic, bitfield, and repetition logic to be performed entirely at assembly time.
+All macro expressions begin with % and are evaluated left-to-right in a single pass.
+Grouping and precedence are controlled explicitly with parentheses.
+
+Expression Grouping
+
+Parentheses are written as %( and %).
+These may be nested and define an evaluation boundary; the entire grouped expression is replaced by its resulting value.
+
+Example:
+
+%AND[%(%OR[4 8]%) 2]   ; → 0x0
+
+
+Numeric Width Rules
+
+All macro arithmetic is performed using 16-bit unsigned integers.
+
+Prefix modifiers adjust literal width:
+
+Prefix	Size	Notes
+$$	8-bit	Truncated to 8 bits
+$$$	32-bit	Zero-padded or truncated to 16 bits internally
+
+
+Macro Logical Stack (MLS)
+
+The Macro Logical Stack is a small internal stack used to keep track of unique identifiers and symbolic values during macro expansion.
+It acts as a means for macros to share or propagate context — for example, ensuring that @ENDWHILE pairs with the correct @WHILE instance.
+
+Token	Action
+%S	Push current macro argument (%0) onto MLS
+%V	Replace with top of MLS (no pop)
+%W	Replace with second-from-top of MLS
+%P	Pop (discard) top of MLS, emit nothing
+
+The primary use of the MLS is to maintain unique strings that can be embedded into label or macro names, allowing macros to safely nest and generate unique symbol scopes.
+This system enables higher-level structured constructs such as @IF … @ENDIF and @WHILE … @ENDWHILE to function without collision.
+
+
+Core Macro Functions
+Function	Parameters	Description
+%STRLEN [v1]	String	Computes the length of v1. Stores the numeric result in %LEN. Emits nothing.
+%LEN	—	Expands to the most recent value set by %STRLEN. Useful for embedding string lengths.
+%LINE	—	Expands to a comment marker showing the current filename and line number.
+%REPEAT [v1] body %ENDR	Count, text block	Repeats body v1 times. Each repetition re-evaluates all inner % expressions.
+%AND [v1 v2]	Two numbers	Bitwise AND → pushes result to MLS.
+%OR [v1 v2]	Two numbers	Bitwise OR → pushes result to MLS.
+%Field [start width value]	Three numbers	Extracts width bits from value starting at start, then left-shifts back into position. Equivalent to:
+((value >> start) & ((1 << width) - 1)) << start
+%Bit [bit value]	Two numbers	Returns 1 if bit bit in value is set, else 0. Equivalent to:
+((value >> bit) & 1)
+Examples
+
+String length
+
+%STRLEN "Hello"
+.WORD %LEN        ; emits constant 5
+
+
+Bit and field extraction
+
+%Bit 3 0b1001            ; → 1
+%Field 4 4 0xABCD        ; → 0x0B0
+
+
+Stacked operations
+
+%S                       ; save current %0
+%Field 0 3 %V            ; extract 3 bits
+%AND %V 0x07             ; mask result
+
+
+Repetition
+
+%REPEAT 4 
+   @NOP
+%ENDR
+; expands to four NOP instructions
+
+Implementation Notes
+
+All macro functions expand inline — no deferred parsing beyond %(/%).
+
+Numeric results can be inserted anywhere a literal is valid.
+
+The %Field and %Bit functions are commonly used for instruction encoding or packed register formats.
+
+%STRLEN and %LEN are often used to embed string sizes in structure definitions.
+
+Nested macro evaluation is deterministic; all stack operations occur within the macro evaluation phase, not at runtime.
+
+Would you like me to extend this section with an example of how %Field and %Bit are used together in a .REG or instruction encoding macro? It would bridge neatly into your later floating-point or opcode-definition examples.
+
 ---
 ## Function Call Helpers
 
@@ -184,7 +280,54 @@ Example:
 | Call(Av) F 45 Cat    | @PUSH 45 @PUSHI Cat @CALL F   |
 | Call(v) F Dog        | @PUSHI Dog @CALL F            |
 | Call(vv) F Dog Cat   | @PUSHI Dog @PUHSI Cat @CALL F |
+---
+Example: Nested Scoping with WHILE / ENDWHILE
 
+Structured macros such as @WHILE and @ENDWHILE use the MLS to track loop identity and prevent label collisions between nested loops.
+
+M WHILE_GT_A \
+   %S \
+   :_%V_LoopTop \
+   @CMP %1 \
+   @JLE _%V_ExitLoop \
+   :_%0_True
+
+M ENDWHILE \
+   @JMP _%W_LoopTop \
+   :_%V_ExitLoop \
+   %P
+
+
+When expanded, the %S pushes a unique instance ID also stored in %0, which is unique every time the macro is evaluated.
+The %V and %W operators then substitute that ID into label names, so each loop generates its own :_LoopTop and :_ExitLoop pair without interfering with other nested loops.
+Finally, %P discards the label ID once the block ends.
+
+Example: Logical Blocks and String Concatenation
+
+The Forth compiler uses logical macro blocks and multi-append macros to define data that grows over multiple invocations.
+The !…ENDBLOCK form provides conditional execution of macro definitions, while MA allows appending to an existing macro variable.
+
+# DEFPRELOAD defines a block of string memory that holds raw Forth code to act as preload.
+# Multiple PRELOADS will be appended to each other.
+
+M PreCodeVal "( start preload )"
+
+M DEFPRELOAD \
+  ! PreCodeExists \
+    MF PreCodeExists 1 \
+  ENDBLOCK \
+  MA PreCodeVal %1
+
+
+Here:
+
+! PreCodeExists … ENDBLOCK executes only the first time, defining the initial macro flag.
+
+MA appends to the existing macro PreCodeVal, concatenating additional preload text each time @DEFPRELOAD is used.
+
+MF would have replaced the value instead of appending it.
+
+This pattern is common for building composite string definitions, code preload blocks, or concatenated initialization data.
 ---
 ## Emulator (`cpu.py`)
 

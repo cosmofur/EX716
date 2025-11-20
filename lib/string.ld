@@ -27,8 +27,7 @@ M STRSTACK \
 # Function strlen
 # strlen(str_var) returns length of string
 :WorkBuff "00000000" $$0       # Long enough for -32000 to +32000
-M SIZESINCECOMMENT strlen-string.ld
-@SIZESINCE
+
 
 #
 # Function
@@ -59,8 +58,6 @@ M SIZESINCECOMMENT strlen-string.ld
 #
 # Function strcat(strA,strB)
 # Concats strB to strA (modifies StrA which must already be large enough to handle both)
-M SIZESINCECOMMENT strcat-string.ld
-@SIZESINCE
 
 :strcat
 @PUSHRETURN
@@ -93,8 +90,6 @@ M SIZESINCECOMMENT strcat-string.ld
 # function strncat(StrA,StrB,maxlen)
 # Appends StrB to StrA up to either end of StrB or max of maxlen.
 #         StrA must still have sufficent space for combined length of both strings.
-M SIZESINCECOMMENT strncat-string.ld
-@SIZESINCE
 
 :strncat
 @PUSHRETURN
@@ -144,8 +139,6 @@ M SIZESINCECOMMENT strncat-string.ld
 # if length>len(src) then it will only copy upto length of src.
 # It DOES NOT append a null at the end of dest automaticly.
 #
-M SIZESINCECOMMENT strncpy-string.ld
-@SIZESINCE
 :strncpy
 @PUSHRETURN
 =Length Var01
@@ -221,8 +214,6 @@ M SIZESINCECOMMENT strncpy-string.ld
 # based on their relationship. -1 if str1 lexicongraphically < str2
 #                              +1 if str1 > str2
 #                               0 if str1 == str2
-M SIZESINCECOMMENT strncmp-string.ld
-@SIZESINCE
 :strncmp
 @PUSHRETURN
 =MaxLength Var01
@@ -309,8 +300,6 @@ M SIZESINCECOMMENT strncmp-string.ld
 # itos is an Integer to String function
 # Function itos(StrPtr,Invalue,InBase)   Base=10 for decimal, 8 for octal or 16 for hex
 # Vars
-M SIZESINCECOMMENT itos-string.ld
-@SIZESINCE
 :itos
 @PUSHRETURN
 =Base Var01
@@ -392,27 +381,16 @@ M SIZESINCECOMMENT itos-string.ld
 # stoi, reverse of itos, takes text version of number and returns integer.
 # Function stoi(string)
 # Vars
-M SIZESINCECOMMENT stoi-string.ld
-@SIZESINCE
 :stoi
 @PUSHRETURN
+@LocalVar StrPtr 01
+@LocalVar NegFlag 02
+@LocalVar Base 03
+@LocalVar Invalue 04
+@LocalVar Multiplier 05
+@LocalVar Length 06
 #
-=StrPtr Var01
-=NegFlag Var02
-=Base Var03
-=Invalue Var04
-=Multiplier Var05
-=Length Var06
 #
-@PUSHLOCALI StrPtr
-@PUSHLOCALI NegFlag
-@PUSHLOCALI Base
-@PUSHLOCALI Invalue
-@PUSHLOCALI Multiplier
-@PUSHLOCALI Length
-
-#
-
 @POPI StrPtr
 @MA2V 0 NegFlag
 @MA2V 10 Base     # Default Base is ten
@@ -488,20 +466,18 @@ M SIZESINCECOMMENT stoi-string.ld
 @ELSE
    @POPNULL
 @ENDIF
-@POPLOCAL Length
-@POPLOCAL Multiplier
-@POPLOCAL Invalue
-@POPLOCAL Base
-@POPLOCAL NegFlag
-@POPLOCAL StrPtr
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
 #
 # Function stoifirst(strptr) is very  much like stoi but does not require the string to terminat on a null
 # Which in practical data processing is most of the cases where numbers are enbeded into text.
-M SIZESINCECOMMENT stoifirst-string.ld
-@SIZESINCE
 :stoifirst
 @PUSHRETURN
 =StrPtrA Var01
@@ -606,8 +582,6 @@ M SIZESINCECOMMENT stoifirst-string.ld
 #
 # Function memcpy(dest,src,size) Copies size bytes from src to dest
 #
-M SIZESINCECOMMENT memcpy-string.ld
-@SIZESINCE
 :memcpy
 @PUSHRETURN
 =DstPtr Var01
@@ -677,8 +651,6 @@ M SIZESINCECOMMENT memcpy-string.ld
 @RET
 #
 # strchr(string,word) finds character (lower 8 bits) from word in string, returns pointer to occurance, 0 is not found
-M SIZESINCECOMMENT strchr-string.ld
-@SIZESINCE
 :strchr
 @PUSHRETURN
 =Invalue Var01
@@ -714,8 +686,6 @@ M SIZESINCECOMMENT strchr-string.ld
 @RET
 #
 # strrchr(string,word) Returns pointer to 'last' instance of character in string, null it not found.
-M SIZESINCECOMMENT strrchr-string.ld
-@SIZESINCE
 :strrchr
 @PUSHRETURN
 =Invalue Var01
@@ -755,8 +725,6 @@ M SIZESINCECOMMENT strrchr-string.ld
 #
 # strstr(string,substring) Return pointer in string, where substring can be found. NULL if no match
 # Extra Local Variables
-M SIZESINCECOMMENT strstr-string.ld
-@SIZESINCE
 :strstr
 @PUSHRETURN
 =ssStrA Var01
@@ -821,8 +789,6 @@ M SIZESINCECOMMENT strstr-string.ld
 #
 # Function ISAlphaNum(String):T|F
 # Return T|F if first char in string is in set [A-Za-z0-9_]
-M SIZESINCECOMMENT ISAlphaNum-string.ld
-@SIZESINCE
 :ISAlphaNum
 @PUSHRETURN
 @PUSHS
@@ -874,8 +840,6 @@ M SIZESINCECOMMENT ISAlphaNum-string.ld
 #
 # Function ISNumeric(String):T|F
 # Return T|F if first char in string is in set [0-9]
-M SIZESINCECOMMENT ISNumeric-string.ld
-@SIZESINCE
 :ISNumeric
 @PUSHRETURN
 @PUSHS
@@ -893,8 +857,6 @@ M SIZESINCECOMMENT ISNumeric-string.ld
 @POPRETURN
 @RET
 
-M SIZESINCECOMMENT strfndc-string.ld
-@SIZESINCE
 # strfndc searchs string for single character returns ptr to that character
 # (strstr but with character constant on stack)
 :sfReturn 0
@@ -910,8 +872,6 @@ M SIZESINCECOMMENT strfndc-string.ld
 # strtok(InString, Delim) searchs string and replaces delim(s) with null
 # keeps an internal pointer so when string is null it will continue from
 # where it last left off. When original string is complete, will also return null
-M SIZESINCECOMMENT strtok-string.ld
-@SIZESINCE
 :int_sptr 0
 :strtok
 @PUSHRETURN
@@ -988,8 +948,6 @@ M SIZESINCECOMMENT strtok-string.ld
 #
 # This string split returns from an input string a HeapManager array of strings
 # Function splitstr(instring,splitlist,heapid):(heaparray,size_array)
-M SIZESINCECOMMENT splitstr-string.ld
-@SIZESINCE
 :splitstr
 @PUSHRETURN
 =instring Var01
@@ -1117,8 +1075,6 @@ M SIZESINCECOMMENT splitstr-string.ld
 # Function SplitDeltete(object,heapid)
 # Deletes the object which is a list created by splitstr
 # (object is an null terminated array of pointers to heap strings)
-M SIZESINCECOMMENT SplitDelete-string.ld
-@SIZESINCE
 :SplitDelete
 @PUSHRETURN
 =Object Var01
@@ -1158,8 +1114,6 @@ M SIZESINCECOMMENT SplitDelete-string.ld
 ###################################################
 # Function strUpCase(instring)
 # Changes all lowercase letters instring to uppercase
-M SIZESINCECOMMENT strUpCase-string.ld
-@SIZESINCE
 :strUpCase
 @PUSHRETURN
 =instring Var01
@@ -1192,8 +1146,6 @@ M SIZESINCECOMMENT strUpCase-string.ld
 ###################################################
 # Function strLowCase(instring)
 # Changes all Uppercase letters instring to lowercase
-M SIZESINCECOMMENT strLowCase-string.ld
-@SIZESINCE
 :strLowCase
 @PUSHRETURN
 =instring Var01
