@@ -108,6 +108,7 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =CastPrintHexII 18
 =CastPrint32I 32
 =CastPrint32II 33
+=CastPrintErrMsg 36
 =CastSelectDisk 20
 =CastSelectDiskI 24
 =CastSeekDisk 21
@@ -395,6 +396,8 @@ M JZ @JMPZ %1                           # Just an abbriviation as its really com
 M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1
 # Print simple test message with no variables no linefeed
 M PRT @JMP _J%0J1 :_%0M1 %1 0 :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1
+# Print Fixed Message to stderr
+M PRTERR @JMP _J%0J1 :_%0M1 %1 0 :_J%0J1 @PUSH CastPrintErrMsg @CAST $_%0M1
 # Print value of variable
 M PRTI @PUSH CastPrintIntI @CAST %1
 # Print Value of unsigned variable

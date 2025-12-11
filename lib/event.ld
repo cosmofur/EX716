@@ -43,6 +43,8 @@ G LastTimeRep           # 0/1 if it was set to auto repeat
 G LastTimerELap         # Elapsed file time (real vs requested duration)
 G LastTimerSkip         # How many periods where skipped this poll
 G MouseEvent            # Mouse event 'constant'
+G MouseEventClick       # Mouse Event Click
+G MouseEventRelease     # Mouse Event Release
 G TimerEvent            # Timer event 'constant'
 G KeyEvent              # Key event 'constant'
 
@@ -83,9 +85,12 @@ G ActiveEventTable
 =MF_SHIFT   0x0010   # SGR adds 4 to b for shift
 =MF_ALT     0x0020   #   ... 8 for meta/alt
 =MF_CTRL    0x0040   #   ... 16 for ctrl
-=MouseEvent 1
-=TimerEvent 2
-=KeyEvent 3
+=MouseEvent        0xf     # MF_PRESS | MF_RELEASE | MF_DRAG | MG_WHEEL
+=MouseEventClick   0x1     # MF_PRESS
+=MouseEventRelease 0x2     # MF_RELEASE
+=TimerEvent 0x0100         # Keep away from bitmasks used for Mouse eventss
+=KeyEvent 0x0200
+=MouseEventDetected 1
 #
 #
 # Strucure of Event Table entries.
@@ -288,7 +293,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
    # 10              EventExTwoOff Timer Max Value
    @PUSHI Type
    @SWITCH
-   @CASE MouseEvent # mouse
+   @CASE_RANGE 1 MouseEvent # mouse events are all in range 1 to 15
       # Mouse
       # Quick function to swap variable values to V1 will be < V2
       @QuickMinI X1 X2
@@ -304,7 +309,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
       @CBREAK
    @CASE KeyEvent # KeyBoard
       # KeyBoard Event
-      # X1 = StrPtr to string listing what to key eye out for. Keys that do not match will be ignored.
+      # X1 = StrPtr to string listing what to keep eye out for. Keys that do not match will be ignored.
       @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS
       @PUSHI X1   @PUSHI InsertSpot @ADD EventExOneOff @POPS
       @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
@@ -338,7 +343,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @PUSHRETURN
 @LocalVar CHin   01
    @PUSH 0
-   @WHILE_LT_A 10
+   @WHILE_LT_A 2
       @READCNW CHin
       @IF_EQ_AV 0 CHin
          @ADD 1
@@ -527,6 +532,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
     @PUSHI LastMouseRawB @AND 0x10
     @IF_NOTZERO @POPNULL @OR MF_CTRL @ELSE @POPNULL @ENDIF
     @POPI LastMouseFlags
+
     @PUSHI LastMouseX
     @PUSHI LastMouseY
 @RestoreVar 02
@@ -574,7 +580,8 @@ M Between_U \
     @ForIV2A Rec MTSize 0
        # Skip any non-mouse event
        @PUSHI Base @ADD EventTypeOff @PUSHS
-       @IF_NEQ_A MouseEvent
+       @ANDI LastMouseFlags
+       @IF_ZERO
           @POPNULL
        @ELSE
           @POPNULL
@@ -681,7 +688,6 @@ M Between_U \
          @IF_NOTZERO
             @POPI LastKeyMatchPtr
             @PUSHI CHR @AND 0xff @POPI LastKeyChar
-#            @MV2V CHR LastKeyChar
             # Input Matches Event
             @PUSHI Base @ADD EventIDOff @PUSHS
             @POPI Result
@@ -733,7 +739,7 @@ M Between_U \
           @IF_EQ_AV 0 Dur
              # Do Nothing.
           @ELSE
-          
+
              @PUSHI Base @ADD TimerStartOff @PUSHS @POPI Start
              @PUSHI Base @ADD TimerRepOff   @PUSHS @POPI Rep
              # Now = low16(Unix time)
@@ -759,7 +765,7 @@ M Between_U \
                    # while Elap >= Dur: Start += Dur; Elap -= Dur
                    # This allows events to more closely match real time incriments.
                    @MV2V 1 LastTimeRep
-                   @MA2V 0 LastTimerSkip                   
+                   @MA2V 0 LastTimerSkip
                    @PUSH 0
                    @WHILE_ZERO
                       @POPNULL
@@ -768,7 +774,7 @@ M Between_U \
                           @POPNULL
                           @PUSHI Start @ADDI Dur @POPI Start
                           @PUSHI Elap @SUBI Dur @POPI Elap
-                          @INCI LastTimerSkip                          
+                          @INCI LastTimerSkip
                           @PUSH 0
                       @ELSE
                           @POPNULL
@@ -850,7 +856,7 @@ M Between_U \
                     @IF_NOTZERO
                        @POPI MouseYVal
                        @POPI MouseXVal
-                       @MA2V 1 MouseEventCode      # Flags that there is a mouse event to check
+                       @MA2V MouseEventDetected MouseEventCode      # Flags that there is a mouse event to check
                     #
                        # If Mouse sequence was invalid, leaves 0 on stack.
                     @ENDIF
@@ -879,7 +885,7 @@ M Between_U \
       @ENDIF
       # When we get here, we should now know if there was a mouse or key event and queue it up.
       # We handle MouseEvents before Key Events.
-      @IF_EQ_AV 1 MouseEventCode
+      @IF_EQ_AV MouseEventDetected MouseEventCode
           @PUSHI MouseXVal @PUSHI MouseYVal
           @CALL KeySearchMouse
       @ELSE
@@ -890,8 +896,11 @@ M Between_U \
           @ELSE
              # Not zero there is a key to deal with.
              @POPNULL
+             @PRTERR "Before KeyDeQueue" @StackDump
              @CALL KeyDeQueue
+             @PRTERR "After KeyDeQueue" @StackDump
              @CALL KeySearchKeyBoard
+             @PRTERR "After KeySearchKeyBoard" @StackDump
          @ENDIF
       @ENDIF
    @ENDIF

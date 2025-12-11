@@ -226,15 +226,15 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @UNTIL_NOTZERO
 @POPNULL
 @MV2V CurTime StartTime
-@PRT "Now: "
-@PRTI CurTime
-@PRT ":"
+#@PRT "Now: "
+#@PRTI CurTime
+#@PRT ":"
 
 # Now poll until StartTime != GETTIME to make sure we're at start of a given second
 @LOOP
    @GETTIME      # 2 Words on stack
    @POPNULL      # 1 Word on Stack
-   @PRTTOP  @PRT " .. "
+#   @PRTTOP  @PRT " .. "
    @IF_EQ_V StartTime
       @POPNULL   # 0 words on stack
       @PUSH 1    # 1 word on stack
@@ -247,7 +247,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 #
 # Now count how long it takes to get to the next second flip
 @INC2I CurTime  # Count until 2 seconds pass.
-@PRT "Looking for: " @PRTI CurTime @PRTNL
+#@PRT "Looking for: " @PRTI CurTime @PRTNL
 @PUSH 1
 @WHILE_NOTZERO
    @POPNULL
@@ -270,11 +270,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Now ClockCalib is 32 bit work with total count for 2 seconds, SHR to make it sutable for 1 second.
 @CLC    # Clear Carry
 # We want our ClockCalib about equal to 1 millsec so div by 1024
+
 @ForIA2B Index01 0 10
   @PUSHI  ClockCalib+2        # High Word
   @RRTC  @POPI  ClockCalib+2
   @PUSHI ClockCalib
-  @RRTC @POPI ClockCalib     # Low Word
+  @SHR @POPI ClockCalib     # Low Word
 @Next Index01
 @RestoreVar 03
 @RestoreVar 02
@@ -295,9 +296,8 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @POPI Count
 # Check if we need to calabrate
 @IF_EQ_AV 0 ClockCalib
-   @PRT "Clock not yet Calabrated....Please wait."
+#   @PRT "Clock not yet Calabrated....Please wait."
    @CALL TimeCalabrate
-   @PRT "Cal: " @PRTHEXTOP @POPNULL   
 @ENDIF
 #
 @GETTIME
@@ -325,7 +325,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 #
 @POPI Count
 @IF_EQ_AV 0 ClockCalib
-   @PRT "Clock not yet Calabrated....Please wait."
+#   @PRT "Clock not yet Calabrated....Please wait."
    @CALL TimeCalabrate
 @ENDIF
 @POPNULL

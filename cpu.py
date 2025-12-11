@@ -30,22 +30,6 @@ import traceback
 
 
 # Constants
-class WatchedDict(dict):
-    def __init__(self, *args, **kwargs):
-        self.watch_keys = set()
-        super().__init__(*args, **kwargs)
-
-    def watch(self, key):
-        self.watch_keys.add(key)
-
-    def update(self, other, note=""):
-        for k, v in other.items():
-            if k in self.watch_keys:
-                print(f"[WATCH] FileLabels[{k}] = {v}  ({note})")
-                print("Stack trace (most recent call last):")
-                for line in traceback.format_stack(limit=10):  # limit for brevity
-                    print("   " + line.strip())
-            super().update({k: v})
 CastDebugToggle=0
 CastPrintStr=1
 CastPrintInt=2
@@ -54,6 +38,7 @@ CastPrintSignI=4
 CastPrintBinI=5
 CastPrintChar=6
 CastPrintStrI=11
+CastPrintErrMsg=36
 CastPrintCharI=16
 CastPrintHexI=17
 CastPrintHexII=18
@@ -67,7 +52,7 @@ CastSyncDisk=23
 CastPrint32I=32
 CastPrint32S=33
 CastTapeWrite=34
-CastTapeWriteI=5
+CastTapeWriteI=35
 CastEnd=99
 CastDebugToggle=100
 CastStackDump=102
@@ -119,11 +104,11 @@ if sys.platform == "win32":
         return None
 
     def setup_raw():
-        """Windows: no setup needed, just use msvcrt"""
+        # Windows: no setup needed, just use msvcrt
         return None
 
     def restore_tty(state):
-        """Windows: nothing to restore"""
+        # Windows: nothing to restore
         pass
 
 else:  # POSIX (Linux, macOS, etc.)
@@ -480,8 +465,8 @@ def FindHistoricVal(varname, testaddress, context=None):
     # 1) Exact match wins.
     candidates = LocVarHist.get(varname)
     if candidates is None:
-        # 2) No exact match: gather all prefix matches: varname + "_"
-        prefix = f"{varname}_"
+        # 2) No exact match: gather all prefix matches: varname + "__"
+        prefix = f"{varname}__"
         candidates = []
         for k, vlist in LocVarHist.items():
             if k.startswith(prefix):
@@ -511,11 +496,11 @@ def FindHistoricVal(varname, testaddress, context=None):
 def FindLabelMatch(varname, context: AssemblerContext):
     varname=str(varname)
     if varname in context.FileLabels:
-        return context.FileLabels[varname]
+        return context.FileLabels[varname]    # exact match
     pattern = re.compile(rf"^{re.escape(varname)}_+")
     potential_matches = [ key for key in context.FileLabels.keys() if pattern.match(key)]
     if len(potential_matches) == 1:
-        return context.FileLabels[potential_matches[0]]
+        return context.FileLabels[potential_matches[0]]        # backdoor exact match.
     if len(potential_matches) > 1:
         maxkeywidth=max(len(match) for match in potential_matches)
         maxvaluewidth=max(len(f"{int(context.FileLabels[match]):04x}") for match in potential_matches)
@@ -936,9 +921,12 @@ class microcpu:
         # We're not changing the sp level, so no need for tests.
         sp = self.mb[0xff]
         sp *= 2
-        # Pythonic swap
-        self.mb[sp - 2], self.mb[sp - 4] = self.mb[sp - 4], self.mb[sp - 2]
-        self.mb[sp - 1], self.mb[sp - 3] = self.mb[sp - 3], self.mb[sp - 1]
+        if sp >= 4:
+            # Pythonic swap
+            self.mb[sp - 2], self.mb[sp - 4] = self.mb[sp - 4], self.mb[sp - 2]
+            self.mb[sp - 1], self.mb[sp - 3] = self.mb[sp - 3], self.mb[sp - 1]
+        else:
+            self.raiseerror("012.5 SWP on stack with less than 2 items.")
 
     def optPOPI(self, address):
         if (address > MAXMEMSP):
@@ -1281,6 +1269,18 @@ class microcpu:
                 else:
                     sys.stdout.write(chr(c))
                 i += 1
+        if cmd == CastPrintErrMsg:
+            self.optPOPNULL(address)            
+            i = address
+            while self.memspace[i] != 0 and i < MAXMEMSP:
+                c = self.memspace[i]
+                if c == 0:
+                    safeprint("Odd C is zero")
+                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30 and c!=9 and c!=8 ):
+                    safeprint("%02x" % c, file=DebugOut,end="")
+                else:
+                    safeprint("%c" % c, file=DebugOut, end="")
+                i += 1        
         if cmd == CastPrintInt:
             self.optPOPNULL(address)            
             sys.stdout.write("%d" % (address & 0xffff) )
@@ -3474,14 +3474,10 @@ def debugger(passline, context: AssemblerContext):
                     continue
                 CPU.optPOPI(arglist[0])
                 continue
-        if cmdword == "p":
-            if argcnt > 0:
-                if argcnt == 1:
-                    startv = int(arglist[0])
-                    stopv = startv + 1
-                else:
-                    startv = int(arglist[0])
-                    stopv = int(arglist[1]) + 1
+        if cmdword == "range":
+            if argcnt >= 2:
+                startv = int(arglist[0])
+                stopv = int(arglist[1]) + 1
                 if stopv < startv:
                     stopv = startv + stopv + 1
                 for v in range(startv, stopv):
@@ -3509,8 +3505,60 @@ def debugger(passline, context: AssemblerContext):
                            SInfo += "_"
                    safeprint(SInfo)
             else:
-                safeprint("ERR: Need to specify what to print")
-                continue
+                safeprint("ERR: Need to specify what Range print")
+            continue
+        if cmdword == "p":
+           if argcnt > 0:
+               # For each argument, print that address independently.
+               for arg in arglist:
+                   try:
+                       if isinstance(arg, int) or isinstance(arg, np.int64):
+                           v = int(arg)
+                       else:
+                           v = int(arg, 0)    # string with base auto-detect
+                   except Exception as e:
+                       safeprint(f"ERR: Invalid address: {arg} ({e})")
+                       continue
+
+                   # Build the print string (existing logic preserved)
+                   SInfo = "%04x:" % v
+                   w1 = CPU.getwordat(v)
+                   w2 = CPU.getwordat(w1)
+
+                   SInfo += "[%02x]" % w1
+                   SInfo += "[[%02x]]" % w2
+                   SInfo += "  "
+
+                   # Use your original char-display logic
+                   char_items = (
+                       "'", v & 0xff, (v >> 8) & 0xff, "'",
+                       "[",
+                       "'", w1 & 0xff, (w1 >> 8) & 0xff, "'", "]",
+                       "[",
+                       "[", "'", w2 & 0xff, (w2 >> 8) & 0xff, "'", "]", "]"
+                   )
+
+                   for ci in char_items:
+                       if isinstance(ci, int) or isinstance(ci, np.int64):
+                           c = ci
+                       else:
+                           c = ord(ci)
+
+                       # Your printable-char detection
+                       if ((c != 0x7f) & (((c & 0xc0) == 0x40) |
+                                          ((c & 0xe0) == 0x20))):
+                           SInfo += "%c" % c
+                       else:
+                           SInfo += "_"
+
+                   safeprint(SInfo)
+
+               continue
+
+           # no args
+           safeprint("ERR: Need to specify one or more addresses")
+           continue
+       
         if cmdword == "pa":
             # Filter labels
             filtered_labels = {
@@ -3827,7 +3875,11 @@ def debugger(passline, context: AssemblerContext):
         if cmdword == "cw":
             safeprint("Clearing watchs")
             context.watchwords.clear()
-
+        if cmdword == "tty":
+            safeprint("Resetting Terminal")
+            PollReSetRawFunc()
+            PollSetEchoFunc()
+            continue            
         if cmdword == "L":
             if argcnt < 1:
                 sys.stdout.write("Filename: ")
@@ -3872,11 +3924,15 @@ def debugger(passline, context: AssemblerContext):
             PollSetEchoFunc()
         if cmdword == "ttyraw":
             PollSetRawFunc()
+        if cmdline[0:1] == "#":
+            # Allow Comments in debugger commands.
+            continue
         if cmdword == "h":
             help_commands = [
                 ("b", "break points"),
                 ("c", "continue [ $1 steps ]"),
                 ("cb", "clear breakpoints"),
+                ("cw", "clear watches"),                
                 ("d", "DissAsm $1 $2"),
                 ("g","goto $1"),
                 ("h", "this test"),
@@ -3887,15 +3943,15 @@ def debugger(passline, context: AssemblerContext):
                 ("p", "print values $1"),
                 ("pa", "Print all or some labels [pattern,pattern]"),
                 ("ps", "Print HW Stack"),
-                ("spush","Push $1 to Stack"),
-                ("spop","POPNULL stack | $1 saves to Address"),
-                ("pa", "Print all G lables | pa $1 print lable value"),
                 ("q", "quit debugger"),
                 ("r", "reset"),
+                ("range","print value of memory in range $1 to $2"),
+                ("spush","Push $1 to Stack"),
+                ("spop","POPNULL stack | $1 saves to Address"),                
                 ("ttyreset","Resets terminal that was in raw mode."),
                 ("ttyraw","Changes terminal into raw mode.",),
                 ("w", "watch $1"),
-                ("cw", "clear watches"),
+                ("#", "Debug Comment")
             ]
             help_commands.sort(key=lambda x: x[0])
             num_columns = 2
@@ -3929,11 +3985,6 @@ def main():
     context.SkipBlock = 0
     context.Remote = False
     context.watchword = []
-
-#    context.FileLabels = WatchedDict()     # ⬅ replace dict with subclass
-#    context.FileLabels.watch("HeapID___1169heapmgr.ld")      # ⬅ optional: monitor a specific key
-#    context.FileLabels.watch("Var04")      # ⬅ optional: monitor a specific key
-
 
     CPU.pc = 0
 
@@ -3995,7 +4046,7 @@ def main():
                 prpcmd = 3
                 skipone = True
                 UseDebugger = True
-                DebugOut=sys.stdout
+#                DebugOut=sys.stdout
             elif arg == "-h":
                 safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
@@ -4108,3 +4159,4 @@ if __name__ == '__main__':
             termios.tcsetattr(_fd, termios.TCSADRAIN, new)
         except termios.error:
             safeprint("TTY Error: Unable to restore echo")
+############################################

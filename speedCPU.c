@@ -922,6 +922,7 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
 #define CastPrint32S 33
 #define CastTapeWrite 34
 #define CastTapeWriteI 35
+#define CastPrintErrMsg 36
 #define CastEnd 99
 #define CastDebugToggle 100
 #define CastStackDump 102
@@ -948,6 +949,18 @@ int handleCast(int Param, int ParamI, int ParamII,  uint8_t *memory, uint8_t *HW
       }
     }
     break;
+  case CastPrintErrMsg:           // CastPrintErrMsg 36
+    POPNULLCHK(HWStack);    
+    i=Param;
+    while (memory[i] != 0 && i < 0xffff) {
+      c=memory[i]; i++;
+      if ((c<32 || c> 127) && ( c !=0 && c != 7 && c != 9 && c != 27 && c != 30 && c!=10)) {
+	fprintf(stderr,"%02x",c);
+      } else {
+	fprintf(stderr,"%c",(char) c);
+      }
+    }
+    break;    
   case CastPrintInt:           // CastPrintInt 2
     POPNULLCHK(HWStack);    
     a=Param & 0xffff;

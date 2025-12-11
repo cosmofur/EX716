@@ -18,6 +18,7 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 =MISSLE_SPEED 2
 =MouseField 101
 =KeyTyped 201
+=KeyFakeMouse 202
 ##################
 # Global State
 ##################
@@ -39,10 +40,13 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 :MissState @DefArray16 MAX_MISSILES
 :MissR @DefArray16 MAX_MISSILES
 :MissXF @DefArray16 MAX_MISSILES
+:MissTargetY @DefArray16 MAX_MISSILES
 :ActiveMissiles 0
 :MainHeapID 0
 :MainEventTable 0
 :KeyTable "Q" $$12 $$3 $$0
+:FakeMouseTable "hjkl" $$0
+:EventTimer 0
 
 
 
@@ -56,6 +60,7 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
    @POPI MainHeapID
 
    @CALL WinResize
+   @Call(A) Sleep 0
    @CALL WinClear
    @CALL WinHideCursor
 
@@ -98,8 +103,9 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
    @DUP
    @POPI CityX+2              # City 1
    @CALL DrawCity
-   @PUSHI WinWidth @SHL @ADDI WinWidth   # *3
-   @SHR @SHR  # / 4
+   @PUSHI WinWidth @SHR @SHR  # /4
+   @PUSHI WinWidth @SHR       # /2
+   @ADDS                      # = 3/4 WinWidth
    @DUP
    @POPI CityX+4              # City 2
    @CALL DrawCity
@@ -163,10 +169,8 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
    @MA2V MissR MissR_Idx
 
    @ForIA2B _i 0 MAX_MISSILES
-      @PUSH 0 @POPII MissState_Idx
-      @PUSH 0 @POPII MissR_Idx
-      @INC2I MissState_Idx
-      @INC2I MissR_Idx
+      @PUSH 0 @PUSHI _i @SHL @ADD MissState @POPS
+      @PUSH 0 @PUSHI _i @SHL @ADD MissR @POPS
    @Next _i
 
    @RestoreVar 03
@@ -181,9 +185,11 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 @PUSHRETURN
    @Call(v) EventTableNew MainHeapID
    @POPI MainEventTable
-   @PUSH MouseEvent @PUSH 0 @PUSH 1 @PUSHI WinWidth @PUSHI GroundY @PUSH MouseField
+   @PUSH MouseEventClick @PUSH 0 @PUSH 1 @PUSHI WinWidth @PUSHI GroundY @PUSH MouseField
    @CALL EventAdd
    @PUSH KeyEvent @PUSH KeyTable @PUSH 0 @PUSH 0 @PUSH 0 @PUSH KeyTyped
+   @CALL EventAdd
+   @PUSH KeyEvent @PUSH FakeMouseTable @PUSH 0 @PUSH 0 @PUSH 0 @PUSH KeyFakeMouse
    @CALL EventAdd
 @POPRETURN
 @RET
@@ -194,19 +200,22 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 @PUSHRETURN
    @PUSH 0
    @WHILE_ZERO
+      @INCI EventTimer
       @CALL EventPoll
-      @IF_NOTZERO      
+      @IF_NOTZERO
          @CALL HandleEvent
-         @POPNULL         
       @ELSE
-         @POPNULL
          @CALL UpdateBombs
          @CALL UpdateMissiles
          @CALL DetectHits
+         @POPNULL
       @ENDIF
+      
       @CALL RenderFrame
+      
       #
       # Sleep some time here possible 33 ms
+      @StackDump
     @ENDWHILE
     @POPNULL
 @POPRETURN
@@ -216,18 +225,52 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 ##########################
 :HandleEvent
 @PUSHRETURN
-    @IF_EQ_A MouseField
+    @PRTERR "HandleEvent\n"
+    @StackDump
+    @SWITCH
+    @CASE MouseField
+       @PRTERR "Mouse Event\n"     
        @Call(vv) LaunchMissile [ LastMouseX, LastMouseY ]
-    @ENDIF
-    @IF_EQ_A KeyTyped
-       @CALL TermMouseDisable
        @StackDump
+       @PRTERR "Post Mouse Event\n"
+       @CBREAK
+    @CASE KeyTyped
+       @Call(AA) WinCursor 1 99
+       @CALL TermMouseDisable
        @CALL ColorReset
        @CALL WinShowCursor
+       @PRT "User Quit"
        @END
-    @ENDIF
+       @CBREAK
+    @CASE KeyFakeMouse
+       @PRTERR "Command Key Event\n"
+       @PUSHII LastKeyMatchPtr @AND 0xff
+       @SWITCH
+       @CASE "h\0
+         @Call(AA) LaunchMissile 10 5
+         @CBREAK
+       @CASE "j\0"
+         @Call(AA) LaunchMissile 20 5
+         @CBREAK
+       @CASE "k\0"
+         @Call(AA) LaunchMissile 40 5
+         @CBREAK         
+       @CASE "l\0"
+         @StackDump
+         @CALL SpawnBomb
+         @StackDump
+         @CBREAK
+       @CDEFAULT
+         @Call(AA) WinCursor 50 1
+         @PRT "Key: " @PRTHEXTOP @PRT " "
+         @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @ENDCASE
     @POPNULL
 @POPRETURN
+@StackDump
 @RET
 ###########################
 # Launch Missile
@@ -243,76 +286,84 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     @LocalVar XF 07       # fixed X (8.3)
     @LocalVar DX8 08      # ΔX << 3 / steps
 
+
     @POPI TY
     @POPI TX
+    @PRTERR "Start Of Launch Missle"
+    @StackDump    
 
     # DY = TY - (GroundY-1)
-    @PUSHI TY
+    @PUSHI TY                                 # {
     @PUSHI GroundY @SUB 1 @SUBS
-    @POPI DY
+    @POPI DY                                  # }SB
 
-    # Steps = |DY|   # missile climbs 1 per frame
+    # Steps = |DY|   # missile climbs 1 per frame {
     @ABSI DY
-    @POPI Steps
+    @POPI Steps                               # }SB
 
     # Find free missile
+    @MA2V 0 ActiveMissiles
     @ForIA2B _i 0 MAX_MISSILES
-        @PUSHI _i @SHL @ADD MissState @PUSHS
+        @PUSHI _i @SHL @ADD MissState @PUSHS  # {
         @IF_EQ_A 0
-            @POPNULL
-
+            @INCI ActiveMissiles
             # MissState[_i] = 1
-            @PUSH 1
+            @PUSH 1                           # {
             @PUSHI _i @SHL @ADD MissState
-            @POPS
+            @POPS                             # }SB
 
             # Initial X = BaseX
-            @PUSHI BaseX
+            @PUSHI BaseX                      # {
             @PUSHI _i @SHL @ADD MissX
-            @POPS
+            @POPS                             # }SB
 
             # Initial Y = GroundY-1
-            @PUSHI GroundY @SUB 1
+            @PUSHI GroundY @SUB 1             # {
             @PUSHI _i @SHL @ADD MissY
-            @POPS
+            @POPS                             # }SB
 
             # DeltaX = TX - BaseX
-            @PUSHI TX
+            @PUSHI TX                         # {
             @SUBI BaseX
-            @POPI DX
+            @POPI DX                          # }SB
 
             # XF = BaseX << 3
-            @PUSHI BaseX
+            @PUSHI BaseX                      # {
             @SHLN 3
-            @POPI XF
+            @POPI XF                          # }SB
 
             # DX8 = (DeltaX << 3) / Steps
-            @PUSHI DX
+            @PUSHI DX                         # {
             @SHLN 3
             @PUSHI Steps
             @CALL DIV          # signed division correct
-            @POPI DX8
-
+            @POPI DX8          # Resuls
+            @POPNULL           # Remainder.   # }SB
+            
             # Save XF into MissXF[_i]
-            @PUSHI XF
+            @PUSHI XF                         # {
             @PUSHI _i @SHL @ADD MissXF
-            @POPS
+            @POPS                             # }SB
 
             # Save DX8 into MissDX[_i]
-            @PUSHI DX8
+            @PUSHI DX8                        # {
             @PUSHI _i @SHL @ADD MissDX
-            @POPS
+            @POPS                             # }SB
 
             # MissDY = -1 (moves upward)
-            @PUSH -1
+            @PUSH -1                          # {
             @PUSHI _i @SHL @ADD MissDY
-            @POPS
+            @POPS                             # }SB
 
+            # MissTargetY = MouseY
+            @PUSHI TY                         # {
+            @PUSHI _i @SHL @ADD MissTargetY
+            @POPS                             # }SB
+            @POPNULL
             @FORBREAK
         @ENDIF
-        @POPNULL
+        @POPNULL                              # }SB
     @Next _i
-
     @RestoreVar 08
     @RestoreVar 07
     @RestoreVar 06
@@ -321,6 +372,8 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
+    @PRTERR "End Of Launch Missle"
+    @StackDump
 @POPRETURN
 @RET
 
@@ -341,22 +394,24 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     # We want to use a MASK to keep the bombs entry to be centered by and easy to caclulate
     # range, without haveing to use an expensive 'MOD'function.
     # So we calcualate a MASK and OFFSET to 'center' a 16,32 or 64 character wide window
-
+    @StackDump
     @MA2V 0xf EntryMask
-    @PUSHI WinWidth @SUB 15 @SHR # (Width-15)/2
-    @POPI EntryOffset
+    @PUSHI WinWidth @SUB 15 @SHR # (Width-15)/2                # {
+    @POPI EntryOffset                                          # }BS
 
-    @PUSHI WinWidth
+    @PUSHI WinWidth                                            # {
     @IF_GT_A 31              # If wide enough make the entry window 32 characters centered
         @MA2V 0x1f EntryMask
-        @PUSHI WinWidth @SUB 31 @SHR # (Width-31)/2
-        @POPI EntryOffset
+        @PUSHI WinWidth @SUB 31 @SHR # (Width-31)/2            # {
+        @POPI EntryOffset                                      # }BS
     @ELSE  @IF_GT_A 63
         @MA2V 0x3f EntryMask # If wide enough make entry window 64 character centered
-        @PUSHI WinWidth @SUB 63 @SHR # (Width-31)/2
-        @POPI EntryOffset
+        @PUSHI WinWidth @SUB 63 @SHR # (Width-31)/2            # {
+        @POPI EntryOffset                                      # }BS
         @ENDIF
     @ENDIF
+    @POPNULL
+    @StackDump
 
     @MA2V BombAlive ixAlive
     @MA2V BombX ixX
@@ -368,64 +423,77 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     @MV2V GroundY Height
 
     @ForIA2B _i 0 MAX_BOMBS
-       @PUSHII ixAlive
+    @StackDump
+    
+       @PUSHII ixAlive                                        # {
        @IF_EQ_A 0
-          @POPNULL
-          @CALL rnd16
+          @POPNULL                                            # }BS.1          
+          @CALL frnd16                                         # {
           @ANDI EntryMask     # use mask rather than MOD to contrain rnd to range.
           @ADDI EntryOffset
-          @POPI StartX
+          @POPI StartX                                        # }BS
 
           # 3 Cities so compute target
-          @CALL rnd16 @AND 3
+          @CALL frnd16 @AND 3                                 # {
           @WHILE_EQ_A 3
-            @POPNULL
-            @CALL rnd16 @AND 3
+            @POPNULL                                          # }BS
+            @CALL frnd16 @AND 3                               # {
           @ENDWHILE
           # TOS is City Number
           @SHR @ADD CityX @PUSHS  # Get the X index of CityX[TOS*2]
-          @POPI TargetX
+          @POPI TargetX                                       # }BS          
           @PUSHI TargetX @POPI ixTX
           #
           # DiffX = TargetX - StartX
-          @PUSHI TargetX
+          @PUSHI TargetX                                      # {
           @SUBI StartX
-          @POPI DiffX
+          @POPI DiffX                                         # }BS
           #
           # DX_Fixed = (DiffX << 3) / Height
-          @PUSHI DiffX
+          @PUSHI DiffX                                        # {
           @SHLN 3
-          @PUSHI Height
-          @CALL DIVU
+          @PUSHI Height                                       # {
+          @CALL DIVU                                          # }}{{   Adds 2 items to stack
           @IF_ZERO
-             @POPNULL
-             @PUSHI DiffX
+             # If quotent zero, We fall back to using the DiffX logic
+             @POPNULL @POPNULL     # Get rid of both Q & R    # } }
+             @PUSHI DiffX                                     # {
              @IF_LT_A 0
-                @POPNULL
-                @PUSH -1
+                @POPNULL                                      # }BS
+                @PUSH -1                                      # {
              @ELSE
-                @POPNULL
-                @PUSH 1
+                @POPNULL                                      # }BS
+                @PUSH 1                                       # {
              @ENDIF
+             # Here TOS will be -1 or 1
+          @ELSE
+             # Here means Q was not 0
+             @SWP @POPNULL          # We don't need remainder so get rid of it.
           @ENDIF
-          @POPII ixDX           # BombDX8
+          @POPII ixDX           # BombDX8                     # }BS
           #
           # X_Fiex=StartX << 3
-          @PUSHI StartX
+          @PUSHI StartX                                       # {
           @SHLN 3
-          @POPII ixXF
+          @POPII ixXF                                         # }BS
           #
           # Alive=1
-          @PUSH 1
+          @PUSH 1                                             # {
           @INCI ActiveBombs
-          @POPII ixAlive
+          @POPII ixAlive                                      # }BS
           @FORBREAK
+      @ELSE
+          @POPNULL                                                # }
       @ENDIF
-      @POPNULL
+
       @INC2I ixAlive @INC2I ixX @INC2I ixY
       @INC2I ixTX @INC2I ixDX @INC2I ixXF
    @Next _i
+    @StackDump
 
+   @RestoreVar 13
+   @RestoreVar 12   @RestoreVar 11
+   @RestoreVar 10   @RestoreVar 09
    @RestoreVar 08   @RestoreVar 07
    @RestoreVar 06   @RestoreVar 05
    @RestoreVar 04   @RestoreVar 03
@@ -527,7 +595,6 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
        ########################################################
        @CASE 1
            @POPNULL
-
            # XF += DX8
            @PUSHII ixXF
            @ADDII ixDX
@@ -543,14 +610,25 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
            @SHRN 3
            @POPII ixX
 
-           # Did missile reach the top or go past?
+           # Did Missile reach hight of original mouse Y?
+           @PUSHI _i @SHL @ADD MissTargetY @PUSHS
            @PUSHII ixY
-           @IF_LE_A 10
-               @POPNULL
-               @PUSH 2
-               @POPII ixState     # enter explosion expand state
-               @PUSH 1
-               @POPII ixR         # radius begins at 1
+           @SWP @IF_LE_S
+              @POPNULL @POPNULL
+              @PUSH 2              
+              @POPII ixState
+              @PUSH 1
+              @POPII ixR
+           @ELSE
+              @POPNULL @POPNULL
+           @ENDIF
+           # Failsafe, missles can't go too close to 'top'
+           @PUSHII ixY
+           @IF_LE_A 4
+              @PUSH 2
+              @POPII ixState     # enter explosion expand state
+              @PUSH 1
+              @POPII ixR         # radius begins at 1
            @ENDIF
            @POPNULL
 
@@ -569,9 +647,9 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
                @POPNULL
                @PUSH 3
                @POPII ixState        # switch to shrinking
+           @ELSE
+               @POPNULL
            @ENDIF
-           @POPNULL
-
            @CBREAK
 
        ########################################################
@@ -587,10 +665,9 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
                @POPNULL
                @PUSH 0
                @POPII ixState         # missile now free
-               @DECI ActiveMissiles   # optional counter
+           @ELSE
+               @POPNULL
            @ENDIF
-           @POPNULL
-
            @CBREAK
 
        ########################################################
@@ -603,13 +680,13 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
        @ENDCASE
 
        # Increment all array pointers for next loop iteration
-       @INC2I ixState
-       @INC2I ixX
-       @INC2I ixY
-       @INC2I ixDX
-       @INC2I ixDY
-       @INC2I ixR
-       @INC2I ixXF
+#       @INC2I ixState
+#       @INC2I ixX
+#       @INC2I ixY
+#       @INC2I ixDX
+#       @INC2I ixDY
+#       @INC2I ixR
+#       @INC2I ixXF
 
     @Next _i
 
@@ -703,7 +780,13 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 :RenderFrame
 @PUSHRETURN
     @LocalVar _i 01
-
+    @Call(AA) WinCursor 60 1
+    @PRTI EventTimer @PRT " "   
+    @PUSHI EventTimer @AND 0xf
+    @IF_NOTZERO    
+       @CALL WinClear
+    @ENDIF
+    @POPNULL
     # Draw Bombs
     @ForIA2B _i 0 MAX_BOMBS
        @PUSHI _i @SHL @ADD BombAlive @PUSHS # BombAlive[_i]
@@ -720,9 +803,15 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     @ForIA2B _i 0 MAX_MISSILES
        @PUSHI _i @SHL @ADD MissState @PUSHS # MissState[_i]
        @IF_EQ_A 1
+          @Call(Av) WinCursor 70 _i
+          @PRT "M:" @PRTI _i @PRT "->[" 
+
+
           # PUSH MissX[_i] Missy[_i]
           @PUSHI _i @SHL  @ADD MissX @PUSHS
+          @PRTTOP @PRT ","
           @PUSHI _i @SHL  @ADD MissY @PUSHS
+          @PRTTOP @PRT "] "
           @CALL WinCursor
           @PRT "^"
        @ENDIF
@@ -777,16 +866,17 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     ###########################################
     @PUSHI R
     @SHL                     # R * 2
-    @ADD ExPtrTable @PUSHS
+    @ADD ExPtrTable
+    @PUSHS
     @POPI Ptr
 
     ###########################################
     # Load Height and Width
     ###########################################
     @PUSHII Ptr   @POPI Height
-    @INCI Ptr
+    @INC2I Ptr
     @PUSHII Ptr   @POPI Width
-    @INCI Ptr
+    @INC2I Ptr
 
     @MV2V Ptr RowPtr
 
@@ -803,8 +893,8 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
     ###########################################
     # Row loop
     ###########################################
-    @ForIA2B row 0 Height
-        @PUSHII RowPtr @POPI RowBits
+    @ForIA2V row 0 Height
+
 
         #######################################
         # Find LeftCol = first '1' bit
@@ -813,11 +903,12 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
         @MA2V 0 LeftCol
 
         @PUSHII RowPtr @POPI RowBits
-        @INCI RowPtr                    # Prepare PTR for next loop
-        @PUSH 1
+        @Call(Av) WinCursor 2 row
+        @INC2I RowPtr                    # Prepare PTR for next loop
+        @PUSHI Mask
         @WHILE_NOTZERO
             @POPNULL
-            @DUP @ANDI Mask
+            @PUSHI RowBits @ANDI Mask
             @IF_NOTZERO
                 @POPNULL
                 @PUSH 0     # Break While
@@ -825,7 +916,7 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
                 @POPNULL
                 @INCI LeftCol
                 @PUSHI Mask @SHR @POPI Mask
-                @PUSH 1     # Continue
+                @PUSHI Mask     # Continue
             @ENDIF
         @ENDWHILE
         @POPNULL
@@ -834,22 +925,24 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
         @PUSHI LeftCol @ADDI TmpX
         @PUSHI TmpY @ADDI row
         @CALL WinCursor
+#        @PRT " "
         #######################################
         # Print '*' until RightCol (scan forward)
         #######################################
-        @PUSH 1
+        @PUSHI Mask
         @WHILE_NOTZERO
             @POPNULL
-            @DUP @ANDI Mask
+            @PUSHI RowBits @ANDI Mask
             @IF_NOTZERO
                 @POPNULL
                 @PRT "*"
-                @PUSH 1   # Continue loop
             @ELSE
+#                @PRT " "
                 @POPNULL
-                @PUSHI Mask @SHR @POPI Mask
-                @PUSH 0   # Break While
+                @MA2V 0 Mask   # Break While loop
             @ENDIF
+            @PUSHI Mask @SHR @POPI Mask
+            @PUSHI Mask   # Continue loop            
         @ENDWHILE
         @POPNULL
     @Next row
@@ -866,13 +959,6 @@ M DefArray16 %REPEAT %1 0 0 %ENDR
 @RET
 
 
-:ExPtrTable
-$$ExplosionR1
-$$ExplosionR2
-$$ExplosionR3
-$$ExplosionR4
-$$ExplosionR5
-$$ExplosionR6
 #############################
 # Small 1 R explosion spark
 :ExplosionR1
@@ -885,58 +971,84 @@ $$ExplosionR6
 :ExplosionR2
 :ExplosionR2_Width 5
 :ExplosionR2_Height 5
-0b0010000000000000
 0b0111000000000000
 0b1111100000000000
+0b1111100000000000
+0b1111100000000000
 0b0111000000000000
-0b0010000000000000
 # 3 R explosion
 :ExplosionR3
-:ExplosionR3_Width 6
-:ExplosionR3_Height 5
-0b0011000000000000
-0b0111100000000000
-0b1111110000000000
-0b0111100000000000
-0b0011000000000000
-
-# 4 R explosion
-:ExplosionR4
-:ExplosionR4_Width 7
-:ExplosionR4_Height 7
-0b0001000000000000
+:ExplosionR3_Width 7
+:ExplosionR3_Height 7
 0b0011100000000000
 0b0111110000000000
 0b1111111000000000
+0b1111111000000000
+0b1111111000000000
 0b0111110000000000
 0b0011100000000000
-0b0001000000000000
-# 5 R explosion
-:ExplosionR5
-:ExplosionR5_Width 8
-:ExplosionR5_Height 7
-0b0001100000000000
-0b0011110000000000
-0b0111111000000000
-0b1111111100000000
-0b0111111000000000
-0b0011110000000000
-0b0001100000000000
-# 6 R explosion
-:ExplosionR6
-:ExplosionR6_Width 9
-:ExplosionR6_Height 9
-0b0000100000000000
+# 4 R explosion
+:ExplosionR4
+:ExplosionR4_Width 9
+:ExplosionR4_Height 9
 0b0001110000000000
 0b0011111000000000
 0b0111111100000000
 0b1111111110000000
+0b1111111110000000
+0b1111111110000000
 0b0111111100000000
 0b0011111000000000
 0b0001110000000000
-0b0000100000000000
+# 5 R explosion
+:ExplosionR5
+:ExplosionR5_Width 11
+:ExplosionR5_Height 11
+0b0001111100000000
+0b0011111110000000
+0b0111111111000000
+0b1111111111100000
+0b1111111111100000
+0b1111111111100000
+0b1111111111100000
+0b1111111111100000
+0b0111111111000000
+0b0011111110000000
+0b0001111100000000
+# 6 R explosion
+:ExplosionR6
+:ExplosionR6_Width 13
+:ExplosionR6_Height 13
+0b0000111000000000
+0b0001111100000000
+0b0011111110000000
+0b0111111111000000
+0b1111111111100000
+0b1111111111100000
+0b1111111111100000
+0b1111111111100000
+0b1111111111100000
+0b0111111111000000
+0b0011111110000000
+0b0001111100000000
+0b0000111000000000
+#
+#
+#
+:ExPtrTable
+ExplosionR1
+ExplosionR2
+ExplosionR3
+ExplosionR4
+ExplosionR5
+ExplosionR6
+#
+#
+#
 :Main . Main
 @CALL Start
+@PRT "Loop Ended"
 @END
+
 
 :ENDOFCODE

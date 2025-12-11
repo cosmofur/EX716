@@ -2,18 +2,20 @@
 M IMath32Define
 I common.mc
 L mul.ld
+L shift16.ld
 L string.ld
 M SIZESINCECOMMENT lmath.ld
 
 ########################
 # Published functions
-G ADD32S ADD32U G SUB32S G SUB32U                   # Core math functoins Signed Unsigned
+G ADD32S G ADD32U G SUB32S G SUB32U                   # Core math functoins Signed Unsigned
 G MUL32U G MUL32S
 G DIV32U G DIV32S
 G CMP32S G CMP32U                                   # Compair Signed Unsigned
 G AND32 G OR32 G XOR32 G INV32                      # Boolean operations.
 G SHL32 G SHR32                                     # Multi bit shifts
-G SHL32_1 G SHR32_1                                 # One bit shifts
+G SHL32_1 G SHR32_1 G SHL32_8 G SHR32_8             # fixed bit shifts
+G SHL32_small G SHR32_small
 G SetBit32 G ClearBit32                             # Bit operations
 G COMP232                                           # 2s complimnet 32
 G Flags32 G C32Flag G N32Flag G Z32Flag G O32Flag   # Logical Flag variables
@@ -25,9 +27,13 @@ G DIV10_32U                                         # Shortcut Divide by 10
 G i32tos G stoi32                                   # 32 bit string converstions
 
 =C32Flag 1
+=InvC32Flag 0xfffe   # Invert C32Flag
 =N32Flag 2
+=InvN32Flag 0xfffd   # Invert N32Flag
 =Z32Flag 4
+=InvZ32Flag 0xfffb   # Invert Z32Flag
 =O32Flag 8
+=InvO32Flag 0xfff7   # Invert O32Flag
 #M DebugFlag 1
 
 
@@ -1015,7 +1021,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
         @IF_EQ_AV 0 CarryIn
             @PUSHI C32Flag @INV @ANDI Flags32 @POPI Flags32
         @ELSE
-            @PUSHI Flags32 @ORS C32Flag @POPI Flags32 
+            @PUSHI Flags32 @ORI C32Flag @POPI Flags32
         @ENDIF
         @IF_EQ_AV 0 OverflowIn
             @PUSHI O32Flag @INV @ANDI Flags32 @POPI Flags32        
@@ -1045,52 +1051,262 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
+#===========================================================
+# Function : SHL32_8
+# Purpose  : Shifts 32 bit value left by 8 bits for efficency
+# Input    : [ ... Lowword Highword ]
+# Output   : [ ... NewLow NewHigh ]
+#===========================================================
+:SHL32_8     # ( NUM{LowWord,HighWord} -- )   Modify 32-bit value in place
+@PUSHRETURN
+  @LocalVar NUM 02    # We will be testing NUM-1 we must make sure NUM address != 0
+  @LocalVar Num_High 03
+  
+
+  @POP32I(v) NUM        # NUM = base address of the 32-bit value
+  @PUSH NUM @ADD 1 @PUSHS
+  @PUSH NUM @ADD 2 @POPS
+  @PUSH NUM @SUB 1 @PUSHS 
+  @AND 0xff00
+  @PUSH NUM @POPS
+
+  @PUSH32I(v) NUM
+  @RestoreVar 03
+  @RestoreVar 02
+  @POPRETURN
+@RET
+
+#===========================================================
+# Function : SHR32_8
+# Purpose  : Shifts 32-bit value right by 8 bits efficiently
+# Input    : [ ... LowWord HighWord ]
+# Output   : [ ... NewLow NewHigh ]
+#===========================================================
+:SHR32_8     # ( NUM{LowWord,HighWord} -- )
+@PUSHRETURN
+  @LocalVar NUM 02      # We will be testing NUM-1 we must make sure NUM address != 0
+  @LocalVar NUM_High 03
+
+  @POP32I(v) NUM     # NUM = base address of 32-bit value
+
+
+
+  
+  @PUSH NUM @ADD 1 @PUSHS
+  @PUSH NUM @POPS
+  @PUSH NUM @ADD 2 @PUSHS
+  @PUSH NUM @ADD 1 @POPS
+  @PUSH NUM @ADD 2 @PUSHS @AND 0xff
+  @PUSH NUM @ADD 2 @POPS
+
+  @PUSH32I(v) NUM
+
+  @RestoreVar 03
+  @RestoreVar 02
+  @POPRETURN
+@RET
 
 
 # ===========================================================
 # Function : SHL32
-# Purpose  : Shift 32-bit value left by N bits (unsigned)
+# Purpose  : Shift 32-bit value left by N bits (logical)
 # Inputs   : [ ... Low High Count ]
 # Outputs  : [ ... NewLow NewHigh ]
 # ===========================================================
 :SHL32
 @PUSHRETURN
-    @LocalVar Low 01
-    @LocalVar High 02
-    @LocalVar Count 03
+    @LocalVar Low      01
+    @LocalVar High     02
+    @LocalVar Count    03
     @LocalVar CarryOut 04
+    @LocalVar C8       05
+    @LocalVar C1       06
+    @LocalVar _I       07
 
+    # Read args
     @POPI Count
     @POP32I(v) Low
 
-#Limit Count to 0-31
+    # ------------------------------
+    # Case: Count >= 32 → result = 0
+    # ------------------------------
     @PUSHI Count
     @IF_UGE_A 32
         @POPNULL
-        # Leave 0 as result
+        @MA2V 0 Low
+        @MA2V 0 High
+        @MA2V 0 CarryOut
+
+        # Set flags: (Low=0,High=0, Mode=1, Carry=0, OF=0)
+        @PUSH32I(v) Low
+        @PUSH 1
         @PUSH 0
         @PUSH 0
-        # Zero Carry Flag32
-        @PUSH C32Flag @INV @ANDI Flags32 @POPI Flags32 # Zero the CF flag.        
-        @JMP SHL32_Exit
+        @CALL SetFlags32
+
+        @JMP SHL32_End    # (Structured “end section”, not an early escape)
     @ENDIF
     @POPNULL
 
-    @ForIA2V CarryOut 0 Count
-       @Call(vv) SHL32_1 Low High
-       @POP32I(v) Low
-    @Next CarryOut
+    # ------------------------------
+    # Case: Count == 0 → no shift
+    # ------------------------------
+    @PUSHI Count
+    @IF_EQ_A 0
+        @POPNULL
+        @MA2V 0 CarryOut
 
-    @PUSHI Low
-    @PUSHI High
-    
-:SHL32_Exit
+        @PUSH32I(v) Low
+        @PUSH 1
+        @PUSH 0
+        @PUSH 0
+        @CALL SetFlags32
+
+        @JMP SHL32_End
+    @ENDIF
+    @POPNULL
+
+    # ------------------------------
+    # Compute C8 = Count >> 3
+    #         C1 = Count & 7
+    # ------------------------------
+
+    @PUSHI Count    @SHRN 3    @POPI C8
+    @PUSHI Count    @AND 0x7   @POPI C1
+
+    # ------------------------------
+    # Perform full byte shifts
+    # ------------------------------
+    @ForIA2V _I 0 C8
+        @Call32(v) SHL32_8 Low
+        @POP32I(v) Low
+    @Next _I
+
+    # ------------------------------
+    # Perform Small bit shift left over if any
+    # ------------------------------
+    @PUSHI C1
+    @IF_NOTZERO
+       @POPNULL
+       @PUSH32I(v) Low
+       @PUSHI C1
+       @CALL SHL32_small
+       @POPI CarryOut
+       @POP32I(v) Low
+    @ELSE
+       @POPNULL
+       @MA2V 0 CarryOut
+    @ENDIF
+       
+
+    # ------------------------------
+    # Fallthrough: Set flags normally
+    # ------------------------------
+    @PUSH32I(v) Low
+    @PUSH 1               # Mode 1 = ADD style → CarryIn sets CF
+    @PUSHI CarryOut
+    @PUSH 0               # Overflow always 0 for logical shift
+    @CALL SetFlags32
+
+:SHL32_End
+    @PUSH32I(v) Low
+
+    @RestoreVar 07
+    @RestoreVar 06
+    @RestoreVar 05    
     @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
 @POPRETURN
 @RET
+
+# ===========================================================
+# Function : SHL32_small
+# Purpose  : Shift 32-bit value left by 1..7 bits (unsigned)
+# Inputs   : [... Low High Count ]
+# Output   : [... NewLow NewHigh CarryOut ]
+# ===========================================================
+:SHL32_small
+@PUSHRETURN
+    @LocalVar Low      01
+    @LocalVar High     02
+    @LocalVar Count    03
+    @LocalVar CarryOut 04
+    @LocalVar Bit15    05
+    @LocalVar i        06
+
+    @POPI Count
+    @POP32I(v) Low
+    @MA2V 0 CarryOut
+
+    @ForIA2V i 0 Count
+
+        # -------------------------------
+        # Extract High’s MSB (bit shifted out)
+        # Bit15 = (High & 0x8000) ? 1 : 0
+        # -------------------------------
+        @PUSHI High
+        @AND 0x8000
+        @IF_NOTZERO
+            @POPNULL
+            @MA2V 1 Bit15
+        @ELSE
+            @POPNULL
+            @MA2V 0 Bit15
+        @ENDIF
+
+        # -------------------------------
+        # Compute carry from Low >> 15
+        # This is the bit that flows into High
+        # -------------------------------
+        @PUSHI Low
+        @AND 0x8000
+        @IF_NOTZERO
+            @POPNULL
+            @PUSH 1
+        @ELSE
+            @POPNULL
+            @PUSH 0
+        @ENDIF
+        @POPI CarryOut   # temporary
+
+        # -------------------------------
+        # Low <<= 1
+        # -------------------------------
+        @PUSHI Low
+        @SHLN 1
+        @POPI Low
+
+        # -------------------------------
+        # High = (High << 1) | CarryOut
+        # -------------------------------
+        @PUSHI High
+        @SHLN 1
+        @ADDI CarryOut
+        @POPI High
+
+        # -------------------------------
+        # Update final CarryOut
+        # -------------------------------
+        @PUSHI Bit15
+        @POPI CarryOut
+
+    @Next i
+
+    @PUSHI Low
+    @PUSHI High
+    @PUSHI CarryOut
+
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+
 
 # ===========================================================
 # Function : SHL32_1
@@ -1101,84 +1317,192 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 # ===========================================================
 :SHL32_1
 @PUSHRETURN
-    @LocalVar Low 01
-    @LocalVar High 02
+#    @LocalVar Low 01
+#    @LocalVar High 02
 
-    @POP32I(v) Low   # Pop Low and High from stack
-
-    # Shift Low left by 1
-    @PUSHI Low
-    @SHL
-    @POPI Low
-
-    # Shift High left by 1, include carry from Low
-    @PUSHI High
-    @RLTC        # Rotate Left Through Carry
-    @POPI High
-
-    # Update Flags32 CF based on last carry
-    @IF_CARRY
-        @PUSH C32Flag @ORI Flags32 @POPI Flags32   # Set CF
-    @ELSE
-        @PUSH C32Flag @INV @ANDI Flags32 @POPI Flags32 # Clear CF
-    @ENDIF
-
-    # Push result back
-    @PUSHI Low
-    @PUSHI High
-
-    @RestoreVar 02
-    @RestoreVar 01
+#    @POP32I(v) Low   # Pop Low and High from stack
+#    @PUSH32I(v) Low
+    @PUSH 1
+    @CALL SHL32
+#    @RestoreVar 02
+#    @RestoreVar 01
 @POPRETURN
 @RET
-
 # ===========================================================
 # Function : SHR32
 # Purpose  : Shift 32-bit value right by N bits (unsigned)
-# Inputs   : [ ... Low High Count ]
-# Outputs  : [ ... NewLow NewHigh ]
+# Inputs   : [... Low High Count ]
+# Outputs  : [... NewLow NewHigh CarryOut ]
 # ===========================================================
 :SHR32
-
 @PUSHRETURN
-    @LocalVar Low 01
-    @LocalVar High 02
-    @LocalVar Count 03
+    @LocalVar Low      01
+    @LocalVar High     02
+    @LocalVar Count    03
     @LocalVar CarryOut 04
+    @LocalVar C8       05
+    @LocalVar C1       06
+    @LocalVar _I       07
 
     @POPI Count
     @POP32I(v) Low
 
-    #Limit Count to 0-31
+    # -----------------------------
+    # Case: Count > 32 -> result =0
+    # -----------------------------    
     @PUSHI Count
     @IF_UGE_A 32
         @POPNULL
-        # Leave 0 as result
+        @MA2V 0 Low
+        @MA2V 0 High
+        @MA2V 0 CarryOut
+        # Set flags: (Low=0,High=0, Mode=1, Carry=0, OF=0)
+        @PUSH32I(v) Low
+        @PUSH 1
         @PUSH 0
         @PUSH 0
-        # Zero Carry Flag32
-        @PUSH C32Flag @INV @ANDI Flags32 @POPI Flags32 # Zero the CF flag.        
-        @JMP SHR32_Exit
+        @CALL SetFlags32
+
+        @JMP SHR32_End    # (Structured “end section”, not an early escape)
+    @ENDIF
+    @POPNULL
+    # ------------------------------
+    # Case: Count == 0 → no shift
+    # ------------------------------
+    @PUSHI Count
+    @IF_EQ_A 0
+        @POPNULL
+        @MA2V 0 CarryOut
+
+        @PUSH32I(v) Low
+        @PUSH 1
+        @PUSH 0
+        @PUSH 0
+        @CALL SetFlags32
+
+        @JMP SHR32_End
     @ENDIF
     @POPNULL
 
-    # Shift Loop
+    # ------------------------------
+    # Compute C8 = Count >> 3
+    #         C1 = Count & 7
+    # ------------------------------
 
-    @ForIA2V CarryOut 0 Count
-       @FCLR
-       @PUSHI Low @SHR @POPI Low
-       @PUSHI High @RRTC @POPI High
-    @Next CarryOut
-    @IF_CARRY
-        @PUSH C32Flag @ORI Flags32 @POPI Flags32    # Set the CF 32 bit flag
+    @PUSHI Count    @SHRN 3    @POPI C8
+    @PUSHI Count    @AND 0x7   @POPI C1
+
+    # ------------------------------
+    # Perform full byte shifts
+    # ------------------------------
+    @ForIA2V _I 0 C8
+        @Call32(v) SHR32_8 Low
+        @POP32I(v) Low
+    @Next _I
+
+    # ------------------------------
+    # Perform Small bit shift right over if any
+    # ------------------------------
+    @PUSHI C1
+    @IF_NOTZERO
+       @POPNULL
+       @PUSH32I(v) Low
+       @PUSHI C1
+       @CALL SHR32_small
+       @POPI CarryOut
+       @POP32I(v) Low
     @ELSE
-       @PUSH C32Flag @INV @ANDI Flags32 @POPI Flags32 # Zero the CF flag.
+       @POPNULL
+       @MA2V 0 CarryOut
     @ENDIF
+       
+
+    # ------------------------------
+    # Fallthrough: Set flags normally
+    # ------------------------------
+    @PUSH32I(v) Low
+    @PUSH 1               # Mode 1 = ADD style → CarryIn sets CF
+    @PUSHI CarryOut
+    @PUSH 0               # Overflow always 0 for logical shift
+    @CALL SetFlags32
+
+:SHR32_End
+    @PUSH32I(v) Low
     
+
+    @RestoreVar 07
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+# ===========================================================
+# Function : SHR32_small
+# Purpose  : Shift 32-bit value right by 1..7 bits (unsigned)
+# Inputs   : [... Low High Count ]
+# Output   : [... NewLow NewHigh CarryOut ]
+# ===========================================================
+:SHR32_small
+@PUSHRETURN
+    @LocalVar Low      01
+    @LocalVar High     02
+    @LocalVar Count    03
+    @LocalVar CarryOut 04
+    @LocalVar Bit0     05
+    @LocalVar i        06
+
+    @POPI Count
+    @POP32I(v) Low
+    @MA2V 0 CarryOut
+
+    @ForIA2V i 0 Count
+
+        # --------------------------------------------------
+        # Extract LSB of Low → CarryOut (bit shifted out)
+        # --------------------------------------------------
+        @PUSHI Low
+        @AND 0x0001
+        @POPI CarryOut
+
+        # --------------------------------------------------
+        # Extract LSB of High for cascading into Low
+        # --------------------------------------------------
+        @PUSHI High
+        @AND 0x0001
+        @IF_NOTZERO
+            @POPNULL
+            @MA2V 0x8000 Bit0
+        @ELSE
+            @POPNULL
+            @MA2V 0 Bit0
+        @ENDIF
+
+        # --------------------------------------------------
+        # Low >>= 1, then OR in Bit0 at MSB
+        # --------------------------------------------------
+        @PUSHI Low
+        @SHRN 1
+        @ADDI Bit0
+        @POPI Low
+
+        # --------------------------------------------------
+        # High >>= 1
+        # --------------------------------------------------
+        @PUSHI High
+        @SHRN 1
+        @POPI High
+
+    @Next i
+
     @PUSHI Low
     @PUSHI High
-    
-:SHR32_Exit
+    @PUSHI CarryOut
+
+    @RestoreVar 06
+    @RestoreVar 05
     @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
@@ -1199,30 +1523,12 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @LocalVar High 02
 
     @POP32I(v) Low   # Pop Low and High from stack
-
-    # Shift High right by 1
-    @PUSHI High
-    @SHR
-    @POPI High
-
-    # Shift Low right by 1, include carry from High
-    @PUSHI Low
-    @RRTC        # Rotate Right Through Carry
-    @POPI Low
-
-    # Update Flags32 CF based on last carry (bit shifted out)
-    @IF_CARRY
-        @PUSH C32Flag @ORI Flags32 @POPI Flags32   # Set CF
-    @ELSE
-        @PUSH C32Flag @INV @ANDI Flags32 @POPI Flags32 # Clear CF
-    @ENDIF
-
-    # Push result back
-    @PUSHI Low
-    @PUSHI High
-
+    @PUSH32I(v) Low
+    @PUSH 1
+    @CALL SHL32
     @RestoreVar 02
     @RestoreVar 01
+
 @POPRETURN
 @RET
 
@@ -1685,126 +1991,136 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-# ===========================================================
-# Function : DIV32U
-# Purpose  : Unsigned 32-bit divide (Dividend ÷ Divisor)
-# Inputs   : [ ... A_Low A_High B_Low B_High ]
-# Outputs  : [ ... Quotient_Low Quotient_High Remainder_Low Remainder_High ]
-# Notes    :
-#   - Performs full 32/32-bit unsigned integer division
-#   - Uses bitwise restoring division method
-#   - Division by zero sets OVF32=1 and returns 0 quotient/remainder
-#   - Result truncated to 32 bits; remainder < divisor
-# ===========================================================
+############################################################
+# DIV32U  -  Unsigned 32-bit divide A/B
+# Inputs:  ( A_L A_H B_L B_H )
+# Output:  ( R_L R_H Q_L Q_H )
+# Notes:
+#   - Restoring division, 32 iterations
+#   - No normalization performed (consistent with EX716 rules)
+#   - Uses shift16.ld helpers for bitmask creation
+############################################################
 
 :DIV32U
 @PUSHRETURN
-    @LocalVar Dividend_Low 01
-    @LocalVar Dividend_High 02
-    @LocalVar Divisor_Low 03
-    @LocalVar Divisor_High 04
-    @LocalVar Quot_Low 05
-    @LocalVar Quot_High 06
-    @LocalVar Rem_Low 07
-    @LocalVar Rem_High 08
+    @LocalVar A_L      01
+    @LocalVar A_H      02
+    @LocalVar B_L      03
+    @LocalVar B_H      04
+    @LocalVar R_L      05
+    @LocalVar R_H      06
+    @LocalVar Q_L      07
+    @LocalVar Q_H      08
     @LocalVar BitIndex 09
-    @LocalVar CarryFlag 10
-    @LocalVar TmpH 11
+    @LocalVar NextBit  10
 
-    # --- Pop inputs ---
-    @POPI Divisor_High
-    @POPI Divisor_Low
-    @POPI Dividend_High
-    @POPI Dividend_Low
-    # --- Check for divide by zero ---
-    @Call32(vv)  CMP32U Divisor_Low ZERO32
-    @PUSHI Flags32
-    @AND Z32Flag
-    @IF_NOTZERO
-        @PRTLN "Detected Divide By Zero:"
+    ########################################################
+    # Load inputs
+    ########################################################
+    @POP32I(v) B_L
+    @POP32I(v) A_L
+
+    ########################################################
+    # Zero divisor → OVF32=1, return zeros
+    ########################################################
+    @PUSHI B_L @ORI B_H
+    @IF_ZERO
         @POPNULL
-        @MA2V 0 Quot_Low
-        @MA2V 0 Quot_High
-        @MA2V 0 Rem_Low
-        @MA2V 0 Rem_High
-        @MA2V 1 OVF32        # set divide-by-zero flag
-        @JMP Div32U_Exit
-    @ENDIF
-    @Call32(vv) CMP32U Divisor_Low Dividend_Low
-    @IF32_EQ
-        # shortcut A=B is always 1 - 0
-        @MA2V 1 Quot_Low
-        @MA2V 0 Quot_High
-        @MA2V 0 Rem_Low
-        @MA2V 0 Rem_High
+        @M32A2V $$$0 R_L
+        @M32A2V $$$0 Q_L
+        @PUSHI Flags32 @OR O32Flag @POPI Flags32
         @JMP Div32U_Exit
     @ENDIF
     @POPNULL
-    @MA2V 0 OVF32
-    # --- Clear result registers ---
-    @MA2V 0 Quot_Low
-    @MA2V 0 Quot_High
-    @MA2V 0 Rem_Low
-    @MA2V 0 Rem_High
 
-    # --- 32-bit loop: shift & subtract ---
+    # Clear OVF32 for non-error case
+    @PUSHI Flags32 @AND InvO32Flag @POPI Flags32
+
+    ########################################################
+    # Zero-out Q and R
+    ########################################################
+    @M32A2V $$$0 R_L
+    @M32A2V $$$0 Q_L
+
+    ########################################################
+    # Core loop: bit 31 down to 0
+    ########################################################
     @ForIA2B BitIndex 31 -1
-    # ---------------------------------------------------------
-        # 1. Shift dividend left, capturing carry for remainder.
-        # ---------------------------------------------------------
-        @Call32(v) SHL32_1 Dividend_Low
-        @POP32I(v) Dividend_Low
-        @IF32_CARRY
-            @MA2V 1 CarryFlag
+
+        ####################################################
+        # Step 1: Extract incoming bit from A_H before shift
+        # incoming = (A_H & 0x8000) ? 1 : 0
+        ####################################################
+        @PUSHI A_H @AND 0x8000
+        @IF_NOTZERO
+            @POPNULL
+            @MA2V 1 NextBit
         @ELSE
-            @MA2V 0 CarryFlag
+            @POPNULL
+            @MA2V 0 NextBit
         @ENDIF
 
-        # ---------------------------------------------------------
-        # 2. Shift remainder left by one and bring in that carry.
-        # ---------------------------------------------------------
-        @Call32(v) SHL32_1 Rem_Low
-        @POP32I(v) Rem_Low
-        @IF_NEQ_AV 0 CarryFlag
-            @PUSHI Rem_Low
-            @OR 1
-            @POPI Rem_Low
+        ####################################################
+        # Step 2: A <<= 1   (32-bit)
+        ####################################################
+        @Call32(v) SHL32_1 A_L
+        @POP32I(v) A_L
+
+        ####################################################
+        # Step 3: R <<= 1   (32-bit)
+        ####################################################
+        @Call32(v) SHL32_1 R_L
+        @POP32I(v) R_L
+
+        ####################################################
+        # Step 4: Insert incoming bit into R_L
+        ####################################################
+        @IF_NEQ_AV 0 NextBit
+            @PUSHI R_L @OR 1 @POPI R_L
         @ENDIF
 
-        # ---------------------------------------------------------
-        # 3. Compare remainder vs divisor (unsigned compare).
-        # ---------------------------------------------------------
-        @Call32(vv) CMP32U Rem_Low Divisor_Low
+        ####################################################
+        # Step 5: Compare R vs B
+        ####################################################
+        @Call32(vv) CMP32U R_L B_L
 
-        # ---------------------------------------------------------
-        # 4. If remainder >= divisor:
-        #       remainder -= divisor
-        #       set corresponding quotient bit.
-        # ---------------------------------------------------------
         @IF32_ULT
-            # remainder < divisor → do nothing
+            # remainder < divisor → no subtract, no Q-bit
         @ELSE
-            @Call32(vv) SUB32U Rem_Low Divisor_Low
-            @POP32I(v) Rem_Low
-            @Call(vvv) SetBit32 Quot_Low Quot_High BitIndex
-            @POP32I(v) Quot_Low
-        @ENDIF
-   
+            ################################################
+            # R = R - B
+            ################################################
+            @Call32(vv) SUB32U R_L B_L
+            @POP32I(v) R_L
 
-#       @PRT "Loop: " @PRTI BitIndex @PRT " Remainder: " @PRTHEXI Rem_High @PRTHEXI Rem_Low
-#       @PRT " Quot:" @PRTHEXI Quot_High @PRTHEXI Quot_Low
-#       @PRT " Divisor: " @PRTHEXI Divisor_High @PRTHEXI Divisor_Low @PRTNL    
+            ################################################
+            # Q |= (1 << BitIndex)
+            ################################################
+            @PUSH 1
+            @PUSHI BitIndex
+            @CALL SHL16_BY_N     # → mask in TOS
+
+            @PUSHI BitIndex @IF_LT_A 16
+                @POPNULL
+                @PUSHI Q_L @OR @POPI Q_L
+            @ELSE
+                @POPNULL
+                @PUSHI Q_H @OR @POPI Q_H
+            @ENDIF
+        @ENDIF
 
     @NextBy BitIndex -1
 
-:Div32U_Exit
-    # --- Push outputs ---
-    @PUSHI Quot_Low
-    @PUSHI Quot_High
-    @PUSHI Rem_Low
-    @PUSHI Rem_High
 
-    @RestoreVar 11
+:Div32U_Exit
+    ########################################################
+    # Return:  R then Q
+    ########################################################
+    @PUSHI R_L
+    @PUSHI R_H
+    @PUSHI Q_L
+    @PUSHI Q_H
+
     @RestoreVar 10
     @RestoreVar 09
     @RestoreVar 08
@@ -1817,6 +2133,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
+
 
 # ===========================================================
 # Function : DIV32S
@@ -1977,60 +2294,74 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @POPRETURN
 @RET
      
-
-
-# ===========================================================
-# Function : SetBit32
-# Purpose  : Sets bit N in 32-bit value (Quotient |= 1<<N)
-# Inputs   : [ ... Value_Low Value_High BitIndex ]
-# Outputs  : [ ... NewLow NewHigh ]
-# ===========================================================
+############################################################
+# SetBit32
+# (Low High Bit -- Low' High')
+#
+# Sets the specified bit (0–31) in a 32-bit word.
+#
+# Uses SHL16_BY_N to construct masks cleanly.
+############################################################
 :SetBit32
 @PUSHRETURN
     @LocalVar ValL 01
     @LocalVar ValH 02
     @LocalVar Bit  03
-    @LocalVar BitMask_L 04
-    @LocalVar BitMask_H 05
-    @LocalVar Index1 06
+    @LocalVar Mask 04
 
+    # Pop arguments
     @POPI Bit
     @POPI ValH
     @POPI ValL
-#    @PRT "Set Bit: " @PRTI Bit @PRT ":" @PRTHEXI ValH @PRTHEXI ValL @PRT ">"
-    @MA2V 0 BitMask_L
-    @MA2V 0 BitMask_H    
-    
+
+    ########################################################
+    # Case 1: Bit < 16 → operate on low word
+    ########################################################
     @PUSHI Bit
     @IF_ULT_A 16
         @POPNULL
-        @PUSH 1
-        @ForIA2V Index1 0 Bit
-           @SHL
-        @Next Index1
-        @PUSHI ValL @ORS @POPI ValL
+
+        # Build mask = (1 << Bit)
+        @Call(Av) SHL16_BY_N 1 Bit
+        @POPI Mask
+
+        # ValL |= mask
+        @PUSHI ValL  @ORI Mask  @POPI ValL
+
     @ELSE
+        ####################################################
+        # Case 2: Bit >= 16 → operate on high word
+        ####################################################
         @POPNULL
-        @PUSH 1
-        @PUSHI Bit @SUB 16 @POPI Bit
-#        @PRT "Hi Bit: Offset: " @PRTI Bit @PRTSP
-        @ForIA2V Index1 0 Bit
-           @SHL
-        @Next Index1
-        @PUSHI ValH @ORS @POPI ValH
+
+        # Compute shift = Bit - 16
+        @PUSHI Bit  @SUB 16  @POPI Mask      # reuse Mask as temporary shift amount
+
+        # mask = (1 << (Bit - 16))
+        @Call(Av) SHL16_BY_N 1 Mask
+        @POPI Mask
+
+        # ValH |= mask
+        @PUSHI ValH  @ORI Mask  @POPI ValH
+
     @ENDIF
 
+    ########################################################
+    # Return (ValL ValH)
+    ########################################################
     @PUSHI ValL
     @PUSHI ValH
-#    @PRTHEXI ValH @PRTHEXI ValL @PRTNL
-    @RestoreVar 06
-    @RestoreVar 05
+
+    # cleanup
     @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
+
 @POPRETURN
 @RET
+
+
 # ===========================================================
 # Function : ClearBit32
 # Purpose  : Clear bit N in 32-bit value (Quotient |= 1<<N)
