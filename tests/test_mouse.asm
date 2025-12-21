@@ -2,7 +2,7 @@ I common.mc
 L screen.ld
 # @ENABLETRACE
 #@ENABLERETTRACE
-L mouse.ld
+L event.ld
 :MainHeapID 0
 :RunFlag 0
 

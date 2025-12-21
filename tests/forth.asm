@@ -77,11 +77,17 @@ L div.ld
 #     Or Pushes HW(tos) to SP(tos)
 M FPUSH @PUSHI SP @POPS \
         @PUSHI SP @SUB 2 @POPI SP
+# Like FPUSH but source is a variable
+M FPUSHI @PUSHI %1 @POPII SP \
+        @PUSHI SP @SUB 2 @POPI SP
 # FPOP puts on tos value at [SP--2]
 #     Of Pops SP(tos) to HW(tos)
 M FPOP @PUSHI SP @ADD 2 @DUP \
        @POPI SP \
        @PUSHS
+# Like FPOP but destination if a variable
+M FPOPI @PUSHI SP @ADD 2 @DUP \
+       @POPI SP @PUSHS @POPI %1
 # Swaps the two top values of [SP] and [SP-2]
 M FSWP \
        @PUSHI SP @ADD 2 @PUSHS \
@@ -135,6 +141,7 @@ M GET_HERE \
   @PUSHI DictPtr @SUB 2
   
 M FCALL @PUSH J_%0 @BPUSH @JMP %1 :J_%0
+
 M FCALLS @PUSH J_%0 @BPUSH @JMPS :J_%0
 #
 
@@ -184,8 +191,7 @@ M SIZESINCECOMMENT DEFWORD_Start
       @PRTLN "Error: Definition already in progress."
       @JMP ErrorReset
    @ENDIF
-   @PUSHI TIB
-   @CALL GetNextWord
+   @Call(v) GetNextWord TIB
    @IF_ZERO
       @PRTLN "Error: Missing name for definition"
       @JMP ErrorReset
@@ -217,8 +223,7 @@ M SIZESINCECOMMENT DEFWORD_Start
    @IF_EQ_AV 0 STATE
       @JMP ErrorReset
    @ENDIF
-   @PUSH EXIT        # End decleration with call to exit
-   @CALL Compile
+   @Call(A) Compile EXIT        # End decleration with call to exit
    @MA2V 0 STATE     # End Compile Mode
 #   @PRT "Compile Word Ended at Address: " @PRTHEXI DictPtr @PRTNL
 @FNEXT
@@ -507,13 +512,11 @@ M SIZESINCECOMMENT DEFWORD_Start
 :FIXedSpace " \0"
 #
 @DEFWORD "words" WORDS 0
-   @PUSH 1
-   @CALL DumpDictionary
+   @Call(A)  DumpDictionary 1
 @FNEXT
 #
 @DEFWORD "words+" WORDSPLUS 0
-   @PUSH 0
-   @CALL DumpDictionary
+   @Call(A) DumpDictionary 0
 @FNEXT
 #
 @DEFWORD "drop" DROP 0
@@ -782,8 +785,7 @@ M SIZESINCECOMMENT DEFWORD_Start
      @PUSHI DictPtr  @ADD 2
      @LPOP              # Get old IF ADDRESS
      @POPS              #( patch IF's ZBRANCH to skip over ELSE )
-     @PUSH BRANCH         #( emit unconditional jump )
-     @CALL Compile  
+     @Call(A) Compile BRANCH   #( emit unconditional jump )
      @PUSHI DictPtr       #( save new jump placeholder for THEN )
      @LPUSH
      @PUSH ELSETAG
@@ -1010,12 +1012,13 @@ M SIZESINCECOMMENT DEFWORD_Start
    @LPOP  @POPI LimitVar  # @PRT "\nPop: LimitVar: " @PRTI LimitVar @PRTSP  # Save Limit
    @LPOP  @POPI StartVar  #  @PRT "\nPop: StartVar: " @PRTI StartVar @PRTSP  # Save Start
 
-#   @PRT "\nBefore INCI StartVar" @PRTI StartVar @PRT " " @PRTI LimitVar 
    @INCI StartVar
-#   @PRT "\nAfter INCI StartVar" @PRTI StartVar @PRT " " @PRTI LimitVar
-   @IF_UGE_VV StartVar LimitVar
+   @PUSHI StartVar
+   @IF_UGE_V LimitVar
+      @POPNULL
       # Loop is finished, just drop to exit.
    @ELSE
+      @POPNULL
       # Now recreate the LS entries for next loop
       @PUSHI StartVar @LPUSH
       @PUSHI LimitVar @LPUSH
@@ -1363,10 +1366,12 @@ M SIZESINCECOMMENT DEFWORD_Start
       @PRTLN "Error: 101 Unknown word"
       @JMP ErrorReset
    @ENDIF
-   # Stack Will be (IP Flag, DictEntry) We don't need flag or DictEntry
-   @SWP @POPNULL                 # Drop Flag
-   @SWP @POPNULL                 # Drop DictEntry
-   @FPUSH
+
+   # Stack: ... DictEntry Flags CodeEntry (CodeEntry = CFA / XT)
+   @POPI TV
+   @POPNULL                 # Drop Flags
+   @POPNULL                 # Drop DictEntry 
+   @FPUSHI TV
 @FNEXT
 #
 # Find is for meta programming

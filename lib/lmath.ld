@@ -39,14 +39,6 @@ G i32tos G stoi32                                   # 32 bit string converstions
 
 ########################
 # Common Local Storage. Non-Reentrent
-:A32_Low 0
-:A32_High 0
-:B32_Low 0
-:B32_High 0
-:R32_Low 0
-:R32_High 0
-:Temp_Low 0
-:Temp_High 0
 :Flags32 0   # Flags32 CNZO  (C<<3 | N<<2 | Z<<1 | O)
 :OVF32 0 0 # Stores overflow High 32 bits for cases when 32bit mul requires 64 bit result
 #
@@ -65,8 +57,8 @@ M IF32_EQ @PUSHI Flags32 @AND Z32Flag @CMP Z32Flag @POPNULL @IF_ZFLAG
 M IF32_NE @PUSHI Flags32 @AND Z32Flag @CMP Z32Flag @POPNULL @IF_NOTZF
 # Unsigned group
 #
-M IF32_ULT         @PUSHI Flags32 @AND C32Flag @POPNULL @IF_NOTZF     # A < B  (borrow)
-M IF32_UGE         @PUSHI Flags32 @AND C32Flag @POPNULL @IF_ZFLAG     # A ≥ B  (no borrow)
+M IF32_ULT         @PUSHI Flags32 @AND C32Flag @CMP 0 @POPNULL @IF_NOTZF     # A < B  (borrow)
+M IF32_UGE         @PUSHI Flags32 @AND C32Flag @CMP 0 @POPNULL @IF_ZFLAG     # A ≥ B  (no borrow)
 M IF32_ULE         @PUSHI Z32Flag @ANDI Flags32 \
                    @PUSHI C32Flag @ANDI Flags32 \
                    @ORS @CMP 0 @POPNULL @IF_NOTZF                     # (A < B or A == B)
@@ -194,6 +186,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @PUSHRETURN
   @LocalVar SumLow 01
   @LocalVar CarryAmt 02
+  @LocalVar A32_Low 03
+  @LocalVar A32_High 04
+  @LocalVar B32_Low 05
+  @LocalVar B32_High 06
+  @LocalVar R32_Low 07
+  @LocalVar R32_High 08  
+  
 
     @POP32I(v) B32_Low
     @POP32I(v) A32_Low
@@ -220,6 +219,12 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @PUSHI R32_High
     @PUSHI CarryAmt
 
+  @RestoreVar 08
+  @RestoreVar 07
+  @RestoreVar 06
+  @RestoreVar 05
+  @RestoreVar 04
+  @RestoreVar 03
   @RestoreVar 02
   @RestoreVar 01
   @POPRETURN
@@ -322,6 +327,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 :SUB32S
 @PUSHRETURN
     @LocalVar BorrowFlag 01
+    @LocalVar A32_Low 02
+    @LocalVar A32_High 03
+    @LocalVar B32_Low 04
+    @LocalVar B32_High 05
+    @LocalVar R32_Low 06
+    @LocalVar R32_High 07
+    
     @POP32I(v) B32_Low
     @POP32I(v) A32_Low
 
@@ -353,6 +365,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     # --- Push result back (low first, then high) ---
     @PUSHI R32_Low
     @PUSHI R32_High
+    
+    @RestoreVar 07
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 04
     @RestoreVar 01
 @POPRETURN
 @RET
@@ -573,227 +592,64 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 # Inputs   : [ ... A_low A_high B_low B_high ]
 # Outputs  : none (sets Z, C, N flags)
 # Notes    :
-#   - Carry flag set if NO borrow (A >= B)
+#   - Carry flag set if borrow (A >= B)
 #   - Uses hardware CF=1 ⇒ no borrow convention
 #   - Overflow flag cleared (not meaningful for unsigned)
 # ===========================================================
 :CMP32U
-
-
 @PUSHRETURN
-@LocalVar LowBorrowTmp    01   # borrow from low word
-@LocalVar HighBorrowTmp   02   # borrow from high word
-@LocalVar BorrowTmp       03   # final composite borrow
-@LocalVar AVar_Low        04
-@LocalVar AVar_High       05
-@LocalVar BVar_Low        06
-@LocalVar BVar_High       07
-@LocalVar RVar_Low        08
-@LocalVar RVar_High       09
-=AVar AVar_Low
-=BVar BVar_Low
+  @LocalVar LowBorrowTmp   01
+  @LocalVar HighBorrowTmp  02
+  @LocalVar A_L            03
+  @LocalVar A_H            04
+  @LocalVar B_L            05
+  @LocalVar B_H            06
+  @LocalVar R_L            07
+  @LocalVar R_H            08
 
-   @POP32I(v) BVar
-   @POP32I(v) AVar
-   @MA2V 0 Flags32
-   @MA2V 0 LowBorrowTmp
-   @MA2V 0 HighBorrowTmp
-   @MA2V 0 BorrowTmp
-   # --- Low word subtraction ---
-   @PUSHI AVar_Low
-   @SUBI  BVar_Low
-   @POPI  RVar_Low
-   @IF_CARRY
-      @MA2V 1 LowBorrowTmp       # record borrow from low word
-   @ENDIF
-   @FCLR                       # clear flags for clean high-word calc
+  @POP32I(v) B_L
+  @POP32I(v) A_L
 
-   # --- High word subtraction (simulate SBB) ---
-   @PUSHI AVar_High
-   @SUBI  BVar_High
-   @IF_NEQ_AV 0 LowBorrowTmp     # include low-word borrow
-      @SUB 1                   # SBB: subtract with borrow
-   @ENDIF
-   @POPI  RVar_High
-   @IF_CARRY
-       @MA2V 1 HighBorrowTmp
-   @ENDIF
-   @FCLR                       # clear flags before recompute
+  @MA2V 0 Flags32
+  @MA2V 0 LowBorrowTmp
+  @MA2V 0 HighBorrowTmp
 
-   # --- Recompute true 32-bit borrow for flags only ---
-   @PUSHI AVar_High
-   @SUBI  BVar_High
-   @IF_NEQ_AV 0 LowBorrowTmp
-       @SUB 1
-   @ENDIF
-   @IF_CARRY
-      @MA2V 1 HighBorrowTmp
-   @ELSE
-      @MA2V 0 HighBorrowTmp
-   @ENDIF
+  @PUSHI A_L @XORI B_L
+  @IF_ZERO
+     @PUSHI A_H @XORI B_H
+     @IF_ZERO
+        @PUSHI Flags32 @OR Z32Flag @POPI Flags32
+     @ENDIF
+     @POPNULL
+  @ENDIF
+  @POPNULL
+
+# First test the High Words
+@PUSHI A_H @SUBI B_H
+
+@IF_CARRY                 # A_H < B_H
    @POPNULL
-   # --- Combine low + high borrows into final carry ---
-   @PUSHI LowBorrowTmp
-   @ORI   HighBorrowTmp
-   @IF_NOTZERO
-       @MA2V 1 BorrowTmp          # final CF = 1 (borrow)
-   @ELSE
-       @MA2V 0 BorrowTmp
-   @ENDIF
+   @PUSHI Flags32 @OR C32Flag @POPI Flags32
+   @JMP CMP32Ucmp_done
+@ENDIF
+
+@IF_NOTZERO                  # A_H > B_H
    @POPNULL
-   # --- Composite flag construction (OZNC order) ---
-   # Carry flag
-   @IF_NEQ_AV 0 BorrowTmp
-       @PUSHI Flags32
-       @OR C32Flag
-       @POPI Flags32
-   @ENDIF
-   # Zero flag (both words zero)
-   @PUSHI RVar_Low
-   @ORI   RVar_High
-   @IF_ZERO
-       @PUSHI Flags32
-       @OR Z32Flag
-       @POPI Flags32
-   @ENDIF
-   @POPNULL
-   # Negative flag (bit 15 of high word)
-   @PUSHI RVar_High
-   @AND 0x8000
-   @IF_NOTZERO
-      @MA2V 1 BorrowTmp          # final CF = 1 (borrow)
-   @ELSE
-      @MA2V 0 BorrowTmp
-   @ENDIF
-   @POPNULL
-   # Carry flag
-   @IF_NEQ_AV 0 BorrowTmp
-      @PUSHI Flags32
-      @OR C32Flag
-      @POPI Flags32
-   @ENDIF
-   # Zero flag (both words zero)
-   @PUSHI RVar_Low
-   @ORI   RVar_High
-   @IF_ZERO
-      @PUSHI Flags32
-      @OR Z32Flag
-      @POPI Flags32
-   @ENDIF
-   @POPNULL
-   # Negative flag (bit 15 of high word)
-   @PUSHI RVar_High
-   @AND 0x8000
-   @IF_NOTZERO
-        @PUSHI Flags32
-        @OR N32Flag
-        @POPI Flags32
-   @ENDIF
-   @POPNULL
-   # Overflow flag cleared (unsigned compare)
-   # (no @OR O32Flag)
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
-@POPRETURN
-@RET  
+   @PUSHI Flags32 @AND InvC32Flag @POPI Flags32
+   @JMP CMP32Ucmp_done
+@ENDIF
+@POPNULL                     # A_H == B_H
 
-@PUSHRETURN
-@LocalVar BorrowTmp 01
-@LocalVar AVar_Low 02
-@LocalVar AVar_High 03
-@LocalVar BVar_Low 04
-@LocalVar BVar_High 05
-@LocalVar RVar_Low 06
-@LocalVar RVar_High 07
-@LocalVar HighCarryFlag 08
-@LocalVar LowBorrowTmp 09
-=AVar AVar_Low
-=BVar BVar_Low
+# High words equal → test low words
+@PUSHI A_L @SUBI B_L
+@IF_CARRY                 # A_L < B_L
+   @PUSHI Flags32 @OR C32Flag @POPI Flags32
+@ELSE
+   @PUSHI Flags32 @AND InvC32Flag @POPI Flags32
+@ENDIF
+@POPNULL
 
-    @POP32I(v) BVar
-    @POP32I(v) AVar
-    @MA2V 0 Flags32
-    @MA2V 0 BorrowTmp
-    @MA2V 0 LowBorrowTmp
-    @MA2V 0 HighCarryFlag
-    # --- Low word subtraction ---
-    @PUSHI AVar_Low
-    @SUBI  BVar_Low
-    @POPI  RVar_Low
-    @IF_CARRY
-        @MA2V 1 LowBorrowTmp
-    @ENDIF
-    @FCLR         # Clear HW flags
-    # --- High word subtraction ---
-    @PUSHI AVar_High
-    @SUBI  BVar_High
-    @POPI  RVar_High
-    @IF_CARRY
-       @MA2V 1 HighCarryFlag
-    @ENDIF
-
-    # Apply Borrow from Low word
-    @IF_NEQ_AV 0 LowBorrowTmp
-       @DECI RVar_High
-    @ENDIF
-    @FCLR
-    # Recompute final carry    
-    @PUSHI AVar_High
-    @SUBI BVar_High
-    @IF_NEQ_AV 0 BorrowTmp
-       @SUB 1
-    @ENDIF
-    @IF_CARRY
-       @MA2V 1 BorrowTmp
-    @ELSE
-       @MA2V 0 BorrowTmp
-    @ENDIF
-    @IF_NEQ_AV 0 LowBorrowTmp
-       @SUB 1
-    @ENDIF
-    @IF_CARRY
-       @MA2V 1 BorrowTmp
-    @ELSE
-       @MA2V 0 BorrowTmp
-    @ENDIF
-
-    # --- Composite flags ---
-    # Carry (A >= B → no borrow)
-    @IF_NEQ_AV 0 BorrowTmp
-        @PUSHI Flags32
-        @OR C32Flag
-        @POPI Flags32
-    @ENDIF
-
-    # Zero flag (R == 0)
-    @PUSHI RVar_Low
-    @ORI   RVar_High
-    @IF_ZERO
-        @PUSHI Flags32
-        @OR Z32Flag
-        @POPI Flags32
-    @ENDIF
-    @POPNULL
-
-    # Negative flag (keep for compatibility)
-    @PUSHI RVar_High
-    @AND 0x8000
-    @IF_NOTZERO
-        @PUSHI Flags32
-        @OR N32Flag
-        @POPI Flags32
-    @ENDIF
-    @POPNULL
-
-    # Overflow flag cleared
-    # (no @OR O32Flag)
+:CMP32Ucmp_done
 
 @RestoreVar 08
 @RestoreVar 07
@@ -814,6 +670,15 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 # ===========================================================
 :AND32
 @PUSHRETURN
+
+    @LocalVar A32_Low 01
+    @LocalVar A32_High 02
+    @LocalVar B32_Low 03
+    @LocalVar B32_High 04
+    @LocalVar R32_Low 05
+    @LocalVar R32_High 06
+    
+
     @POP32I(v) B32_Low
     @POP32I(v) A32_Low
 
@@ -834,6 +699,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     
     @PUSHI R32_Low
     @PUSHI R32_High
+
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01    
 @POPRETURN
 @RET
 # ===========================================================
@@ -845,6 +717,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
 :OR32
 @PUSHRETURN
+    @LocalVar A32_Low 01
+    @LocalVar A32_High 02
+    @LocalVar B32_Low 03
+    @LocalVar B32_High 04
+    @LocalVar R32_Low 05
+    @LocalVar R32_High 06
+
     @POP32I(v) B32_Low
     @POP32I(v) A32_Low
 
@@ -862,8 +741,15 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @PUSH 0 @PUSH 0 @PUSH 0 # Mode 0=logical Carry=0 Overflow=0
     @CALL SetFlags32
 
-@PUSHI R32_Low
+    @PUSHI R32_Low
     @PUSHI R32_High
+
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01        
 @POPRETURN
 @RET
 # ===========================================================
@@ -875,6 +761,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
 :XOR32
 @PUSHRETURN
+    @LocalVar A32_Low 01
+    @LocalVar A32_High 02
+    @LocalVar B32_Low 03
+    @LocalVar B32_High 04
+    @LocalVar R32_Low 05
+    @LocalVar R32_High 06
+
     @POP32I(v) B32_Low
     @POP32I(v) A32_Low
 
@@ -893,6 +786,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     @PUSHI R32_Low
     @PUSHI R32_High
+
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01    
 @POPRETURN
 @RET
 # ===========================================================
@@ -904,6 +804,11 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
 :INV32
 @PUSHRETURN
+    @LocalVar A32_Low 01
+    @LocalVar A32_High 02
+    @LocalVar B32_Low 03
+    @LocalVar B32_High 04
+    
     @POP32I(v) A32_Low
 
     @PUSHI A32_Low
@@ -922,6 +827,11 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     @PUSHI R32_Low
     @PUSHI R32_High
+    
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01        
 @POPRETURN
 @RET
 # ===========================================================
@@ -1021,7 +931,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
         @IF_EQ_AV 0 CarryIn
             @PUSHI C32Flag @INV @ANDI Flags32 @POPI Flags32
         @ELSE
-            @PUSHI Flags32 @ORI C32Flag @POPI Flags32
+            @PUSHI Flags32 @OR C32Flag @POPI Flags32
         @ENDIF
         @IF_EQ_AV 0 OverflowIn
             @PUSHI O32Flag @INV @ANDI Flags32 @POPI Flags32        
@@ -1236,8 +1146,12 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @LocalVar Bit15    05
     @LocalVar i        06
 
+    
+#    @PRT "SHL32_small stack before POPing arguments:" @StackDump
     @POPI Count
-    @POP32I(v) Low
+    @POPI High
+    @POPI Low
+#    @PRT "SHL32_small(" @PRT32HEXI Low @PRT "," @PRTI Count @PRT ")="
     @MA2V 0 CarryOut
 
     @ForIA2V i 0 Count
@@ -1297,6 +1211,8 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @PUSHI Low
     @PUSHI High
     @PUSHI CarryOut
+    
+#    @PRT32HEXI Low @PRT " Carry:" @PRTI CarryOut @PRTNL
 
     @RestoreVar 06
     @RestoreVar 05
@@ -2012,7 +1928,6 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @LocalVar Q_L      07
     @LocalVar Q_H      08
     @LocalVar BitIndex 09
-    @LocalVar NextBit  10
 
     ########################################################
     # Load inputs
@@ -2022,6 +1937,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     ########################################################
     # Zero divisor → OVF32=1, return zeros
+    # One divisor 
     ########################################################
     @PUSHI B_L @ORI B_H
     @IF_ZERO
@@ -2032,86 +1948,58 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
         @JMP Div32U_Exit
     @ENDIF
     @POPNULL
+    @Call32(vv) CMP32U ONE32 B_L
+    @IF32_EQ
+        @M32A2V $$$0 R_L
+        @M32V2V A_L Q_L
+        @JMP Div32U_Exit
+    @ENDIF
 
     # Clear OVF32 for non-error case
     @PUSHI Flags32 @AND InvO32Flag @POPI Flags32
 
-    ########################################################
-    # Zero-out Q and R
-    ########################################################
     @M32A2V $$$0 R_L
     @M32A2V $$$0 Q_L
 
-    ########################################################
-    # Core loop: bit 31 down to 0
-    ########################################################
-    @ForIA2B BitIndex 31 -1
+    @ForIA2B BitIndex 0 32
 
-        ####################################################
-        # Step 1: Extract incoming bit from A_H before shift
-        # incoming = (A_H & 0x8000) ? 1 : 0
-        ####################################################
-        @PUSHI A_H @AND 0x8000
-        @IF_NOTZERO
-            @POPNULL
-            @MA2V 1 NextBit
-        @ELSE
-            @POPNULL
-            @MA2V 0 NextBit
-        @ENDIF
-
-        ####################################################
-        # Step 2: A <<= 1   (32-bit)
-        ####################################################
-        @Call32(v) SHL32_1 A_L
-        @POP32I(v) A_L
-
-        ####################################################
-        # Step 3: R <<= 1   (32-bit)
-        ####################################################
-        @Call32(v) SHL32_1 R_L
+        @Call32(v) SHL32_1 R_L           # When calling 32bit functions the R_H is implied.
         @POP32I(v) R_L
+        # Flags32 has CF but we don't need it yet.
 
-        ####################################################
-        # Step 4: Insert incoming bit into R_L
-        ####################################################
-        @IF_NEQ_AV 0 NextBit
-            @PUSHI R_L @OR 1 @POPI R_L
+        # A << 1
+        @PUSHI A_L @ORI A_H
+        @IF_NOTZERO
+          # Don't both Shifting A if its already zero.
+          @Call32(v) SHL32_1 A_L
+          @POP32I(v) A_L
         @ENDIF
+        @POPNULL
 
-        ####################################################
-        # Step 5: Compare R vs B
-        ####################################################
+        #  true if CF set.
+        @PUSHI Flags32 @AND C32Flag
+        @IF_NOTZERO
+           @PUSH32I(v) R_L   #      R |= 1
+           @Call32(v) OR32 ONE32
+           @POP32I(v) R_L
+        @ENDIF
+        @POPNULL
+        
+        # Q <<1
+        @Call32(v) SHL32_1 Q_L
+        @POP32I(v) Q_L
         @Call32(vv) CMP32U R_L B_L
 
-        @IF32_ULT
-            # remainder < divisor → no subtract, no Q-bit
-        @ELSE
-            ################################################
-            # R = R - B
-            ################################################
-            @Call32(vv) SUB32U R_L B_L
-            @POP32I(v) R_L
-
-            ################################################
-            # Q |= (1 << BitIndex)
-            ################################################
-            @PUSH 1
-            @PUSHI BitIndex
-            @CALL SHL16_BY_N     # → mask in TOS
-
-            @PUSHI BitIndex @IF_LT_A 16
-                @POPNULL
-                @PUSHI Q_L @OR @POPI Q_L
-            @ELSE
-                @POPNULL
-                @PUSHI Q_H @OR @POPI Q_H
-            @ENDIF
+        @IF32_UGE
+           # R=R-B
+           @Call32(vv) SUB32U R_L B_L
+           @POP32I(v) R_L
+           # Q |= 1
+           @PUSH32I(v) Q_L
+           @Call32(v) OR32 ONE32
+           @POP32I(v) Q_L
         @ENDIF
-
-    @NextBy BitIndex -1
-
-
+    @Next BitIndex
 :Div32U_Exit
     ########################################################
     # Return:  R then Q
@@ -2121,7 +2009,6 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @PUSHI Q_L
     @PUSHI Q_H
 
-    @RestoreVar 10
     @RestoreVar 09
     @RestoreVar 08
     @RestoreVar 07

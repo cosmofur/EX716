@@ -3924,8 +3924,10 @@ def debugger(passline, context: AssemblerContext):
             PollSetEchoFunc()
         if cmdword == "ttyraw":
             PollSetRawFunc()
-        if cmdline[0:1] == "#":
+        if cmdline[0:4] == "REM ":
             # Allow Comments in debugger commands.
+            cmdline=""
+            cmdword == ""
             continue
         if cmdword == "h":
             help_commands = [
@@ -3951,7 +3953,7 @@ def debugger(passline, context: AssemblerContext):
                 ("ttyreset","Resets terminal that was in raw mode."),
                 ("ttyraw","Changes terminal into raw mode.",),
                 ("w", "watch $1"),
-                ("#", "Debug Comment")
+                ("REM", "Debug Comment")
             ]
             help_commands.sort(key=lambda x: x[0])
             num_columns = 2
