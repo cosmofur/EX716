@@ -75,19 +75,15 @@ G xorshift16
     @LocalVar Scratch32BHW 04   # high word
 
     # --- Multiply Seed32A * Modulus32 (32-bit multiply) ---
-    @PUSH Seed32A
-    @PUSH Modulus32
-    @PUSH Scratch32A
-    @CALL MUL32
+    @Call32(vv) MUL32U Seed32A Modulus32
+    @POP32I(v) Scratch32A
 
     # --- Add offset constant (32-bit add) ---
-    @PUSH Scratch32A
-    @PUSH MOffset32
-    @PUSH Scratch32B
-    @CALL ADD32
+    @Call32(vv) ADD32U Scratch32A MOffset32
+    @POP32I(v) Scratch32B
 
     # --- Copy result back into Seed32A (persistent RNG state) ---
-    @COPY32VV Scratch32B Seed32A
+    @M32V2V Scratch32B Seed32A
 
     # --- Return high 16 bits of Seed32A as random value ---
     @PUSHI Seed32A+2

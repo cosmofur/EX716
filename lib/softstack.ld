@@ -8,6 +8,9 @@ M SOFTSTACK_DONE 1
 # The default is 'only' 240 bytes long for 120 2 byte words, but you can
 # redefine any block of memory to be a new software stack.
 #
+# Unless redefined with the SetSStack function, the stack starts at address 0xfff0 and grows down to 0xff00
+# Which is 240 bytes, 120 words.
+#
 # Main public  Macros are:
 #
 #  PUSHHW        - POP's HW stack and Pushes it to Software stack

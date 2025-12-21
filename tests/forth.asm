@@ -38,6 +38,11 @@ L div.ld
 :IP 0
 :RB_LATEST 0
 :DebugFLAG 0
+:DiskActive 0
+:DiskBuffer 0
+:DiskBlockSize 512
+:DiskCurBlock -1
+:DiskDevice 1
 =HERE DictPtr     # Alias as HERE is more standard.
 =header_size 6
 = SoftHeapSize 1000
@@ -72,11 +77,17 @@ L div.ld
 #     Or Pushes HW(tos) to SP(tos)
 M FPUSH @PUSHI SP @POPS \
         @PUSHI SP @SUB 2 @POPI SP
+# Like FPUSH but source is a variable
+M FPUSHI @PUSHI %1 @POPII SP \
+        @PUSHI SP @SUB 2 @POPI SP
 # FPOP puts on tos value at [SP--2]
 #     Of Pops SP(tos) to HW(tos)
 M FPOP @PUSHI SP @ADD 2 @DUP \
        @POPI SP \
        @PUSHS
+# Like FPOP but destination if a variable
+M FPOPI @PUSHI SP @ADD 2 @DUP \
+       @POPI SP @PUSHS @POPI %1
 # Swaps the two top values of [SP] and [SP-2]
 M FSWP \
        @PUSHI SP @ADD 2 @PUSHS \
@@ -130,6 +141,7 @@ M GET_HERE \
   @PUSHI DictPtr @SUB 2
   
 M FCALL @PUSH J_%0 @BPUSH @JMP %1 :J_%0
+
 M FCALLS @PUSH J_%0 @BPUSH @JMPS :J_%0
 #
 
@@ -179,8 +191,7 @@ M SIZESINCECOMMENT DEFWORD_Start
       @PRTLN "Error: Definition already in progress."
       @JMP ErrorReset
    @ENDIF
-   @PUSHI TIB
-   @CALL GetNextWord
+   @Call(v) GetNextWord TIB
    @IF_ZERO
       @PRTLN "Error: Missing name for definition"
       @JMP ErrorReset
@@ -212,8 +223,7 @@ M SIZESINCECOMMENT DEFWORD_Start
    @IF_EQ_AV 0 STATE
       @JMP ErrorReset
    @ENDIF
-   @PUSH EXIT        # End decleration with call to exit
-   @CALL Compile
+   @Call(A) Compile EXIT        # End decleration with call to exit
    @MA2V 0 STATE     # End Compile Mode
 #   @PRT "Compile Word Ended at Address: " @PRTHEXI DictPtr @PRTNL
 @FNEXT
@@ -502,13 +512,11 @@ M SIZESINCECOMMENT DEFWORD_Start
 :FIXedSpace " \0"
 #
 @DEFWORD "words" WORDS 0
-   @PUSH 1
-   @CALL DumpDictionary
+   @Call(A)  DumpDictionary 1
 @FNEXT
 #
 @DEFWORD "words+" WORDSPLUS 0
-   @PUSH 0
-   @CALL DumpDictionary
+   @Call(A) DumpDictionary 0
 @FNEXT
 #
 @DEFWORD "drop" DROP 0
@@ -662,7 +670,7 @@ M SIZESINCECOMMENT DEFWORD_Start
    @FPOP
    @FPOP
    @SWP
-   @IF_GT_S
+   @IF_GE_S
      @POPNULL @POPNULL
      @PUSH -1
    @ELSE
@@ -777,8 +785,7 @@ M SIZESINCECOMMENT DEFWORD_Start
      @PUSHI DictPtr  @ADD 2
      @LPOP              # Get old IF ADDRESS
      @POPS              #( patch IF's ZBRANCH to skip over ELSE )
-     @PUSH BRANCH         #( emit unconditional jump )
-     @CALL Compile  
+     @Call(A) Compile BRANCH   #( emit unconditional jump )
      @PUSHI DictPtr       #( save new jump placeholder for THEN )
      @LPUSH
      @PUSH ELSETAG
@@ -864,11 +871,12 @@ M SIZESINCECOMMENT DEFWORD_Start
       @POPNULL
       @FPOP    # ForceExit
       @FPOP    # LoopTop
-      @FPOP    # Limit
       @FPOP    # Start
+      @FPOP    # Limit
+      @SWP
       # Now move to LP Stack
-      @LPUSH 
-      @LPUSH 
+      @LPUSH   # Start
+      @LPUSH   # Limit
       @LPUSH
       @LPUSH
       @PUSH DOTAG @LPUSH  # TAG
@@ -885,7 +893,7 @@ M SIZESINCECOMMENT DEFWORD_Start
 @LocalVar ForceExit 02
 @LocalVar TmpVal 03
    #
-   # On Entry SP stack will have (Start, Limit) put in code to add
+   # On Entry SP stack will have (Limit, Start) put in code to add
    # Our goal for the Compile stage is to set up the following:
    #
    # Pass a message to future compile stage 'loop' that this is where we return to
@@ -989,8 +997,7 @@ M SIZESINCECOMMENT DEFWORD_Start
    @LocalVar LoopTop 03
    @LocalVar ForceExit 04
    @LocalVar TagHolder 05
-   @LPOP
-   @POPI TagHolder
+   @LPOP   @POPI TagHolder #  @PRTLN "Pop: TagHolder: " @PRTI TagHolder @PRTSP
 
    # Error if neither DOTAG or QDOTAG are not here.
    @IF_EQ_AV DOTAG TagHolder
@@ -1000,16 +1007,18 @@ M SIZESINCECOMMENT DEFWORD_Start
        @JMP ErrorReset
    @ENDIF
    # Move Values to HW Stack
-   @LPOP  @POPI ForceExit
-   @LPOP  @POPI LoopTop
-   @LPOP  @POPI LimitVar     # Save Limit
-   @LPOP  @POPI StartVar     # Save Start
+   @LPOP  @POPI ForceExit #  @PRT "\nPop: ForceExit: " @PRTI ForceExit @PRTSP
+   @LPOP  @POPI LoopTop   # @PRT "\nPop: LoopTop: " @PRTI LoopTop @PRTSP
+   @LPOP  @POPI LimitVar  # @PRT "\nPop: LimitVar: " @PRTI LimitVar @PRTSP  # Save Limit
+   @LPOP  @POPI StartVar  #  @PRT "\nPop: StartVar: " @PRTI StartVar @PRTSP  # Save Start
 
    @INCI StartVar
-
-   @IF_EQ_VV StartVar LimitVar
+   @PUSHI StartVar
+   @IF_UGE_V LimitVar
+      @POPNULL
       # Loop is finished, just drop to exit.
    @ELSE
+      @POPNULL
       # Now recreate the LS entries for next loop
       @PUSHI StartVar @LPUSH
       @PUSHI LimitVar @LPUSH
@@ -1357,10 +1366,12 @@ M SIZESINCECOMMENT DEFWORD_Start
       @PRTLN "Error: 101 Unknown word"
       @JMP ErrorReset
    @ENDIF
-   # Stack Will be (IP Flag, DictEntry) We don't need flag or DictEntry
-   @SWP @POPNULL                 # Drop Flag
-   @SWP @POPNULL                 # Drop DictEntry
-   @FPUSH
+
+   # Stack: ... DictEntry Flags CodeEntry (CodeEntry = CFA / XT)
+   @POPI TV
+   @POPNULL                 # Drop Flags
+   @POPNULL                 # Drop DictEntry 
+   @FPUSHI TV
 @FNEXT
 #
 # Find is for meta programming
@@ -1753,6 +1764,77 @@ M SIZESINCECOMMENT DEFWORD_Start
 @RestoreVar 02
 @RestoreVar 01
 @FNEXT
+
+#######################
+# Disk IO Words
+# disk-read ( sector#  -- addr)
+# Returns buffer with disk block. This is system level storage, so can and will be overwritten
+# if any additional disk-read's occure. Preserve what you need to befoe doing additional reads.
+@DEFWORD "disk-read" DISKREAD_FUNC 0
+   @LocalVar Block 01
+   @LocalVar ScndSector 02
+   @FPOP
+   @POPI Block
+    @IF_EQ_AV 0 DiskActive     # Global variable >0 if disk has been used already.
+       @DISKSELI DiskDevice
+       @MA2V 1 DiskActive
+       @Call(vA) HeapNewObject MainHeap 1024    # Create a 1K buffer
+       @POPI DiskBuffer                  # Create more than one?
+    @ENDIF
+    @IF_EQ_VV Block DiskCurBlock
+       # Its already the lastest read...perhaps need way to force read.
+    @ELSE
+       @DISKSEEKI Block
+       @DISKREADI DiskBuffer
+       @PUSHI DiskBuffer
+       @ADDI 512
+       @POPI ScndSector
+       @DISKREADI ScndSector
+       @MV2V Block DiskCurBlock
+    @ENDIF
+    @PUSHI DiskBuffer
+    @FPUSH
+    @RestoreVar 02
+    @RestoreVar 01
+ @FNEXT
+
+# disk-write(secotor# address -- )
+ @DEFWORD "disk-write" DISKWRITE_FUNC 0
+   @LocalVar Block 01
+   @LocalVar Address 02
+   
+   @FPOP @POPI Address 
+   @FPOP @POPI Block
+
+   @IF_EQ_AV 0 DiskActive
+       @DISKSELI DiskDevice
+       @MA2V 1 DiskActive
+       @CALL MainHeap 1024
+       @POPI DiskBuffer
+   @ENDIF
+
+   @DISKSEEKI Block
+   @DISKWRITEI Address
+   @PUSHI Address
+   @ADDI 512
+   @POPI Address
+   @DISKWRITEI Address   
+   @MV2V Block DiskCurBlock
+   
+   @RestoreVar 02
+   @RestoreVar 01
+@FNEXT
+
+@DEFWORD "DiskDevice" DISKDEVVAR 0
+   @PUSHI DiskDevice
+   @FPUSH
+@FNEXT
+
+@DEFWORD "set-device" SETDISKDEV 0
+   @FPOP
+   @POPI TV             # or @POPI DiskTemp
+   @MV2V TV DiskDevice
+   @FNEXT
 
 
 # Toggle on/off the Debug report 
@@ -2361,7 +2443,7 @@ M SIZESINCECOMMENT StartMain
           @POPNULL
           @PUSHII WordVal @AND 0xff
           @IF_EQ_A "-\0"
-             @PRTLN "DEBUG: Found -"
+#             @PRTLN "DEBUG: Found -"
              @POPNULL
              @PUSH 0
           @ELSE

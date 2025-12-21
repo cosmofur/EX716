@@ -82,15 +82,14 @@ M IF_NEQ_S \
   @JMPZ _%V_ENDIF
 # IF_EQ_A (A) = True if A == TOS
 M IF_EQ_A \
-  @PUSH %1 \
-  @CMPS @POPNULL \
+  %S \
+  @CMP %1 \
   @JMPZ _%0_True \
-  %S @JMP _%V_ENDIF \
+  @JMP _%V_ENDIF \
   :_%0_True
 M IF_NEQ_A \
-  @PUSH %1 \
   %S \
-  @CMPS @POPNULL \
+  @CMP %1 \
   @JMPZ _%V_ENDIF
 # IF_EQ_V (V) = True if [V] == TOS
 M IF_EQ_V \
@@ -140,193 +139,197 @@ M IF_NEQ_AV \
   %S \
   @CMPS @POPNULL @POPNULL \
   @JMPZ _%V_ENDIF
+# Signed Greater Than and Less Than conditions
+#
 # IF_LT_S (A,B)=True if value at SFT(A) < TOS(B)
 M IF_LT_S \
    %S \
-   @CMPS         \
-   @JMPN _%0_True \
-   @JMP _%V_ENDIF \
- :_%0_True
-
+   @CMPS \
+   @JGE _%V_ENDIF
 # IF_LT_A (A) = True if TOS is < A
 M IF_LT_A \
+   %S \
    @CMP %1 \
-   @JMPN _%0_True \
-    %S @JMP _%V_ENDIF \
-   :_%0_True
+   @JGE _%V_ENDIF
 #
 M IF_LT_V \
+   %S \
    @CMPI %1 \
-   @JMPN _%0_True \
-   %S @JMP _%V_ENDIF \
-   :_%0_True
+   @JGE _%V_ENDIF
 #
 # IF_LE_S (A,B)=True if SFT(A) <= TOS(B)
 M IF_LE_S \
   %S \
   @CMPS \
-  @JMPZ _%0_True \
-  @JMPN _%0_True \
-  @JMP _%V_ENDIF \
-  :_%0_True
+  @JGT _%V_ENDIF
 # IF_LE_A (A) = True if TOS is <=A
 M IF_LE_A \
   %S \
   @CMP %1 \
-  @JMPZ _%0_True \
-  @JMPN _%0_True \
-  @JMP _%V_ENDIF \
-  :_%0_True
+  @JGT _%V_ENDIF
 # IF_LE_V V = True if TOS is <=V
 M IF_LE_V \
+  %S \
   @CMPI %1 \
-  @JMPZ _%0_True \
-  @JMPN _%0_True \
-  %S @JMP _%V_ENDIF \
-  :_%0_True
+  @JGT _%V_ENDIF
 # IF_GE_S will A(SFT) >= B(TOS)
 M IF_GE_S \
    %S \
    @CMPS \
-   @JMPZ _%0_True \
-   @JMPN _%V_ENDIF \
-   :_%0_True
+   @JLT _%V_ENDIF
 # True if TOS >= A
 M IF_GE_A \
    %S \
    @CMP %1 \
-   @JMPZ _%0_True \
-   @JMPN _%V_ENDIF \
-   :_%0_True
+   @JLT _%V_ENDIF
 # True if TOS >= V
 M IF_GE_V \
    %S \
    @CMPI %1 \
-   @JMPZ _%0_True \
-   @JMPN _%V_ENDIF \
-   :_%0_True
+   @JLT _%V_ENDIF
 # True if TOS > A
 M IF_GT_S \
   %S \
   @CMPS \
-  @JMPN _%V_ENDIF \
-  @JMPZ _%V_ENDIF \
- :_%0_True
+  @JLE _%V_ENDIF
 # True if TOP > A
 M IF_GT_A \
   %S \
   @CMP %1 \
-  @JMPN _%V_ENDIF \
-  @JMPZ _%V_ENDIF \
-  @JMP _%0_True \
-  :_%0_True
+  @JLE _%V_ENDIF
 # True if TOS > V
 M IF_GT_V \
   %S \
   @CMPI %1 \
-  @JMPN _%V_ENDIF \
-  @JMPZ _%V_ENDIF \
-  @JMP _%0_True \
-  :_%0_True
+  @JLE _%V_ENDIF
+#
+# Signed Range Conditonals
+
 M IF_INRANGE_AB \
   %S \
   @PUSH %1 @CMPS @POPNULL \
-  @JMPN _%V_ENDIF \
+  @JLT _%V_ENDIF \
   @PUSH %2 @CMPS @POPNULL \
   @JGT _%V_ENDIF \
   :_%0_True
 M IF_INRANGE_AV \
   %S \
-  @PUSH %1 @CMPS @POPNULL \
-  @JMPN _%V_ENDIF \
-  @PUSHI %2 @CMPS @POPNULL \
+  @CMP %1 \
+  @JLT _%V_ENDIF \
+  @CMPI %2 \
   @JGT _%V_ENDIF \
   :_%0_True
 M IF_INRANGE_VA \
   %S \
-  @PUSHI %1 @CMPS @POPNULL \
-  @JMPN _%V_ENDIF \
-  @PUSH %2 @CMPS @POPNULL \
+  @CMPI %1 \
+  @JLT _%V_ENDIF \
+  @CMP %2 \
   @JGT _%V_ENDIF \
   :_%0_True
 M IF_INRANGE_VV \
   %S \
-  @PUSHI %1 @CMPS @POPNULL \
-  @JMPN _%V_ENDIF \
-  @PUSHI %2 @CMPS @POPNULL \
+  @CMPI %1 \
+  @JLT _%V_ENDIF \
+  @CMPI %2  \
   @JGT _%V_ENDIF \
   :_%0_True
 #
+# Unsigned Range Conditionals
+M IF_UINRANGE_AB \
+  %S \
+  @PUSH %1 @CMPS @POPNULL \
+  @JULT _%V_ENDIF \
+  @PUSH %2 @CMPS @POPNULL \
+  @JUGT _%V_ENDIF \
+  :_%0_True
+M IF_UINRANGE_AV \
+  %S \
+  @CMP %1 \
+  @JULT _%V_ENDIF \
+  @CMPI %2 \
+  @JUGT _%V_ENDIF \
+  :_%0_True
+M IF_UINRANGE_VA \
+  %S \
+  @CMPI %1 \
+  @JULT _%V_ENDIF \
+  @CMP %2 \
+  @JUGT _%V_ENDIF \
+  :_%0_True
+M IF_UINRANGE_VV \
+  %S \
+  @CMPI %1 \
+  @JULT _%V_ENDIF \
+  @CMPI %2  \
+  @JUGT _%V_ENDIF \
+  :_%0_True
+
+
+#
 # Unsigned Logic follows here
 #
-M IF_UGT_V \
-   @CMPI %1 \
+# IF_ULT_S (A,B)=True if value at SFT(A) < TOS(B)
+M IF_ULT_S \
    %S \
-   @JMPC _%V_ENDIF \
-   @JMPZ _%V_ENDIF
-M IF_UGE_V \
-   @CMPI %1 \
-   %S \   
-   @JMPC _%V_ENDIF
-M IF_UGT_A \
+   @CMPS         \
+   @JUGE _%V_ENDIF
+# IF_ULT_A (A) = True if TOS is < A
+M IF_ULT_A \
+   %S \
    @CMP %1 \
-   %S \
-   @JMPC _%V_ENDIF \
-   @JMPZ _%V_ENDIF
-M IF_UGE_A \
-   @CMP %1 \
-   %S \   
-   @JMPC _%V_ENDIF
-#   @SWP @CMPS @SWP \
-   
-M IF_UGT_S \
-   %S \
-   @CMPS \
-   @JMPC _%V_ENDIF \
-   @JMPZ _%V_ENDIF
-M IF_UGE_S \
-   @CMPS \
-   %S \
-   @JMPC _%V_ENDIF
-M IF_ULE_V \
-   @CMPI %1 \
-   %S \
-   @JMPC _%0_True \
-   @JMPZ _%0_True \
-   @JMP _%V_ENDIF \
-   :_%0_True
+   @JUGE _%V_ENDIF
+#
 M IF_ULT_V \
     %S \
-    @CMPI %1 \
-    @JMPC _%0_True \
-    @JMP _%V_ENDIF \
-    :_%0_True
+   @CMPI %1 \
+   @JUGE _%V_ENDIF
+#
+# IF_ULE_S (A,B)=True if SFT(A) <= TOS(B)
+M IF_ULE_S \
+  %S \
+  @CMPS \
+  @JUGT _%V_ENDIF
+# IF_ULE_A (A) = True if TOS is <=A
 M IF_ULE_A \
+  %S \
+  @CMP %1 \
+  @JUGT _%V_ENDIF
+# IF_ULE_V V = True if TOS is <=V
+M IF_ULE_V \
+  %S \
+  @CMPI %1 \
+  @JUGT _%V_ENDIF
+# IF_UGE_S will A(SFT) >= B(TOS)
+M IF_UGE_S \
+   %S \
+   @CMPS \
+   @JLT _%V_ENDIF
+# True if TOS >= A
+M IF_UGE_A \
    %S \
    @CMP %1 \
-   @JMPC _%0_True \
-   @JMPZ _%0_True \
-   @JMP _%V_ENDIF \
-   :_%0_True
-M IF_ULT_A \
-    %S \
-    @CMP %1 \
-    @JMPC _%0_True \
-    @JMP _%V_ENDIF \
-    :_%0_True
-M IF_ULE_S \
+   @JULT _%V_ENDIF
+# True if TOS >= V
+M IF_UGE_V \
    %S \
-   @CMPS  \
-   @JMPC _%0_True \
-   @JMPZ _%0_True \
-   @JMP _%V_ENDIF \
-   :_%0_True
-M IF_ULT_S \
-    %S \
-    @CMPS \
-    @JMPC _%0_True \
-    @JMP _%V_ENDIF \
-    :_%0_True
+   @CMPI %1 \
+   @JULT _%V_ENDIF
+# True if TOS > A
+M IF_UGT_S \
+  %S \
+  @CMPS \
+  @JULE _%V_ENDIF
+# True if TOP > A
+M IF_UGT_A \
+  %S \
+  @CMP %1 \
+  @JULE _%V_ENDIF
+# True if TOS > V
+M IF_UGT_V \
+  %S \
+  @CMPI %1 \
+  @JULE _%V_ENDIF
+##########################################################
 # Here are a few of the IF structures based only on the existing flags
 # This way you can use the FLAG based CMP and still use the ease of the IF/ELSE/BLOCKs
 M IF_NEG \
@@ -354,16 +357,17 @@ M IF_OVERFLOW \
 #
 M IF_NOTOVER \
   %S \
-  @JMPN _%V_ENDIF
-#
+  @JMPO _%V_ENDIF
+# Jum if Carry set
 M IF_CARRY \
   @JMPC _%0_True \
   %S @JMP _%V_ENDIF \
   :_%0_True
 #
 M IF_NOTCARRY \
+  @JMPC _%0_ENDIF \
   %S \
-  @JMPC _%V_ENDIF
+  :_%0_True
 
 
  
@@ -469,63 +473,57 @@ M WHILE_GT_A \
   %S \
   :_%V_LoopTop \
   @CMP %1 \
-  @JMPN _%V_ExitLoop \
+  @JLE _%V_ExitLoop \
   :_%0_True
 
 M WHILE_GT_V \
   %S \
   :_%V_LoopTop \
   @CMPI %1 \
-  @JMPN _%V_ExitLoop \
-  @JMPZ _%V_ExitLoop \
+  @JLE _%V_ExitLoop \
   :_%0_True
 
 M WHILE_LT_A \
   %S \
   :_%V_LoopTop \
   @CMP %1 \
-  @JMPN _%0_True \
-  @JMP _%V_ExitLoop \
+  @JGE _%V_ExitLoop \
   :_%0_True
 
 M WHILE_LT_V \
   %S \
   :_%V_LoopTop \
   @CMPI %1 \
-  @JMPN _%0_True \
-  @JMP _%V_ExitLoop \
+  @JGE _%V_ExitLoop \
   :_%0_True
+
 
 M WHILE_UGT_A \
   %S \
   :_%V_LoopTop \
   @CMP %1 \
-  @JMPC _%V_ExitLoop \
-  @JMPZ _%V_ExitLoop \  
+  @JULE _%V_ExitLoop \
   :_%0_True
 
 M WHILE_UGT_V \
   %S \
   :_%V_LoopTop \
   @CMPI %1 \
-  @JMPC _%V_ExitLoop \
-  @JMPZ _%V_ExitLoop \  
+  @JULE _%V_ExitLoop \
   :_%0_True
 
 M WHILE_ULT_A \
   %S \
   :_%V_LoopTop \
   @CMP %1 \
-  @JMPC _%0_True \
-  @JMP _%V_ExitLoop \
+  @JUGE _%V_ExitLoop \
   :_%0_True
   
 M WHILE_ULT_V \
   %S \
   :_%V_LoopTop \
   @CMPI %1 \
-  @JMPC _%0_True \
-  @JMP _%V_ExitLoop \
+  @JUGE _%V_ExitLoop \
   :_%0_True
 #
 # When Do Loop are very much like While Loops but have a fixed place for a multi
@@ -627,17 +625,79 @@ M CASE \
 # Takes two constant params (low value then high value, can't be swaped)
 # So some of the complexity is to make sure we can use IF_GE for both the low and high
 # range tests in the CASE. Other wise we could miss the edge cases.
-M CASE_RANGE \
+M CASE_RANGE_AA \
   %S \
   @CMP %1 \
-  @JMPN _%V_NextCase \
+  @JLT _%V_NextCase \
   @CMP %2 \
   @JGT _%V_NextCase \
   @JMP _%V_InRange \
   :_%V_InRange
+M CASE_RANGE @CASE_RANGE_AA %1 %2
+M CASE_RANGE_AV \
+  %S \
+  @CMP %1 \
+  @JLT _%V_NextCase \
+  @CMPI %2 \
+  @JGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+M CASE_RANGE_VA \
+  %S \
+  @CMPI %1 \
+  @JLT _%V_NextCase \
+  @CMP %2 \
+  @JGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+M CASE_RANGE_VV \
+  %S \
+  @CMPI %1 \
+  @JLT _%V_NextCase \
+  @CMPI %2 \
+  @JGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+
+
+# range tests in the Unsigned CASE. Other wise we could miss the edge cases.
+M CASE_URANGE_AA \
+  %S \
+  @CMP %1 \
+  @JULT _%V_NextCase \
+  @CMP %2 \
+  @JUGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+M CASE_URANGE @CASE_URANGE_AA %1 %2
+M CASE_URANGE_AV \
+  %S \
+  @CMP %1 \
+  @JULT _%V_NextCase \
+  @CMPI %2 \
+  @JUGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+M CASE_URANGE_VA \
+  %S \
+  @CMPI %1 \
+  @JULT _%V_NextCase \
+  @CMP %2 \
+  @JUGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+M CASE_URANGE_VV \
+  %S \
+  @CMPI %1 \
+  @JULT _%V_NextCase \
+  @CMPI %2 \
+  @JUGT _%V_NextCase \
+  @JMP _%V_InRange \
+  :_%V_InRange
+
 
 # Compares TOS with value at [%1] 
-M CASE_I \
+M CASE_V \
    %S \
   @CMPI %1 \
   @JMPNZ _%V_NextCase
@@ -695,6 +755,7 @@ M ENDCASE \
 #
 # 
 # The For Loops come in the following types
+#
 #  ForIA2B Index    : 3 Args For from constant A to Constant B
 #  ForIA2V Index    : 3 Args For from constant A to Variable
 #  ForIV2A Index    : 3 Args For from Variable to Constant A
@@ -705,6 +766,7 @@ M ENDCASE \
 #  NextByI Index V  : 2 Args Index name and variable for increment
 #                       Just make sure that Index will eventually equal the stop value.
 #             For cases when your lookint to stop loop when index is >= stop value.
+# All For Termination tests are Unsigned, so not sutitble if range includes negative numbers.
 #  ForIupA2B Index  : 3 Args For from constant A until >= Constant B
 #  ForIupA2V Index  : 3 Args For from constant A until >= Variable B
 #  ForIupA2V Index  : 3 Args For from Varable A until >= Constant B
@@ -735,7 +797,7 @@ M ForIupA2B \
   :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd \
+  @JMPNC _%V_NextEnd \
   @JMPZ _%V_NextEnd
 
 M ForIdownA2B \
@@ -765,7 +827,7 @@ M ForIupA2V \
   :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd \
+  @JMPNC _%V_NextEnd \
   @JMPZ _%V_NextEnd
 
 M ForIdownA2V \
@@ -800,7 +862,7 @@ M ForIupA2S \
   :_%V_ForTop \
   @PUSHI _%V_EndVal \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd \
+  @JMPNC _%V_NextEnd \
   @JMPZ _%V_NextEnd
 
 M ForIdownA2S \
@@ -833,7 +895,7 @@ M ForIupV2A \
   :_%V_ForTop \
   @PUSH %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd \
+  @JMPNC _%V_NextEnd \
   @JMPZ _%V_NextEnd
 
 M ForIdownV2A \
@@ -861,7 +923,7 @@ M ForIupV2V \
   :_%V_ForTop \
   @PUSHI %3 \
   @CMPI %1 @POPNULL \
-  @JMPC _%V_NextEnd \
+  @JMPNC _%V_NextEnd \
   @JMPZ _%V_NextEnd
 
 
