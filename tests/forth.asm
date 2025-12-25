@@ -36,6 +36,7 @@ L div.ld
 :LP0 0
 :LP 0
 :IP 0
+:DColBaseRP 0
 :RB_LATEST 0
 :DebugFLAG 0
 :DiskActive 0
@@ -198,6 +199,9 @@ M SIZESINCECOMMENT DEFWORD_Start
    @ELSE
       # Move TIB down input string, but also preserve current stack.
       @DUP @POPI TIB
+      @IF_EQ_AV 1 DebugFLAG
+          @PRT "Parse: " @PRTSTR TIB @PRTNL
+      @ENDIF
       @CALL CreateHeader   # Builds dictionary Entry
       @MA2V 1 STATE
    @ENDIF
@@ -223,16 +227,31 @@ M SIZESINCECOMMENT DEFWORD_Start
    @IF_EQ_AV 0 STATE
       @JMP ErrorReset
    @ENDIF
-   @Call(A) Compile EXIT        # End decleration with call to exit
+   @IF_EQ_AV 1 DebugFLAG
+       @PRTLN "End of New Word."
+   @ENDIF
+   @Call(A) Compile DCOL_END        # End decleration with call to exit
    @MA2V 0 STATE     # End Compile Mode
-#   @PRT "Compile Word Ended at Address: " @PRTHEXI DictPtr @PRTNL
 @FNEXT
-#
+
+
 # LITERAL used for saving in code list immediate data
 @DEFWORD "literal" LITERAL 0
    @INC2I IP
    @PUSHII IP
+   @IF_EQ_AV 1 DebugFLAG
+          @PRT "PUSH " @PRTII IP @PRT " To SP Stack\n"
+   @ENDIF
    @FPUSH
+@FNEXT
+
+
+@DEFWORD "EXIT" DCOL_END F_COMPILEONLY
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT "Exit Block:\n"
+   @ENDIF
+   @MV2V DColBaseRP RP     # Restore RP to DCol entry point
+   @BPOP                   # Pop RA_loader
 @FNEXT
 
 
@@ -240,7 +259,13 @@ M SIZESINCECOMMENT DEFWORD_Start
 # ! ( x addr -- )    Store x at addr
 @DEFWORD "!" STORE 0
    @FPOP
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT "Store: " @PRTTOP
+   @ENDIF   
    @FPOP
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT " At address: " @PRTHEXTOP @PRTNL
+   @ENDIF      
    @SWP
    @POPS
 @FNEXT
@@ -253,7 +278,13 @@ M SIZESINCECOMMENT DEFWORD_Start
    @PUSHII TargetAddress @AND 0xff00 # Save High Byte
    @FPOP @AND 0xff                   # New Low Byte
    @ORS                              # OR them old and new together
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT "Store Byte: " @PRTTOP
+   @ENDIF      
    @POPII TargetAddress
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT " At:" @PRTHEXI TargetAddress @PRTNL
+   @ENDIF      
 @RestoreVar 01
 @FNEXT
 #
@@ -444,7 +475,7 @@ M SIZESINCECOMMENT DEFWORD_Start
 @FNEXT
 #
 # exit ( r: addr -0 )   Resume executing at address at top of return stack
-@DEFWORD "exit" EXIT 0
+@DEFWORD "QUIT" EXIT 0
    @BPOP
    @FPUSH
 @FNEXT
@@ -744,12 +775,21 @@ M SIZESINCECOMMENT DEFWORD_Start
 
 @DEFWORD "0branch" ZBRANCH 0
    @FPOP                   # Pop TOS as condition
-   @IF_ZERO
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT "ZBranch :"
+   @ENDIF         
+   @IF_ZERO   
       @POPNULL             # TOS is zero.
       @INC2I IP
       @PUSHII IP           # Get address of THEN/ELSE
       @POPI IP             # JMP there.
+      @IF_EQ_AV 1 DebugFLAG
+          @PRT " is 0: Skipping to: " @PRTHEXI IP @PRTNL
+      @ENDIF
    @ELSE
+      @IF_EQ_AV 1 DebugFLAG
+          @PRT " is !0: Continue\n"
+      @ENDIF
       @POPNULL            # Non Zero on TOS
       @INC2I IP           # Skip past the THEN ELSE jmp and continue.
    @ENDIF
@@ -760,6 +800,9 @@ M SIZESINCECOMMENT DEFWORD_Start
    @INC2I IP
    @PUSHII IP
    @POPI IP
+   @IF_EQ_AV 1 DebugFLAG
+      @PRT "Branch to:" @PRTHEXI IP @PRTNL
+   @ENDIF   
 @FNEXT
 
 
@@ -872,7 +915,13 @@ M SIZESINCECOMMENT DEFWORD_Start
       @FPOP    # ForceExit
       @FPOP    # LoopTop
       @FPOP    # Start
+      @IF_EQ_AV 1 DebugFLAG
+         @PRT "Setup Do Loop, Start: " @PRTTOP
+      @ENDIF      
       @FPOP    # Limit
+      @IF_EQ_AV 1 DebugFLAG
+         @PRT " limit: " @PRTTOP @PRTNL
+      @ENDIF            
       @SWP
       # Now move to LP Stack
       @LPUSH   # Start
@@ -999,6 +1048,10 @@ M SIZESINCECOMMENT DEFWORD_Start
    @LocalVar TagHolder 05
    @LPOP   @POPI TagHolder #  @PRTLN "Pop: TagHolder: " @PRTI TagHolder @PRTSP
 
+   @IF_EQ_AV 1 DebugFLAG
+         @PRT "Loop: "
+   @ENDIF      
+
    # Error if neither DOTAG or QDOTAG are not here.
    @IF_EQ_AV DOTAG TagHolder
        # OK so drop through
@@ -1014,11 +1067,20 @@ M SIZESINCECOMMENT DEFWORD_Start
 
    @INCI StartVar
    @PUSHI StartVar
+   @IF_EQ_AV 1 DebugFLAG
+         @PRT " Counter: " @PRTI StartVar @PRT " Limit: " @PRTI LimitVar
+   @ENDIF         
    @IF_UGE_V LimitVar
       @POPNULL
+      @IF_EQ_AV 1 DebugFLAG
+         @PRT " Loop Terminates: "
+      @ENDIF            
       # Loop is finished, just drop to exit.
    @ELSE
       @POPNULL
+      @IF_EQ_AV 1 DebugFLAG
+         @PRT " Loop Continues "
+      @ENDIF                  
       # Now recreate the LS entries for next loop
       @PUSHI StartVar @LPUSH
       @PUSHI LimitVar @LPUSH
@@ -1028,6 +1090,7 @@ M SIZESINCECOMMENT DEFWORD_Start
       @MV2V LoopTop IP          # Do the Jmp back to StartAddress
    @ENDIF
    :EndLoopBlock
+   @PRTNL   
    @RestoreVar 05
    @RestoreVar 04
    @RestoreVar 03
@@ -1042,6 +1105,9 @@ M SIZESINCECOMMENT DEFWORD_Start
       @PRT "Error, attempt leave do loop before loop was fully formed."
       @JMP ErrorReset
    @ENDIF
+   @IF_EQ_AV 1 DebugFLAG
+     @PRT " Leave Loop:\n"
+   @ENDIF                     
    @LPOP @POPNULL
    @LPOP @POPNULL
    @LPOP @POPNULL
@@ -1052,23 +1118,40 @@ M SIZESINCECOMMENT DEFWORD_Start
 
 # UNLOOP drops the top two Return Stack values to clean up after a Leave
 @DEFWORD "unloop" UNLOOPFUNC 0
-   @BPOP @POPNULL
-   @BPOP @POPNULL
+   @IF_EQ_AV 1 DebugFLAG
+     @PRT "Cleanup Loop:\n"
+   @ENDIF
+ #  @BPOP @POPNULL
+#   @BPOP @POPNULL
+   @LPOP @POPNULL
+   @LPOP @POPNULL
+   @LPOP @POPNULL
+   @LPOP @POPNULL
+   @LPOP @POPNULL
 @FNEXT
    
 #
 @DEFWORD "i" I_WORD 0
    @PUSHI LP @ADD 10 @PUSHS
+   @IF_EQ_AV 1 DebugFLAG
+     @PRT "i=" @PRTTOP @PRTNL
+   @ENDIF
    @FPUSH
 @FNEXT
 #
 @DEFWORD "j" J_WORD 0
    @PUSHI LP @ADD 20 @PUSHS
+   @IF_EQ_AV 1 DebugFLAG
+     @PRT "j=" @PRTTOP @PRTNL
+   @ENDIF   
    @FPUSH
 @FNEXT
 #
 @DEFWORD "k" K_WORD 0
    @PUSHI LP @ADD 30 @PUSHS
+   @IF_EQ_AV 1 DebugFLAG
+     @PRT "k=" @PRTTOP @PRTNL
+   @ENDIF   
    @FPUSH
 @FNEXT
 #
@@ -1103,13 +1186,18 @@ M SIZESINCECOMMENT DEFWORD_Start
 #
 #
 @DEFWORD ">r" TOR_WORD 0
-   @FPOP
-   @BPUSH
+   @FPOP          # Value from F onto stack
+   @BPOP          
+   @POPI TV       # Preserver old B Stack TOS as TV
+   @BPUSH         # Push the F value onto B stack
+   @PUSHI TV
+   @BPUSH         # Restore old B TOS back to B stack
 @FNEXT
+
 #
 #
 @DEFWORD "r>" RFROM_WORD 0
-   @BPOP
+   @BPEEK      # Get RP but don't pop it, we still need it for return.
    @FPUSH
 @FNEXT
 #
@@ -1117,7 +1205,7 @@ M SIZESINCECOMMENT DEFWORD_Start
 @DEFWORD "r@" RFETCH_WORD 0
    @BPEEK
    @FPUSH
-@RET
+@FNEXT
 ##############################
 @DEFWORD "printstring" PRINTSTRING 0
    @LocalVar Length 01
@@ -1366,7 +1454,9 @@ M SIZESINCECOMMENT DEFWORD_Start
       @PRTLN "Error: 101 Unknown word"
       @JMP ErrorReset
    @ENDIF
-
+   @IF_EQ_AV 1 DebugFLAG
+     @PRT "tick: " @PRTHEXTOP @PRTNL
+   @ENDIF
    # Stack: ... DictEntry Flags CodeEntry (CodeEntry = CFA / XT)
    @POPI TV
    @POPNULL                 # Drop Flags
@@ -1864,25 +1954,28 @@ M SIZESINCECOMMENT DEFWORD_End
 :DCol
 @LocalVar MyIP 01
 #
+#@PRT "Entry to DCol" @CALL DebugStacks
+
 @PUSHII IP
 @IF_EQ_AV 1 DebugFLAG
-   @PUSHI IP @PUSH 32
-   @PRT "Hexdump: " @PRTHEXI IP @PRTNL
-   @CALL HexDump
-   @PRTLN "Addr  OPCODE  Label"
+  @PRT "DCol: " @PRTHEXTOP @PRTNL
 @ENDIF
-@WHILE_NEQ_A EXIT
-   @IF_EQ_AV 1 DebugFLAG
-      @PRTHEXI IP @PRTSP @DUP @PRTHEXTOP @PRTSP @POPNULL
-      @DUP @CALL DumpWord @PRTNL
-   @ENDIF
+@WHILE_NEQ_A DCOL_END
+#   @PRT "DCol evals"   @CALL DebugStacks
    @IF_GT_V COMPILEBUFFER
       # It a call to another DCOL, Preserve IP as it will have unique one for that call.
+      @IF_EQ_AV 1 DebugFLAG      
+         @PRT "UserDefined Word: "
+         @PUSHI IP @CALL DumpWord
+      @ENDIF
       @MV2V IP MyIP      
       @CALL execute
       @MV2V MyIP IP
    @ELSE
-
+      @IF_EQ_AV 1 DebugFLAG      
+         @PRT "Built In Word: "
+         @DUP @CALL DumpWord
+      @ENDIF   
       @CALL execute
    @ENDIF   
    @INC2I IP
@@ -1890,6 +1983,7 @@ M SIZESINCECOMMENT DEFWORD_End
 @ENDWHILE
 @POPNULL
 @RestoreVar 01
+#@PRT "On Exit of DCol:"  @CALL DebugStacks
 @JMP next
 
 
@@ -2417,7 +2511,7 @@ M SIZESINCECOMMENT StartMain
    @POPI ActiveLine
    @MV2V ActiveLine TIB
    @MV2V ActiveLine ActiveBuffer
-   
+
    @PUSH 0
    @WHILE_ZERO
        @POPNULL
@@ -2432,18 +2526,15 @@ M SIZESINCECOMMENT StartMain
        @ENDIF
        # We get here only if TOS has valid token info.
        # (Tolkien, new TIB)
-#       @PRTNL @PRTSI TIB @PRTNL @PUSHI TIB @PUSH 32 @CALL HexDump @PRTLN "----------------------" 
        @POPI TIB
        @PUSHI TIB @SUBI ActiveBuffer @POPI TOIN   # Where in input buffer we're currently
        @DUP @POPI WordVal
-#       @PRT "Searching: " @PRTSI WordVal @PRTNL
        @CALL SearchDictionary   # [ 0 | DictEntry LenFlag CodeEntry ]
        @IF_EQ_A 0
           # Fallback to try parsing as number
           @POPNULL
           @PUSHII WordVal @AND 0xff
           @IF_EQ_A "-\0"
-#             @PRTLN "DEBUG: Found -"
              @POPNULL
              @PUSH 0
           @ELSE
@@ -2503,10 +2594,10 @@ M SIZESINCECOMMENT StartMain
                 @JMP ErrorReset
              @ENDIF
              @POPNULL
-          @ENDIF
+          @ENDIF          
           @PUSHI IP
           @CALL execute
-          @PUSH 0               # Successful execute, continue while loop
+#          @PUSH 0               # Successful execute, continue while loop
           @JMP InterContinue
        @ELSE
           # Compile Mode
@@ -2565,6 +2656,7 @@ Word_AGAIN_COMPILE
   @PRT "Reading in Preload:\n"
   @PUSH PreLoadBuffer
   @CALL Loader
+  @MA2V 0 STATE
   @POPRETURN
   @RET
 
@@ -2661,23 +2753,15 @@ Word_AGAIN_COMPILE
 # Either the TOS is the address where Builtin's machine code starts.
 # OR its pointing to DCol and it needs the address where the Code-List starts.
 :execute
-   @BPUSH        # Save Reuturn the RP Stack
+   @BPUSH        # Save Reuturn the RP Stack      
    # Whats on TOS should be address of Word code.
    @IF_GE_V COMPILEBUFFER
       @POPI IP
       @PUSHII IP
-   #@ELSE
-   #   @PRT "Built in Word: " @PRTHEXTOP @PRTNL
    @ENDIF
    @IF_EQ_A DCol
-       @IF_EQ_AV 1 DebugFLAG
-          @PRT "Starting new DCol loop at: " @PRTHEXI IP @PRTNL
-       @ENDIF
+       @MV2V RP DColBaseRP
        @INC2I IP
-   @ENDIF
-   @IF_EQ_AV 1 DebugFLAG
-      @PRTHEXI IP @PRT ": Executing: " @PRTHEXTOP
-      @PRTSP @DUP @CALL PrintWV
    @ENDIF
 @JMPS
 
@@ -2708,56 +2792,110 @@ Word_AGAIN_COMPILE
 # Function DebugStacks
 :DebugStacks
 @PUSHRETURN
-@LocalVar Index1 01
-@LocalVar Limit 02
-@LocalVar Base 03
-@LocalVar Top 04
-  @PRT "-- SP Stack --\n"
+@LocalVar IndexSP 01
+@LocalVar BaseSP 02
+@LocalVar TopSP 03
+@LocalVar IndexRP 04
+@LocalVar BaseRP 05
+@LocalVar TopRP 06
+@LocalVar IndexLP 07
+@LocalVar BaseLP 08
+@LocalVar TopLP 09
+@LocalVar AllDone 10
+@LocalVar Base 11
 
-  @MV2V SP0 Base
-  @PUSHI SP0 @ADD SP0Size @SUB 2 @POPI Top
+# First test for Stack Over Flows
 
+   # SP
+   @MV2V SP0 Base
+   @PUSHI SP0 @ADD SP0Size @SUB 2 @POPI TopSP
    @PUSHI SP
-   @IF_GT_V Top
+   @IF_GT_V TopSP
       @PRTLN "SP Stack OverFlow:"
-      @PRT "SP: " @PRTHEXI SP
-      @PRT "\nTop: " @PRTHEXI Top
       @PRTNL
-   @ELSE
-      @IF_LT_V Base
-         @PRTLN "SP Stack Underflow:"
-      @ELSE
-         @ForIV2V Index1 SP Top
-            @PRT "SP["
-            @PUSHI Index1 @ADD 2 @PUSHS
-            @PRTHEXTOP
-            @PRT "]\n"
-            @POPNULL
-         @NextBy Index1 2
-      @ENDIF
    @ENDIF
-   @POPNULL
-   @PRT "-- RP Stack --\n"
+   @IF_LT_V Base
+      @PRTLN "SP Stack UnderFlow:"
+      @PRTNL
+   @ENDIF
+   # RP
    @MV2V RP0 Base
-   @PUSHI RP0 @ADD RP0Size @SUB 2 @POPI Top
-   @PRT "Range: " @PRTHEXI RP @PRT " - " @PRTHEXI Top @PRTNL
+   @PUSHI RP0 @ADD RP0Size @SUB 2 @POPI TopRP
    @PUSHI RP
-   @IF_GT_V Top
+   @IF_GT_V TopRP
       @PRTLN "RP Stack OverFlow:"
-   @ELSE
-      @IF_LT_V Base
-         @PRTLN "RP Stack Underflow:"
-      @ELSE
-         @ForIV2V Index1 RP Top
-            @PRT "RP["
-            @PUSHI Index1 @ADD 2 @PUSHS
-            @PRTHEXTOP
-            @PRT "]\n"
-            @POPNULL
-         @NextBy Index1 2
-      @ENDIF
+      @PRTNL
    @ENDIF
-   @POPNULL
+   @IF_LT_V Base
+      @PRTLN "RP Stack UnderFlow:"
+      @PRTNL
+   @ENDIF
+   # LP
+   @MV2V LP0 Base
+   @PUSHI LP0 @ADD LP0Size @SUB 2 @POPI TopLP
+   @PUSHI LP
+   @IF_GT_V TopLP
+      @PRTLN "LP Stack OverFlow:"
+      @PRTNL
+   @ENDIF
+   @IF_LT_V Base
+      @PRTLN "LP Stack UnderFlow:"
+      @PRTNL
+   @ENDIF
+   
+   @MV2V SP IndexSP
+   @MV2V RP IndexRP
+   @MV2V LP IndexLP
+   @MA2V 0 AllDone
+
+   @PRTLN " SP \t RP \t LP \n"
+
+   @WHILE_NEQ_AV 7 AllDone
+
+      # SP Colum
+      @PUSHI IndexSP
+      @IF_LT_V TopSP
+         @ADD 2 @PUSHS @PRTHEXTOP
+         @INC2I IndexSP      
+      @ELSE
+         @PRT "    "
+         @PUSHI AllDone @OR 1 @POPI AllDone
+      @ENDIF
+      @POPNULL
+      @PRT "\t"
+
+      # RP colum
+      @PUSHI IndexRP
+      @IF_LT_V TopRP
+         @ADD 2 @PUSHS @PRTHEXTOP
+         @INC2I IndexRP      
+      @ELSE
+         @PRT "    "
+         @PUSHI AllDone @OR 2 @POPI AllDone      
+      @ENDIF
+      @POPNULL
+      @PRT "\t"
+
+      # LP Column
+      @PUSHI IndexLP
+      @IF_LT_V TopLP
+         @ADD 2 @PUSHS @PRTHEXTOP
+         @INC2I IndexLP      
+      @ELSE
+         @PRT "    "
+         @PUSHI AllDone @OR 4 @POPI AllDone      
+      @ENDIF
+      @POPNULL
+      @PRTNL
+  @ENDWHILE
+
+@RestoreVar 11
+@RestoreVar 10
+@RestoreVar 09
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
 @RestoreVar 04
 @RestoreVar 03
 @RestoreVar 02
@@ -3185,7 +3323,6 @@ Word_AGAIN_COMPILE
          @PUSHI TMPIP @ADD 50 @POPI Upper
       @ENDIF
       @POPNULL
- #     @PUSHI Current @ADD 2 @PUSHS @AND LENMASK @ADDI Current @ADD 3 @POPI TMPIP
       @PUSHI TMPIP
       @WHILE_LT_V Upper
          @POPNULL
@@ -3289,7 +3426,8 @@ Word_AGAIN_COMPILE
 #   ' char ) parse '
 #   ' type'
 #   ' ; '
-' : .( immediate [char] ) parse type ;'
+#' : .( immediate [char] ) parse type ;'
+#' : clear depth 0 ?DO drop loop ;'
 0
 @PreCodeVal
 0
