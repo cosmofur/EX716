@@ -1,0 +1,150 @@
+: clear ;
+
+# t1
+
+debug
+.s
+1 2 3
+.s
+
+#
+# expect 1 2 3
+#
+
+# t2
+
+.s
+42 dup
+.s
+drop
+.s
+
+#
+# 42 42
+#
+
+
+# t3
+.s
+1 2
+swap
+.s
+over
+.s
+
+#
+# expect 1 2
+#
+
+# t4
+.s
+10 >r
+.s
+r@
+.s
+r>
+.s
+
+#
+# Expect <enpty>, 10, 10 10
+#
+
+# t5
+
+: foo
+   1 2 +
+   EXIT
+   99 .
+;
+
+#
+# expect 3, do not expect 99
+#
+
+# t6 
+
+: t6
+   5 0 do
+      i
+      i 3 = IF EXIT THEN
+   loop
+   99
+;
+
+#
+# loop runs 3 times, 99 is not executed.
+#
+
+# t7
+: t7
+   5 0 do
+      i
+      i 3 = IF LEAVE THEN
+   loop
+   99
+;
+#
+# expect 1 2 3 99  4 or 5 not expected.
+#
+
+# t8
+
+: t8
+   3 0 do
+      3 0 do
+         i j
+         i 1 = j 1 = AND IF EXIT THEN
+      loop
+   loop
+   88
+;
+
+#
+# expected loops when i=1, j=1, 88 is not expected.
+#
+
+# t9
+: t9
+   5 0 do
+      i
+      i 2 = IF UNLOOP EXIT THEN
+   loop
+   77
+;
+#
+# expect 0 1 2, 77 is not expected.
+#
+
+
+# t10
+
+: tif
+   1 IF
+      2 IF
+         EXIT
+      THEN
+      99
+   THEN
+   77
+;
+
+tif
+.s
+
+#
+# expect <empty stack>
+#
+
+# t11
+
+: tbegin
+   0
+   BEGIN
+      dup 3 =
+      IF EXIT THEN
+      1+
+   UNTIL
+;
+
+tbegin
+.s
