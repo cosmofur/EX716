@@ -4,14 +4,15 @@ I common.mc
 # Lets do some simple nested loops.
 #
 # First lets introduce some new convience macros
-#   MC2M and MM2M
+#   MA2V and MV2V
 #
-# MC2M should be read as "Move Constant to Memory"
-# MM2M should be read as "Move Memory to Memory"
-# They are basicly combining the PUSH value POPI label sequence into one macro
+# MA2V should be read as "Move Constant to Variable"
+# MV2V should be read as "Move Variable to Variable"
+# These macros exist to hide the stack, but not eliminate it.
+# They still compile into a PUSH value POPI variable sequence internally.
 #
 # Initilize Outerloop index to zero
-@MC2M 0 OuterIndex
+@MA2V 0 OuterIndex
 #
 # While the outerloop is less than 20 continue
 :OuterLoopBody
@@ -22,7 +23,7 @@ I common.mc
 @PRTI OuterIndex
 @PRT "> "
 #  Inner Loop Initilize  
-  @MC2M 0 InnerIndex
+  @MA2V 0 InnerIndex
   # While InnerIndex is less than 30 continue
   :InnerLoopBody
   @PUSHI InnerIndex
