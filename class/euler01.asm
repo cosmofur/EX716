@@ -30,23 +30,23 @@ L lmath.ld
 #
 # Start of Code
 :main  . main
-@MC2M 2 Count3   # We're going to use negative count from 2 down to 0 for each of the rotations
-@MC2M 4 Count5
+@MA2V 2 Count3   # We're going to use negative count from 2 down to 0 for each of the rotations
+@MA2V 4 Count5
 @MOVE32AVI $$$0 SumCount
 @MOVE32AVI $$$0 LongTemp
 @ForIA2B Index1 1 1000
    @INTI2LONG Index1 LongTemp
-   @MC2M 1 AddFlag
+   @MA2V 1 AddFlag
    @PUSHI Count3
    @IF_ZERO
-      @MC2M 3 Count3    # Rotate it back to top
-      @MC2M 0 AddFlag
+      @MA2V 3 Count3    # Rotate it back to top
+      @MA2V 0 AddFlag
    @ENDIF
    @POPNULL
    @PUSHI Count5
    @IF_ZERO
-      @MC2M 5 Count5    # Rotate it back to top
-      @MC2M 0 AddFlag
+      @MA2V 5 Count5    # Rotate it back to top
+      @MA2V 0 AddFlag
    @ENDIF
    @POPNULL
    @PUSHI AddFlag

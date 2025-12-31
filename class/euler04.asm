@@ -41,7 +41,7 @@ L string.ld
 
 :main . main
 @MOVE32AV $0 MaxV      # MaxV=0
-@MC2M 10 Base          # String output is base 10
+@MA2V 10 Base          # String output is base 10
 @ForIA2B Irange 99 10
    @INTI2LONG Irange Aval
    @ForIA2B Jrange 99 10
@@ -66,12 +66,12 @@ L string.ld
 	   @POPI StringSize        # We'll need the size
 	   @RTR
 	   @POPI StringHalfSize    # Also caluculate 1/2 string size while we're here.
-	   @MC2M 0 Krange          # We will be lookng at the head and tail of the
-	   @MC2M 0 Shead           # String at the same time, to look for equivalent values
-	   @MM2M StringSize Stail
+	   @MA2V 0 Krange          # We will be lookng at the head and tail of the
+	   @MA2V 0 Shead           # String at the same time, to look for equivalent values
+	   @MV2V StringSize Stail
 	   @DECI Stail
 	   @PUSHI StringHalfSize
-	   @MC2M 0 TestFlag        # Set to 1 if its not a pd
+	   @MA2V 0 TestFlag        # Set to 1 if its not a pd
 	   @WHILE_NOTZERO          # While loop as countdown from StringHalfSize
 #	        @PRT "Index: " @PRTI Shead @PRT " To " @PRTI Stail @PRTNL
 	        @POPNULL
@@ -93,7 +93,7 @@ L string.ld
 		@CMPI CharVal2
 		@POPNULL
 		@JMPZ StillGood    # If they are the same, continue testing.
-		    @MC2M 1 TestFlag
+		    @MA2V 1 TestFlag
 		    @BREAK         # Break out of While Loop
 		:StillGood
 		@PUSHI StringHalfSize

@@ -140,11 +140,168 @@ tif
 : tbegin
    0
    BEGIN
-      dup 3 =
-      IF EXIT THEN
       1+
+      dup 3 =
+      IF drop EXIT THEN
+      false
    UNTIL
 ;
-
 tbegin
 .s
+#
+# expect empty stack, no infinit loop
+#
+
+# t12 Test EXIT in nested loop
+
+: texit
+   5 0 DO
+      5 0 DO
+         i j . . SPACES
+         i 3 = j 3 = AND IF EXIT THEN
+      LOOP
+   LOOP
+   99 .
+;
+#
+# expect empty stack, no infinit loop.
+#
+
+: t13
+   \ Case 1: ?DO with zero trip — should print nothing
+   5 5 ?DO
+      111 .
+   LOOP
+
+   \ Case 2: LEAVE exits inner loop only
+   3 0 DO
+      5 0 DO
+         i j . . SPACES
+         j 2 = IF LEAVE THEN
+      LOOP
+      999 .
+   LOOP
+
+   \ Marker at end
+   77 .
+;
+#
+# expect 0 0  0 1  0 2  0 3  0 4  999 1 0  1 1  1 2  1 3  1 4  999 2 0  999 2 1  999 2 2  999 2 3  999 2 4  999 77
+#
+
+# t14
+
+: t-unloop
+  5 0 DO
+     i 3 = IF UNLOOP EXIT THEN
+     i .
+  LOOP
+  999 .
+;
+
+# expect 0 1 2
+
+
+
+#
+# Above tests are good for general checkup, now for something more systemmatic
+#
+#
+# dup drop swap over rot 2dup nip tuck
+#
+: t-dup 1 dup = if ." Success" ELSE ." Fail" THEN ;
+: t-drop 1 2 drop 1 = IF ." Success" ELSE ." Fail" THEN ;
+: t-swap 1 2 swap 1 = IF ." Success" drop ELSE ." Fail" THEN ;
+: t-over  1 2 3 over
+           2 = IF
+             3 = IF
+               2 = IF
+                 1 = IF
+                   ." Success"
+                 ELSE ." Fail" THEN
+               ELSE ." Fail" THEN
+             ELSE ." Fail" THEN
+           ELSE ." Fail" THEN ;
+
+: t-rot  1 2 3 rot
+           1 = IF
+             3 = IF
+               2 = IF
+                 ." Success"
+               ELSE ." Fail" THEN
+             ELSE ." Fail" THEN
+           ELSE ." Fail" THEN ;
+: t-2dup
+   1 2 2dup          \ -> 1 2 1 2
+   2 = IF            \ top must be 2
+                     \ -> 1 2 1
+     1 = IF          \ top must be 1
+                     \ -> 1 2
+       2 = IF        \ top must be 2
+                     \ -> 1
+         1 = IF      \ top must be 1
+           ." Success"
+         ELSE ." Fail" THEN
+       ELSE ." Fail" THEN
+     ELSE ." Fail" THEN
+   ELSE ." Fail" THEN ;
+: t-nip
+   1 2 nip        \ → 2
+   2 = IF
+     ." Success"
+   ELSE
+     ." Fail"
+   THEN ;
+: t-tuck
+   1 2 tuck          \ → 2 1 2
+   2 = IF            \ top must be 2
+                     \ → 2 1
+     1 = IF          \ top must be 1
+                     \ → 2
+       2 = IF        \ top must be 2
+         ." Success"
+       ELSE ." Fail" THEN
+     ELSE ." Fail" THEN
+   ELSE ." Fail" THEN ;
+
+: t-depth
+  depth 0= IF
+    1 2 3 depth 3 = IF ." Success" drop drop drop ELSE ." Fail" THEN
+  ELSE ." Fail" THEN
+;
+
+: t-pick
+  10 20 30 0 pick 30 = IF
+    10 20 30 1 pick 20 = IF
+      10 20 30 2 pick 10 = IF
+        ." Success" drop drop drop drop drop drop drop drop drop
+      ELSE ." Fail" THEN
+    ELSE ." Fail" THEN
+  ELSE ." Fail" THEN
+;
+
+: t-qdup1
+  5 ?dup 5 = swap 5 = and IF ." Success" ELSE ." Fail" THEN
+;
+
+: t-qdup0
+  0 ?dup depth 1 = IF ." Success" drop ELSE ." Fail" THEN
+;
+
+
+#
+# Tests
+t-dup cr
+t-drop cr
+t-swap cr
+t-over cr
+t-rot cr
+t-2dup cr
+t-nip cr
+t-tuck cr
+t-depth cr
+t-pick cr
+t-qdup1 cr
+t-qdup0 cr
+
+

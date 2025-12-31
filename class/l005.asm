@@ -30,7 +30,7 @@ I common.mc
 # There are a few reasons we use a Macro rather than the Number '1'
 # First is readability. its much easier to read 'PUSH' than '1' and remember what it does to the Computer.
 # Second if we 'just' used a '1' then it would have been stored as a 16bit number, but opcodes have to be
-# 8 bit number. So we would have had to use a lowercase 'b' to identify it as an 8 bit '1' or 'b1'
+# 8 bit number. So we would have had to use a '$$' to identify it as an 8 bit '1' or '$$1'
 # That would have been even harder to remember so the included file 'common.mc' (look near top line of this program)
 # already has macros for all the basic opcodes the CPU recognizes.
 #

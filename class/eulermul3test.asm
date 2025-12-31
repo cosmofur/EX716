@@ -20,8 +20,8 @@
    @RET
 @ENDIF
 @POPNULL @POPNULL
-@MC2M 0 Odd_Count    # Odd_Count = Even_Count = 0
-@MC2M 0 Even_Count
+@MA2V 0 Odd_Count    # Odd_Count = Even_Count = 0
+@MA2V 0 Even_Count
 @PUSHI TestN
 @WHILE_NOTZERO      # While TestN != 0, Do
    @DUP

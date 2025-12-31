@@ -8,7 +8,7 @@ I common.mc
 # And for formating, lets also add the PRTNL macro, which prints a NewLine or Line Return
 #
 # Lets also take a moment, it not printing the VALUE of the lable givin to it, but rather the value
-# the spot in memory that lable POINTS to.
+# stored at the address the label is refering to.
 # Lables are 'just' shortcuts for numbers, but a PRTI wants to print the value stored at the ADDRESS
 # that number points to, and not the number itself. There IS a macro that can just print the value of a
 # label, but we'll get to that some other time.

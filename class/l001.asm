@@ -1,3 +1,4 @@
+# V0.1
 # Ahhh, the Classic 'Hello World' first program
 # It doesn't really teach you much.
 # Trying to make the best out of it.
