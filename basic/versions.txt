@@ -1,0 +1,28 @@
+basic/
+├── v0/
+│   ├── basic_main.asm        ; REPL, RUN, NEW
+│   ├── basic_tokens.asm      ; token defs + keyword table
+│   ├── basic_tokenize.asm   ; runtime tokenizer
+│   └── basic_storage.asm    ; line storage
+│
+├── v1/
+│   ├── basic_exec.asm        ; statement dispatcher
+│   ├── basic_print.asm      ; PRINT
+│   └── basic_vars.asm       ; A–Z variable table
+│
+├── v2/
+│   ├── basic_expr.asm       ; integer expression evaluator
+│   ├── basic_let.asm        ; LET
+│   └── basic_if.asm         ; IF/THEN
+│
+├── v3/
+│   ├── basic_goto.asm
+│   ├── basic_for.asm
+│   └── basic_gosub.asm
+│
+└── tests/
+    ├── t00_print.bas
+    ├── t01_let.bas
+    ├── t02_if.bas
+    └── ...
+
