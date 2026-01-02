@@ -561,10 +561,11 @@ M ENDWHEN \
 # one level of enbeding (So it can't be a 2nd or deeper IF block)
 M WHILECONTINUE \
   %P \
-  @JMP _%V_LoopTop
+  @JMP _%W_LoopTop
 
 M WHILEBREAK \
-  @JMP _%W_ExitLoop
+@JMP _%W_ExitLoop
+
 
 M FORBREAK \
   @JMP _%W_NextEnd

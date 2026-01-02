@@ -1,0 +1,301 @@
+# basic/v0/basic_storage.asm
+# BASIC v0 – Program Line Storage
+#
+# Responsibilities:
+#   - Maintain ordered list of BASIC program lines
+#   - Insert, replace, delete by line number
+#   - LIST program
+#   - RUN stub
+#
+# Line record format (in memory):
+#   [0]  WORD  line number
+#   [2]  WORD  next line pointer (0 if end)
+#   [4]  BYTE  text...
+#        BYTE  0   (NUL terminator)
+#
+# Invariants:
+#   - Lines sorted strictly ascending by line number
+#   - No duplicate line numbers
+#   - ProgramStart == 0 means empty program
+#   - ProgramEnd always points to last line record
+#   - FreePtr always points to first unused byte
+
+# --------------------------------------------------
+# Global state (must be defined once)
+# --------------------------------------------------
+
+:ProgramStart
+    0              # WORD pointer to first line
+
+:ProgramEnd
+    0              # WORD pointer to last line
+
+:FreePtr
+    0              # WORD pointer to next free memory
+
+# --------------------------------------------------
+# Configuration
+# --------------------------------------------------
+
+=LINE_HEADER_SIZE 4     # bytes before text starts
+
+# --------------------------------------------------
+# InitProgramStorage
+# --------------------------------------------------
+# Clears program and initializes FreePtr
+#
+# OUT:
+#   ProgramStart = 0
+#   ProgramEnd   = 0
+#   FreePtr      = PROGRAM_MEMORY_START
+# --------------------------------------------------
+
+:InitProgramStorage
+    @PUSH 0
+    @POP ProgramStart
+    @POP ProgramEnd
+
+    @PUSH PROGRAM_MEMORY_START
+    @POP FreePtr
+@RET
+
+
+# --------------------------------------------------
+# FindLine
+# --------------------------------------------------
+# Searches for a line number
+#
+# IN:
+#   R0 = target line number
+#
+# OUT:
+#   FOUND flag set if exact match
+#   R3 = previous line pointer (0 if none)
+#   R4 = current line pointer (match or insertion point)
+#
+# Notes:
+#   - If not found, R4 points to first line with line# > R0
+#   - Or 0 if end of list
+# --------------------------------------------------
+
+:FindLine
+    @PUSH ProgramStart
+    @POP R4          # current
+    @PUSH 0
+    @POP R3          # previous
+
+:FindLine_Loop
+    @IFZERO R4
+        @CLRFOUND
+        @RET
+    @ENDIF
+
+    @LOAD R4 -> R5   # R5 = line number at current
+
+    @IFEQ R5 R0
+        @SETFOUND
+        @RET
+    @ENDIF
+
+    @IFGT R5 R0
+        @CLRFOUND
+        @RET
+    @ENDIF
+
+    @MOVE R4 R3
+    @LOAD R4+2 -> R4     # advance to next
+    @JMP FindLine_Loop
+
+
+# --------------------------------------------------
+# InsertOrDeleteLine
+# --------------------------------------------------
+# IN:
+#   R0 = line number
+#   R1 = pointer to text
+#   R2 = text length (bytes, excluding NUL)
+#
+# Behavior:
+#   - If R2 == 0 → delete line if it exists
+#   - Else insert or replace line
+# --------------------------------------------------
+
+:InsertOrDeleteLine
+    @CALL FindLine
+
+    @IFZERO R2
+        @IFFOUND
+            @CALL DeleteLine
+        @ENDIF
+        @RET
+    @ENDIF
+
+    @IFFOUND
+        @CALL ReplaceLine
+    @ELSE
+        @CALL InsertLine
+    @ENDIF
+@RET
+
+
+# --------------------------------------------------
+# InsertLine
+# --------------------------------------------------
+# Uses FreePtr to append a new line record
+#
+# Requires:
+#   FindLine already called
+#   R3 = previous line (0 if insert at head)
+#   R4 = next line
+# --------------------------------------------------
+
+:InsertLine
+    @MOVE FreePtr R6        # R6 = new line address
+
+    @STORE R6     R0        # line number
+    @STORE R6+2   R4        # next pointer
+
+    @CALL CopyText          # copies text + NUL to R6+4
+
+    @IFZERO R3
+        @STORE ProgramStart R6
+    @ELSE
+        @STORE R3+2 R6
+    @ENDIF
+
+    @IFZERO R4
+        @STORE ProgramEnd R6
+    @ENDIF
+
+    @CALL AdvanceFreePtr
+@RET
+
+
+# --------------------------------------------------
+# ReplaceLine
+# --------------------------------------------------
+# Strategy:
+#   - Delete existing line
+#   - Insert new line at same position
+#
+# NOTE:
+#   Memory is not compacted in v0
+# --------------------------------------------------
+
+:ReplaceLine
+    @CALL DeleteLine
+    @CALL InsertLine
+@RET
+
+
+# --------------------------------------------------
+# DeleteLine
+# --------------------------------------------------
+# Removes a line from the linked list
+#
+# Requires:
+#   FindLine already called
+# --------------------------------------------------
+
+:DeleteLine
+    @IFZERO R3
+        @STORE ProgramStart R4+2
+    @ELSE
+        @LOAD R4+2 -> R5
+        @STORE R3+2 R5
+    @ENDIF
+
+    @IFEQ R4 ProgramEnd
+        @STORE ProgramEnd R3
+    @ENDIF
+@RET
+
+
+# --------------------------------------------------
+# CopyText
+# --------------------------------------------------
+# Copies text bytes from R1 into current line
+# Appends explicit NUL terminator
+#
+# IN:
+#   R1 = source text
+#   R2 = length
+#   R6 = base address of line record
+# --------------------------------------------------
+
+:CopyText
+    @MOVE R6 R7
+    @ADD  LINE_HEADER_SIZE R7   # R7 = dest pointer
+
+:CopyText_Loop
+    @IFZERO R2
+        @STOREB R7 $$0
+        @RET
+    @ENDIF
+
+    @LOADB R1 -> R8
+    @STOREB R7 R8
+
+    @INC R1
+    @INC R7
+    @DEC R2
+    @JMP CopyText_Loop
+
+
+# --------------------------------------------------
+# AdvanceFreePtr
+# --------------------------------------------------
+# Advances FreePtr past newly inserted line
+#
+# IN:
+#   R6 = start of new line record
+# --------------------------------------------------
+
+:AdvanceFreePtr
+    @MOVE R6 R7
+    @ADD  LINE_HEADER_SIZE R7
+
+:AdvanceFP_Loop
+    @LOADB R7 -> R8
+    @INC R7
+    @IFNZ R8
+        @JMP AdvanceFP_Loop
+    @ENDIF
+
+    @POP FreePtr R7
+@RET
+
+
+# --------------------------------------------------
+# ListProgram
+# --------------------------------------------------
+# Prints all stored lines
+# --------------------------------------------------
+
+:ListProgram
+    @PUSH ProgramStart
+    @POP R4
+
+:List_Loop
+    @IFZERO R4
+        @RET
+    @ENDIF
+
+    @LOAD R4 -> R0
+    @CALL PrintInt
+    @PRT " "
+
+    @CALL PrintCString R4+4
+    @PRTNL
+
+    @LOAD R4+2 -> R4
+    @JMP List_Loop
+
+
+# --------------------------------------------------
+# RunStub
+# --------------------------------------------------
+
+:RunStub
+    @PRTLN "RUN (v0): execution not implemented"
+@RET

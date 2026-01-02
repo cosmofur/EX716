@@ -33,10 +33,8 @@ M STRSTACK \
 # Function
 :strlen
 @PUSHRETURN
-=len_strptr Var01
-=len_size Var02
-@PUSHLOCALI len_strptr
-@PUSHLOCALI len_size
+@LocalVar len_strptr 01
+@LocalVar len_size 02
 @POPI len_strptr
 @MA2V 0 len_size
 @PUSHII len_strptr  # First character
@@ -50,8 +48,8 @@ M STRSTACK \
 @ENDWHILE
 @POPNULL
 @PUSHI len_size
-@POPLOCAL len_size
-@POPLOCAL len_strptr
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -61,10 +59,8 @@ M STRSTACK \
 
 :strcat
 @PUSHRETURN
-=StrPtrA Var01
-=StrPtrB Var02
-@PUSHLOCALI StrPtrA
-@PUSHLOCALI StrPtrB
+@LocalVar StrPtrA 01
+@LocalVar StrPtrBB 02
 @POPI StrPtrB
 @POPI StrPtrA
 @PUSHI StrPtrA
@@ -81,8 +77,8 @@ M STRSTACK \
    @AND 0xff
 @ENDWHILE
 @POPNULL
-@POPLOCAL StrPtrB
-@POPLOCAL StrPtrA
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -93,12 +89,10 @@ M STRSTACK \
 
 :strncat
 @PUSHRETURN
-=Length Var01
-=StrPtrB Var02
-=StrPtrA Var03
-@PUSHLOCALI StrPtrA
-@PUSHLOCALI StrPtrB
-@PUSHLOCALI Length
+@LocalVar StrPtrA 01
+@LocalVar StrPtrB 02
+@LocalVar Length 03
+
 @POPI Length
 @POPI StrPtrB
 @POPI StrPtrA
@@ -128,9 +122,9 @@ M STRSTACK \
   @ENDWHILE
 @ENDIF
 @POPNULL
-@POPLOCAL Length
-@POPLOCAL StrPtrB
-@POPLOCAL StrPtrA
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 
@@ -141,14 +135,10 @@ M STRSTACK \
 #
 :strncpy
 @PUSHRETURN
-=Length Var01
-=SrcPtr Var02
-=DstPtr Var03
-=Index Var04
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
+@LocalVar Length 01
+@LocalVar SrcPtr 02
+@LocalVar DstPtr 03
+@LocalVar Index 04
 @POPI Length
 @POPI SrcPtr
 @POPI DstPtr
@@ -176,10 +166,10 @@ M STRSTACK \
    @INCI SrcPtr
    @INCI DstPtr
 @Next Index
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -188,10 +178,8 @@ M STRSTACK \
 # StrA must be at least as large as the maxsize of StrB
 :strcpy
 @PUSHRETURN
-=SrcPtr Var01
-=DstPtr Var02
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar SrcPtr 01
+@LocalVar DstPtr 02
 @POPI SrcPtr
 @POPI DstPtr
 # Setup for first pass of while loop
@@ -205,8 +193,8 @@ M STRSTACK \
    @AND 0x00ff
 @ENDWHILE
 @POPNULL
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -216,16 +204,11 @@ M STRSTACK \
 #                               0 if str1 == str2
 :strncmp
 @PUSHRETURN
-=MaxLength Var01
-=DstPtr Var02
-=SrcPtr Var03
-=Length Var04
-=Index Var05
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
+@LocalVar MaxLength 01
+@LocalVar DstPtr 02
+@LocalVar SrcPtr 03
+@LocalVar Length 04
+@LocalVar Index 05
 #
 @POPI MaxLength
 @POPI DstPtr
@@ -288,11 +271,11 @@ M STRSTACK \
 # We only get here if both are the same
 @PUSH 0
 :strncmpExit
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -302,17 +285,12 @@ M STRSTACK \
 # Vars
 :itos
 @PUSHRETURN
-=Base Var01
-=Invalue Var02
-=StrPtr Var03
-=NegFlag Var05
-=RevIndex Var06
+@LocalVar Base 01
+@LocalVar Invalue 02
+@LocalVar StrPtr 03
+@LocalVar NegFlag 05
+@LocalVar RevIndex 06
 #
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
 #
 @POPI Base
 @POPI Invalue
@@ -370,11 +348,13 @@ M STRSTACK \
    @JMP ReverseLoop
 @ENDIF
 @POPNULL
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
+
 @POPRETURN
 @RET
 #
@@ -480,26 +460,25 @@ M STRSTACK \
 # Which in practical data processing is most of the cases where numbers are enbeded into text.
 :stoifirst
 @PUSHRETURN
-=StrPtrA Var01
-=StrPtrB Var02
-=SrcPtr Var03
-=DstPtr Var04
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
+@LocalVar StrPtrA 01
+@LocalVar StrPtrB 02
+@LocalVar SrcPtr 03
+@LocalVar DstPtr 04
+@LocalVar SignVal 05
 
 @POPI StrPtrA
 # Move StrPtrA until nul, or '-' or '+' or digit
 @MA2V 0 StrPtrB      # Mark this so we know if none found
 @MA2V 0 DstPtr       # Will hold final result
+@MA2V 0 SignVal      # Store 1 if Negative
 @PUSH 1
 @WHILE_NOTZERO
    @POPNULL
    @PUSHII StrPtrA @AND 0xff
    @IF_EQ_A "-\0"
       @PUSH 1
-#      @INCI StrPtrA
+      @MA2V 1 SignVal
+      @INCI StrPtrA
    @ELSE
       @IF_EQ_A "+\0"
          @PUSH 1
@@ -532,8 +511,6 @@ M STRSTACK \
    # No numbers found in string. Return zero
    @PRT "Warning: String did not countain any digits"
 @ELSE
-   @INCI StrPtrA # If first character had been + or - this will skip it.
-   @POPNULL
    @PUSHII StrPtrA @AND 0xff
    @WHILE_NOTZERO
       @IF_GE_A "0\0"
@@ -560,14 +537,21 @@ M STRSTACK \
    @PUSHI StrPtrB
    @CALL stoi
    @POPI DstPtr
-   @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed         
+   @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed
+   @IF_EQ_AV 1 SignVal
+      # Negative Sign found.
+      @PUSHI DstPtr
+      @COMP2
+      @POPI DstPtr
+   @ENDIF
 @ENDIF
-@POPNULL
+#@POPNULL
 @PUSHI DstPtr     # Result
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -584,14 +568,10 @@ M STRSTACK \
 #
 :memcpy
 @PUSHRETURN
-=DstPtr Var01
-=SrcPtr Var02
-=Length Var03
-=Index01 Var04
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
+@LocalVar DstPtr 01
+@LocalVar SrcPtr 02
+@LocalVar Length 03
+@LocalVar Index01 04
 #
 @POPI Length
 @POPI SrcPtr
@@ -643,22 +623,19 @@ M STRSTACK \
        @ENDIF
    @ENDIF
 @ENDIF
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
 # strchr(string,word) finds character (lower 8 bits) from word in string, returns pointer to occurance, 0 is not found
 :strchr
 @PUSHRETURN
-=Invalue Var01
-=DstPtr Var02
-=StrPtr Var03
-@PUSHLOCALI StrPtr
-@PUSHLOCALI DstPtr
-@PUSHLOCALI Invalue
+@LocalVar Invalue 01
+@LocalVar DstPtr 02
+@LocalVar StrPtr 03
 @ADD 0xff             # We only care about the low order byte
 @POPI Invalue
 @POPI StrPtr
@@ -679,21 +656,18 @@ M STRSTACK \
 @POPNULL
 :BreakWhile
 @PUSHI DstPtr
-@POPLOCAL StrPtr
-@POPLOCAL DstPtr
-@POPLOCAL Invalue
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
 # strrchr(string,word) Returns pointer to 'last' instance of character in string, null it not found.
 :strrchr
 @PUSHRETURN
-=Invalue Var01
-=StrPtr Var02
-=DstPtr Var03
-@PUSHLOCALI Invalue
-@PUSHLOCALI StrPtr
-@PUSHLOCALI DstPtr
+@LocalVar Invalue 01
+@LocalVar StrPtr 02
+@LocalVar DstPtr 03
 @ADD 0xff
 @POPI Invalue
 @POPI StrPtr
@@ -717,9 +691,9 @@ M STRSTACK \
 @ENDWHILE
 :BreakWhileRev
 @PUSHI DstPtr
-@POPLOCAL DstPtr
-@POPLOCAL StrPtr
-@POPLOCAL Invalue
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -727,18 +701,12 @@ M STRSTACK \
 # Extra Local Variables
 :strstr
 @PUSHRETURN
-=ssStrA Var01
-=ssStrB Var02
-=ssMaxLength Var03
-=ssIndex Var04
-=ssLength Var05
-=ssDstPtr Var06
-@PUSHLOCALI ssStrA
-@PUSHLOCALI ssStrB
-@PUSHLOCALI ssMaxLength
-@PUSHLOCALI ssIndex
-@PUSHLOCALI ssLength
-@PUSHLOCALI ssDstPtr
+@LocalVar ssStrA 01
+@LocalVar ssStrB 02
+@LocalVar ssMaxLength 03
+@LocalVar ssIndex 04
+@LocalVar ssLength 05
+@LocalVar ssDstPtr 06
 #
 @POPI ssStrB         # SrtB is the SubString
 @POPI ssStrA         # StrA is the Source String
@@ -775,12 +743,12 @@ M STRSTACK \
     @PUSH 0
 @ENDIF
 :Endstrstr
-@POPLOCAL ssDstPtr
-@POPLOCAL ssLength
-@POPLOCAL ssIndex
-@POPLOCAL ssMaxLength
-@POPLOCAL ssStrB
-@POPLOCAL ssStrA
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 
@@ -875,18 +843,12 @@ M STRSTACK \
 :int_sptr 0
 :strtok
 @PUSHRETURN
-=FoundFlag Var01
-=InString Var02
-=Delim Var03
-=Index1 Var04
-=TolkenHead Var05
-=DelimCurse Var06
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
+@LocalVar FoundFlag 01
+@LocalVar InString 02
+@LocalVar Delim 03
+@LocalVar Index1 04
+@LocalVar TolkenHead 05
+@LocalVar DelimCurse 06
 #
 @POPI Delim
 @POPI InString
@@ -937,12 +899,12 @@ M STRSTACK \
    @PUSHI TolkenHead    # We return the TolkenHead
    @MV2V InString int_sptr   # Save for future calls with InString of NULL
 @ENDIF
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 #
@@ -950,23 +912,15 @@ M STRSTACK \
 # Function splitstr(instring,splitlist,heapid):(heaparray,size_array)
 :splitstr
 @PUSHRETURN
-=instring Var01
-=splitlist Var02
-=HeapIn Var03
-=SSCount Var04
-=Index1 Var05
-=Index2 Var06
-=SplitLen Var07
-=NewArray Var08
+@LocalVar instring 01
+@LocalVar splitlist 02
+@LocalVar HeapIn 03
+@LocalVar SSCount 04
+@LocalVar Index1 05
+@LocalVar Index2 06
+@LocalVar SplitLen 07
+@LocalVar NewArray 08
 
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
-@PUSHLOCALI Var05
-@PUSHLOCALI Var06
-@PUSHLOCALI Var07
-@PUSHLOCALI Var08
 #
 @POPI HeapIn
 @POPI splitlist
@@ -1061,14 +1015,14 @@ M STRSTACK \
 @PUSH 0 @PUSHI NewArray @PUSHI SSCount @SHL @ADDS @POPS
 @PUSHI NewArray
 @PUSHI SSCount
-@POPLOCAL Var08
-@POPLOCAL Var07
-@POPLOCAL Var06
-@POPLOCAL Var05
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 08
+@RestoreVar 07
+@RestoreVar 06
+@RestoreVar 05
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 ###############################################
@@ -1077,14 +1031,10 @@ M STRSTACK \
 # (object is an null terminated array of pointers to heap strings)
 :SplitDelete
 @PUSHRETURN
-=Object Var01
-=HeapID Var02
-=Index1 Var03
-=HeapLen Var04
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
-@PUSHLOCALI Var03
-@PUSHLOCALI Var04
+@LocalVar Object 01
+@LocalVar HeapID 02
+@LocalVar Index1 03
+@LocalVar HeapLen 04
 #
 @POPI HeapID
 @POPI Object
@@ -1105,10 +1055,10 @@ M STRSTACK \
 @PUSHI Object
 @CALL HeapDeleteObject @IF_GT_A 0 @PRT "Error Deleteing Heap Object: " @PRTTOP @ENDIF
 @POPNULL
-@POPLOCAL Var04
-@POPLOCAL Var03
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 04
+@RestoreVar 03
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 ###################################################
@@ -1116,10 +1066,8 @@ M STRSTACK \
 # Changes all lowercase letters instring to uppercase
 :strUpCase
 @PUSHRETURN
-=instring Var01
-=Index1 Var02
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar instring 01
+@LocalVar Index1 02
 @POPI instring
 @PUSHI instring
 @CALL strlen
@@ -1139,8 +1087,8 @@ M STRSTACK \
    @SUB 1
 @ENDWHILE
 @POPNULL
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 ###################################################
@@ -1148,10 +1096,8 @@ M STRSTACK \
 # Changes all Uppercase letters instring to lowercase
 :strLowCase
 @PUSHRETURN
-=instring Var01
-=Index1 Var02
-@PUSHLOCALI Var01
-@PUSHLOCALI Var02
+@LocalVar instring 01
+@LocalVar Index1 02
 @POPI instring
 @PUSHI instring
 @CALL strlen
@@ -1171,8 +1117,8 @@ M STRSTACK \
    @SUB 1
 @ENDWHILE
 @POPNULL
-@POPLOCAL Var02
-@POPLOCAL Var01
+@RestoreVar 02
+@RestoreVar 01
 @POPRETURN
 @RET
 

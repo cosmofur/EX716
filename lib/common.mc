@@ -273,6 +273,35 @@ M XORAV @PUSH %1 @PUSHI %2 @XORS
 
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
+#
+# Some people prefer the terms LOAD and STORE for memory
+# moves, so for convience here are some macros that mimic that.
+#
+# Word Versions are alias of PUSH and POP
+M STOREI @POPI
+M STOREII @POPII
+M LOADI @PUSHI
+M LOADII @PUSHII
+M LOAD @PUSHS
+#
+# Byte version of Store stack to Pointer
+M STOREBII \        
+     @AND 0xff @PUSHII %1 \
+     @AND 0xff00 @ORS \
+     @POPII %1
+# Byte version of Store stack to memory at address %1
+M STOREBI @AND 0xff @PUSHI %1 @AND 0xff00 @ORS @POPII %1
+#
+# LOADB moves BYTE value from memory to stack.
+#
+# Load Byte value from Pointer to stack
+M LOADBII \
+      @PUSHII %1 @AND 0xff
+# Load Byte value from memory at address %1 to stack.
+M LOADBI \
+      @PUSHI %1 @AND 0xff
+#
+
 M JMPNZ @JMPZ %01_SKIP @JMP %1 :%01_SKIP        # A != B
 M JMPNZI @JMPZ %01 @JMPI %1 :%01_SKIP
 M JMPZI @JMPNZ %01_SKIP @JMPI %1 :%01_SKIP

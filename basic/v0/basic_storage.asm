@@ -1,3 +1,4 @@
+I common.mc
 # basic/v0/basic_storage.asm
 # BASIC v0 – Program Line Storage (ESX716 compliant)
 #
@@ -13,15 +14,11 @@
 #   - ProgramStart == 0 means empty program
 #   - FreePtr always points to first unused byte
 
-# As it maybe usefull adding a STOREB
-M STOREBII @AND 0xff @PUSHII %1 @AND 0xff00 @ORS @POPII %1
-M LOADBII @PUSHII %1 @AND 0xff
-M STOREBI @AND 0xff @PUSHI %1 @AND 0xff00 @ORS @POPII %1
-M LOADBI @PUSHI %1 @AND 0xff
-
 # --------------------------------------------------
 # Global state
 # --------------------------------------------------
+G PROGRAM_MEMORY_START
+:PROGRAM_MEMORY_START 0
 
 :ProgramStart
     0           # WORD
@@ -64,6 +61,7 @@ M LOADBI @PUSHI %1 @AND 0xff
 # --------------------------------------------------
 
 :FindLine
+    @PUSHRETURN
     @LocalVar LineNum 01
     @LocalVar CurPtr  02
     @LocalVar PrevPtr 03
@@ -72,40 +70,38 @@ M LOADBI @PUSHI %1 @AND 0xff
 
     @POPI LineNum
 
-    @PUSHI 0
-    @POPI PrevPtr
+    
+    @MA2V 0 PrevPtr
 
     @PUSHI ProgramStart
     @POPI CurPtr
 
-    @PUSHI 0
-    @POPI Found
+    @MA2V 0 Found
 
     @PUSH 0
     @WHILE_ZERO
+        @POPNULL      
         @IF_EQ_AV 0 CurPtr
-            @BREAK
-        @ENDIF
-
-        @PUSHI CurPtr
-        @LOAD
-        @POPI CurNum
-
-        @IF_EQ_VV CurNum LineNum
-            @PUSHI 1
-            @POPI Found
-            @BREAK
-        @ENDIF
-
-        @IF_GT_VV CurNum LineNum
-            @BREAK
-        @ENDIF
-
-        @MV2V CurPtr PrevPtr
-        @PUSHI CurPtr
-        @ADDI 2
-        @LOAD
-        @POPI CurPtr
+	    @PUSH 1       # Break Loop Not Found
+        @ELSE
+            @PUSHII CurPtr
+            @POPI CurNum
+            @PUSHI CurNum	    
+            @IF_EQ_VV CurNum LineNum
+	       @POPNULL
+	       @MA2V 1 Found
+               @PUSH 1   # Break Loop Found
+            @ENDIF
+	    @IF_GT_V LineNum
+	       @POPNULL
+	       @PUSH 1   # Break Loop Not Found
+            @ENDIF
+            @MV2V CurPtr PrevPtr
+            @PUSHI CurPtr  # Next Address after CurPtr will be next line ptr
+            @ADD 2
+            @PUSHS
+            @POPI CurPtr
+	@ENDIF
     @ENDWHILE
     @POPNULL
     
@@ -115,8 +111,7 @@ M LOADBI @PUSHI %1 @AND 0xff
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
-    
-	
+    @POPRETURN
     @RET
 
 
@@ -182,7 +177,7 @@ M LOADBI @PUSHI %1 @AND 0xff
     @POPS                 # I believe this is what you meant by @STORE
                           # POPS mean use TOS as address, and SFT as value
     @PUSHI NewPtr
-    @ADDI 2               # But more clear than PUSH PUSH POPS is POPII
+    @ADD 2               # But more clear than PUSH PUSH POPS is POPII
     @POPII CurPtr         # This mean save NewPtr+2 at address CurPtr points at.
 
 
@@ -193,7 +188,7 @@ M LOADBI @PUSHI %1 @AND 0xff
         @POPI ProgramStart
     @ELSE
         @PUSHI PrevPtr
-        @ADDI 2
+        @ADD 2
         @PUSHI NewPtr
         @POPS
     @ENDIF
@@ -229,17 +224,17 @@ M LOADBI @PUSHI %1 @AND 0xff
 
     @IF_EQ_AV 0 PrevPtr
         @PUSHI CurPtr
-        @ADDI 2
-        @LOAD
+        @ADD 2
+        @PUSHS
         @POPI ProgramStart
     @ELSE
         @PUSHI CurPtr
-        @ADDI 2
-        @LOAD
+        @ADD 2
+        @PUSHS
         @POPI NextPtr
 
         @PUSHI PrevPtr
-        @ADDI 2
+        @ADD 2
         @PUSHI NextPtr
         @POPS
     @ENDIF
@@ -266,7 +261,7 @@ M LOADBI @PUSHI %1 @AND 0xff
 
     @MV2V NewPtr Dst
     @PUSHI Dst
-    @ADDI LINE_HEADER_SIZE
+    @ADD LINE_HEADER_SIZE
     @POPI Dst
 
     @PUSH 0              # Add some test for While to chew
@@ -274,9 +269,9 @@ M LOADBI @PUSHI %1 @AND 0xff
         @IF_EQ_AV 0 Len
             @PUSHI 0
             @STOREBII Dst
-            @BREAK
-        @ENDIF
-
+            @POPNULL
+        @PUSH 1  # Break Loop
+        @ELSE
         @LOADBII Src
         @POPI Ch
         @PUSHI Ch
@@ -285,6 +280,7 @@ M LOADBI @PUSHI %1 @AND 0xff
         @INCI Src       # Minor syntqax issues 'I' for variables
         @INCI Dst
         @DECI Len
+     @ENDIF
     @ENDWHILE
     @POPNULL            # Get rid of zero
     @RestoreVar 04
@@ -304,18 +300,16 @@ M LOADBI @PUSHI %1 @AND 0xff
 
     @MV2V NewPtr Ptr
     @PUSHI Ptr
-    @ADDI LINE_HEADER_SIZE
+    @ADD LINE_HEADER_SIZE
     @POPI Ptr
 
-    @PUSH 0
-    @WHILE_ZERO
+    @PUSH 1
+    @WHILE_NOTZERO       # exit when Ch=null
+        @POPNULL    
         @LOADBII Ptr
         @POPI Ch
         @INCI Ptr
-        @IF_NOTZERO
-            @CONTINUE
-        @ENDIF
-        @BREAK
+        @PUSHI Ch
     @ENDWHILE
     @POPNULL
     @RestoreVar 02
