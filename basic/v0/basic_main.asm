@@ -41,9 +41,10 @@ I basic_support.asm
     # If empty line, reprompt
     @LOADBI InputBuf
     @IF_ZERO
+        @POPNULL
         @JMP MainLoop
     @ENDIF
-
+    @POPNULL
     @Call(A) ParseLineOrCommand InputBuf
 
     @JMP MainLoop
@@ -60,20 +61,16 @@ I basic_support.asm
 @PUSHRETURN
     @LocalVar BufPtr 01
     @LocalVar Ch     02
-
     @POPI BufPtr
 
     @Call(v) ISNumeric BufPtr
     @IF_NOTZERO
         @Call(v) ParseLineNumber BufPtr
         @CALL InsertOrDeleteLine
-        @RestoreVar 02
-        @RestoreVar 01
-        @RET
+    @ELSE
+        @CALL ParseCommand
     @ENDIF
-
-    @CALL ParseCommand
-
+    @POPNULL
     @RestoreVar 02
     @RestoreVar 01
 @POPRETURN
@@ -100,11 +97,9 @@ I basic_support.asm
     @LocalVar TextLen 05
 
     @POPI BufPtr
-
     @MV2V BufPtr Ptr
     @Call(v) stoifirst Ptr
     @POPI Acc
-
     # Now scan forward to find first non space character
 
     @MV2V Ptr TextPtr   # Base value in case of early exit.
@@ -143,12 +138,10 @@ I basic_support.asm
     @ENDIF
     @POPNULL
 
-
     # Return values on stack (order matters!)
-    @LOADI Acc
+    @PUSHI Acc
     @PUSHI TextPtr
-    @LOADI TextLen
-
+    @PUSHI TextLen
     @RestoreVar 05
     @RestoreVar 04
     @RestoreVar 03
@@ -196,6 +189,16 @@ I basic_support.asm
         @RET
     @ELSE
         @POPNULL
+    @ENDIF
+
+    @STRSTACK "QUIT\0"  @PUSH InputBuf    @PUSH 4
+    @CALL strncmp
+    @IF_ZERO
+       @POPNULL
+       @PRTLN "Bye.."
+       @END
+    @ELSE
+       @POPNULL
     @ENDIF
 
     @PRTLN "?SYNTAX ERROR"

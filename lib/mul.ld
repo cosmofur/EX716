@@ -75,19 +75,34 @@ G MUL
             @PUSHI NN @SHL
             @RETURN_RESULT
             @CBREAK
+        @CASE 3
+            @POPNULL
+            @PUSHI NN @DUP SHL @ADDS
+            @RETURN_RESULT
+            @CBREAK
         @CASE 4
             @POPNULL
             @PUSHI NN @SHL2
             @RETURN_RESULT
             @CBREAK
+        @CASE 5
+            @POPNULL
+            @PUSHI NN @DUP @SHL2 @ADDS
+            @RETURN_RESULT
+            @CBREAK            
         @CASE 6
             @POPNULL
-            @PUSHI NN @DUP @SHL2 @ADDS # (ADD NN*2, NN*4)
+            @PUSHI NN @SHL @DUP @DUP @ADDS @ADDS
             @RETURN_RESULT
             @CBREAK
+        @CASE 7
+            @POPNULL
+            @PUSHI NN @DUP @SHLN 3 @SWP @SUBS
+            @RETURN_RESULT
+            @CBREAK            
         @CASE 8
             @POPNULL
-            @PUSHI NN @SHLN 3   # 3 shifts (could macro SHL3 if defined)
+            @PUSHI NN @SHLN 3   # 3 shifts 
             @RETURN_RESULT
             @CBREAK
         @CASE 10

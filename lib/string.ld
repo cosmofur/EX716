@@ -23,6 +23,84 @@ M STRSETI \
 M STRSTACK \
    @JMP _%0_Skip :_%0Store %1 $$0 :_%0_Skip @PUSH _%0Store
 
+# Savely moved memory Down from higher address to lower, Src Dst Size are variable Arguments.
+M SafeMoveDown(VVV) \
+    @JMP _%0_LocStor \
+    :_%0_SrcPtr 0 \
+    :_%0_DstPtr 0 \
+    :_%0_EndPtr 0 \
+:_%0_LocStor \
+    @MV2V %1 _%0_SrcPtr \
+    @MV2V %2 _%0_DstPtr \
+    @PUSHI %3 \
+    @ADDI _%0_SrcPtr \
+    @POPI _%0_EndPtr \
+:_%0_MoveLoop \
+    @PUSHI _%0_SrcPtr \
+    @IF_GE_V _%0_EndPtr \
+        @POPNULL \
+        @JMP _%0_MoveDone \
+    @ENDIF \
+    @POPNULL \
+    @PUSHII _%0_SrcPtr \
+    @POPII _%0_DstPtr \
+    @INCI _%0_SrcPtr \
+    @INCI _%0_DstPtr \
+    @JMP _%0_MoveLoop \
+:_%0_MoveDone
+
+
+# Savely moved memory Up from Lower address to Higher, Src Dst Size are variable Arguments.
+M SafeMoveUp(VVV) \
+    @JMP _%0_LocStor \
+    :_%0_SrcPtr 0 \
+    :_%0_DstPtr 0 \
+    :_%0_Cnt    0 \
+:_%0_LocStor \
+    @MV2V %1 _%0_SrcPtr \
+    @MV2V %2 _%0_DstPtr \
+    @MV2V %3 _%0_Cnt \
+    \
+    @PUSHI _%0_SrcPtr \
+    @ADDI _%0_Cnt \
+    @ADD  -1 \
+    @POPI _%0_SrcPtr \
+    \
+    @PUSHI _%0_DstPtr \
+    @ADDI _%0_Cnt \
+    @ADD  -1 \
+    @POPI _%0_DstPtr \
+:_%0_MoveLoop \
+    @PUSHI _%0_Cnt \
+    @IF_EQ_AV 0 \
+        @POPNULL \
+        @JMP _%0_MoveDone \
+    @ENDIF \
+    @POPNULL \
+    \
+    @PUSHII _%0_SrcPtr \
+    @POPII _%0_DstPtr \
+    \
+    @DECI _%0_SrcPtr \
+    @DECI _%0_DstPtr \
+    \
+    @DECI _%0_Cnt \
+    @JMP _%0_MoveLoop \
+:_%0_MoveDone
+
+# General SafeMove will use Up or Down based on values
+# Src Dst and Size
+M SafeMove(VVV) \
+    @PUSHI %2 \
+    @IF_LT_V %1 \
+        @POPNULL \
+        @SafeMoveDown(VVV) %1 %2 %3 \
+    @ELSE \
+        @POPNULL \
+        @SafeMoveUp(VVV)   %1 %2 %3 \
+    @ENDIF
+
+
 
 # Function strlen
 # strlen(str_var) returns length of string
@@ -463,53 +541,56 @@ M STRSTACK \
 @LocalVar StrPtrA 01
 @LocalVar StrPtrB 02
 @LocalVar SrcPtr 03
-@LocalVar DstPtr 04
+@LocalVar Result 04
 @LocalVar SignVal 05
 
 @POPI StrPtrA
 # Move StrPtrA until nul, or '-' or '+' or digit
 @MA2V 0 StrPtrB      # Mark this so we know if none found
-@MA2V 0 DstPtr       # Will hold final result
+@MA2V 0 Result      # Will hold final result
 @MA2V 0 SignVal      # Store 1 if Negative
 @PUSH 1
 @WHILE_NOTZERO
    @POPNULL
    @PUSHII StrPtrA @AND 0xff
-   @IF_EQ_A "-\0"
+   @SWITCH
+   @CASE "-\0"
+      @POPNULL
       @PUSH 1
       @MA2V 1 SignVal
       @INCI StrPtrA
-   @ELSE
-      @IF_EQ_A "+\0"
-         @PUSH 1
-         @INCI StrPtrA         
-      @ELSE
-         @IF_GE_A "0\0"
-            @IF_LE_A "9\0"
-               @PUSH 1
-            @ENDIF
-         @ELSE
-            @IF_EQ_A 0
-               @PRT "Warning: String did not countain any digits"
-               @PUSH 0               
-            @ENDIF
-            
-         @ENDIF
-      @ENDIF
-   @ENDIF
+      @CBREAK
+   @CASE "+\0"
+      @POPNULL
+      @PUSH 1
+      @INCI StrPtrA
+      @CBREAK
+   @CASE " \0"   # Skip past spaces.
+      @POPNULL
+      @PUSH 1
+      @INCI StrPtrA
+      @CBREAK      
+   @CASE_RANGE "0\0" "9\0"        # Found start of numbers
+      @POPNULL
+      @PUSH 1
+      @CBREAK   
+   @CDEFAULT                      # Some illeagl character, error.
+      @POPNULL
+      @PUSH 0
+      @PRTLN "Warning: String did not contain any digits."
+      @CBREAK
+   @ENDCASE
    @IF_EQ_A 1
+      @POPNULL
       @MV2V StrPtrA StrPtrB # Save start position of number
       @PUSH 0   # Exit While Loop
-   @ELSE
-      @POPNULL
-      @INCI StrPtrA
-      @PUSH 1   # Continue While Loop
    @ENDIF
 @ENDWHILE
 @POPNULL
 @IF_EQ_AV 0 StrPtrB
    # No numbers found in string. Return zero
    @PRT "Warning: String did not countain any digits"
+   @MA2V 0 Result
 @ELSE
    @PUSHII StrPtrA @AND 0xff
    @WHILE_NOTZERO
@@ -536,17 +617,17 @@ M STRSTACK \
    @PUSH 0 @POPII StrPtrA
    @PUSHI StrPtrB
    @CALL stoi
-   @POPI DstPtr
+   @POPI Result
    @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed
    @IF_EQ_AV 1 SignVal
       # Negative Sign found.
-      @PUSHI DstPtr
+      @PUSHI Result
       @COMP2
-      @POPI DstPtr
+      @POPI Result
    @ENDIF
 @ENDIF
 #@POPNULL
-@PUSHI DstPtr     # Result
+@PUSHI Result
 @RestoreVar 05
 @RestoreVar 04
 @RestoreVar 03

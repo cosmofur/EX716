@@ -1,0 +1,36 @@
+# List of Global Functions
+# Required because 'I' files can't do second pass processing on content from 'I' files that are not yet loaded.
+G BasicCommandTable
+G BasicMain    
+G DataBlockFirstSector
+G DeleteLine
+G DirArgTableToEntry
+G DirClearArgTable
+G DirEntryPtr
+G DirEntryToArgTable
+G DirLocate
+G DirNewArgTable
+G DirWriteEntry
+G DiskNewBuffer
+G DiskReadSector
+G DiskWriteBlock
+G DiskWriteSector
+G ExecuteCommand
+G FindLine
+G InitProgramStorage
+G InsertLine
+G InsertOrDeleteLine
+G LineCountCode
+G ListProgram
+G MainLoop
+G NextToken
+G ParseLineNumber
+G ParseLineOrCommand
+G ProgramEnd
+G ProgramStart
+G ReplaceLine
+G RmComments
+G RunStub
+G DiskBuf
+G TokenizeCommand
+G TryNextNum

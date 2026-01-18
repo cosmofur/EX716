@@ -33,38 +33,48 @@ L string.ld
     @LocalVar Ptr 01
     @LocalVar StrPtr 02
 
+    @PRT "Program Memory: " @PRTHEXI ProgramStart @PRT "-" @PRTHEXI ProgramEnd @PRTNL
     @MV2V ProgramStart Ptr
-
     @PUSH 0
     @WHILE_ZERO
-        @LOADI Ptr
+    
+        @PUSHI Ptr
         @IF_ZERO
             @POPNULL
             @WHILEBREAK
         @ENDIF
+        @POPNULL
+
+        @PRTHEXI Ptr @PRT ">"
 
         # Print line number
-        @LOADII Ptr
+        @PUSHII Ptr
         @PRTTOP
         @POPNULL
-        @PRT " "
+        @PRT " ["
+
+       # For Debug also print the Hex of the Next Ptr
+        @PUSHI Ptr @ADD 2 @PUSHS
+        @PRTHEXTOP
+        @POPNULL
+        @PRT "] "
 
         # Print text (Ptr + 4)
-        @LOADI Ptr
-        @ADDI 4
+        @PUSHI Ptr
+        @ADD 4
 	@POPI StrPtr
         @PRTSTRI StrPtr
 
         @PRTNL
 
         # Follow next_ptr
-        @LOADI Ptr
-        @ADDI 2
-        @LOAD     # replace TOS with value at address[TOS]
-        @STOREI Ptr
+        @PUSHI Ptr
+        @ADD 2
+        @PUSHS
+        @POPI Ptr
+
     @ENDWHILE
     @POPNULL
-
     @RestoreVar 02
     @RestoreVar 01
 @RET

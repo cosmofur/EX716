@@ -195,10 +195,11 @@ def escape_for_reinsertion(s):
 class AssemblerContext:
     def __init__(self):
         # Memory and address state
-        self.StoreMem = np.zeros(0x10000, dtype=np.uint8)
+#        self.StoreMem = np.zeros(0x10000, dtype=np.uint8)
         self.address = 0
         self.dataaddress = 0
         self.highaddress = 0
+        self.highwater = 0
         self.Entry = 0
         self.DEFMEMSIZE = 0x10000
         self.AdminFlag = 0
@@ -2866,7 +2867,8 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
         CPU.memspace[curaddress]     = result & 0xFF
         CPU.memspace[curaddress + 1] = (result >> 8) & 0xFF
         curaddress += 2
-
+    if context.highwater < curaddress:
+        context.highwater=curaddress
     return curaddress
 
 # Load file is also the effective main loop for the assembler
@@ -3308,6 +3310,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                             context.ExpectData -= (context.dataaddress - prevval)
                         else:
                             context.address = DecodeStr(key, context.address, CPU, False, context)
+        context.GlobeLabels["_END_"] = context.highwater
         for store in context.FWORDLIST:
             key = store[0]
             vaddress = store[1]
@@ -3334,7 +3337,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
     if context.address > context.highaddress:
         context.highaddress = context.address
     if context.dataaddress > context.highaddress:
-        highaddress = context.dataaddress
+        context.highaddress = context.dataaddress
     context.LORGFLAG = prior_lorgflag
     context.LocalID = prior_localid
     context.ActiveFile = prior_activefile
@@ -3385,17 +3388,18 @@ def debugger(passline, context: AssemblerContext):
         while thisword != "":
             rawlist.append(thisword)
             if "A" <= thisword[0] <= "z":
-                if thisword in context.FileLabels:      # Exact match (global) only
-                    varval = FindHistoricVal(thisword, CPU.pc, context)
-                    arglist.append(varval)
-                    argcnt += 1
-                    safeprint("%s found: %04x" % (thisword, varval))
-                else:
-                    varval = FindLabelMatch(thisword, context)      # Partial Matches (local vars)
-                    if varval != None:
-                        varval = FindHistoricVal(thisword, CPU.pc, context)
-                        arglist.append(varval)
-                        argcnt += 1
+                if thisword[0:4] != "REM ":   # To keep from pocessing comments.
+                   if thisword in context.FileLabels:      # Exact match (global) only
+                       varval = FindHistoricVal(thisword, CPU.pc, context)
+                       arglist.append(varval)
+                       argcnt += 1
+                       safeprint("%s found: %04x" % (thisword, varval))
+                   else:
+                       varval = FindLabelMatch(thisword, context)      # Partial Matches (local vars)
+                       if varval != None:
+                           varval = FindHistoricVal(thisword, CPU.pc, context)
+                           arglist.append(varval)
+                           argcnt += 1
             else:
                 Signval=0
                 if (thisword[0] if thisword and len(thisword) > 0 else "Invalid") in [ "+", "-"]:
