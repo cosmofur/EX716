@@ -33,11 +33,12 @@ L string.ld
     @LocalVar Ptr 01
     @LocalVar StrPtr 02
 
-    @PRT "Program Memory: " @PRTHEXI ProgramStart @PRT "-" @PRTHEXI ProgramEnd
-    @PRT " Remain:" @PUSH 0xffff @SUBI FreePtr @PRTHEXTOP @POPNULL @PRTNL
+    @PRT "Program Memory: "
+    @PUSHI FirstLinePtr @PRTHEXTOP @PRT "-" @ADDI ProgramUsed @PRTHEXTOP @POPNULL
+    @PRT " Used: " @PRTHEXI ProgramUsed @PRTNL
 
 @PRTNL
-    @MV2V ProgramStart Ptr
+    @MV2V FirstLinePtr Ptr
     @PUSH 0
     @WHILE_ZERO
     
@@ -103,7 +104,7 @@ L string.ld
    @LocalVar LineCount 02
    
    @MA2V 0 LineCount
-   @MV2V ProgramStart Ptr
+   @MV2V FirstLinePtr Ptr
    @PUSH 0
    @WHILE_ZERO
        @PUSHI Ptr

@@ -231,7 +231,7 @@ I basic_support.asm
     @CASE SAVECODE
        @POPNULL
        @PUSHI ArgCount
-       @IF_NEQ_A 1
+       @IF_NEQ_A 2
           @POPNULL
           @PRTLN "SAVE requires a filename. SAVE \"name\""
           @JMP PCExit
@@ -259,7 +259,7 @@ I basic_support.asm
     @CASE LOADCODE
        @POPNULL
        @PUSHI ArgCount
-       @IF_NEQ_A 1
+       @IF_NEQ_A 2
           @POPNULL
           @PRTLN "LOAD requires a filename. LOAD \"name\""
           @JMP PCExit

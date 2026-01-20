@@ -70,7 +70,7 @@ G MainHeap
     # Setup Program Arena (32K initial)
     #
     @MA2V 0x8000 ArenaSize           # total capacity
-    @Call(V) HeapNewObject MainHeap ArenaSize
+    @Call(VV) HeapNewObject MainHeap ArenaSize
     @POPI ProgramArenaBase               # base pointer
 
     @MA2V 0 ProgramUsed               # bytes used = 0
@@ -233,11 +233,11 @@ G MainHeap
     @PUSHI ProgramUsed
     @ADDI TextLen
     @ADD 5                  # Line header space needed
-    @IF_GT_V ArenaSize
+    @IF_UGT_V ArenaSize
        @PRT "Out of Memory."
        @JMP IL_EXIT
     @ENDIF
-    #
+    @POPNULL
     # Refresh FreePtr
     @PUSHI ProgramArenaBase @ADDI ProgramUsed @POPI FreePtr
 
@@ -464,7 +464,7 @@ G MainHeap
 # and RETURNS NextPtr on stack.
 # --------------------------------------------------
 
-:DeleteLine-OLD
+:DeleteLine_OLD
 @PUSHRETURN
     @LocalVar CurPtr      01   # input
     @LocalVar PrevPtr     02   # input

@@ -222,6 +222,33 @@ G FPTR_RESERVE
 G FILEPTR_SIZE
 =FILEPTR_SIZE 16
 
+# The First 'DIR' structure is reserved to be the File System Meta block, or FS block.
+G FSReadHeader        # (Disk Number):1|0 Disk IO function for FS header
+G FSWriteHeader       # Disk IO Function for FS header
+G FSIsFileUsed        # FileNum in used 0|1
+G FSSetFileUsed       # Sets the FileNum bitmap and possible Incrimet Active FileCount if was not previous used.
+G FSClearFileUsed     # Clears the FileNum and possibly Decriment Active FileCount if it was previous used.
+G FSFindFreeFile      # Searching bitmap for file slot that not in use.
+
+# Structure of FS
+G FSMagicID
+G FSDiskID
+G FSCreateTime
+G FSActiveFiles
+G FSHeaderFlag
+G FSFileBitMap
+=FSMagicID 0
+=FSDiskID 2
+=FSCreateTimeID 4
+=FSActiveFilesID 8
+=FSHeaderFlagsID 10
+=FSFileBitMapID 12
+=FSReservedID 76
+
+
+
+
+
 # Some Macros to help access ArgTable entries
 # %1[%2]=%3 %1=ArgTablePtr %2 is Offset in table %3 is value to save. A/V Constant or Variable
 M FILL_AT_A @PUSH %3 @PUSHI %1 @ADD %2 @POPS
@@ -233,8 +260,15 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 # Storage
 #
 # Only support one Buffer, so no recursion or multiple files open at one time.
-:ActiveDisk -1
 :DiskHeap -1
+:FSDiskNumStore -1
+:FSDiskIDStore 0
+:FSCreateTimeStore 0 0  # 32 bit
+:FSActiveFilesStore 0
+:FSHeaderFlagStore 0
+:FSHeadValidStore 0
+:FSFileBitMapStore
+. FSFileBitMapStore+64
 #--------------------------------------------------
 # SetDiskHeap(HeapID)
 # Required function, Heap Space must be allocated and ID'ed
@@ -257,10 +291,6 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
     @LocalVar BufPtr 02
     @POPI BufPtr
     @POPI Sector
-    @IF_EQ_AV -1 ActiveDisk
-       @DISKSEL 0
-       @MA2V 0 ActiveDisk
-    @ENDIF
     @DISKSEEKI Sector
     @DISKREADI BufPtr
     @RestoreVar 02
@@ -276,10 +306,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
     @LocalVar BufPtr 02
     @POPI BufPtr
     @POPI Sector
-    @IF_EQ_AV -1 ActiveDisk
-       @DISKSEL 0
-       @MA2V 0 ActiveDisk
-    @ENDIF
+
     @DISKSEEKI Sector
     @DISKWRITEI BufPtr
     @RestoreVar 02
@@ -507,7 +534,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 @RET
 
 #--------------------------------------
-# DirReadEntry(FileNum,*ArgTable, *DiskBuff):*ArgTable
+# DirReadEntry(FileNum,*ArgTable, *DiskBuff):Error Code
 # Test for ArgTable.FLAGS for FLAG_INUSE to check for errors. Will only be set if Entry if valid.
 #--------------------------------------
 :DirReadEntry
@@ -580,7 +607,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
       @PRT "DISK Error, no Heap defined."
       @PUSH -1
    @ELSE
-      @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE @IF_LT_A 100 @PRT "Memory Error" @POPNULL @END @ENDIF
+      @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE @IF_ULT_A 100 @PRT "Memory Error" @POPNULL @END @ENDIF
    @ENDIF
 @POPRETURN
 @RET
@@ -867,7 +894,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
            
     # Create new File Pointer structure.               
 
-    @Call(VA) HeapNewObject DiskHeap FILEPTR_SIZE @IF_LT_A 100 @PRT "Memory Error" @POPNULL @END  @ENDIF
+    @Call(VA) HeapNewObject DiskHeap FILEPTR_SIZE @IF_ULT_A 100 @PRT "Memory Error" @POPNULL @END  @ENDIF
     @POPI FilePtr
 
     # Populate FilePtr fields
@@ -1460,11 +1487,17 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
     @POPI StartPoint
     
     # Search loop continues until we find a match or reach end of DIR
+    @PRT "Startin Search..."
     @PUSHI StartPoint
     @WHILE_LT_A DIREntryCount     # in practice 512
        @POPI CurFileNum
        @Call(VVV) DirReadEntry CurFileNum ArgTable DiskBuffer
-
+       @IF_ZERO
+          @POPNULL
+          @PRT "Error Reading Filename"
+          @JMP WCMExit
+       @ENDIF
+       @POPNULL
        # Skip DIR entries that are not active.
        @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
        @AND FLAG_INUSE
@@ -1480,6 +1513,8 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
              @POPNULL
              @MV2V CurFileNum Result
              @JMP WCMExit
+          @ELSE
+             @POPNULL
           @ENDIF
        @ELSE
           @POPNULL
@@ -1487,6 +1522,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
        @INCI CurFileNum
        @PUSHI CurFileNum
     @ENDWHILE
+    @PRT "\nFinish Search\n"    
     @POPNULL
 :WCMExit
     @PUSHI Result
@@ -1622,7 +1658,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 
     # Locate file
     @PUSHI FileName
-    @PUSHI 0
+    @PUSH 0
     @CALL DirFindFile
     @POPI FileNum
 
@@ -1952,7 +1988,7 @@ M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
     # Write DIR entry
     @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer
 
-DWDE_EXIT:
+:DWDE_EXIT
     @IF_NEQ_AV -1 DiskBuffer
         @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
         @POPNULL
@@ -1971,3 +2007,281 @@ DWDE_EXIT:
 @POPRETURN
 @RET
 
+#--------------------------------
+# FSReadHeader(DISK_NUMBER):1|0 # Reads filesystem superblock (FS header) and establishes FS context
+#--------------------------------
+:FSReadHeader
+@PUSHRETURN
+    @LocalVar DiskBuffer 01
+    @LocalVar _I 02
+    @LocalVar DISKNUM 03
+
+    @POPI DISKNUM
+    @MV2V DISKNUM FSDiskNumStore      # We keep this so WriteHeader does not require param.
+
+    @Call(VA) HeapNewObject DiskHeap SECTOR_DIZE
+    @POPI DiskBuffer
+
+    @DISKSELI DISKNUM                 # Reading Disk Header is really the only time to select DISKID
+    @Call(VV) DiskReadSector 0 DiskBuffer
+
+
+    @PUSHII DiskBuffer
+    @IF_NEQ_A 0x3044
+       # FSMagicID = 'D0' (0x44,0x30) little-endian word 0x3044
+       @POPNULL
+       @PRT "DISK " @PRTHEXI DISKNUM @PRT " is not formated."
+       @MA2V 0 FSHeadValidStore    # Mark the disk data as bad
+       @MA2V -1 FSDiskNumStore     # Make sure other functions know this is invalid.
+    @ELSE
+       @POPNULL
+       @PUSHI DiskBuffer @ADD FSDiskID @PUSHS @POPI FSDiskIDStore
+       @PUSHI DiskBuffer @ADD FSCreateTimeID
+       @DUP
+       @PUSHS @POPI FSDiskCreateTimeStore
+       @ADD 2 @PUSHS @POPI FSDiskCreateTimeStore+2
+       @PUSHI DiskBuffer @ADD FSActiveFileID @PUSHS @POPI FSActiveFilesStore
+       @PUSHI DiskBuffer @ADD FSHeaderFlagsID @PUSHS @POPI FSHeaderFlagStore
+       @PUSHI DiskBuffer @ADD FSFileBitMapID
+       @ForIA2B _I 0 64
+          @DUP                       # Copy of DiskBuffer start address
+          @ADDI _I
+          @PUSHS                     # Get Value of at offset
+          @PUSH FSFileBitMapStore @ADD_I  # Location to put it.
+          @POPS
+       @NextBy _I 2
+       @POPNULL                      # Get rid of base DiskBuffer offset 
+       @MA2V 1 FSHeadValidStore    # Mark disk data as valid
+   @ENDIF
+   @PUSHI FSHeadValidStore
+   # Always delete DiskBuffer   
+   @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+
+#----------------------------------------
+# FSWriteHeader() Stores current FS Disk meta data back to disk.
+#----------------------------------------
+:FSWriteHeader
+@PUSHRETURN
+    @LocalVar DiskBuffer 01
+    @LocalVar _I 02
+    @LocalVar TestVal 03
+
+    # First do some test for valid disks
+
+    @MA2V 1 TestVal       # All tests must pass anyone sets val to 0 fails
+
+    @IF_EQ_AV -1 FSDiskNumStore
+       # Tried to call Write before Read
+       @MA2V 0 TestVal
+    @ENDIF
+    @IF_EQ_AV 0 FSHeadValidStore
+       # Last Read Header failed, can't use that to write
+       @MA2V 0 TestVal
+    @ENDIF    
+    # Now test to make sure Disk wasn't swapped.
+    @DISKSELI FSDiskNumStore
+    @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
+    @POPI DiskBuffer
+    @Call(VV) DiskReadSector 0 DiskBuffer
+    #
+    @PUSHI DiskBuffer @ADD FSDiskID @PUSHS
+    @IF_NEQ_V FSDiskIDStore
+       # Disk does not have matching ID
+       @MA2V 0 TestVal
+    @ENDIF
+    @PUSHII DiskBuffer
+    @IF_NEQ_A 0x3044
+       @MA2V 0 TestVal       # Is magic number fails, disk is swapped.
+    @ENDIF
+    @POPNULL
+
+    @IF_EQ_AV 1 TestVal
+      # Only continue is all it right.
+      # While we grab all the fields, we do not allow this functio to rewrite fixed value fields
+      # like DISKID or Magic Number or create time. A format command would do all that.
+      @PUSHI FSActiveFilesStore
+      @PUSHI DiskBuffer @AD FSActiveFileID  @POPS
+      #
+      @PUSHI FSFileBitMapStore
+      @ForIA2B _I 0 64
+         @DUP
+         @ADDI _I
+         @PUSHS
+         @PUSHI DiskBuffer @ADD FSFileBitMapID
+         @ADDI _I
+         @POPS
+      @NextBy _I 2
+      @POPNULL # Drop Original FSFileBitMapID offset.
+      #
+      # Save results to Disk
+      @Call(AV) DiskWriteSector 0 DiskBuffer
+    @ENDIF
+    # Always delete DiskBuffer
+    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+
+#---------------------------------
+# FSIsFileUsed(FileNum):0|1  tests if bitmap says file in use
+#---------------------------------
+:FSIsFileUsed
+@PUSHRETURN
+   @LocalVar FileNum 01
+   @LocalVar _I 02
+   @LocalVar ByteOffset 03
+   @LocalVar BitIndex 04
+   @LocalVar Mask 05
+
+   @AND 0x1ff       # Make sure FileNum in valid range.
+   @IF_UGE_A 4
+      @POPI FileNum
+
+
+      @PUSHI FileNum @SHRN 4 @SHLN 1  # We need both do align with words
+      @POPI ByteOffset
+      @PUSHI FileNum @AND 0xf
+      @POPI BitIndex   
+
+      @PUSH 1
+      @ForIA2V _I 0 BitIndex
+         @SHL
+      @Next _I
+      @POPI Mask
+
+      @PUSHI FSFileBitMapStore @ADDI ByteOffset
+      @PUSHS
+      @ANDI Mask
+      @IF_NOTZERO
+         @POPNULL
+         @PUSH 1
+      # Else is already zero
+      @ENDIF
+   @ENDIF
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+#---------------------------------
+# FSSetFileUsed(FileNum) Sets BitMap At FileNum spot
+#---------------------------------
+:FSSetFileUsed
+@PUSHRETURN
+   @LocalVar FileNum 01
+   @LocalVar _I 02
+   @LocalVar ByteOffset 03
+   @LocalVar BitIndex 04
+   @LocalVar Mask 05
+
+   @AND 0x1ff       # Make sure FileNum in valid range.
+   @IF_UGE_A 4
+      @POPI FileNum
+
+
+      @PUSHI FileNum @SHRN 4 @SHLN 1  # We need both do align with words
+      @POPI ByteOffset
+      @PUSHI FileNum @AND 0xf
+      @POPI BitIndex
+
+      @PUSH 1
+      @ForIA2V _I 0 BitIndex
+         @SHL
+      @Next _I
+      @POPI Mask
+
+      # Test if there is change in this bit
+      @PUSHI FSFileBitMapStore @ADDI ByteOffset
+      @PUSHS
+      @ANDI Mask
+      @IF_ZERO
+         # Bit had not been set, so INC Active Files
+         @INCI FSActiveFilesStore
+         @POPNULL
+         # Now set it.
+         @PUSHI FSFileBitMapStore @ADDI ByteOffset
+         @PUSHS
+         @ORI Mask
+         @PUSHI FSFileBitMapStore @ADDI ByteOffset
+         @POPS
+      @ELSE
+         @POPNULL
+      @ENDIF
+
+   @ENDIF
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+#---------------------------------
+# FSClearFileUsed(FileNum) Cleats BitMap at FileNum spot
+#---------------------------------
+:FSClearFileUsed
+@PUSHRETURN
+   @LocalVar FileNum 01
+   @LocalVar _I 02
+   @LocalVar ByteOffset 03
+   @LocalVar BitIndex 04
+   @LocalVar Mask 05
+
+   @AND 0x1ff       # Make sure FileNum in valid range.
+   @IF_UGE_A 4
+      @POPI FileNum
+
+      @PUSHI FileNum @SHRN 4 @SHLN 1  # We need both do align with words
+      @POPI ByteOffset
+      @PUSHI FileNum @AND 0xf
+      @POPI BitIndex
+
+      @PUSH 1
+      @ForIA2V _I 0 BitIndex
+         @SHL
+      @Next _I
+      @POPI Mask
+      @PUSHI FSFileBitMapStore @ADDI ByteOffset
+      @PUSHS
+      @ANDI Mask
+      @IF_NOTZERO
+         # Bit was previously set, so DEC Active Files
+         @DECI FSActiveFilesStore
+         @POPNULL
+         @PUSHI Mask
+         @INV          # Invert the mask so all bits but Index are 1
+         @POPI Mask
+
+         @PUSHI FSFileBitMapStore @ADDI ByteOffset
+         @PUSHS
+         @ANDI Mask
+         @PUSHI FSFileBitMapStore @ADDI ByteOffset
+         @POPS
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @ENDIF
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+
+   
+
+   
+   
+   
+   
