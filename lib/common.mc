@@ -9,6 +9,8 @@ G SizeHereVar
 G NewHereMem
 G OldHereVar
 =OldHereVar NewHereMem
+G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
+G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 :Var01 0
 :Var02 0
 :Var03 0

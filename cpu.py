@@ -454,12 +454,84 @@ LocVarHist = {}
 
 
 
+#def UpdateVarHistory(varname, value, address):
+#   global LocVarHist
+#    LocVarHist.setdefault(varname, []).append((int(value), int(address)))
+
+
 def UpdateVarHistory(varname, value, address):
     global LocVarHist
-    LocVarHist.setdefault(varname, []).append((int(value), int(address)))
 
+    address = int(address)
+    value = int(value)
+
+    history = LocVarHist.setdefault(varname, [])
+
+    # If there is an existing open lifetime for this symbol,
+    # close it before starting a new one.
+    if history:
+        last = history[-1]
+        if last.get("end") is None:
+            # Close the previous lifetime just before this definition
+            last["end"] = address - 1
+
+    # Start a new lifetime
+    history.append({
+        "value": value,
+        "start": address,
+        "end": None,   # Open-ended for now
+    })
 
 def FindHistoricVal(varname, testaddress, context=None):
+    global LocVarHist
+
+    testaddress = int(testaddress)
+
+    def in_range(entry):
+        start = entry["start"]
+        end = entry["end"]
+        if testaddress < start:
+            return False
+        if end is not None and testaddress > end:
+            return False
+        return True
+
+    # ------------------------------------------------------------
+    # 1) Exact-name lookup first
+    # ------------------------------------------------------------
+    candidates = []
+    history = LocVarHist.get(varname)
+    if history:
+        candidates = [e for e in history if in_range(e)]
+
+    if candidates:
+        # Pick the most recent valid definition
+        best = max(candidates, key=lambda e: e["start"])
+        return best["value"]
+
+    # ------------------------------------------------------------
+    # 2) Prefix-based lookup (varname__)
+    # ------------------------------------------------------------
+    prefix = f"{varname}__"
+    candidates = []
+
+    for name, history in LocVarHist.items():
+        if name.startswith(prefix):
+            for entry in history:
+                if in_range(entry):
+                    candidates.append(entry)
+
+    if candidates:
+        best = max(candidates, key=lambda e: e["start"])
+        return best["value"]
+
+    # ------------------------------------------------------------
+    # 3) No valid historical entry found
+    # ------------------------------------------------------------
+    print(f"Error: {varname} not recognized at address {testaddress:04x}.")
+    return 0
+
+def FindHistoricVal_OLD(varname, testaddress, context=None):
     global LocVarHist
     testaddress = int(testaddress)
 
@@ -2879,11 +2951,15 @@ def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
 def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContext):
     global FileLineData
 #    print(f"Debug: {filename}")
+
     prior_lorgflag = context.LORGFLAG
     prior_localid = context.LocalID
     prior_activefile = context.ActiveFile
     context.LORGFLAG = LorgFlag
-    context.LocalID = LocalID
+    if LorgFlag == LOCALFLAG:
+        context.LocalID = LocalID
+    else:
+        context.LocalID = None
     context.FileLineNum = 1
     if context.Debug > 1:
         if  context.LORGFLAG == LOCALFLAG:
@@ -3201,10 +3277,15 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     (newfilename, size) = nextword(line[1:])
                     HoldGlobeLine = context.FileLineNum
                     oldfilename = context.ActiveFile
-                    NewLocalID = str(context.UniqueLineNum)+newfilename
-                    # May need come back here and use context.LORGFLAG rather than GLOBALFLAG..test this.
+#                    NewLocalID = str(context.UniqueLineNum)+newfilename
+                    # Force GLOBAL Scope for INCLUDES
+                    save_largflag = context.LORGFLAG
+                    save_localid = context.LocalID                    
                     context.highaddress = context.address = \
-                        loadfile(newfilename, context.address, CPU , GLOBALFLAG, NewLocalID, context)
+                        loadfile(newfilename, context.address, CPU , GLOBALFLAG, context.LocalID, context)
+                    context.LORGFLAG = save_largflag
+                    context.LocalID = save_localid
+                    
                     context.ActiveFile = oldfilename
                     context.FileLineNum = HoldGlobeLine
                     line = line[size+1:]
@@ -3338,11 +3419,28 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
         context.highaddress = context.address
     if context.dataaddress > context.highaddress:
         context.highaddress = context.dataaddress
+        # --- CLOSE LOCAL LABEL LIFETIMES AT LIBRARY EXIT ---
+    if context.LORGFLAG == LOCALFLAG:
+        CloseLocalHistories(context.LocalID, context.highaddress)
+
     context.LORGFLAG = prior_lorgflag
     context.LocalID = prior_localid
     context.ActiveFile = prior_activefile
     return context.highaddress
 
+def CloseLocalHistories(local_id, end_address):
+    global LocVarHist
+
+    suffix = "___" + str(local_id)
+    end_address = int(end_address)
+
+    for name, history in LocVarHist.items():
+        if suffix not in name:
+            continue
+
+        for entry in history:
+            if entry.get("end") is None:
+                entry["end"] = end_address
 
 def debugger(passline, context: AssemblerContext):
     global InDebugger, breakpoints, tempbreakpoints, EchoFlag
@@ -3387,22 +3485,15 @@ def debugger(passline, context: AssemblerContext):
         best_match = None
         while thisword != "":
             rawlist.append(thisword)
-            if "A" <= thisword[0] <= "z":
-                if thisword[0:4] != "REM ":   # To keep from pocessing comments.
-                   if thisword in context.FileLabels:      # Exact match (global) only
-                       varval = FindHistoricVal(thisword, CPU.pc, context)
-                       arglist.append(varval)
-                       argcnt += 1
-                       safeprint("%s found: %04x" % (thisword, varval))
-                   else:
-                       varval = FindLabelMatch(thisword, context)      # Partial Matches (local vars)
-                       if varval != None:
-                           varval = FindHistoricVal(thisword, CPU.pc, context)
-                           arglist.append(varval)
-                           argcnt += 1
+            
+            if not looks_numeric(thisword) and (thisword[0].isalpha() or thisword[0] == "_"):
+                if thisword.upper() != "REM":
+                    varval = FindHistoricVal(thisword, CPU.pc, context)
+                    arglist.append(varval)
+                    argcnt += 1
             else:
                 Signval=0
-                if (thisword[0] if thisword and len(thisword) > 0 else "Invalid") in [ "+", "-"]:
+                if thisword[0] in "+-":
                     # Handle case where user did label+/-value
                     Signval=1 if thisword[0]=="+" else -1
                     thisword=thisword[1:]
@@ -3562,34 +3653,54 @@ def debugger(passline, context: AssemblerContext):
            # no args
            safeprint("ERR: Need to specify one or more addresses")
            continue
-       
         if cmdword == "pa":
-            # Filter labels
-            filtered_labels = {
-                key: value for key, value in context.FileLabels.items()
-                if not key.startswith("_") and not key.startswith("F.") and not key.startswith("M.")
-            }
+           # Filter labels
+           filtered_labels = {
+               key: value for key, value in context.FileLabels.items()
+               if not key.startswith("_")
+               and not key.startswith("F.")
+               and not key.startswith("M.")
+           }
 
-            # Step 1: Collect rows based on rawlist filtering
-            import re
-            rows = []
-            for key, value in filtered_labels.items():
-                value_str = str(value)
-                if not rawlist or any(re.search(pattern, key) or re.search(pattern, value_str) for pattern in rawlist):
-                    rows.append((key, f"{int(value):04x}"))
+           import re
+           rows = []
 
-            # Step 2: Determine column widths
-            name_width = max(len("Name"), max(len(k) for k, _ in rows)) if rows else len("Name")
-            value_width = max(len("Value"), max(len(v) for _, v in rows)) if rows else len("Value")
+           for key, value in filtered_labels.items():
+               value_str = str(value)
+               if not rawlist or any(
+                   re.search(pattern, key) or re.search(pattern, value_str)
+                   for pattern in rawlist
+               ):
+                   active = "Y" if IsLabelActive(key, CPU.pc) else "N"
+                   rows.append((key, f"{int(value):04x}", active))
 
-            # Step 3: Build the table
-            table = f"| {'Name'.ljust(name_width)} | {'Value'.ljust(value_width)} |\n"
-            table += f"|{'-' * (name_width + 2)}|{'-' * (value_width + 2)}|\n"
-            for key, val in rows:
-                table += f"| {key.ljust(name_width)} | {val.ljust(value_width)} |\n"
+           # Determine column widths
+           name_width  = max(len("Name"),  max(len(k) for k, _, _ in rows)) if rows else len("Name")
+           value_width = max(len("Value"), max(len(v) for _, v, _ in rows)) if rows else len("Value")
+           act_width   = len("Active")
 
-            safeprint(table)
-            continue
+           # Build the table
+           table = (
+               f"| {'Name'.ljust(name_width)} | "
+               f"{'Value'.ljust(value_width)} | "
+               f"{'Active'.ljust(act_width)} |\n"
+           )
+           table += (
+               f"|{'-'*(name_width+2)}|"
+               f"{'-'*(value_width+2)}|"
+               f"{'-'*(act_width+2)}|\n"
+           )
+
+           for k, v, a in rows:
+               table += (
+                   f"| {k.ljust(name_width)} | "
+                   f"{v.ljust(value_width)} | "
+                   f"{a.ljust(act_width)} |\n"
+               )
+
+           safeprint(table)
+           continue
+
         if cmdword == "m":
             if argcnt >= 1:
                 maddr = arglist[0]
@@ -3975,6 +4086,42 @@ def debugger(passline, context: AssemblerContext):
                 safeprint(f"{left[0]:<4} - {left[1]:<30}    {right[0]:<4} - {right[1]}")
         continue
 
+def looks_numeric(tok: str) -> bool:
+    if not tok:
+        return False
+
+    # handle leading sign
+    if tok[0] in "+-":
+        tok = tok[1:]
+        if not tok:
+            return False
+
+    # hex forms
+    if tok.startswith(("0x", "0X")):
+        return tok[2:].isdigit()
+
+    if tok.startswith("$"):
+        return tok[1:].isdigit()
+
+    # decimal
+    return tok.isdigit()
+
+
+
+def IsLabelActive(name, pc):
+    history = LocVarHist.get(name)
+    if not history:
+        return False
+
+    for entry in history:
+        start = entry["start"]
+        end = entry["end"]
+        if pc >= start and (end is None or pc <= end):
+            return True
+
+    return False
+
+    
 def main():
     global CPU,  DebugOut, current_context
 
