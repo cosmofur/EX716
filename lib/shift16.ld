@@ -162,7 +162,6 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
         @POPRETURN @RET
     @ENDIF
     @POPNULL
-
     @PUSHI N @IF_GE_A 16
         @POPNULL
         # result is all sign bit
@@ -181,7 +180,6 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
         @POPRETURN @RET
     @ENDIF
     @POPNULL
-
     @ForIA2B I1 N -1
         @PUSHI A
         @SHR           # logical right shift

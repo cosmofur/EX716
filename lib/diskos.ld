@@ -51,7 +51,8 @@ L string.ld
 # Total Blocks    : 512
 #
 # Block 0         : Directory + FS header
-# Blocks 1–511    : File data blocks
+# Block 1-3       : Reserved for 'OS' Kernel/Monitor
+# Blocks 4–511    : File data blocks
 #
 # Sector numbering is linear across the disk.
 #
@@ -64,7 +65,7 @@ L string.ld
 # Each directory entry records:
 #   - filename (optional)
 #   - flags (in-use, deleted, etc.)
-#   - FileNum
+#   - FileNum (Mapped 1-1 to Dir entry index)
 #   - file size (32-bit)
 #   - first block
 #   - block count
@@ -87,6 +88,11 @@ L string.ld
 #   - bitmap of used FileNum slots
 #
 # The FS bitmap is authoritative for file allocation.
+# NOTE:
+#   FSReadHeader must be called during DiskOS initialization.
+#   FSWriteHeader must be called whenever file allocation
+#   state changes (create/delete).
+#   DiskOpen / DiskClose do not modify FS metadata.
 #
 # ------------------------------------------------
 # Memory Management
@@ -128,44 +134,62 @@ L string.ld
 #   SetDiskHeap(HeapID)
 #
 # Sector-level I/O:
-#   DiskReadSector(Sector, *Buffer)
-#   DiskWriteSector(Sector, *Buffer)
-#   DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, *Buffer)
-#   DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, *Buffer)
+#   DiskReadSector(Sector, *Buffer):Void
+#        Low level Disk read, fatal on I/O Failure
+#   DiskWriteSector(Sector, *Buffer):Void
+#        Low level Disk write, fatal on I/O Failure
+#   DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, *Buffer):Bytes_Read
+#   DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, *Buffer):Bytes_Written
 #
 # Directory management:
 #   DirLocate(FileNum):(Sector, Offset)
+#          Locates directory entry for FileNum
 #   DirEntryPtr(*SectorBuffer, Offset):( *DirEntry )
+#          Return Pointer to directory entry inside provided buffer
 #   DirEntryToArgTable(*DirEntry, *ArgTable)
+#          Copies Directrory Entry into provided ArgTable, void function
 #   DirArgTableToEntry(*DirEntry, *ArgTable)
+#          Copies ArgTable to provided Dir Entry Pointer, void funciton
 #   DirClearArgTable(*ArgTable)
-#   DirReadEntry(FileNum, *ArgTable, *SectorBuffer)
-#   DirWriteEntry(FileNum, *ArgTable, *SectorBuffer)
-#   DirNewArgTable():( *ArgTable )
+#          Clears ArgTable to default values, void function
+#   DirReadEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
+#          For given FileNum Reads DIR's Sector into provided Buffer and fills ArgTable
+#   DirWriteEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
+#          For given FileNum insert FileNum into DIR entry, use SectorBuffer as scratch space.
+#   DirNewArgTable():( *ArgTable |0) 0=failure.
 #
 # File-level API:
-#   DiskOpen(FileNum, Mode)
+#   DiskOpen(FileNum, Mode):FilePointer|0
+#          Given FileNum, open file and return FilePointer
 #   DiskClose(FilePtr):(0|1)
-#   DiskFileRead(FilePtr, MemPtr, ByteCount)
-#   DiskFileWrite(FilePtr, MemPtr, ByteCount)
+#          Close the given File Pointer
+#   DiskFileRead(FilePtr, MemPtr, ByteCount):Actual Bytes Read
+#          Read upto ByteCount bytes from FilePtr file. Save to MemPtr which must be at least ByteCount large.
+#   DiskFileWrite(FilePtr, MemPtr, ByteCount):Acutual Bytes Written
+#           Write upto ByteCount Bytes into FilePtr file, data is from MemPtr which must be at least ByteCount large.
 #   file_open(FileName, Mode):(FilePtr|0)
 #
 # Metadata helpers:
 #   DiskFileName(FilePtr, StrPtr)
+#        Writes StrPtr string into Filename part of FilePtr, void function
 #   DiskFileSetLineCount(FilePtr, LineCount)
-#   DiskGetLineCount(FilePtr)
+#        Writes LineCount into Meta Data of FilePtr, void function
+#   DiskGetLineCount(FilePtr):Line_Count
+#        Gets number of lines in Meta data of FilePtr
 #   DiskFileSetType(FilePtr, TypeWord)
-#   DiskFileGetType(FilePtr)
+#        Writes File Type Code into Meta Data of FilePtr, void function
+#   DiskFileGetType(FilePtr):FileType
+#        Gets File Type Code from Meta Data of FilePtr
 #
 # Allocation / FS helpers:
-#   FSReadHeader
-#   FSWriteHeader
-#   FSIsFileUsed
-#   FSSetFileUsed
-#   FSClearFileUsed
-#   FSFindFreeFile
-#   FSFindFile
-#   FSFormat
+#   FSReadHeader(DISK_NUMBER):(0|1) 1=success
+#   FSWriteHeader():(0|1) 1=success
+#   FSIsFileUsed(FileNum):(0|1)  boolean
+#   FSSetFileUsed(FileNum):(0|1) 1=success 0=invalid filenum
+#   FSClearFileUsed(FileNum):(0|1) 1=success 0=invalid filenum
+#   FSFindFreeFile():FileNum|0  0=failure
+#   FSFindFile(StrPattern, StartFileNum): FileNum | 0 0=no more matching files found.
+#   FSFormat(DiskID, DiskNum):void   Format DiskNum with DiskID
 #
 # ------------------------------------------------
 # Design Goals
@@ -177,37 +201,58 @@ L string.ld
 # * Future-friendly (extents, larger files)
 #
 # ================================================================
-
-G DiskReadBlock
-G DiskWriteBlock
+#====================================================
+#Storage
+#====================================================
+G DiskHeap
+G SetDiskHeap
+G DiskNewBuffer
+#====================================================
+#Public API — Sector / Block I/O
+#====================================================
 G DiskReadSector
 G DiskWriteSector
+G DiskReadBlock
+G DiskWriteBlock
 
+G SECTOR_SIZE
+=SECTOR_SIZE 512
 
-G SetDiskHeap
-G DirNewArgTable
-G DirReadEntry
-G DirWriteEntry
+#====================================================
+#Public API — Directory Management
+#====================================================
+G DirLocate
+G DirEntryPtr
+G DirEntryToArgTable
 G DirArgTableToEntry
 G DirClearArgTable
-G DirEntryToArgTable
-G DirEntryPtr
-G DirLocate
-G DiskOpen
-G DiskFileWrite
-G DiskFileRead
-G DiskClose
-G file_open
+G DirReadEntry
+G DirWriteEntry
+G DirNewArgTable
 G DirFindFile
+G DirFindFree
+G WildCardMatch
+#====================================================
+#Public API — File-Level Operations
+#====================================================
+G DiskOpen
+G DiskClose
+G DiskFileRead
+G DiskFileWrite
+G file_open
+
 G DiskFileName
 G DiskFileSetLineCount
 G DiskGetLineCount
 G DiskFileSetType
-G DiskWithDirEntry
 G DiskFileGetType
-G DirFindFree
+G DiskWithDirEntry
+G DiskFileReadLine
 
-
+#====================================================
+#Directory Entry Layout (on disk)
+#====================================================
+# Offsets within a 128-byte directory entry
 G DIR_FILENAME
 G DIR_FLAGS
 G DIR_FILENUM
@@ -220,6 +265,26 @@ G DIR_TIMESTAMPS
 G DIR_CRC
 G DIR_RESERVE
 G DIR_SIZE
+
+=DIR_FILENAME      0x00
+=DIR_FLAGS         0x20
+=DIR_FILENUM       0x22
+=DIR_FILESIZE      0x24
+=DIR_FIRSTBLOCK    0x28
+=DIR_BLOCKCOUNT    0x2A
+=DIR_LINECOUNT     0x2C
+=DIR_FILETYPE      0x2E
+=DIR_TIMESTAMPS    0x30
+=DIR_CRC           0x38
+=DIR_RESERVE       0x40
+=DIR_SIZE          0x80
+
+=DIREntryCount     512
+
+
+#====================================================
+#ArgTable Aliases (semantic clarity)
+#====================================================
 G DIR_AT_FILENAME
 G DIR_AT_FLAGS
 G DIR_AT_FILENUM
@@ -232,22 +297,6 @@ G DIR_AT_TIMESTAMPS
 G DIR_AT_CRC
 G DIR_AT_RESERVE
 G DIR_AT_SIZE
-
-=DIR_FILENAME      0
-=DIR_FLAGS         0x20
-=DIR_FILENUM       0x22
-=DIR_FILESIZE      0x24
-=DIR_FIRSTBLOCK    0x28
-=DIR_BLOCKCOUNT    0x2a
-=DIR_LINECOUNT     0x2c
-=DIR_FILETYPE      0x2e
-=DIR_TIMESTAMPS    0x30
-=DIR_CRC           0x38
-=DIR_RESERVE       0x40
-=DIR_SIZE          0x80
-
-=DIREntryCount     512
-
 
 =DIR_AT_FILENAME      DIR_FILENAME
 =DIR_AT_FLAGS         DIR_FLAGS
@@ -263,104 +312,122 @@ G DIR_AT_SIZE
 =DIR_AT_SIZE          DIR_SIZE
 
 G ARGTABLE_SIZE
-G SECTOR_SIZE
-=ARGTABLE_SIZE        DIR_AT_SIZE
-=SECTOR_SIZE          512
+=ARGTABLE_SIZE DIR_AT_SIZE
 
-# Flag Bits and meaning.
+#====================================================
+#Directory Flags
+#====================================================
 G FLAG_INUSE
 G FLAG_DELETED
 G FLAG_READONLY
 G FLAG_SYSTEM
 G FLAG_EXEC
 
-=FLAG_INUSE 0b1      # Bit 0, 1 means entry exists and valid.
-=FLAG_DELETED 0b10   # Bit 1, 1 was deleted, available
-=FLAG_READONLY 0b100 # Bit 2, 1 ReadOnly (FUTURE)
-=FLAG_SYSTEM   0b1000 # Bit 3, 1 System FIle (FUTURE)
-=FLAG_EXEC  0b010000  # Bit 4, 1 Executable file. Otherwise Data
-
-#
-# File Pointer Modes
+=FLAG_INUSE     0b00001  # Entry exists
+=FLAG_DELETED   0b00010  # Previously used, now free
+=FLAG_READONLY  0b00100  # FUTURE
+=FLAG_SYSTEM    0b01000  # FUTURE
+=FLAG_EXEC      0b10000  # Executable vs data
+#====================================================
+#File Pointer Modes
+#====================================================
 G FP_OPEN_READ
 G FP_OPEN_WRITE
 G FP_OPEN_APPEND
 G FP_OPEN_CREATE
-=FP_OPEN_READ 0b0001     # Bit 0: Open for Reading
-=FP_OPEN_WRITE 0b0010    # Bit 1: Open for Writing
-=FP_OPEN_APPEND 0b0100   # Bit 2: Append (Cursor at EOF)
-=FP_OPEN_CREATE 0b1000   # Bit 3: Create if missing.
 
-#
-# File Pointer Structure
+G MODE_RO        # Read Only
+G MODE_WO        # Write Only
+G MODE_RW        # Read Write
+G MODE_WP        # Write Append
+G MODE_AP        # Open RW Append
+
+=FP_OPEN_READ    0b0001
+=FP_OPEN_WRITE   0b0010
+=FP_OPEN_APPEND  0b0100
+=FP_OPEN_CREATE  0b1000
+
+#====================================================
+#File Pointer Structure (in memory)
+#====================================================
 G FPTR_FILENUM
 G FPTR_FIRST_SECTOR
 G FPTR_FILESIZE
 G FPTR_CURSOR
 G FPTR_MODE
 G FPTR_RESERVE
-=FPTR_FILENUM      0     # FileNum
-=FPTR_FIRST_SECTOR 2     # First Sector
-=FPTR_FILESIZE     4     # 32 bit Size
-=FPTR_CURSOR       8     # Cursor (byte offset) 32 bit
-=FPTR_MODE         12    # Mode Flags
-=FPTR_RESERVE      14    # Reserved
-
 G FILEPTR_SIZE
-=FILEPTR_SIZE 16
 
-# The First 'DIR' structure is reserved to be the File System Meta block, or FS block.
-G FSReadHeader        # (Disk Number):1|0 Disk IO function for FS header
-G FSWriteHeader       # Disk IO Function for FS header
-G FSIsFileUsed        # FileNum in used 0|1
-G FSSetFileUsed       # Sets the FileNum bitmap and possible Incrimet Active FileCount if was not previous used.
-G FSClearFileUsed     # Clears the FileNum and possibly Decriment Active FileCount if it was previous used.
-G FSFindFreeFile      # Searching bitmap for file slot that not in use.
-G FSFindFile          # Search for a File checking if FS bitmap of valid. Falls back to DirFindFile if not.
-G FSFormat            # Formats the FS Header, zeros blocks and sets magic number/time
+=FPTR_FILENUM        0
+=FPTR_FIRST_SECTOR   2
+=FPTR_FILESIZE       4   # 32-bit
+=FPTR_CURSOR         8   # 32-bit
+=FPTR_MODE           12
+=FPTR_RESERVE        14
 
-# Structure of FS
+=FILEPTR_SIZE        16
+
+#====================================================
+#File System (FS) Header API
+#====================================================
+G FSReadHeader
+G FSWriteHeader
+G FSIsFileUsed
+G FSSetFileUsed
+G FSClearFileUsed
+G FSFindFreeFile
+G FSFindFile
+G FSFormat
+
+#====================================================
+#FS Header Layout (on disk)
+#====================================================
 G FSMagicID
 G FSDiskID
 G FSCreateTimeID
 G FSActiveFilesID
-G FSHeaderFlagID
+G FSHeaderFlagsID
 G FSFileBitMapID
 G FSReservedID
-=FSMagicID 0
-=FSDiskID 2
-=FSCreateTimeID 4
-=FSActiveFilesID 8
-=FSHeaderFlagsID 10
-=FSFileBitMapID 12
-=FSReservedID 76
 
+=FSMagicID          0
+=FSDiskID           2
+=FSCreateTimeID     4
+=FSActiveFilesID    8
+=FSHeaderFlagsID    10
+=FSFileBitMapID     12
+=FSReservedID       76
 
-
-
-
-# Some Macros to help access ArgTable entries
-# %1[%2]=%3 %1=ArgTablePtr %2 is Offset in table %3 is value to save. A/V Constant or Variable
-M FILL_AT_A @PUSH %3 @PUSHI %1 @ADD %2 @POPS
+#====================================================
+#ArgTable Helper Macros
+#====================================================
+# %1[%2] = %3   (%1 = ArgTablePtr, %2 = offset, %3 = value)
+M FILL_AT_A @PUSH %3  @PUSHI %1 @ADD %2 @POPS
 M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 
 
-
-#
-# Storage
-#
-G FSDiskNumStore G FSDiskIDStore G FSCreateTimeStore G FSActiveFilesStore G FSHeaderFlagStore G FSHeadValidStore
+#====================================================
+#Internal Storage (DiskOS state)
+#====================================================
+G FSDiskNumStore
+G FSDiskIDStore
+G FSCreateTimeStore
+G FSActiveFilesStore
+G FSHeaderFlagStore
+G FSHeadValidStore
 G FSFileBitMapStore
-# Only support one Buffer, so no recursion or multiple files open at one time.
-:DiskHeap -1
-:FSDiskNumStore -1
-:FSDiskIDStore 0
-:FSCreateTimeStore 0 0  # 32 bit
-:FSActiveFilesStore 0
-:FSHeaderFlagStore 0
-:FSHeadValidStore 0
+
+# Only one buffer supported (non-reentrant)
+:DiskHeap            -1
+:FSDiskNumStore      -1
+:FSDiskIDStore       0
+:FSCreateTimeStore   0 0   # 32-bit
+:FSActiveFilesStore  0
+:FSHeaderFlagStore   0
+:FSHeadValidStore    0
 :FSFileBitMapStore
-. FSFileBitMapStore+64
+. FSFileBitMapStore+128
+#####################################################################################
 #--------------------------------------------------
 # SetDiskHeap(HeapID)
 # Required function, Heap Space must be allocated and ID'ed
@@ -417,7 +484,7 @@ G FSFileBitMapStore
        @SHLN 7         # <<7 == *128
     @ELSE
        # Error Invalid FileNum
-       @PRT "Invaild FileNum: " @PRTTOP @PRTNL
+       @PRT "Invalid FileNum: " @PRTTOP @PRTNL
        @POPNULL
        @PUSH -1       # -1 as error code
     @ENDIF
@@ -455,7 +522,7 @@ G FSFileBitMapStore
       @PUSHI OffSet
    @ELSE
       # Invalid FileNum
-       @PRT "Invaild FileNum: " @PRTTOP @PRTNL
+       @PRT "Invalid FileNum: " @PRTTOP @PRTNL
        @POPNULL
        @PUSH -1       # -1 as error code
        @PUSH -1       # -1 as error code
@@ -573,11 +640,12 @@ G FSFileBitMapStore
     @LocalVar Offset     04
     @LocalVar DiskBuffer 05
     @LocalVar EntryPtr   06
+    @LocalVar Result     07
 
     @POPI DiskBuffer
     @POPI ArgTable
     @POPI FileNum
-
+    @MA2V 0 Result
     # Find Sector-Offset where DIR entry is.
     @Call(V) DirLocate FileNum
     @IF_EQ_A -1
@@ -587,6 +655,7 @@ G FSFileBitMapStore
        @POPI Sector
 
        @Call(VV) DiskReadSector Sector DiskBuffer
+       
 
        @Call(VV) DirEntryPtr DiskBuffer Offset
        @POPI EntryPtr
@@ -596,6 +665,7 @@ G FSFileBitMapStore
        @IF_ZERO
           # File is NEW so set create time, and set as 'inuse'
           @POPNULL
+          
           @GETTIME        # Saves 32 bit 'unix' time to stack as two words SFT=Low-word TOS=high-word
           @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS @POPS  # Created Time is 1st 32 bit word in field.
           @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+2 @POPS
@@ -605,6 +675,7 @@ G FSFileBitMapStore
           @PUSHI ArgTable @ADD DIR_AT_FLAGS @POPS
        @ELSE
           @POPNULL
+          
        @ENDIF
        # Always Change the Modify time to 'now' on writes.
        @GETTIME        # Saves 32 bit 'unix' time to stack as two words SFT=Low-word TOS=high-word
@@ -615,7 +686,13 @@ G FSFileBitMapStore
 
 
        @Call(VV) DiskWriteSector Sector DiskBuffer
+       
     @ENDIF
+    @MA2V 1 Result
+    :DWE_Exit
+    
+    @PUSHI Result
+    @RestoreVar 07    
     @RestoreVar 06
     @RestoreVar 05
     @RestoreVar 04
@@ -642,15 +719,13 @@ G FSFileBitMapStore
     @POPI ArgTable
     @POPI FileNum
 
-
-
     # Find Sector-Offset where DIR entry is.
     @Call(V) DirLocate FileNum
     @IF_EQ_A -1
        @PRT "Error Reading DIR Entry:" @PRTI FileNum @PRTNL
        @POPNULL
        @POPNULL
-       @PUSH 0
+       @PUSH 0       # Error
     @ELSE
        @POPI Offset
        @POPI Sector
@@ -663,7 +738,7 @@ G FSFileBitMapStore
 
        @Call(V) DirClearArgTable ArgTable
        @Call(VV) DirEntryToArgTable EntryPtr ArgTable
-       @PUSHI ArgTable
+       @PUSH 1          # Successs
     @ENDIF
     @RestoreVar 06
     @RestoreVar 05
@@ -682,7 +757,7 @@ G FSFileBitMapStore
    @IF_EQ_AV -1 DiskHeap
       # Heap Must be defined before it can be used.
       @PRT "DISK Error, no Heap defined."
-      @PUSH -1
+      @PUSH 0
    @ELSE
       @Call(VA) HeapNewObject DiskHeap ARGTABLE_SIZE
    @ENDIF
@@ -691,7 +766,6 @@ G FSFileBitMapStore
 
 #-----------------------------------------
 # DiskNewBuffer():*Buffer
-# For Now just return DiskBuf, future use heap
 #-----------------------------------------
 :DiskNewBuffer
 @PUSHRETURN
@@ -730,7 +804,6 @@ G FSFileBitMapStore
     @POPI Sector
 
 
-    @PRT "Writing " @PRTHEXI ByteCount @PRT " bytes from Block Mem " @PRTHEXI MemPtr @PRT " To Disk Sector: " @PRTHEXI Sector @PRTNL
 
     # Now test to make sure ByteCount does not overflow the address
     @PUSHI ByteCount
@@ -771,8 +844,9 @@ G FSFileBitMapStore
     @PUSHI ByteCount
     @WHILE_UGT_A 0
         @POPNULL
-        @PRTHEXI ByteCount @PRTSP
-        @MV2V DiskBuffer InBuffPtr
+        @PUSHI DiskBuffer
+        @ADDI StartOffset
+        @POPI InBuffPtr
         @DECI TotalSectors
         @MV2V StartOffset _I
         @PUSHI _I
@@ -815,26 +889,32 @@ G FSFileBitMapStore
 @RET
 
 #---------------------------------------
-# DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer)
+# DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer):Bytes Read
 # Reads a sequence of Sectors into a memory.
 #---------------------------------------
 :DiskReadBlock
 @PUSHRETURN
-    @LocalVar Sector       01
-    @LocalVar MemPtr       02
-    @LocalVar ByteCount    03
-    @LocalVar StartOffset  04
-    @LocalVar DiskBuffer   05
-    @LocalVar InBuffPtr    06
-    @LocalVar SectRemain   07
-    @LocalVar HighWater    08
+    @LocalVar Sector       01  #
+    @LocalVar MemPtr       02  #
+    @LocalVar ByteCount    03  #
+    @LocalVar StartOffset  04  #
+    @LocalVar DiskBuffer   05  #
+    @LocalVar InBuffPtr    06  #
+    @LocalVar SectRemain   07  #
+    @LocalVar OrigCount    08  #
 
     @POPI DiskBuffer
     @POPI StartOffset
     @POPI ByteCount
     @POPI MemPtr
     @POPI Sector
-
+    # Test if StartOffset is invalud
+    @PUSHI StartOffset
+    @IF_UGE_A SECTOR_SIZE
+       @POPNULL
+       @JMP DRBExit
+    @ENDIF
+    @POPNULL
     # Clamp ByteCount to addressable memory
     @PUSHI ByteCount
     @ADDI MemPtr
@@ -843,57 +923,51 @@ G FSFileBitMapStore
        @POPI ByteCount
     @ENDIF
     @POPNULL
-
+    @MV2V ByteCount OrigCount
     @IF_EQ_AV 0 ByteCount
        @JMP DRBExit
     @ENDIF
-
-    @PUSHI DiskBuffer
-    @ADD SECTOR_SIZE
-    @POPI HighWater
-
-    
-    @PRT "Start MemPtr: " @PRTHEXI MemPtr @PRTNL
     @PUSHI ByteCount
     @WHILE_UGT_A 0
-        @POPNULL
-        @PRTHEXI MemPtr @PRTSP
-        @Call(VV) DiskReadSector Sector DiskBuffer
-        @PUSHI DiskBuffer
-        @ADDI StartOffset
-        @POPI InBuffPtr
-        
-        @PUSH SECTOR_SIZE @SUBI StartOffset
-        @POPI SectRemain
-        @PUSHI SectRemain
-        @WHILE_UGT_A 0
-           @POPNULL
-           
-           @PUSHI InBuffPtr
-           @IF_LT_V HighWater
-              @POPNULL
-              @PUSHII InBuffPtr
-              @AND 0xff
-              @POPII MemPtr
-              @INCI InBuffPtr
-              @INCI MemPtr
-              @DECI ByteCount
-           @ELSE
-              @POPNULL
-              @JMP DRBInnerDone
-           @ENDIF
-           @DECI SectRemain
-           @PUSHI SectRemain
-        @ENDWHILE
-        @POPNULL
-:DRBInnerDone
-        @MA2V 0 StartOffset
-        @INCI Sector
-        @PUSHI ByteCount
+       @POPNULL
+    :Break02
+       @Call(VV) DiskReadSector Sector DiskBuffer
+       @PUSHI DiskBuffer @ADDI StartOffset
+       @POPI InBuffPtr
+       @PUSH SECTOR_SIZE @SUBI StartOffset
+       @POPI SectRemain
+       @MA2V 0 StartOffset
+       # WHEN is used here to emulate:
+       # while (SectRemain > 0 && ByteCount > 0)
+       @WHEN
+          # True is SectRemain > 0 && ByteCount > 0
+          @PUSH 1
+          @IF_EQ_AV 0 SectRemain 
+             @POPNULL @PUSH 0   # Always Break WHEN SectRemain==0
+          @ENDIF
+          @IF_EQ_AV 0 ByteCount
+             @POPNULL @PUSH 0   # Always Break WHEN ByteCount==0
+          @ENDIF
+       @DO_NOTZERO
+          @POPNULL
+          @PUSHII MemPtr @AND 0xff00   # Get High Byte Preserve it.
+          @PUSHII InBuffPtr @AND 0xff  # Low Byte
+          @ORS
+          @POPII MemPtr                # Save
+          @INCI InBuffPtr
+          @INCI MemPtr
+          @DECI SectRemain
+          @DECI ByteCount
+       @ENDWHEN
+       @POPNULL
+       @PUSHI ByteCount
     @ENDWHILE
-
+    @POPNULL
+    @MA2V 0 StartOffset
+    @INCI Sector
+    @PUSHI OrigCount
+    @SUBI ByteCount      # How many bytes were acutually read.
 :DRBExit
-
     @RestoreVar 08
     @RestoreVar 07
     @RestoreVar 06
@@ -926,7 +1000,8 @@ G FSFileBitMapStore
     @PUSHI Mode @AND FP_OPEN_CREATE
     @PUSHI Mode @AND FP_OPEN_APPEND
     @ORS
-    @IF_NOTZERO
+    
+    @IF_NOTZERO    
         @POPNULL
         @PUSHI Mode @AND FP_OPEN_WRITE
         @IF_ZERO
@@ -936,11 +1011,14 @@ G FSFileBitMapStore
         @ELSE
             @POPNULL
         @ENDIF
+        
     @ELSE
         @POPNULL
+        
     @ENDIF
-    @CALL DirNewArgTable
-    @POPI ArgTable
+    @CALL DirNewArgTable @IF_ZERO @PRT "Error allocating ArgTable" @END @ENDIF
+
+@POPI ArgTable
    @CALL DiskNewBuffer
     @POPI DiskBuffer
 
@@ -951,11 +1029,13 @@ G FSFileBitMapStore
         @JMP Do_Op_EXIT
     @ENDIF
     @POPNULL
+    
     @MA2V 0 DoCreateFlag
 
     @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
     #
     @AND FLAG_INUSE
+    
     @IF_NOTZERO
        # File exists
        @POPNULL
@@ -966,6 +1046,7 @@ G FSFileBitMapStore
        @ELSE
            @POPNULL
        @ENDIF
+       
     @ELSE
        @POPNULL
        @PUSHI Mode @AND FP_OPEN_CREATE
@@ -976,6 +1057,7 @@ G FSFileBitMapStore
            @PRT "Attempted to Open a File that does not exist, without the CREATE option set."
            @JMP Do_Op_EXIT
        @ENDIF
+       
     @ENDIF
 
     @IF_EQ_AV 1 DoCreateFlag
@@ -983,7 +1065,7 @@ G FSFileBitMapStore
        @FILL_AT_A ArgTable DIR_AT_FILESIZE 0
        @FILL_AT_V ArgTable DIR_AT_FIRSTBLOCK FileNum
        @FILL_AT_A ArgTable DIR_AT_BLOCKCOUNT 1
-       @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer
+       @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Writer error" @END @ELSE @POPNULL @ENDIF
     @ENDIF
     # Create new File Pointer structure.
 
@@ -999,6 +1081,7 @@ G FSFileBitMapStore
     @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
     @PUSHI FilePtr @ADD FPTR_FILESIZE
     @POPS
+    
     # IF MODE flag is OPEN_APPEND set Cursor to EOF
     @PUSHI Mode @AND FP_OPEN_APPEND
     @IF_NOTZERO
@@ -1006,6 +1089,7 @@ G FSFileBitMapStore
        @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
     # ELSE already zero
     @ENDIF
+    
     @PUSHI FilePtr @ADD FPTR_CURSOR @POPS
     @PUSHI Mode
     @PUSHI FilePtr @ADD FPTR_MODE @POPS
@@ -1017,6 +1101,7 @@ G FSFileBitMapStore
     # If we get here then ArgTable needs to be destroyed.
     @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 :Do_Op_EXIT_NH
+
     @RestoreVar 06
     @RestoreVar 05
     @RestoreVar 04
@@ -1120,6 +1205,7 @@ G FSFileBitMapStore
     #-------------------------------------------------
     @PUSHI Sector       # Do to limit of Macros, have to manually push arguments > 4
     @Call(VVVV) DiskWriteBlock MemPtr ByteCount StartOffset DiskBuffer
+    @POPNULL
 
 
     #-------------------------------------------------
@@ -1190,7 +1276,7 @@ G FSFileBitMapStore
     @IF_NOTZERO
        @POPNULL
        # Get an ArgTable an DiskBuffer for DIR Sectors
-       @CALL DirNewArgTable
+       @CALL DirNewArgTable  @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
        @POPI ArgTable
        @IF_EQ_AV -1 ArgTable
            @PRT "DiskClose: Argtable Alloc Failed.\n"
@@ -1208,6 +1294,7 @@ G FSFileBitMapStore
        # Read DIR entry
        @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer
        @IF_ZERO
+          @POPNULL
           @PRT "DiskClose: DirReadEntry Failed\n"
           @JMP DC_ERROR
        @ENDIF
@@ -1220,7 +1307,7 @@ G FSFileBitMapStore
        @PUSHI ArgTable @ADD DIR_AT_FILESIZE+2
        @POPS
        # Write DIR Entry
-       @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer
+       @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Write Error" @END @ELSE @POPNULL @ENDIF
        #
        # Clean up new temp objects
        #
@@ -1251,7 +1338,6 @@ G FSFileBitMapStore
         @POPNULL
     @ENDIF
     @PUSH 0
-
 :DC_EXIT
     @RestoreVar 05
     @RestoreVar 04
@@ -1395,15 +1481,13 @@ G FSFileBitMapStore
     #-------------------------------------------------
     @CALL DiskNewBuffer
     @POPI DiskBuffer
-@PRT "\nBefore DiskReadBlock\n" @Call(V) HeapListMap DiskHeap @PRTNL
-@PRT "Hex of tail MemPtr:" @PUSHI MemPtr @ADD 0x200 @PUSHS @PRTHEXTOP @POPNULL @PUSHI MemPtr @ADD 0x202 @PUSHS @PRTHEXTOP @POPNULL @PUSHI MemPtr @ADD 0x204 @PUSHS @PRTHEXTOP @POPNULL
     #-------------------------------------------------
     # Read data block
     #-------------------------------------------------
     @PUSHI Sector              # Have to push Sector first as we don't have VVVVV Call
+    :Break01
     @Call(VVVV) DiskReadBlock MemPtr ByteCount StartOffset DiskBuffer
-@PRT "\nAfter DiskReadBlock\n" @Call(V) HeapListMap DiskHeap    @PRTNL
-@PRT "Hex of tail MemPtr:" @PUSHI MemPtr @ADD 0x200 @PUSHS @PRTHEXTOP @POPNULL @PUSHI MemPtr @ADD 0x202 @PUSHS @PRTHEXTOP @POPNULL @PUSHI MemPtr @ADD 0x204 @PUSHS @PRTHEXTOP @POPNULL @PRTNL
+    @POPNULL
     #-------------------------------------------------
     # Free disk buffer
     #-------------------------------------------------
@@ -1566,7 +1650,7 @@ G FSFileBitMapStore
     @CALL DiskNewBuffer
     @POPI DiskBuffer
 
-    @CALL DirNewArgTable
+    @CALL DirNewArgTable  @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
     @POPI ArgTable
 
     # We reserve the first 4 Files (0-3) for 'os' and support. So start the search at 4
@@ -1578,7 +1662,6 @@ G FSFileBitMapStore
     @POPI StartPoint
 
     # Search loop continues until we find a match or reach end of DIR
-    @PRT "Startin Search..."
     @PUSHI StartPoint
     @WHILE_LT_A DIREntryCount     # in practice 512
        @POPI CurFileNum
@@ -1613,7 +1696,6 @@ G FSFileBitMapStore
        @INCI CurFileNum
        @PUSHI CurFileNum
     @ENDWHILE
-    @PRT "\nFinish Search\n"
     @POPNULL
 :WCMExit
     @PUSHI Result
@@ -1644,11 +1726,10 @@ G FSFileBitMapStore
    @LocalVar Result     04
 
    @MA2V 0 Result
-
    @CALL DiskNewBuffer
    @POPI DiskBuffer
 
-   @CALL DirNewArgTable
+   @CALL DirNewArgTable @IF_ZERO @PRT "Error Allocating Argtable" @END @ENDIF
    @POPI ArgTable
 
    # We start search as 4 as 0-3 are reserved for OS
@@ -1656,9 +1737,10 @@ G FSFileBitMapStore
 
    @PUSHI CurFileNum
    @WHILE_LT_A DIREntryCount
-      @POPI CurFileNum
+      @POPNULL
       @Call(VVV) DirReadEntry CurFileNum ArgTable DiskBuffer
       @IF_ZERO
+         @POPNULL
          @PRT "Error Failed to read directory."
          @MA2V 0 Result
          @JMP DFF_Exit
@@ -1673,6 +1755,7 @@ G FSFileBitMapStore
          @MV2V CurFileNum Result
          @JMP DFF_Exit
       @ENDIF
+      @POPNULL
       @INCI CurFileNum
       @PUSHI CurFileNum
    @ENDWHILE
@@ -1709,7 +1792,6 @@ G FSFileBitMapStore
 
     @POPI Mode
     @POPI FileName
-
     @MA2V 0 NewFlag
     @MA2V 0 FilePointer    # For Safe return on error.
 
@@ -1768,17 +1850,33 @@ G FSFileBitMapStore
           @MA2V 0 FilePointer
           @JMP FO_Exit
        @ENDIF
-       # Get here it is a new file need to setup defaults.
+       # Get here it is a new file need to setup defaults.# NOTE:
+#   FSReadHeader must be called during DiskOS initialization.
+#   FSWriteHeader must be called whenever file allocation
+#   state changes (create/delete).
+#   DiskOpen / DiskClose do not modify FS metadata.
        @POPNULL
        @CALL DirFindFree       # Searches Disk for free DIR entry.
        @IF_NOTZERO
           # Create New Disk entry, give it filename and then reclose it to prepare FS
           @POPI FileNum
+          @Call(V) FSSetFileUsed FileNum
+          @IF_ZERO
+             @PRT "Error setting FS Bitmap\n"
+             @MA2V 0 FilePointer
+             @POPNULL
+             @JMP FO_Exit
+          @ENDIF
+          @POPNULL
           @PUSHI NewFlag @OR FP_OPEN_CREATE @POPI NewFlag
-          @Call(VV) DiskOpen FileNum NewFlag
+          @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "Failed to Open File" @END @ENDIF
           @POPI FilePointer
           @Call(VV) DiskFileName FilePointer FileName
+
+          
+          @CALL FSWriteHeader  @IF_ZERO @PRT "Failed to write FS data to disk" @POPNULL @END @ELSE @POPNULL @ENDIF
           @Call(V) DiskClose FilePointer
+          
           @IF_ZERO
              # Erorr File failed to close propelr return 0 for error
              @POPI FilePointer
@@ -1794,9 +1892,11 @@ G FSFileBitMapStore
        @ENDIF
     @ENDIF
     # Open File and return FilePointer to caller
-    @Call(VV) DiskOpen FileNum NewFlag
+    
+    @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "Failed to open file" @END @ENDIF
+    
     @POPI FilePointer
-    @Call(V) FSSetFileUsed FileNum
+    
     # Now set cursor based on if in an APPEND mode or not.
     @PUSHI NewFlag @AND FP_OPEN_APPEND
     @IF_NOTZERO
@@ -1839,10 +1939,8 @@ G FSFileBitMapStore
     @POPI LineCount
     @POPI FilePtr
 
-    @PUSHI LineCount
-    @PUSHI _DF_SetLine_Mod
-    @PUSHI FilePtr
-    @CALL DiskWithDirEntry
+    @PUSHI LineCount     # Push lowest in stack for argument to SetLine_Mod
+    @Call(VA) DiskWithDirEntry FilePtr _DF_SetLine_Mod
 
     @RestoreVar 02
     @RestoreVar 01
@@ -1879,9 +1977,7 @@ G FSFileBitMapStore
 
     @POPI FilePtr
 
-    @PUSHI _DF_GetLine_Mod
-    @PUSHI FilePtr
-    @CALL DiskWithDirEntry
+    @Call(VA) DiskWithDirEntry FilePtr _DF_GetLine_Mod
 
     @RestoreVar 02
     @RestoreVar 01
@@ -1917,10 +2013,8 @@ G FSFileBitMapStore
     @POPI Type
     @POPI FilePtr
 
-    @PUSHI Type
-    @PUSHI _DF_SetType_Mod
-    @PUSHI FilePtr
-    @CALL DiskWithDirEntry
+    @PUSHI Type       # Push lowest in stack argument to SetType_Mod funciton
+    @Call(VA)  DiskWithDirEntry FilePtr _DF_SetType_Mod
 
     @RestoreVar 02
     @RestoreVar 01
@@ -1957,9 +2051,7 @@ G FSFileBitMapStore
 
     @POPI FilePtr
 
-    @PUSHI _DF_GetType_Mod
-    @PUSHI FilePtr
-    @CALL DiskWithDirEntry
+    @Call(VA) DiskWithDirEntry FilePtr _DF_GetType_Mod
 
     @RestoreVar 02
     @RestoreVar 01
@@ -1994,7 +2086,6 @@ G FSFileBitMapStore
 
     @POPI StrPtr
     @POPI FilePtr
-
     @PUSHI StrPtr
     @Call(VA) DiskWithDirEntry FilePtr _DFN_Mod
 
@@ -2013,7 +2104,6 @@ G FSFileBitMapStore
 
     @POPI ArgTable
     @POPI StrPtr
-
     @Call(V) strlen StrPtr
     @IF_GT_A 31
         @PUSH 0
@@ -2025,7 +2115,6 @@ G FSFileBitMapStore
     @POPI Len
 
     @Call(VVV) strncpy ArgTable StrPtr Len
-
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
@@ -2051,7 +2140,7 @@ G FSFileBitMapStore
     @POPI FilePtr
 
     # Allocate ArgTable
-    @CALL DirNewArgTable
+    @CALL DirNewArgTable @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
     @POPI ArgTable
     @IF_EQ_AV -1 ArgTable
         @PRT "DiskWithDirEntry: ArgTable alloc failed\n"
@@ -2075,6 +2164,7 @@ G FSFileBitMapStore
     # Read DIR entry
     @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer
     @IF_ZERO
+        @POPNULL
         @PRT "DiskWithDirEntry: DirReadEntry failed\n"
         @JMP DWDE_EXIT
     @ENDIF
@@ -2085,7 +2175,7 @@ G FSFileBitMapStore
     @CALLI ModFn
 
     # Write DIR entry
-    @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer
+    @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Writer Error" @END @ELSE @POPNULL @ENDIF
 
 :DWDE_EXIT
     @IF_NEQ_AV -1 DiskBuffer
@@ -2132,6 +2222,8 @@ G FSFileBitMapStore
        @PRT "DISK " @PRTHEXI DISKNUM @PRT " is not formated."
        @MA2V 0 FSHeadValidStore    # Mark the disk data as bad
        @MA2V -1 FSDiskNumStore     # Make sure other functions know this is invalid.
+       @PUSH 0
+       @JMP FSRH_Exit
     @ELSE
        @POPNULL
        @PUSHI DiskBuffer @ADD FSDiskID @PUSHS @POPI FSDiskIDStore
@@ -2154,7 +2246,8 @@ G FSFileBitMapStore
    @ENDIF
    @PUSHI FSHeadValidStore
    # Always delete DiskBuffer
-   @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO @POPNULL  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   :FSRH_Exit
    @RestoreVar 03
    @RestoreVar 02
    @RestoreVar 01
@@ -2193,6 +2286,7 @@ G FSFileBitMapStore
        # Disk does not have matching ID
        @MA2V 0 TestVal
     @ENDIF
+    @POPNULL
     @PUSHII DiskBuffer
     @IF_NEQ_A 0x3044
        @MA2V 0 TestVal       # Is magic number fails, disk is swapped.
@@ -2219,9 +2313,12 @@ G FSFileBitMapStore
       #
       # Save results to Disk
       @Call(AV) DiskWriteSector 0 DiskBuffer
+      @PUSH 1   # Success
+    @ELSE
+      @PUSH 0   # Failed tests
     @ENDIF
     # Always delete DiskBuffer
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @POPNULL @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 
     @RestoreVar 03
     @RestoreVar 02
@@ -2316,6 +2413,9 @@ G FSFileBitMapStore
       @ELSE
          @POPNULL
       @ENDIF
+      @PUSH 1   # Success
+   @ELSE
+      @PUSH 0   # Invalid range
    @ENDIF
    @RestoreVar 05
    @RestoreVar 04
@@ -2368,6 +2468,9 @@ G FSFileBitMapStore
       @ELSE
          @POPNULL
       @ENDIF
+      @PUSH 1   # Success
+   @ELSE
+      @PUSH 0   # Not valid range
    @ENDIF
    @RestoreVar 05
    @RestoreVar 04
@@ -2564,7 +2667,7 @@ G FSFileBitMapStore
     @CALL DiskNewBuffer
     @POPI DiskBuffer
 
-    @CALL DirNewArgTable
+    @CALL DirNewArgTable @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
     @POPI ArgTable
 
     # Start at max(StartPoint, 4)
@@ -2625,6 +2728,55 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+#--------------------------------------------
+# DiskFileReadLine(FilePtr, MemPtr):Bytes_Read
+# Read file as stream, looking for LF ('\n')
+# Needs to handle EOF as both EOF and EOL
+#--------------------------------------------
+:DiskFileReadLine
+@PUSHRETURN
+    @LocalVar FilePtr   01
+    @LocalVar MemPtr    02
+    @LocalVar Consumed  03
+
+    @POPI MemPtr
+    @POPI FilePtr
+
+    @MA2V 0 Consumed
+    @WHEN
+       @Call(VVA) DiskFileRead FilePtr MemPtr 1
+    @DO_NOTZERO
+       @POPNULL
+       @PUSHII MemPtr
+       @AND 0xff
+       @IF_EQ_A 10     # New Line
+          # END of Line detected, turn into terminator.
+          @POPNULL
+          @PUSHII MemPtr
+          @AND 0xff00      # Zero low byte
+          @POPII MemPtr
+          @JMP DFRL_ENDLINE
+       @ELSE
+          @POPNULL
+       @ENDIF
+       @INCI Consumed
+       @INCI MemPtr
+    @ENDWHEN
+    @POPNULL 
+    :DFRL_ENDLINE
+    @PUSHI Consumed
+
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+
+
+
+
+
+
 M SIZESINCECOMMENT diskos.ld
 @SIZESINCE
 ENDBLOCK

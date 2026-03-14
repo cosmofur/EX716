@@ -1,5 +1,46 @@
 ! MOUSELIBSEEN
 M MouseLibSeen 1
+I common.mc
+
+? __EX716_EXPLICIT_LINK
+   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
+   M ENDFUNCTION  MF __ENDOF %__LastFunc :_HERE%0 _HERE%0 ENDBLOCK
+   M FUNCTIONNEEDS ? __%1_INUSE
+ENDBLOCK
+
+@FUNCTIONNEEDS EventPoll
+   @USE KeySearchKeyBoard
+   @USE KeyDeQueue
+   @USE KeySearchTimer
+   @USE KeyQueueSize
+   @USE KeySearchMouse
+   @USE KeyEnQueue
+   @USE KeyReadMouseSeq
+   @USE ReadKeyTimeOut
+ENDBLOCK
+
+@FUNCTIONNEEDS KeySearchKeyBoard
+   @USE FindCh
+ENDBLOCK
+
+@FUNCTIONNEEDS KeyReadMouseSeq
+   @USE ReadKeyTimeOut
+ENDBLOCK
+
+@FUNCTIONNEEDS EventAdd
+   @USE MUL
+ENDBLOCK
+
+@FUNCTIONNEEDS EventTableFree
+   @USE HeapDeleteObject
+ENDBLOCK
+
+@FUNCTIONNEEDS EventTableNew
+   @USE HeapNewObject
+ENDBLOCK
+
+
+
 L heapmgr.ld
 L mul.ld
 #########################
@@ -61,23 +102,6 @@ G ActiveEventTable
 # after any change to the table, such as with EventAdd
 #
 
-########################################
-# Event Meta Data Struture:
-# While EventLoop returns an EventID, the extra informaton learned about events is stored here.
-#
-#   Common Headers
-:LastEventType 0
-:LastEventID 0
-:LastEventTSLo 0
-:LastEventTSHi 0
-#   Mouse Meta Data
-:LastMouseX 0
-:LastMouseY 0
-:LastMouseBtn 0         # 0=left 1=middle 2=right, 3=wheel_up, 4=wheel_down
-:LastMouseFlags 0       # Bitfield Press/Relase/Drag/Shift/Alt/Ctrl/Wheel
-:LastMouseRawB 0        # Raw Button info
-:LastMouseTerm 0        # M or m for click vs Relase
-:ActiveEventTable 0     # Global Stored Active Event Table
 =MF_PRESS   0x0001
 =MF_RELEASE 0x0002
 =MF_DRAG    0x0004
@@ -108,18 +132,10 @@ G ActiveEventTable
 =TimerRepOff 10
 
 
-#   Keyboard Meta Data
-:LastKeyMatchPtr 0
-:LastKeyLen 0
-:LastKeyChar 0          # 2 byte string Only for single byte keyboard events.
-#   Timer Metadata
-:LastTimerDur 0         # Seconds of Duraction based on request
-:LastTimeRep  0         # 0/1 if it was set to auto repeat
-:LastTimerELap 0        # Elapsed file time (real vs requested duration)
-:LastTimerSkip 0        # How many periods where skipped this poll
 ########################################
 # function EventTableNew(HeapID):EventTable
 # Creates an EventTable which will contain a unique list of events to monitor
+@FUNCTION EventTableNew
 :EventTableNew
 @PUSHRETURN
 @LocalVar HeapID 01
@@ -132,8 +148,10 @@ G ActiveEventTable
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #########################################
 # function: EventTableFree(EventTableID)
+@FUNCTION EventTableFree
 :EventTableFree
 @PUSHRETURN
 @LocalVar EventTableID 01
@@ -152,20 +170,25 @@ G ActiveEventTable
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 ##########################################
 # function: EventSetActive(EventTableID)
 # This function sets the ActiveEventTable
+@FUNCTION EventSetActive
 :EventSetActive
 @SWP
 @POPI ActiveEventTable
 @RET
+@ENDFUNCTION
 ##########################################
 # function: EventGetActive():EventTableID
 # Queries what the current ActiveEventTable is.
+@FUNCTION EventGetActive
 :EventGetActive
 @PUSHI ActiveEventTable
 @SWP
 @RET
+@ENDFUNCTION
 
 
 # For MouseEvents:
@@ -182,17 +205,20 @@ G ActiveEventTable
 
 ########################################
 # Function: TermMouseDisable()
+@FUNCTION TermMouseDisable
 :TermMouseDisable
 @PRTS CSICODE @PRT "?1000l"
 @PRTS CSICODE @PRT "?1006l"
 @RET
+@ENDFUNCTION
 ########################################
 # Function: TermMouseEnable()
+@FUNCTION TermMouseEnable
 :TermMouseEnable
 @PRTS CSICODE @PRT "?1000h"
 @PRTS CSICODE @PRT "?1006h"
 @RET
-
+@ENDFUNCTION
 
 #######################################
 # Macros for EventAdd
@@ -217,6 +243,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 # Function: EventAdd(Type,X1,Y1,X2,Y2,EventID)
 #
 #
+@FUNCTION EventAdd
 :EventAdd
 @PUSHRETURN
 @LocalVar Type 01       # 1 = mouse, 2 = timer, 3 = Keyboard
@@ -336,9 +363,11 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #########################################
 # Function ReadKeyTimeOut
 # Polls for next character but also times out if not seen in 10 cycles
+@FUNCTION ReadKeyTimeOut
 :ReadKeyTimeOut
 @PUSHRETURN
 @LocalVar CHin   01
@@ -361,17 +390,13 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 ########################################
 #
-:KeyBuffer 0 0 0 0 # 8 byte buffer
-0 0 0 0 0 0 0 0 0 0 0 0 0 0
-:QBufferHead $$0
-:QBufferTail $$0
 =KQ_MASK 0x1f
-# Set 16 words => 32 bytes + 1b for high byte of 32nd entry
-:QBuffer 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 $$0
 ########################################
 # Funtion KeyEnQueue(ch)
+@FUNCTION KeyEnQueue
 :KeyEnQueue
 @PUSHRETURN
 @LocalVar Head 01
@@ -405,8 +430,10 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION KeyQueueSize
 ########################################
 # Function KeyQueueSize()
+@FUNCTION
 :KeyQueueSize
 #
 # Light enough code we don't need to save locals
@@ -418,9 +445,11 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 #@SWP   # put (retaddr) on top so @RET pops it; leaves size to caller
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #########################################
 # Function KeyDeQueue
+@FUNCTION KeyDeQueue
 :KeyDeQueue
 @PUSHRETURN
 @LocalVar Head 01
@@ -443,11 +472,13 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 ########################################
 # Function: KeyReadMouseSeq():(x,y)
 # Only handles the <ESC>[<btn;XVal;YValM mouse events.
 # Mouse and screen events are 1 base, meaning upper left is 1,1 not 0,0
+@FUNCTION KeyReadMouseSeq
 :KeyReadMouseSeq
 @PUSHRETURN
 @LocalVar ChIN 01
@@ -539,6 +570,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 ############################################
 # Helper Macros for the ActiveEventTable Search functions
 M ExtractXMin @PUSHII %1 @AND 0xff
@@ -559,6 +591,7 @@ M Between_U \
             @ENDIF
 ##########################################
 # Funtion: KeySearchMouse(x,y) -> EventID | 0
+@FUNCTION KeySearchMouse
 :KeySearchMouse
 @PUSHRETURN
 @LocalVar X1 01
@@ -624,10 +657,12 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 ########################################
 # Function FindCh(String,Char):(0|Ptr)
 # Retirs ptr to where in String Char is, or 0
+@FUNCTION FindCh
 :FindCh
 @PUSHRETURN
 @LocalVar Index1 01
@@ -657,9 +692,11 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 ########################################
 # Function: KeySearchKeyBoard(ch) -> EventID|0
+@FUNCTION KeySearchKeyBoard
 :KeySearchKeyBoard
 @PUSHRETURN
 @LocalVar CHR     01
@@ -712,9 +749,11 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 ##############################################
 # Function: KeySearchTimer() -> EventID | 0
+@FUNCTION KeySearchTimer
 :KeySearchTimer
 @PUSHRETURN
 @LocalVar MTSize 01
@@ -813,11 +852,13 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 
 ########################################
 # Function: EventPoll:EventID
 # Mouse Event.
+@FUNCTION EventPoll
 :EventPoll
 @PUSHRETURN
 @LocalVar MouseXVal 01 @LocalVar MouseYVal 02 @LocalVar MouseEventCode 03
@@ -907,8 +948,10 @@ M Between_U \
  @RestoreVar 03  @RestoreVar 02  @RestoreVar 01
  @POPRETURN
  @RET
+ @ENDFUNCTION
 ###########################
 # Mouse Test
+@FUNCTION EventList
 :EventList
 @PUSHRETURN
 @LocalVar MTSize   01
@@ -958,6 +1001,60 @@ M Between_U \
 @RestoreVar 05 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
+############# Storage
+########################################
+# Event Meta Data Struture:
+# While EventLoop returns an EventID, the extra informaton learned about events is stored here.
+#
+#   Common Headers
+:LastEventType 0
+:LastEventID 0
+:LastEventTSLo 0
+:LastEventTSHi 0
+#   Mouse Meta Data
+:LastMouseX 0
+:LastMouseY 0
+:LastMouseBtn 0         # 0=left 1=middle 2=right, 3=wheel_up, 4=wheel_down
+:LastMouseFlags 0       # Bitfield Press/Relase/Drag/Shift/Alt/Ctrl/Wheel
+:LastMouseRawB 0        # Raw Button info
+:LastMouseTerm 0        # M or m for click vs Relase
+:ActiveEventTable 0     # Global Stored Active Event Table
+########################################
+# Event Meta Data Struture:
+# While EventLoop returns an EventID, the extra informaton learned about events is stored here.
+#
+#   Common Headers
+:LastEventType 0
+:LastEventID 0
+:LastEventTSLo 0
+:LastEventTSHi 0
+#   Mouse Meta Data
+:LastMouseX 0
+:LastMouseY 0
+:LastMouseBtn 0         # 0=left 1=middle 2=right, 3=wheel_up, 4=wheel_down
+:LastMouseFlags 0       # Bitfield Press/Relase/Drag/Shift/Alt/Ctrl/Wheel
+:LastMouseRawB 0        # Raw Button info
+:LastMouseTerm 0        # M or m for click vs Relase
+:ActiveEventTable 0     # Global Stored Active Event Table
+#   Keyboard Meta Data
+:LastKeyMatchPtr 0
+:LastKeyLen 0
+:LastKeyChar 0          # 2 byte string Only for single byte keyboard events.
+#   Timer Metadata
+:LastTimerDur 0         # Seconds of Duraction based on request
+:LastTimeRep  0         # 0/1 if it was set to auto repeat
+:LastTimerELap 0        # Elapsed file time (real vs requested duration)
+:LastTimerSkip 0        # How many periods where skipped this poll
+
+:KeyBuffer 0 0 0 0 # 8 byte buffer
+0 0 0 0 0 0 0 0 0 0 0 0 0 0
+:QBufferHead $$0
+:QBufferTail $$0
+# Set 16 words => 32 bytes + 1b for high byte of 32nd entry
+:QBuffer 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 $$0
+
+
 
 M SIZESINCECOMMENT mouse.ld
 @SIZESINCE

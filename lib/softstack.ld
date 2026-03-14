@@ -15,10 +15,9 @@ M SOFTSTACK_DONE 1
 #
 #  PUSHHW        - POP's HW stack and Pushes it to Software stack
 #  PUSHRETURN    - Same, but syntaticily clear is meant to store the Return Address of functions
-#  PUSHLOCAL     - PUSH's the value constant to Software Stack
+#  PUSHLOCAL     - PUSH's a constant (or lable address) to software stack
 #  PUSHLOCALI    - PUSH's the value of a [variable] to Software Stack
 #  PUSHLOCALII   - PUSH the value of a [[variable]] to software state (usefull if trying to push an item in array)
-#  PUSHLOCAL     - PUSH's a constant (or lable address) to software stack
 # 
 # Two related function to PUSHLOCAL and POPLOCAL are LocalVar and RestoreVar
 # They require that storage lables in the form Var01 to VarNN be declared.

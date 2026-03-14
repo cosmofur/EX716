@@ -1,6 +1,8 @@
 
 DISKNAME=DISK00.disk
 
+[ -e $DISKNAME ] && /bin/rm -f $DISKNAME
+
 dd if=/dev/zero of=$DISKNAME bs=1M count=32
 
 printf '\x44\x30' | dd of=$DISKNAME bs=1 seek=0 conv=notrunc

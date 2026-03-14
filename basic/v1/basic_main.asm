@@ -2,8 +2,8 @@ I common.mc
 L softstack.ld
 L mul.ld
 L string.ld
+L diskos.ld
 I basic_header.asm
-I basic_diskos.asm    # Storage makes calls to simple disk os
 I basic_storage.asm
 I basic_support.asm
 # basic/v1/basic_main.asm
@@ -29,18 +29,6 @@ I basic_support.asm
 =SAVECODE 120
 =LOADCODE 125
 
-
-
-# --------------------------------------------------
-# Input buffer (READSI requires full 256 bytes)
-# --------------------------------------------------
-
-=INPUTBUF_SIZE 256
-
-:InputBuf
-.ORG InputBuf+INPUTBUF_SIZE
-
-
 # --------------------------------------------------
 # BASIC entry point
 # --------------------------------------------------
@@ -49,6 +37,8 @@ I basic_support.asm
     @CALL InitProgramStorage
 
 :MainLoop
+    @StackDump
+    @PRT "FreePtr:" @PRTHEXI FreePtr @PRTNL
     @PRT "> "
 
     # Read a full line (device handles editing & termination)
@@ -60,6 +50,7 @@ I basic_support.asm
         @POPNULL
         @JMP MainLoop
     @ENDIF
+    @PRTS InputBuf
     @POPNULL
     @Call(A) ParseLineOrCommand InputBuf
 
@@ -250,6 +241,8 @@ I basic_support.asm
        @INC2I ArgTblPtr
        @PUSHII ArgTblPtr      # push filename pointer
 
+       @CALL CleanQuotes
+
        # Call Save
        @CALL SAVEMEM
 
@@ -275,6 +268,8 @@ I basic_support.asm
 
        @INC2I ArgTblPtr
        @PUSHII ArgTblPtr      # filename pointer
+
+       @CALL CleanQuotes
 
        @CALL LOADMEM
 
@@ -662,5 +657,3 @@ I basic_support.asm
 # Program entry point
 # --------------------------------------------------
 . BasicMain
-
-

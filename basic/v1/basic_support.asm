@@ -38,33 +38,31 @@ L string.ld
     @PRT " Used: " @PRTHEXI ProgramUsed @PRTNL
 
 @PRTNL
-    @MV2V FirstLinePtr Ptr
+
+    @PUSHI ProgramArenaBase @ADD 2 @PUSHS
+    @POPI Ptr
     @PUSH 0
-    @WHILE_ZERO
-    
-        @PUSHI Ptr
-        @IF_ZERO
-            @POPNULL
+    @WHILE_ZERO    
+        @IF_EQ_AV 0 Ptr
             @WHILEBREAK
         @ENDIF
-        @POPNULL
 
         @PRTHEXI Ptr @PRT ">"
 
         # Print line number
-        @PUSHII Ptr
+        @FETCH_REL Ptr
         @PRTTOP
         @POPNULL
         @PRT " ["
 
        # For Debug also print the Hex of the Next Ptr
-        @PUSHI Ptr @ADD 2 @PUSHS
+        @FETCH_REL_OFF Ptr 2
         @PRTHEXTOP
         @POPNULL
         @PRT "] "
 
         # Print text (Ptr + 4)
-        @PUSHI Ptr
+        @PUSH_REL_TO_ABS Ptr
         @ADD 4
 	@POPI StrPtr
         @PRTSTRI StrPtr
@@ -72,9 +70,7 @@ L string.ld
         @PRTNL
 
         # Follow next_ptr
-        @PUSHI Ptr
-        @ADD 2
-        @PUSHS
+        @FETCH_REL_OFF Ptr 2
         @POPI Ptr
 
     @ENDWHILE
@@ -107,16 +103,14 @@ L string.ld
    @MV2V FirstLinePtr Ptr
    @PUSH 0
    @WHILE_ZERO
-       @PUSHI Ptr
+       @FETCH_REL Ptr
        @IF_ZERO
           @POPNULL
           @WHILEBREAK
        @ENDIF
        @POPNULL
        @INCI LineCount
-       @PUSHI Ptr
-       @ADD 2
-       @PUSHS
+       @FETCH_REL_OFF Ptr 2
        @POPI Ptr
    @ENDWHILE
    @POPNULL
@@ -125,3 +119,59 @@ L string.ld
    @RestoreVar 01
 @POPRETURN
 @RET
+#-----------------------------------
+# CleanQuotes(StrPtr):StrPtr
+# Moves StrPtr to just past first quote if any
+# then turns the second quote, if any, into NULL
+#-----------------------------------
+:CleanQuotes
+@PUSHRETURN
+    @LocalVar StrPtr 01
+    @LocalVar CharPtr 02
+    @LocalVar StrLen 03
+    @LocalVar Index 04
+    
+    @POPI StrPtr
+
+    # IF 1st char is quote, inc StrPtr past quote
+    @PUSHII StrPtr @AND 0xff
+    @IF_EQ_A "\"\0"
+       @INCI StrPtr
+    @ENDIF
+    @POPNULL
+
+    @Call(V) strlen StrPtr
+    @POPI StrLen
+    @MA2V 0 Index
+
+    @MV2V StrPtr CharPtr
+
+    # Change any remaining quotes with null
+    @ForIA2V Index 0 StrLen
+       @PUSHII CharPtr
+       @DUP
+       @AND 0xff
+       @IF_EQ_A "\"\0"
+          # Is a quote, replace with null
+          @POPNULL
+          @AND 0xff00    # Keep high byte
+          @POPII CharPtr
+       @ELSE
+          @POPNULL
+          @POPNULL
+       @ENDIF
+       @INCI CharPtr
+    @Next Index
+    #
+    @PUSHI StrPtr
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+
+    
+          
+
+    

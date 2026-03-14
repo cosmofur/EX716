@@ -21,30 +21,62 @@ L heapmgr.ld
 # --------------------------------------------------
 G PROGRAM_MEMORY_START
 
-:ProgramArenaBase
-    0           # WORD
+:ProgramArenaBase    0           # WORD
 
-:ProgramUsed
-    0           # WORD
+:ProgramUsed         0           # WORD
 
-:FirstLinePtr
-    0           # WORD
+:FirstLinePtr        0           # WORD
 
-:LastLinePtr
-    0           # WORD
+:LastLinePtr         0           # WORD
 
-:FreePtr
-    0           # WORD
+:FreePtr             0           # WORD
+
+G NullProgram
+:NullProgram         1           # Word 1 means no program in memory
 
 G MainHeap
-:MainHeap
-    0           # WORD
+:MainHea    0           # WORD
 
-:ArenaSize
-    0
+:ArenaSize    0         # WORD
+
+
+# --------------------------------------------------
+# Input buffer (READSI requires full 256 bytes)
+# --------------------------------------------------
+
+=INPUTBUF_SIZE 256
+G InputBuf
+:InputBuf
 
 =LINE_HEADER_SIZE 4
-
+#--------------------------------------------------
+# Relative Memory Macros
+#--------------------------------------------------
+# Use
+# FETCH_REL OffSetPtr       Move to Stack value at relative offset
+# PUT_REL OffSetPtr         Saves value on stack to relative offset
+# FETCH_REL_OFF OffsetPtr Constant  Move to Stack value at relative + Constant
+# PUT_REL_OFF OffsetPtr Constant  Saves value on stack to relative offset + Constant
+#
+M FETCH_REL @PUSHI %1 @ADDI ProgramArenaBase @PUSHS
+M PUT_REL @PUSHI %1 @ADDI ProgramArenaBase @POPS
+M FETCH_REL_OFF @PUSHI %1 @ADDI ProgramArenaBase @ADD %2 @PUSHS
+M PUT_REL_OFF @PUSHI %1 @ADDI ProgramArenaBase @ADD %2 @POPS
+#
+# Convert to to use as paramater Relative Prt to Absolute 
+M REL_TO_ABS @PUSHI %1 @ADDI ProgramArenaBase @POPI %2
+M PUSH_REL_TO_ABS @PUSHI %1 @ADDI ProgramArenaBase
+#
+# Puts constant Byte value %1 as byte at relative offset
+M PUT_A_BYTE_REL @PUSHI %2 @ADDI ProgramArenaBase \
+     @DUP @PUSHS @AND 0xff00 \
+     @PUSH %1 @ORS @SWP \
+     @POPS
+M PUT_V_BYTE_REL @PUSHI %2 @ADDI ProgramArenaBase \
+     @DUP @PUSHS @AND 0xff00 \
+     @PUSH %1 @ORS @SWP \
+     @POPS
+     
 
 # --------------------------------------------------
 # InitProgramStorage
@@ -73,9 +105,24 @@ G MainHeap
     @Call(VV) HeapNewObject MainHeap ArenaSize
     @POPI ProgramArenaBase               # base pointer
 
-    @MA2V 0 ProgramUsed               # bytes used = 0
-    @MV2V ProgramArenaBase FreePtr       # FreePtr = base
+    # Setup Sentinel Header at offset 0
+    @PUSH 0xffff @PUSHI ProgramArenaBase @POPS
+    @PUSH 0 @PUSHI ProgramArenaBase @ADD 2 @POPS
+    
+    @MA2V 4 ProgramUsed               # 4 bytes reserved for header
+    @MA2V 4 FreePtr
+
     @MA2V 0 FirstLinePtr
+
+    @MA2V 1 NullProgram
+ 
+    # Initilize DiskOS for Disk00
+    @Call(A) FSReadHeader 0
+    @IF_ZERO @PRT "File System failed to initilize.\n" @POPNULL @END @ENDIF
+    @POPNULL
+
+
+
 @RET
 
 
@@ -85,69 +132,92 @@ G MainHeap
 # IN:
 #   LineNum (argument passed on stack)
 #
-# OUT (via stack): (CurPtr, PrevPtr, Found)
+# OUT (via stack): (CurPtr, PrevPtr,, Found)
 # --------------------------------------------------
 
+# --------------------------------------------------
+# FindLine
+# --------------------------------------------------
+# IN:
+#   LineNum
+#
+# OUT (stack):
+#   CurPtr, PrevPtr, HasPrev, Found
+# --------------------------------------------------
 :FindLine
     @PUSHRETURN
-    @LocalVar LineNum 01
-    @LocalVar CurPtr  02
-    @LocalVar PrevPtr 03
-    @LocalVar Found   04
-    @LocalVar CurNum  05
+    @LocalVar LineNum  01
+    @LocalVar CurPtr   02
+    @LocalVar PrevPtr  03
+    @LocalVar CurNum   04
+    @LocalVar Found    05
 
     @POPI LineNum
 
-    @IF_EQ_AV 0 ProgramUsed
-       # Abort with all zeros if there no program.
-       @MA2V 0 CurPtr
-       @MA2V 0 PrevPtr
-       @MA2V 0 Found
-       @JMP  FLEXIT
-    @ENDIF
-    
-    @MA2V 0 PrevPtr
 
-    @MV2V FirstLinePtr CurPtr
+    # ----------------------------------------------
+    # Initialize traversal at sentinel
+    # ----------------------------------------------
+
+    @MA2V 0 PrevPtr                 # Prev = sentinel (offset 0)
+    @FETCH_REL_OFF PrevPtr 2              # sentinel.Next
+    @POPI CurPtr
 
     @MA2V 0 Found
 
-    @PUSH 0
-    @WHILE_ZERO
+    # ----------------------------------------------
+    # Main traversal loop
+    # ----------------------------------------------
+
+:FL_LOOP
+    @IF_EQ_AV 0 CurPtr
+        @JMP FL_EXIT
+    @ENDIF
+
+    @FETCH_REL CurPtr               # load CurPtr.LineNum
+    @POPI CurNum
+
+    # ----------------------------------------------
+    # Exact match?
+    # ----------------------------------------------
+
+    @IF_EQ_VV CurNum LineNum
+        @MA2V 1 Found
+        @PRT "  Found exact match" @PRTNL
+        @JMP FL_EXIT
+    @ENDIF
+
+    # ----------------------------------------------
+    # Insert-before condition?
+    # ----------------------------------------------
+
+    @PUSHI CurNum
+    @IF_GT_V LineNum
         @POPNULL
-        @IF_EQ_AV 0 CurPtr
-	    @PUSH 1       # Break Loop Not Found
-        @ELSE
-            @PUSHII CurPtr
-            @POPI CurNum
-
-            @IF_EQ_VV CurNum LineNum
-	       @MA2V 1 Found
-               @JMP FLBreakWhile
-            @ENDIF
-
-            @PUSHI CurNum
-	    @IF_GT_V LineNum
-	       @POPNULL
-               @JMP FLBreakWhile
-            @ENDIF
-            @POPNULL
-            @MV2V CurPtr PrevPtr
-            @PUSHI CurPtr  # Next Address after CurPtr will be next line ptr
-            @ADD 2
-            @PUSHS
-            @POPI CurPtr
-            @PUSH 0        # Loop continues untilone of the break conditions are met.
-	@ENDIF
-    @ENDWHILE
+        @PRT "  Insert before CurPtr" @PRTNL
+        @JMP FL_EXIT
+    @ENDIF
     @POPNULL
-    :FLBreakWhile
-    :FLEXIT
-    @PUSHI CurPtr    
+
+    # ----------------------------------------------
+    # Advance
+    # ----------------------------------------------
+
+    @MV2V CurPtr PrevPtr
+    @FETCH_REL_OFF CurPtr 2          # CurPtr = CurPtr.Next
+    @POPI CurPtr
+
+    @JMP FL_LOOP
+
+# ----------------------------------------------
+# Exit
+# ----------------------------------------------
+
+:FL_EXIT
+    @PUSHI CurPtr
     @PUSHI PrevPtr
     @PUSHI Found
 
-    
     @RestoreVar 05
     @RestoreVar 04
     @RestoreVar 03
@@ -155,6 +225,7 @@ G MainHeap
     @RestoreVar 01
     @POPRETURN
     @RET
+
 
 
 # --------------------------------------------------
@@ -174,7 +245,8 @@ G MainHeap
     @LocalVar TextLen 03
     @LocalVar Found   04    
     @LocalVar PrevPtr 05
-    @LocalVar CurPtr  06    
+    @LocalVar CurPtr  06
+    @LocalVar HasPrev 07
 
     @POPI TextLen
     @POPI TextPtr
@@ -188,17 +260,23 @@ G MainHeap
 
     @IF_EQ_AV 0 TextLen
         @IF_NEQ_AV 0 Found
-            @Call(VV) DeleteLine CurPtr PrevPtr
+            @PRT "Deleting reused line:" @StackDump
+            @Call(VV) DeleteLine CurPtr PrevPtr HasPrev
         @ENDIF
         @JMP IOD_Exit   # Force break to end of function.
     @ENDIF
 
     @IF_NEQ_AV 0 Found
-        @PUSHI LineNum @Call(VVVV) ReplaceLine TextLen TextPtr PrevPtr CurPtr    
+            @PRT "Replacing reused line:" @StackDump    
+        @PUSHI TextLen     # To allow 5 arguments to Call
+        @PUSHI LineNum @Call(VVVV) ReplaceLine TextPtr HasPrev PrevPtr CurPtr    
     @ELSE
-        @PUSHI LineNum @Call(VVVV) InsertLine TextLen TextPtr PrevPtr CurPtr
+        @PUSHI LineNum
+        @PUSHI TextLen    # To allow 5 arguments to Call                
+        @Call(VVV) InsertLine TextPtr PrevPtr CurPtr
     @ENDIF
 :IOD_Exit
+    @RestoreVar 07
     @RestoreVar 06
     @RestoreVar 05
     @RestoreVar 04
@@ -210,18 +288,21 @@ G MainHeap
 
 
 # --------------------------------------------------
-# InsertLine(LineNumer, TextLen, TextPtr, PrevPtr, CurPtr)
+# InsertLine(LineNumer, TextLen, TextPtr,  PrevPtr, CurPtr)
+# --------------------------------------------------
+# --------------------------------------------------
+# InsertLine(LineNum, TextLen, TextPtr, PrevPtr, CurPtr)
 # --------------------------------------------------
 
 :InsertLine
-@PUSHRETURN
-    @LocalVar LineNum       01
-    @LocalVar TextLen       02
-    @LocalVar TextPtr       03
-    @LocalVar NewPtr        04
-    @LocalVar PrevPtr       05
-    @LocalVar CurPtr        06
-    @LocalVar RecPtr        07
+    @PUSHRETURN
+    @LocalVar LineNum   01
+    @LocalVar TextLen   02
+    @LocalVar TextPtr   03
+    @LocalVar NewPtr    04
+    @LocalVar PrevPtr   05
+    @LocalVar CurPtr    06
+    @LocalVar AbsPtr    07
 
     @POPI CurPtr
     @POPI PrevPtr
@@ -229,58 +310,60 @@ G MainHeap
     @POPI TextLen
     @POPI LineNum
 
-    # Test if we need to resize Arena
+    # ---- space check ----
     @PUSHI ProgramUsed
     @ADDI TextLen
-    @ADD 5                  # Line header space needed
+    @ADD 5
     @IF_UGT_V ArenaSize
-       @PRT "Out of Memory."
-       @JMP IL_EXIT
+        @PRT "Out of Memory."
+        @JMP IL_EXIT
     @ENDIF
     @POPNULL
-    # Refresh FreePtr
-    @PUSHI ProgramArenaBase @ADDI ProgramUsed @POPI FreePtr
 
-    @MV2V FreePtr NewPtr
-    @MV2V NewPtr RecPtr
+    # ---- allocate record ----
+    @MV2V ProgramUsed NewPtr
 
-    @PUSHI LineNum @POPII NewPtr     # Save LineNum [FreePtr]
+    # word 0 = line number
+    @PUSHI LineNum
+    @PUT_REL NewPtr
 
-    @INC2I NewPtr                    # Save CurPtr [FreePtr+2]
-    @PUSHI CurPtr    @POPII NewPtr
+    # word 1 = next pointer
+    @PUSHI CurPtr
+    @PUT_REL_OFF NewPtr 2
+    @PRT "Setting Next Pointer to :" @PRTHEXI CurPtr @PRTNL
 
-    @INC2I NewPtr
-
-    @Call(VVV) strncpy NewPtr TextPtr TextLen  # Save String starting at [FreePtr+4]
-
-    @PUSHI NewPtr @ADDI TextLen @POPI NewPtr  # This is the address we need to force to be zero
-
-    @PUSH 0
-    @STOREBI NewPtr
-
-    @IF_NEQ_AV 0 PrevPtr
-       @PUSHI RecPtr
-       @PUSHI PrevPtr
-       @ADD 2
-       @POPS              # Put PrevPtr at [FreePtr+2]
+    @FETCH_REL_OFF NewPtr 2
+    @IF_NEQ_A 0
+       @IF_NEQ_V CurPtr
+          @PRT "CORRUPT NEXT PTR: NewPtr=" @PRTHEXI NewPtr
+          @PRT " Expected=" @PRTHEXI CurPtr
+          @PRT " Found=" @PRTHEXTOP
+          @PRTNL
+       @ENDIF
     @ENDIF
+    @POPNULL
 
-    @IF_EQ_AV 0 PrevPtr               # If no Previous, then mark as FirstLinePtr
-       @MV2V RecPtr FirstLinePtr
-    @ENDIF
 
-    # Update ProgramUsed    
+
+    # ---- copy string ----
+    @REL_TO_ABS NewPtr AbsPtr
+    @PUSHI AbsPtr @ADD 4 @POPI AbsPtr
+
+    @Call(VVV) strncpy AbsPtr TextPtr TextLen
+    @PUSH AbsPtr @ADD TextLen @POPI AbsPtr
+    @PUSH 0 @STOREBI AbsPtr
+
+    # ---- link into list ----
+    @PUSHI NewPtr
+    @PUT_REL_OFF PrevPtr 2
+
+    # ---- update ProgramUsed / FreePtr ----
     @PUSHI ProgramUsed
     @ADDI TextLen
     @ADD 5
     @POPI ProgramUsed
-    #
-    # Update FreePtr
-    @PUSHI ProgramArenaBase
-    @ADDI ProgramUsed
-    @POPI FreePtr
 
-#    @PUSH 0 @POPII FreePtr
+    @MV2V ProgramUsed FreePtr
 
 :IL_EXIT
     @RestoreVar 07
@@ -290,8 +373,8 @@ G MainHeap
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
-@POPRETURN
-@RET
+    @POPRETURN
+    @RET
 
 
 # --------------------------------------------------
@@ -305,14 +388,20 @@ G MainHeap
     @LocalVar TextPtr 03  @POPI TextPtr
     @LocalVar TextLen 04  @POPI TextLen
     @LocalVar LineNum 05 @POPI LineNum
+    @LocalVar Found 06
+    @LocalVar HasPrev 07
     @Call(VV) DeleteLine CurPtr PrevPtr
     @Call(v) FindLine LineNum
-    @POPI Found    @POPI PrevPtr    @POPI CurPtr
+    @POPI Found   @POPI PrevPtr    @POPI CurPtr
     @IF_EQ_AV 0 Found
-       @PUSHI LineNum @Call(VVVV) InsertLine TextLen TextPtr PrevPtr CurPtr
+       @PUSHI LineNum     # Call(VVVV) is limited to 4 argument, push 1st to allow 5
+       @PUSHI TextLen
+       @Call(VVV) InsertLine TextPtr PrevPtr CurPtr
     @ELSE
        @PRT "Error: Edit of " @PRTI LineNum @PRTLN " Failed to free memory."
     @ENDIF
+    @RestoreVar 07
+    @RestoreVar 06    
     @RestoreVar 05
     @RestoreVar 04
     @RestoreVar 03
@@ -327,300 +416,79 @@ G MainHeap
 
 :DeleteLine
 @PUSHRETURN
-    @LocalVar CurPtr     01
-    @LocalVar PrevPtr    02
-    @LocalVar DelPtr     03
-    @LocalVar NextPtr    04
-    @LocalVar TextLen    05
-    @LocalVar RecSize    06
-    @LocalVar SrcPtr     07
-    @LocalVar MoveLen    08
-    @LocalVar ScanPtr    09
-    @LocalVar TmpPtr     10
+    @LocalVar CurPtr  01
+    @LocalVar PrevPtr 02
+    @LocalVar NextPtr 03
 
-    # -------------------------------
-    # Inputs
-    # -------------------------------
     @POPI PrevPtr
     @POPI CurPtr
 
-    @MV2V CurPtr DelPtr
-
-    # -------------------------------
-    # NextPtr = [DelPtr + 2]
-    # -------------------------------
-    @PUSHI DelPtr
-    @ADD 2
-    @PUSHS
+    # NextPtr = CurPtr.Next
+    @FETCH_REL_OFF CurPtr 2
     @POPI NextPtr
 
-    # -------------------------------
-    # Logical unlink
-    # -------------------------------
-    @IF_EQ_AV 0 PrevPtr
-        @MV2V NextPtr FirstLinePtr
-    @ELSE
-        @PUSHI NextPtr
-        @PUSHI PrevPtr
-        @ADD 2
-        @POPS                  # PrevPtr->Next = NextPtr
-    @ENDIF
+    # PrevPtr.Next = NextPtr
+    @PUSHI NextPtr
+    @PUT_REL_OFF PrevPtr 2
 
-    # -------------------------------
-    # Compute record size
-    # RecSize = 5 + strlen(text)
-    # -------------------------------
-    @PUSHI DelPtr
-    @ADD 4             # Move point to where string starts.
-    @CALL strlen
-    @POPI TextLen
-
-    @PUSHI TextLen
-    @ADD 5
-    @POPI RecSize
-
-    # -------------------------------
-    # Compact arena
-    # -------------------------------
-    # SrcPtr  = DelPtr + RecSize
-    # MoveLen = ProgramUsed - (SrcPtr - ProgramArenaBase)
-    #
-    @PUSHI DelPtr
-    @ADDI RecSize
-    @POPI SrcPtr
-
-    @PUSHI ProgramUsed          
-    @PUSHI SrcPtr           # (SrcPtr - ProgramArenaBase)
-    @SUBI ProgramArenaBase
-    @SUBS
-    @POPI MoveLen
-
-    @SafeMove(VVV) SrcPtr DelPtr MoveLen
-
-    # -------------------------------
-    # Update ProgramUsed / FreePtr
-    # -------------------------------
-    @PUSHI ProgramUsed
-    @SUBI RecSize
-    @POPI ProgramUsed
-
-    @PUSHI ProgramArenaBase
-    @ADDI ProgramUsed
-    @POPI FreePtr
-
-    # -------------------------------
-    # Fix all NextPtr fields
-    # -------------------------------
-    @MV2V FirstLinePtr ScanPtr
-
-    @WHILE_NEQ_AV 0 ScanPtr
-
-        @PUSHI ScanPtr
-        @ADD 2
-        @PUSHS
-        @POPI TmpPtr
-
-        @PUSHI TmpPtr
-        @IF_GT_V DelPtr
-            @SUBI RecSize
-            @POPI TmpPtr
-
-            @PUSHI TmpPtr
-            @PUSHI ScanPtr
-            @ADD 2
-            @POPS
-        @ELSE
-            @POPNULL
-        @ENDIF
-
-        @MV2V TmpPtr ScanPtr
-    @ENDWHILE
-
-    # -------------------------------
     # Return successor
-    # -------------------------------
     @PUSHI NextPtr
 
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
 @POPRETURN
 @RET
 
-
-
-# --------------------------------------------------
-# DeleteLine(CurPtr, PrevPtr) -> NextPtr
-#
-# Deletes the record at CurPtr, compacts memory,
-# fixes all links, updates ProgramArenaBase/End/FreePtr,
-# and RETURNS NextPtr on stack.
-# --------------------------------------------------
-
-:DeleteLine_OLD
+#-----------------------------------------
+# Line2String(RecordPtr):StrPtr
+# Converts given Line into string format.
+# This will do real work when we have tolkenized lines
+#---------------------------------------
+:Line2String
 @PUSHRETURN
-    @LocalVar CurPtr      01   # input
-    @LocalVar PrevPtr     02   # input
-    @LocalVar DelPtr      03   # invariant delete address
-    @LocalVar NextPtr     04   # invariant logical successor
-    @LocalVar TextLen     05
-    @LocalVar RecSize     06
-    @LocalVar SrcPtr      07
-    @LocalVar MoveLen     08
-    @LocalVar ScanPtr     09
-    @LocalVar TmpPtr      10
+   @LocalVar RecPtr 01
+   @LocalVar LineNum 02
+   @LocalVar OutStrPtr 03
+   @POPI RecPtr
+   
+   @MA2V InputBuf OutStrPtr
 
-    # ------------------------------------------
-    # Inputs
-    # ------------------------------------------
-    @POPI PrevPtr
-    @POPI CurPtr
+   @PUSHII RecPtr # Get the Line Number
+   @POPI LineNum
+   @Call(VVA) itos OutStrPtr LineNum 10
 
-    @MV2V CurPtr DelPtr        # DelPtr = CurPtr
+   # Mve OutStrPtr to spot after number.
+   @Call(V) strlen OutStrPtr
+   @ADDI OutStrPtr
+   @POPI OutStrPtr
 
-    # ------------------------------------------
-    # NextPtr = [DelPtr + 2]
-    # ------------------------------------------
-    @PUSHI DelPtr
-    @ADD 2
-    @PUSHS
-    @POPI NextPtr
+   @PUSH " \0"      # Put a space after the number
+   @POPII OutStrPtr
+   @INCI OutStrPtr
 
-    # ------------------------------------------
-    # Logical unlink
-    # ------------------------------------------
-    @IF_EQ_AV 0 PrevPtr
-        @MV2V DelPtr ProgramArenaBase
-    @ELSE
-        @PUSHI NextPtr
-        @PUSHI PrevPtr
-        @ADD 2
-        @POPS                # [PrevPtr+2] = NextPtr
-    @ENDIF
+   # A later version of this will do all sort of tolken to string operations but we don't need that yet.
+   @PUSHI RecPtr @ADD 4 @POPI RecPtr
+   
+   @Call(VV) strcpy OutStrPtr RecPtr
 
-    # ------------------------------------------
-    # Fast exit: deleting last record
-    # ------------------------------------------
-    @IF_EQ_VV CurPtr ProgramUsed
-        @IF_EQ_AV 0 PrevPtr
-            # deleting the only record
-            @MA2V 0 ProgramArenaBase
-            @MA2V 0 ProgramUsed
-            @MV2V CurPtr FreePtr
-            @PUSH 0
-            @POPII FreePtr
-            @MA2V 0 CurPtr
-            @MA2V 0 PrevPtr            
-            @JMP DLC_Exit
-        @ELSE
-            # deleting last but not first
-            @MV2V PrevPtr ProgramUsed
-            @MV2V CurPtr FreePtr
-            @PUSH 0
-            @POPII FreePtr
-            @JMP DLC_Exit
-        @ENDIF
-    @ENDIF
+   # Put a CR
+   @PUSH 10        # EOL LF character
+   @Call(V) strlen OutStrPtr
+   @ADDI OutStrPtr
+   @POPS           # THis should put LF hex 0xa and null at end of line
 
-    # ------------------------------------------
-    # TextLen = strlen(DelPtr + 4)
-    # ------------------------------------------
-    @PUSHI DelPtr
-    @ADD 4
-    @CALL strlen
-    @POPI TextLen
+   @PUSH InputBuf
 
-    # RecSize = 4 + TextLen + 1
-    @PUSHI TextLen
-    @ADD 5
-    @POPI RecSize
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01   
 
-    # ------------------------------------------
-    # Compact memory
-    #   SrcPtr  = DelPtr + RecSize
-    #   MoveLen = FreePtr - SrcPtr
-    # ------------------------------------------
-    @PUSHI DelPtr
-    @ADDI RecSize
-    @POPI SrcPtr
-
-    @PUSHI FreePtr
-    @SUBI SrcPtr
-    @POPI MoveLen
-
-    @SafeMove(VVV) SrcPtr DelPtr MoveLen
-
-    # ------------------------------------------
-    # Fix FreePtr
-    # ------------------------------------------
-    @PUSHI FreePtr
-    @SUBI RecSize
-    @POPI FreePtr
-
-    @PUSH 0
-    @POPII FreePtr
-
-    # ------------------------------------------
-    # Fix ProgramUsed
-    # ------------------------------------------
-    @PUSHI ProgramUsed
-    @IF_GT_V DelPtr
-        @SUBI RecSize
-        @POPI ProgramUsed
-    @ELSE
-        @POPNULL
-    @ENDIF
-
-    # ------------------------------------------
-    # Fix all next-pointers
-    # ------------------------------------------
-    @MV2V ProgramArenaBase ScanPtr
-
-    @WHILE_NEQ_AV 0 ScanPtr
-        # TmpPtr = [ScanPtr + 2]
-        @PUSHI ScanPtr
-        @ADD 2
-        @PUSHS
-        @POPI TmpPtr
-
-        @PUSHI TmpPtr
-        @IF_GT_V DelPtr
-            @SUBI RecSize
-            @POPI TmpPtr
-
-            @PUSHI TmpPtr
-            @PUSHI ScanPtr
-            @ADD 2
-            @POPS
-        @ELSE
-            @POPNULL
-        @ENDIF
-
-        @MV2V TmpPtr ScanPtr
-    @ENDWHILE
-
-:DLC_Exit
-
-
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
 @POPRETURN
 @RET
+
+   
+
 
 #------------------------------------------
 # SAVEMEM(filename)
@@ -629,69 +497,95 @@ G MainHeap
 :SAVEMEM
 @PUSHRETURN
     @LocalVar FileName    01
-    @LocalVar ArgTable    02
-    @LocalVar FilePtr     03
-    @LocalVar LineCount   04
-    @LocalVar SaveSize    05
-    @LocalVar FileNum     06
-    @LocalVar DiskBuffer  07
+    @LocalVar StrPtr      02
+    @LocalVar Ptr         03
+    @LocalVar FilePtr     04
+    @LocalVar StrLen      05
 
     @POPI FileName
 
-    @Call(VA) file_open FileName 0x6f77     # "wo" open for write
+    @Call(VA) file_open FileName 0x6f77   # "wo"
     @POPI FilePtr
-    
+
+    @PUSHI ProgramArenaBase @ADD 2 @PUSHS
+    @POPI Ptr
+    @PUSH 0
+    @WHILE_ZERO
+       @IF_EQ_AV 0 Ptr
+          @WHILEBREAK
+       @ENDIF
+       @PUSH_REL_TO_ABS Ptr
+       @CALL Line2String
+       @POPI StrPtr
+       @Call(V) strlen StrPtr
+       @POPI StrLen
+       @Call(VVV) DiskFileWrite FilePtr StrPtr StrLen
+
+       @IF_LT_V StrLen
+           @PRT "Truncated Write."
+       @ENDIF
+       @POPNULL
+
+       # Here we need something like printf(fp,string)
+       @PRTSTRI StrPtr
+       @PRTNL
+
+       @FETCH_REL_OFF Ptr 2
+       @POPI Ptr
+    @ENDWHILE
+    @POPNULL
+
+    @Call(V) DiskClose FilePtr
     @IF_ZERO
-       @PRT "File: " @PRTSI FileName @PRT " could not be opened."
-       @JMP SM_EXIT
-    @ELSE
-       # file_open will have filled in ArgTable meta data, required to customize Basic Header
-       @PUSHI FilePtr @ADD FPTR_FILENUM @PUSHS
-       @POPI FileNum
-       # Setup Storage
-       @CALL DirNewArgTable  @IF_ZERO @PRT "Error Alloc ArgTable\n" @JMP SM_EXIT @ENDIF
-       @POPI ArgTable
-       @CALL DiskNewBuffer @IF_ZERO @PRT "Error Alloc Buffer\n" @JMP SM_EXIT @ENDIF
-       @POPI DiskBuffer
-       # Fetch the ArgTable for editing.
-       @Call(AAA) DirReadEntry FileNum ArgTable DiskBuffer
-       
-       # Save LineCount
-       @CALL LineCountCode
-       @POPI LineCount
-       @PUSHI LineCount @PUSHI ArgTable @ADD DIR_AT_LINECOUNT @POPS
-       # Save "BA" to the File Type field.
-       @PUSH 0x4142 @PUSHI ArgTable @ADD DIR_AT_FILETYPE @POPS           
-       #
-       # Now save updated ArgTable to Disk
-       @Call(AAA) DirWriteEntry FileNum ArgTable DiskBuffer
-       #
-       # Now Clean up storage
-       @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
-       @POPNULL
-       @Call(VV) HeapDeleteObject DiskHeap ArgTable
-       @POPNULL
-       #       
-       # Meta Data is updated, now do the main save.
-       # Caclulate Total Bytes for save
-       @PUSHI FreePtr @SUB _END_
-       @POPI SaveSize       
-       #
-       @Call(VAV) DiskFileWrite FilePtr _END_ SaveSize
-       #
-       @Call(V) DiskClose FilePtr
+       @PRT "Error Writing File:"
     @ENDIF
-:SM_EXIT
-    
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
+    @POPNULL
+    @RestoreVar 05    
     @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
-    @RestoreVar 01    
- @POPRETURN
- @RET
- 
+    @RestoreVar 01
+@POPRETURN
+@RET
+       
     
+#------------------------------------------
+# LOADMEM(filename)
+# LOAD FileName into memory
+#------------------------------------------
+:LOADMEM
+@PUSHRETURN
+    @LocalVar FileName    01
+    @LocalVar FilePtr     02
+    @LocalVar ReadCount   03
+
+    @POPI FileName
+
+    # Open file for read ("ro")
+    @Call(VA) file_open FileName MODE_RO  # 0x726f "ro"
+    @POPI FilePtr
+    @IF_EQ_AV 0 FilePtr
+        @PRT "File: " @PRTSI FileName @PRT " could not be opened."
+        @JMP LM_EXIT
+    @ELSE
+        @MA2V 0 ReadCount
+        @Call(VA) DiskFileReadLine  FilePtr InputBuf
+        @WHILE_NOTZERO
+            @POPNULL
+            @Call(A) ParseLineOrCommand InputBuf
+            @Call(VA) DiskFileReadLine  FilePtr InputBuf
+        @ENDWHILE
+        @POPNULL
+    @ENDIF       
+:LM_EXIT
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+
+   
+
+      
+      
+      
