@@ -1,15 +1,10 @@
 # Some Helpfull IO funcitions.
 ! IOLIB_DONE
 M IOLIB_DONE 1
-? __EX716_EXPLICIT_LINK
-   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION  MF __ENDOF %__LastFunc :_HERE%0 _HERE%0 ENDBLOCK
-ENDBLOCK
 
 L string.ld
 M SIZESINCECOMMENT io.ld
 G StrReadToChar
-@JMP SkipToEnd     # Protects from start of code running in library space
 #
 # StrReadToChar (StringPtr, Character as word, Length Limit)
 # Reads from IO a string that ends with unique character rather than normal newline
@@ -50,6 +45,5 @@ G StrReadToChar
 :SRCStrPtr 0
 :SRCReadCH 0 0  # Note we reserver 4 bytes ReadCH because READC might return small strings
 @ENDFUNCTION
-:SkipToEnd
 @SIZESINCE
 ENDBLOCK

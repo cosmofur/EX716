@@ -4,19 +4,55 @@
 ! TIMELIBSeen
 M TIMELIBSeen 1
 M SIZESINCECOMMENT timetool.ld
-I common.mc
 L lmath.ld
 I lmath.md
 L mul.ld
 L div.ld
 :ClockCalib 0 0   # 32 bit Calibration value
 G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G SleepMilli
+
+@FUNCTION Sleep
+   @USE TimeCalabrate
+ENDBLOCK
+
+@FUNCTION SleepMilli
+   @USE TimeCalabrate
+ENDBLOCK
+
+
+
+@FUNCTION TimeCalabrate
+
+ENDBLOCK
+
+
+@FUNCTIONNEEDS Time2Units
+  @USE DaysInMonth
+  @USE DaysInYear
+ENDBLOCK
+
+@FUNCTIONNEEDS DaysInYear
+  @USE IsLeapYear
+ENDBLOCK
+
+@FUNCTIONNEEDS DaysInMonth
+  @USE IsLeapYear
+ENDBLOCK
+
+
+
+@FUNCTIONNEEDS IsLeapYear
+  @USE DIVU
+ENDBLOCK
+
+
 #
 #
 # First some string processing functions to turn 32 bit time in seconds, into data/time string.
 ##
 #########################################################
 # Function IsLeapYear(int:year) returns 1 or 0 if given year is leap year or not.
+@FUNCTION IsLeapYear
 :IsLeapYear
 @PUSHRETURN
 @LocalVar year 01
@@ -54,8 +90,10 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 ####################################################################
 # Function DaysInYear(int:year) return int
+@FUNCTION DaysInYear
 :DaysInYear
 @PUSHRETURN
 @CALL IsLeapYear
@@ -68,9 +106,11 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @ENDIF
 @POPRETURN
 @RET
+@ENDFUNCTION
 ####################################################################
 # Function DaysInMonth(int month, int year)
 ###### data
+@FUNCTION DaysInMonth
 :DataInMonthData
 31 28 31 30 31 30 31 31 30 31 30 31
 :DaysInMonth
@@ -109,10 +149,12 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #####################################################################
 # Function Time2Units(int32Ptr seconds):(int year, int month, int day, int hour, int minute, int second)
 # Storage
 # 32 bit constants
+@FUNCTION Time2Units
 :SecondsMinute $$$60
 :SecondsHour $$$3600
 :SecondsDay $$$86400
@@ -198,11 +240,13 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 ###################################################################################
 # Function TimeCalabrate():int OpsPerUnit
 #     Goal is to calculate NOS per 1/256th of second
 # We'll need some 32 bit numbers
 #
+@FUNCTION TimeCalabrate
 :TimeCalabrate
 @PUSHRETURN
 @LocalVar StartTime 01
@@ -282,11 +326,13 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 ################################################################
 ## The Sleep Functions are only aproximations. Not exact times.
 #################################################################
 # Sleep(seconds) Sleep in seconds
+@FUNCTION Sleep
 :Sleep
 @PUSHRETURN
 @LocalVar Count 01
@@ -314,8 +360,10 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 ##################################################################
 # SleepMilli(MilliSeconds) Sleep for number of millisecond
+@FUNCTION SleepMilli
 :SleepMilli
 @PUSHRETURN
 @LocalVar Index1 01
@@ -343,5 +391,6 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 @SIZESINCE
 ENDBLOCK

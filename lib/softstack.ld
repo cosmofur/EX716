@@ -1,5 +1,6 @@
 ! SOFTSTACK_DONE
 M SOFTSTACK_DONE 1
+P Loading softstack.ld
 # Provides and Alternative small software stack
 
 # Used mostly so some simple low depth recursion can avoid reusing fixed storage

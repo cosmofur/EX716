@@ -1,17 +1,11 @@
 # String Functions Generation two
 ! STRING_DONE
 M STRING_DONE 1
-
-? __EX716_EXPLICIT_LINK
-   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION  :_HERE%0 MF __ENDOF _HERE%0  ENDBLOCK
-   M FUNCTIONNEEDS ? __%1_INUSE
-   # If any functions are used, we need the support macros.
-   @USE strcpy
-   @USE stringMacros
-ENDBLOCK
-
-I common.mc
+P Loading string.ld
+@USE strcpy
+@USE stringMacros
+@USE strlen
+@USE MULU
 
 @FUNCTIONNEEDS strcat
   @USE strlen
@@ -34,10 +28,11 @@ ENDBLOCK
   @USE DIV
 ENDBLOCK
 
-@FUNCTIONNEEDS stoi
-  @USE strlen
+@FUNCTIONNEEDS stoifirst
   @USE MULU
+  @USE stoi
 ENDBLOCK
+
 
 @FUNCTIONNEEDS strncmp
   @USE stoi
@@ -73,6 +68,12 @@ ENDBLOCK
 
 @FUNCTIONNEEDS strUpCase
   @USE strlen
+ENDBLOCK
+
+@FUNCTIONNEEDS stoi
+  P Defining stoi with MULU
+  @USE strlen
+  @USE MULU
 ENDBLOCK
 
 

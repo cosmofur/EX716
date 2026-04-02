@@ -2,9 +2,6 @@
 M SCREEN_DONE 1
 I common.mc
 L softstack.ld
-@PRT "Code Ran into screen.ld:" @StackDump
-@END
-
 # DEBUGSCREEN option:
 # If defined, ANSI escape codes are replaced by "<ESC>["
 # so debugging output shows literally instead of altering terminal.

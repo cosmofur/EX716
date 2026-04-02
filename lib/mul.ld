@@ -1,4 +1,5 @@
 ! MUL_SEEN
+P Loading MUL.ld
 # ============================================================
 # mul.ld  -  Software Multiply Library for EX716
 #
@@ -21,34 +22,20 @@
 # ============================================================
 
 M MUL_SEEN 1
-P MUL_SEEN Again {MUL_SEEN}
 L softstack.ld
-? __EX716_EXPLICIT_LINK
-   P "Mul.ld think __EX716_EXPLICIT_LINK is defined as" {__EX716_EXPLICIT_LINK}
-   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION  :_HERE%0 MF __ENDOF _HERE%0  ENDBLOCK
-   M FUNCTIONNEEDS ? __%1_INUSE
-   # If any functions are used, we need the support macros.
-   @USE mulMacros
-ENDBLOCK
-
-P "When we decode mul.ld FUNCITON=" {FUNCTION} " and ENDFUNCTION=" {ENDFUNCTION}
 
 @FUNCTIONNEEDS MUL
    @USE MULU
 ENDBLOCK
 
+@USE mulMacros
 @FUNCTION mulMacros
 M SIZESINCECOMMENT mul.ld
 
-P "Just before Return Result"
 M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @POPRETURN @RET
 
 @ENDFUNCTION
-
 # --- Public entry points ---
-G MULU
-G MUL
 
 # ============================================================
 # MULU(N, M) → Unsigned multiply
@@ -60,7 +47,6 @@ G MUL
 # Flags:
 #   Overflow flag set if high word of result ≠ 0
 # ============================================================
-
 @FUNCTION MULU
 :MULU
     @PUSHRETURN

@@ -1,9 +1,7 @@
 ! DISKOS_SEEN
 M DISKOS_SEEN 1
-I common.mc
-L heapmgr.ld
-L string.ld
-
+@StackDump
+P Loading diskio.ld
 # ================================================================
 # diskos.asm
 #
@@ -427,23 +425,60 @@ G FSFileBitMapStore
 :FSHeadValidStore    0
 :FSFileBitMapStore
 . FSFileBitMapStore+128
+
+@USE DataBlockFirstSector
+@USE DirArgTableToEntry
+@USE DirClearArgTable
+@USE DirEntryPtr
+@USE DirEntryToArgTable
+@USE DirFindFree
+@USE DirLocate
+@USE DirNewArgTable
+@USE DirReadEntry
+@USE DirWriteEntry
+@USE DiskFileName
+@USE DiskFileRead
+@USE DiskNewBuffer
+@USE DiskOpen
+@USE DiskReadBlock
+@USE DiskReadSector
+@USE DiskReadSector
+@USE DiskWithDirEntry
+@USE DiskWriteBlock
+@USE DiskWriteSector
+@USE FSFindFile
+@USE FSIsFileUsed
+@USE FSNextUsedFile
+@USE FSReadHeader
+@USE FSSetFileUsed
+@USE FSWriteHeader
+@USE HeapDeleteObject
+@USE HeapNewObject
+@USE WildCardMatch
+@USE file_open
+@USE _DFN_Mod
+
+
+
 #####################################################################################
 #--------------------------------------------------
 # SetDiskHeap(HeapID)
 # Required function, Heap Space must be allocated and ID'ed
 #--------------------------------------------------
+@FUNCTION SetDiskHeap
 :SetDiskHeap
 @PUSHRETURN
    @POPI DiskHeap
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 #
 #
 # Low Level Disk IO
 #--------------------------------------------------
 # DiskReadSector(Sector, *Buffer)
 #--------------------------------------------------
+@FUNCTION DiskReadSector
 :DiskReadSector
 @PUSHRETURN
     @LocalVar Sector 01
@@ -456,9 +491,11 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #--------------------------------------------------
 # DiskWriteSector(Sector, *Buffer)
 #--------------------------------------------------
+@FUNCTION DiskWriteSector
 :DiskWriteSector
 @PUSHRETURN
     @LocalVar Sector 01
@@ -472,7 +509,9 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #---------------------------------------------
+@FUNCTION  DataBlockFirstSector
 # DataBlockFirstSector(FileNum):(Sector)
 #---------------------------------------------
 :DataBlockFirstSector
@@ -491,7 +530,9 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #---------------------------------------------
+@FUNCTION  DirLocate
 # DirLocate(FileNum):(Sector, Offset)
 # Finds the DIR sector and its offset within that sector.
 #---------------------------------------------
@@ -533,8 +574,10 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #
 #------------------------------------------
+@FUNCTION  DirEntryPtr
 # DirEntryPtr(*Buffer, Offset):(*EntryPtr)
 # Set Ptr to spot in Buffer where FileNum's DirEntry starts.
 #------------------------------------------
@@ -551,9 +594,11 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #
 #------------------------------------------
+@FUNCTION  DirEntryToArgTable
 # DirEntryToArgTable(*DirEntry, *ArgTable):
 # Reads DIR from disk into ArgTable, which must be at least 128 bytes long
 #------------------------------------------
@@ -578,10 +623,12 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #------------------------------------------------
 # DirClearArgTable(*ArgTable)
 # Clears the ArgTable, does not yet rewrite new entry to Disk
 #------------------------------------------------
+@FUNCTION DirClearArgTable
 :DirClearArgTable
 @PUSHRETURN
    @LocalVar ArgTable 01
@@ -600,11 +647,13 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #--------------------------------------------
 # DirArgTableToDirEntry(*DirEntry,*ArgTable)
 # Copies the formated ArgTable to the in memory image of DIR sector.
 #--------------------------------------------
+@FUNCTION DirArgTableToEntry
 :DirArgTableToEntry
 @PUSHRETURN
    @LocalVar DirEntry 01
@@ -627,11 +676,13 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #----------------------------------------
 # DirWriteEntry(FileNum, *ArgTable, *DiskBuffer)
 # Writes the in memory image of the DIR sector to disk.
 #----------------------------------------
+@FUNCTION DirWriteEntry
 :DirWriteEntry
 @PUSHRETURN
     @LocalVar FileNum    01
@@ -701,8 +752,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #--------------------------------------
+@FUNCTION  DirReadEntry
 # DirReadEntry(FileNum,*ArgTable, *DiskBuff):Error Code
 # Test for ArgTable.FLAGS for FLAG_INUSE to check for errors. Will only be set if Entry if valid.
 #--------------------------------------
@@ -748,10 +801,12 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #-----------------------------------------
 # DirNewArgTable
 # Returns a new ArgTable pointer.
 #-----------------------------------------
+@FUNCTION DirNewArgTable
 :DirNewArgTable
 @PUSHRETURN
    @IF_EQ_AV -1 DiskHeap
@@ -763,8 +818,10 @@ G FSFileBitMapStore
    @ENDIF
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #-----------------------------------------
+@FUNCTION  DiskNewBuffer
 # DiskNewBuffer():*Buffer
 #-----------------------------------------
 :DiskNewBuffer
@@ -778,6 +835,7 @@ G FSFileBitMapStore
    @ENDIF
 @POPRETURN
 @RET
+@ENDFUNCTION
 #-----------------------------------------
 # DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer)
 # Writes ByteCount bytes from memory starting at MemPtr into consecutive disk sectors starting at Sector.
@@ -785,6 +843,7 @@ G FSFileBitMapStore
 # Final sector is zero-filled beyond ByteCount.
 # Does not clear sectors beyond the last written sector.
 #-----------------------------------------
+@FUNCTION DiskWriteBlock
 :DiskWriteBlock
 @PUSHRETURN
     @LocalVar Sector 01
@@ -887,8 +946,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #---------------------------------------
+@FUNCTION  DiskReadBlock
 # DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer):Bytes Read
 # Reads a sequence of Sectors into a memory.
 #---------------------------------------
@@ -978,11 +1039,13 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #---------------------------------------
 # DiskOpen(FileNum,Mode)
 # Create a FilePtr structure to refrence a disk file.
 #---------------------------------------
+@FUNCTION DiskOpen
 :DiskOpen
 @PUSHRETURN
     @LocalVar FileNum   01
@@ -1110,12 +1173,14 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 
 #-----------------------------------------
 # DiskFileWrite(FilePtr, MemPtr, ByteCount)
 # Writes data to file at current cursor.
 #-----------------------------------------
+@FUNCTION DiskFileWrite
 :DiskFileWrite
 @PUSHRETURN
     @LocalVar FilePtr     01
@@ -1253,8 +1318,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #
 #-----------------------------------------------------
+@FUNCTION  DiskClose
 # DiskClose(FilePtr):(0|1)
 # Commits meta data to DIR and closes open file.
 #-----------------------------------------------------
@@ -1346,6 +1413,7 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #---------------------------------------------------------
 # DiskFileRead(FilePtr, MemPtr, ByteCount)
 #
@@ -1370,6 +1438,8 @@ G FSFileBitMapStore
 # and extent-based files.
 # DiskFileRead(FilePtr, MemPtr, ByteCount)
 #---------------------------------------------------------
+P Before DiskFileRead
+@FUNCTION DiskFileRead
 :DiskFileRead
 @PUSHRETURN
     @LocalVar FilePtr     01
@@ -1527,7 +1597,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #-------------------------------------------------
+P Before WildCardMatch
+@FUNCTION  WildCardMatch
 # WildCardMatch(pattern,text):1|0
 # Returns 1 if pattern matches test
 # Allows only 0 or 1 wildcard '*' in pattern.
@@ -1627,7 +1700,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
+P Before DirFindFile
 #--------------------------------------------
+@FUNCTION  DirFindFile
 # DirFindFile(Pattern, StartPoint):FileNum | 0
 # Searches DIR, starting at StartPoint for filenames that match Pattern
 # StartPoint is in terms of FileNum so by calling repeatily you can find
@@ -1713,8 +1789,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
+P Before DirFindFree
 #-------------------------------------------
+@FUNCTION  DirFindFree
 # DirFindFree():FileNum | 0
 # Searches for a free Director entry, 0 if none found.
 #-------------------------------------------
@@ -1774,11 +1852,13 @@ G FSFileBitMapStore
    @RestoreVar 01
  @POPRETURN
  @RET
+ @ENDFUNCTION
 
 
 
-
+P Before file_open
 #--------------------------------------------
+@FUNCTION  file_open
 # file_open(FileName, Mode): FilePointer | 0
 #--------------------------------------------
 :file_open
@@ -1806,22 +1886,27 @@ G FSFileBitMapStore
     @PUSHI Mode
     @SWITCH
     @CASE MODE_RO
+        @POPNULL
         @MA2V FP_OPEN_READ NewFlag
         @CBREAK
     @CASE MODE_WO
+        @POPNULL
         @MA2V FP_OPEN_WRITE NewFlag
         @CBREAK
     @CASE  MODE_RW
+        @POPNULL
         @PUSH FP_OPEN_READ @PUSH FP_OPEN_WRITE
         @ORS
         @POPI NewFlag
         @CBREAK
     @CASE MODE_WP
+        @POPNULL
         @PUSH FP_OPEN_WRITE @PUSH FP_OPEN_APPEND
         @ORS
         @POPI NewFlag
         @CBREAK
     @CASE MODE_AP
+        @POPNULL
         @PUSH FP_OPEN_WRITE @PUSH FP_OPEN_APPEND
         @ORS
         @POPI NewFlag
@@ -1833,8 +1918,6 @@ G FSFileBitMapStore
         @JMP FO_Exit
         @CBREAK
     @ENDCASE
-    @POPNULL
-
     # Locate file
     @PUSHI FileName
     @PUSH 0
@@ -1856,27 +1939,26 @@ G FSFileBitMapStore
 #   state changes (create/delete).
 #   DiskOpen / DiskClose do not modify FS metadata.
        @POPNULL
+       
        @CALL DirFindFree       # Searches Disk for free DIR entry.
        @IF_NOTZERO
           # Create New Disk entry, give it filename and then reclose it to prepare FS
           @POPI FileNum
           @Call(V) FSSetFileUsed FileNum
           @IF_ZERO
-             @PRT "Error setting FS Bitmap\n"
              @MA2V 0 FilePointer
              @POPNULL
              @JMP FO_Exit
           @ENDIF
           @POPNULL
+          
           @PUSHI NewFlag @OR FP_OPEN_CREATE @POPI NewFlag
           @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "Failed to Open File" @END @ENDIF
           @POPI FilePointer
           @Call(VV) DiskFileName FilePointer FileName
-
           
           @CALL FSWriteHeader  @IF_ZERO @PRT "Failed to write FS data to disk" @POPNULL @END @ELSE @POPNULL @ENDIF
           @Call(V) DiskClose FilePointer
-          
           @IF_ZERO
              # Erorr File failed to close propelr return 0 for error
              @POPI FilePointer
@@ -1892,11 +1974,9 @@ G FSFileBitMapStore
        @ENDIF
     @ENDIF
     # Open File and return FilePointer to caller
-    
     @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "Failed to open file" @END @ENDIF
-    
     @POPI FilePointer
-    
+
     # Now set cursor based on if in an APPEND mode or not.
     @PUSHI NewFlag @AND FP_OPEN_APPEND
     @IF_NOTZERO
@@ -1922,6 +2002,7 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #---------------------------------------------------------
 # Series of API to modify/access DIR header data.
@@ -1931,6 +2012,8 @@ G FSFileBitMapStore
 #-----------------------------------
 # DiskFileSetLineCount(FilePtr, LineCount)
 #-----------------------------------
+P Before DiskFileSetLineCount
+@FUNCTION DiskFileSetLineCount
 :DiskFileSetLineCount
 @PUSHRETURN
     @LocalVar FilePtr 01
@@ -1946,10 +2029,13 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #----------------------------------
 # _DF_SetLine_Mod
 # Modifies ArgTable LineNumer Field
 #----------------------------------
+P Before _DF_SetLine_Mod
+@FUNCTION _DF_SetLine_Mod
 :_DF_SetLine_Mod
 @PUSHRETURN
     @LocalVar ArgTable 01
@@ -1967,7 +2053,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
+P Before DiskGetLineCount
 #-----------------------------------
+@FUNCTION  DiskGetLineCount
 # DiskGetLineCount(FilePtr):LineCount
 #-----------------------------------
 :DiskGetLineCount
@@ -1983,10 +2072,13 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #----------------------------------
 # _DF_GetLine_Mod
 # Modifies ArgTable LineNumer Field
 #----------------------------------
+P Before _DF_GetLine_Mod
+@FUNCTION _DF_GetLine_Mod
 :_DF_GetLine_Mod
 @PUSHRETURN
     @LocalVar ArgTable 01
@@ -2001,10 +2093,12 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
+P Before DiskFileSetType
 #-----------------------------------
 # DiskSetFileType(FilePtr, TypeWord)
 #-----------------------------------
+@FUNCTION DiskFileSetType
 :DiskFileSetType
 @PUSHRETURN
     @LocalVar FilePtr 01
@@ -2020,10 +2114,13 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #----------------------------------
 # _DF_SetType_Mod
 # Modifies ArgTable SetType Field
 #----------------------------------
+P Before _DF_SetType_Mod
+@FUNCTION _DF_SetType_Mod
 :_DF_SetType_Mod
 @PUSHRETURN
     @LocalVar ArgTable 01
@@ -2041,7 +2138,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
+P Before DiskGetFileType
 #-----------------------------------
+@FUNCTION  DiskGetFileType
 # DiskGetFileType(FilePtr):TypeWord
 #-----------------------------------
 :DiskFileGetType
@@ -2057,10 +2157,13 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #----------------------------------
 # _DF_GetType_Mod
 # Modifies ArgTable SetType Field
 #----------------------------------
+P Before _DF_GetType_Mod
+@FUNCTION _DF_GetType_Mod
 :_DF_GetType_Mod
 @PUSHRETURN
     @LocalVar ArgTable 01
@@ -2076,9 +2179,12 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #------------------------------------
 # DiskFileName
 #------------------------------------
+P Before DiskFileName
+@FUNCTION DiskFileName
 :DiskFileName
 @PUSHRETURN
     @LocalVar FilePtr 01
@@ -2093,9 +2199,12 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #------------------------------
 # DiskFileName Modifier function.
 #------------------------------
+P Before _DFN_MOD
+@FUNCTION _DFN_Mod
 :_DFN_Mod
 @PUSHRETURN
     @LocalVar ArgTable 01
@@ -2120,6 +2229,7 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 
 #-----------------------------------------
@@ -2128,6 +2238,8 @@ G FSFileBitMapStore
 # This is a generic functon, that when called is passed a pointer to a
 # modifier funciton that modifies the ArgTable, which is then written back
 #-----------------------------------------
+P Before DiskWithDirEntry
+@FUNCTION DiskWithDirEntry
 :DiskWithDirEntry
 @PUSHRETURN
     @LocalVar FilePtr     01
@@ -2195,8 +2307,11 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
+P Before FSReadHeader
 #--------------------------------
+@FUNCTION  FSReadHeader
+P After Loading FSReadHeader
 # FSReadHeader(DISK_NUMBER):1|0 # Reads filesystem superblock (FS header) and establishes FS context
 #--------------------------------
 :FSReadHeader
@@ -2253,10 +2368,12 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 #----------------------------------------
 # FSWriteHeader() Stores current FS Disk meta data back to disk.
 #----------------------------------------
+P Before FSWriteHeader
+@FUNCTION FSWriteHeader
 :FSWriteHeader
 @PUSHRETURN
     @LocalVar DiskBuffer 01
@@ -2325,8 +2442,11 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #---------------------------------
+P Before FSIsFileUsed
+@FUNCTION  FSIsFileUsed
 # FSIsFileUsed(FileNum):0|1  tests if bitmap says file in use
 #---------------------------------
 :FSIsFileUsed
@@ -2371,9 +2491,12 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #---------------------------------
 # FSSetFileUsed(FileNum) Sets BitMap At FileNum spot
 #---------------------------------
+P Before FSSetFileUsed
+@FUNCTION FSSetFileUsed
 :FSSetFileUsed
 @PUSHRETURN
    @LocalVar FileNum 01
@@ -2424,9 +2547,12 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #---------------------------------
 # FSClearFileUsed(FileNum) Cleats BitMap at FileNum spot
 #---------------------------------
+P Before FSClearFileUsed
+@FUNCTION FSClearFileUsed
 :FSClearFileUsed
 @PUSHRETURN
    @LocalVar FileNum 01
@@ -2479,7 +2605,10 @@ G FSFileBitMapStore
    @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #--------------------------------------
+P Before FSFindFreeFile
+@FUNCTION  FSFindFreeFile
 # FSFindFreeFile():FileNum|0
 #--------------------------------------
 :FSFindFreeFile
@@ -2524,10 +2653,13 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #--------------------------------------
 # FSFormat(DiskID, DiskNum)
 # Format DiskNum and applies DiskID
 #--------------------------------------
+P Before FSFormat
+@FUNCTION FSFormat
 :FSFormat
 @PUSHRETURN
     @LocalVar DiskBuffer 01
@@ -2589,8 +2721,11 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 #-----------------------------------
+P Before FSNextUsedFile
+@FUNCTION  FSNextUsedFile
 # FSNextUsedFile(Index):FileNum
 # Utility to find next used file, skipping blocks of unused files.
 #-----------------------------------
@@ -2647,8 +2782,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
+P Before FSFindFile
 #--------------------------------------------
+@FUNCTION  FSFindFile
 # FSFindFile(Pattern, StartPoint): FileNum | 0
 # Bitmap-driven filename search using FSNextUsedFile
 #--------------------------------------------
@@ -2728,7 +2865,10 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 #--------------------------------------------
+P Before DiskFileReadLine
+@FUNCTION  DiskFileReadLine
 # DiskFileReadLine(FilePtr, MemPtr):Bytes_Read
 # Read file as stream, looking for LF ('\n')
 # Needs to handle EOF as both EOF and EOL
@@ -2737,7 +2877,7 @@ G FSFileBitMapStore
 @PUSHRETURN
     @LocalVar FilePtr   01
     @LocalVar MemPtr    02
-    @LocalVar Consumed  03
+    @LocalVar Consumed  03 
 
     @POPI MemPtr
     @POPI FilePtr
@@ -2771,6 +2911,7 @@ G FSFileBitMapStore
     @RestoreVar 01
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 
 

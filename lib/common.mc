@@ -1,10 +1,10 @@
 ! COMMON_SEEN
 MF COMMON_SEEN 1
-P "Processing comon.mc"
 # Setup Library
 # Values which make up opcodes
 #
 # The '!' code marks a block to skip if already defined.
+# MF USE_ONLY 1
 :NewHereMem
 G SizeHereVar
 G NewHereMem
@@ -1055,24 +1055,81 @@ M Call(VP)     @PUSHI %2     @PUSHII %3     @CALL %1
 M Call(PV)     @PUSHII %2     @PUSHI %3     @CALL %1
 M Call(V)     @PUSHI %2     @CALL %1
 # Setup Functon headers for profile and Linking
-#
-# The Global Macro __EX716_EXPLICIT_LINK enables the LINK system else default is to include ALL
-M __FHN_Alway_True 1
-! __EX716_EXPLICIT_LINK
-   M USE MF __%1_INUSE %1
-   M FUNCTION ? __FHN_Alway_True :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION :_HERE%0 MF __ENDOF __LastFunc  _HERE%0 ENDBLOCK
+
+#--------------------------------------------------
+# Mode selection
+#--------------------------------------------------
+
+? USE_ONLY
+   M __EX716_USE_ONLY 1
 ENDBLOCK
+
+
+#--------------------------------------------------
+# Common helpers (mode-independent)
+#--------------------------------------------------
+
 M REQUIREDSTORE MF __STORE_%1
-M ISUSED ? __STORE_%1
-M FUNCTIONNEEDS ? __FNH_Always_False
-? __EX716_EXPLICIT_LINK
-   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION  :_HERE%0 MF __ENDOF _HERE%0  ENDBLOCK   
-   M FUNCTIONNEEDS ? __%1_INUSE
+M ISUSED        ?  __STORE_%1
+
+# Default: nothing required unless overridden
+
+
+#--------------------------------------------------
+# Default mode (include everything)
+#--------------------------------------------------
+
+M TRUE 1
+
+##! __EX716_USE_ONLY
+
+   # Mark function as used (optional in this mode)
+   M USE MF __USE_%1 %1
+
+   # FUNCTION always emits
+   M FUNCTION \
+      ? TRUE \
+      :_HERE%0 \
+      MF __DEFINE_%1 _HERE%0 \
+      MF __LastFunc %1 \
+      G %1
+
+   M ENDFUNCTION \
+      :_HERE%0 \
+      MF __ENDOF __LastFunc _HERE%0 \
+      ENDBLOCK
+   M FUNCTIONNEEDS ? __EX716_NEVER   # undefined → always false
+   M ENDBLOCK ENDBLOCK
+      
+
+##ENDBLOCK
+
+#--------------------------------------------------
+# USE_ONLY mode (explicit inclusion)
+#--------------------------------------------------
+
+? __EX716_USE_ONLY
+
+   # FUNCTION only emits if explicitly used
+   M FUNCTION \
+      ? __USE_%1 \
+      :_HERE%0 \
+      MF __DEFINE_%1 _HERE%0 \
+      MF __LastFunc %1 \
+      G %1 P Defined %1 ;
+
+   M ENDFUNCTION \
+      :_HERE%0 \
+      MF __ENDOF _HERE%0 \
+      ENDBLOCK
+
+   # Dependency declaration hook
+   M FUNCTIONNEEDS ? __USE_%1 P "Including " %1 ;
+
+   M USE MF __USE_%1 %1 G %1  P Mark for Use %1 ;
+   M ENDBLOCK ENDBLOCK
+
 ENDBLOCK
-
-
 
 
 
@@ -1080,7 +1137,6 @@ ENDBLOCK
 M SIZESINCE :NewHereMem \
              =SizeHereVar NewHereMem-OldHereVar \
              =OldHereVar NewHereMem \
-             P "StartAddress" {SIZESINCECOMMENT} ":Mem:" {SizeHereVar} " Bytes"
 M SIZESINCECOMMENT common.mc
 @SIZESINCE
 #

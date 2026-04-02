@@ -2,6 +2,7 @@
 M SHIFT16SEEN
 I common.mc
 L softstack.ld
+
 ############################################################
 # shift16.ld — 16-bit shifting and bit-twiddling primitives
 #
@@ -18,7 +19,23 @@ L softstack.ld
 # All functions expect 16-bit values and preserve stack order.
 ############################################################
 
-G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BITCLEAR16
+@FUNCTIONNEEDS BITTEST16
+   @USE BITMASK16
+ENDBLOCK
+
+@FUNCTIONNEEDS BITSET16
+   @USE BITMASK16
+ENDBLOCK
+
+@FUNCTIONNEEDS BITCLEAR16
+   @USE BITMASK16
+ENDBLOCK
+
+@FUNCTIONNEEDS BITMASK16
+   @USE SHL16_BY_N
+ENDBLOCK
+
+
 
 ############################################################
 # SHL16_BY_N
@@ -30,6 +47,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 #   - If N>=16, result = 0
 #   - Does NOT use SHLN because N is runtime.
 ############################################################
+@FUNCTION SHL16_BY_N
 :SHL16_BY_N
 @PUSHRETURN
     @LocalVar A   01
@@ -76,7 +94,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 
 
 ############################################################
@@ -85,6 +103,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 # Input:   ( A N )
 # Output:  ( A>>N ), zero-extended
 ############################################################
+@FUNCTION SHR16_BY_N
 :SHR16_BY_N
 @PUSHRETURN
     @LocalVar A   01
@@ -126,7 +145,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 
 
 ############################################################
@@ -139,6 +158,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 # Input:  ( A N )
 # Output: ( A>>N ) with sign-extend
 ############################################################
+@FUNCTION SAR16_BY_N
 :SAR16_BY_N
 @PUSHRETURN
     @LocalVar A   01
@@ -201,7 +221,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 
 
 ############################################################
@@ -209,6 +229,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 # Input: ( N )
 # Output: ( mask )
 ############################################################
+@FUNCTION BITMASK16
 :BITMASK16
 @PUSHRETURN
     @LocalVar N 01
@@ -219,7 +240,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
     @RestoreVar 01
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 
 
 ############################################################
@@ -227,6 +248,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 # Input:  ( A N )
 # Output: ( 0 or 1 )
 ############################################################
+@FUNCTION BITTEST16
 :BITTEST16
 @PUSHRETURN
     @LocalVar A 01
@@ -239,12 +261,14 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
     @ANDI A
 @POPRETURN
 @RET
+@ENDFUNCTION
 
 
 
 ############################################################
 # BITSET16 — set bit N in A
 ############################################################
+@FUNCTION BITSET16
 :BITSET16
 @PUSHRETURN
     @LocalVar A 01
@@ -258,12 +282,13 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 
 @POPRETURN
 @RET
-
+@ENDFUNCTION
 
 
 ############################################################
 # BITCLEAR16 — clear bit N in A
 ############################################################
+@FUNCTION BITCLEAR16
 :BITCLEAR16
 @PUSHRETURN
     @LocalVar A 01
@@ -278,4 +303,5 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N  G BITMASK16 G BITTEST16 G BITSET16 G BIT
 
 @POPRETURN
 @RET
+@ENDFUNCTION
 ENDBLOCK

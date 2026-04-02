@@ -226,6 +226,11 @@ class AssemblerContext:
         self.GlobeLabels = {}
         self.FWORDLIST = []
         self.FBYTELIST = []
+        self.DefinedSymbols = set()
+        from collections import defaultdict
+        self.UsedSymbols = defaultdict(int)
+        self.GlobalDeclarations={}
+        
 
         # Macro state
         self.MacroData = {}
@@ -263,17 +268,37 @@ class AssemblerContext:
         self.Remote = False
         self.watchpoints = []
     #
-    def push_block(self, executing):
-        self.MacroBlockStack.append({
+    def push_block(self, executing, block_type="UNKNOWN"):
+        block= {
             "executing": executing,
-            "else_seen": False
-        })
+            "else_seen": False,
+            "id": self._next_block_id(),            
+            "line": f"{current_context.ActiveFile}:{current_context.FileLineNum+1}",
+            "type":block_type
+            }
+        self.MacroBlockStack.append(block)
+        if current_context.Debug > 2:
+            print(f"[MB PUSH] depth={len(self.MacroBlockStack):02d} "
+                  f"id={block['id']} type={block['type']} exec={block['executing']} "
+                  f"{block['line']}")
+    def _next_block_id(self):
+        if not hasattr(self, "_block_counter"):
+            self._block_counter = 0
+        self._block_counter += 1
+        return self._block_counter
 
     def pop_block(self):
-        if not self.MacroBlockStack:            
-            CPU.raiseerror("ENDBLOCK without matching IF")
-        self.MacroBlockStack.pop()
+        if not self.MacroBlockStack:
+            print(f"[MB POP ERROR] EMPTY STACK @ {current_context.ActiveFile}:{current_context.FileLineNum+1}")
+            CPU.raiseerror(f"ENDBLOCK without matching Start {current_context.ActiveFile}:{current_context.FileLineNum+1}")
 
+        block = self.MacroBlockStack.pop()
+        if current_context.Debug > 2:
+            print(f"[MB POP ] depth={len(self.MacroBlockStack):02d} "
+                  f"id={block['id']} type={block['type']} exec={block['executing']} "
+                  f"(opened @ {block['line']}) "
+                  f"-> closed @ {current_context.ActiveFile}:{current_context.FileLineNum+1}")
+    
     def current_block(self):
         if not self.MacroBlockStack:
             return None
@@ -343,7 +368,7 @@ class AssemblerContext:
             parts.append(word)
         line = line[pos:]
         # Here means now process macro string
-        if context.Debug > 0:
+        if context.Debug > 2:
             safeprint(f"{context.Debug}>Define Macro {keyname} = {parts} {context.ActiveFile}:{context.FileLineNum}" )
         if not parts:
             # Empty definition, erase any old macro with this name.            
@@ -351,7 +376,7 @@ class AssemblerContext:
             context.MacroPCount.pop(keyname, None)
         else:
             newMacro = " ".join(parts)
-            if context.Debug > 0:
+            if context.Debug > 2:
                 if keyname in context.MacroData:
                     safeprint(f"Replacing old Macro {keyname}: {context.MacroData[keyname]} ",end="")
                 safeprint(f"New Macro {keyname} = {newMacro} {current_context.ActiveFile}:{current_context.FileLineNum}" )
@@ -612,7 +637,7 @@ def UpdateVarHistory(varname, value, address):
         "start": address,
         "end": None,   # Open-ended for now
     })
-    if current_context.Debug >1:    
+    if current_context.Debug >2:    
         safeprint(f"HIST {varname} start={address} value={value}")
 
 def FindHistoricVal(varname, testaddress, context=None):
@@ -721,7 +746,49 @@ def Sort_And_Combine_Labels(inboundtext):
     groups["other"]=sorted(set(groups["other"]))
     return " ".join(groups["other"]+groups["M"])
 
+def handle_semicolon(line, filename, context, CPU):
+    # Strip leading ';'
+    if len(line)>1:
+        rest = line[1:]
+    else:
+        rest = line[1:].lstrip()
+    # Parse Label
+    label,size = nextword(rest)
+    if not label:
+        CPU.raiseerror("Missing lable in ';' directive")
+    rest = rest[size:].lstrip()
+    # Parse size expression
+    size_expr, size_len = nextwordequation(rest)
+    if not size_expr:
+        CPU.raiseerror(f"Missing size for ';' {label}")
+    rest=rest[size_len:].lstrip()
+    # Evaluate Size it must resolve 1st pass.
+    workingaddress=(
+        context.dataadress
+        if context.DataSegment != -1
+        else context.address
+        )
+    size_value = DecodeStr(size_expr, workingaddress, CPU, True, context)
+    if not isinstance(size_val, int):
+        CPU.raiseerror(f"Size expression '{size_expr}' must resolve on first pass of ';' {label}")
+    if size_value < 0:
+        CPU.raiseerror(f"Size expression '{size_expr}' can not be negative ';' {label}")        
+        
+    sym = IsLocalVar(label, context)
+    context.FileLabels[sym] = workingaddress
+    UpdateVarHistory({sym: workingaddress}, workingaddress, workingaddress)
 
+    #----------------------------------------
+    # Setup data consumption
+    #----------------------------------------
+    context.ExpectData = size_value
+
+    #----------------------------------------
+    # Return remaining line for data parsing
+    #----------------------------------------
+    return rest
+        
+    
 
 
 
@@ -2628,25 +2695,38 @@ def fileonpath(filename):
     safeprint(f"Import Filename error, {filename} not found", file=DebugOut)
     sys.exit(-1)
 
-# This is how we tell if a label been defined as global for local for library inserts.
-def IsLocalVar(inlabel,  context: AssemblerContext):
-    # The structure is that GlobeLabels if they match inlabel will always override the dynamic locallabels.
-    # So to define a Globale, just add it to GlobeLabels, but it should become part of FileLabels until
-    # really defined...ie with an '=' or a ':' code.
+
+def IsLocalVar(inlabel, context: AssemblerContext):
+
+    # ---------------------------------------------
+    # Internal / special symbols
+    # ---------------------------------------------
     if inlabel.startswith("_"):
-        return inlabel   # Local variabls never start with _, used for internal labels
+        return inlabel
+
     if inlabel.startswith("@"):
         return inlabel
 
-    if inlabel in context.GlobeLabels:
+    # ---------------------------------------------
+    # Global symbols are NEVER mangled
+    # (must use GlobalDeclarations, not GlobeLabels)
+    # ---------------------------------------------
+    if hasattr(context, "GlobalDeclarations") and inlabel in context.GlobalDeclarations:
         return inlabel
-    else:
-        if "___" in inlabel:
-            return inlabel        
-        if context.LORGFLAG == LOCALFLAG:
-            return f"{inlabel}___{context.LocalID}"
-        else:
-            return inlabel
+
+    # ---------------------------------------------
+    # Already mangled? Leave it alone
+    # ---------------------------------------------
+    if "___" in inlabel:
+        return inlabel
+
+    # ---------------------------------------------
+    # Apply local mangling if in library context
+    # ---------------------------------------------
+    if context.LORGFLAG == LOCALFLAG:
+        return f"{inlabel}___{context.LocalID}"
+
+    return inlabel
 
 def parse_arg(segment, filename, context):
     """
@@ -2882,18 +2962,21 @@ def FirstPassVal(instr,  context: AssemblerContext):
     firstch=value[0:1]
     if firstch == "$":
         value=context.address
+
     elif firstch.upper() >= "A" and firstch.upper() <= "Z":
-        if value[0:] in context.FileLabels.keys():
-            value=Str2Word(context.FileLabels[IsLocalVar(value[0:], context)])
+        lookup = IsLocalVar(value[0:], context)
+
+        if lookup in context.FileLabels:
+            value = Str2Word(context.FileLabels[lookup])
+        elif lookup in context.GlobeLabels:
+            value = Str2Word(context.GlobeLabels[lookup])            
         else:
             CPU.raiseerror(
-                "055 Line %s, : %s Can not use label that is yet definied in first pass of assembler." %
-                           (context.GlobalOptCnt, value))
+                "055 Line %s, : %s Can not use label that is not yet definied in first pass of assembler." %
+                (context.GlobalOptCnt, value))
     else:
         value=Str2Word(value)
     return (value, size)
-
-# This is a newer version of the core work item in DecodeStr but cocentrating on number processing
 
 
 import re
@@ -2986,14 +3069,7 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
         if not newkey:
             safeprint(f"Warning: Empty labe; refreces at {context.ActiveFile}:{context.FileLineNum+1}",file=DebugOut)
             return("value",0)
-        if newkey.startswith("_HERE_"):
-            print("DEBUG LABEL RESOLUTION:")
-            print("  token    =", token)
-            print("  label    =", labelname)
-            print("  localkey =", localkey)
-            print("  file/line=", context.ActiveFile, context.FileLineNum)
-        context.FWORDLIST.append([newkey, curaddress, 0, f"{context.ActiveFile}:{context.FileLineNum+1}"])
-        return ("value",0)
+        return ("unresolved",newkey)
 
 
 def handle_macro_invocation(line, filename, context, CPU):
@@ -3079,64 +3155,129 @@ def handle_macro_invocation(line, filename, context, CPU):
             context.backfill = remainder + " " + context.backfill                                
     line = ""
 
+    
+def DecodeStr(instr, curaddress, CPU, JUSTRESULT, context: AssemblerContext):
 
-def DecodeStr(instr, curaddress, CPU,  JUSTRESULT, context: AssemblerContext):
-
-   # 📌 Direct string handling (base case, no parsing)
+    # Direct string handling (base case, no parsing)
     if ((instr.startswith('"') and instr.endswith('"')) or (instr.startswith("'") and instr.endswith("'"))) and not JUSTRESULT:
         midtext = instr[1:-1]
         for c in midtext:
             CPU.memspace[curaddress] = (int(ord(c)) & 0xff)
             curaddress += 1
         return curaddress
+
     elif instr.startswith('"') and JUSTRESULT:
         safeprint("String values can't be modified or used as numeric results", file=DebugOut)
         return 0
 
+    #----------------------------------------
+    # Parse expression
+    #----------------------------------------
     prefix, base_token, modifiers = parse_expression(instr)
 
-    # Evaluate base token
-    base_result = decode_token(base_token, curaddress, CPU, JUSTRESULT,  context)
+    #----------------------------------------
+    # Detect deferred label + delta case
+    #----------------------------------------
+    if not JUSTRESULT and prefix in ('', '$'):
+
+        base_result = decode_token(base_token, curaddress, CPU, True, context)
+
+        # If unresolved symbol -> defer
+        if isinstance(base_result, tuple) and base_result[0] == "unresolved":
+            raw_label = base_result[1]
+
+            # Ensure proper scoping (safe even if already scoped)
+#            resolved_label = IsLocalVar(raw_label, context)
+            resolved_label = raw_label
+            delta = 0
+            for mod in modifiers:
+                op = mod[0]
+                token = mod[1:].strip()
+
+                sign = 1 if op == '+' else -1
+
+                val = decode_token(token, curaddress, CPU, True, context)
+
+                if not isinstance(val, tuple) or val[0] != "value":
+                    CPU.raiseerror(f"Invalid modifier in expression: {mod}")
+
+                delta += sign * val[1]
+
+    
+            # Store for second pass (symbol, address, delta)
+
+            context.FWORDLIST.append((resolved_label, curaddress, delta))
+
+            # Reserve space (word = 2 bytes)
+            CPU.memspace[curaddress] = 0
+            CPU.memspace[curaddress + 1] = 0
+
+            curaddress += 2
+
+            if context.highwater < curaddress:
+                context.highwater = curaddress
+
+            return curaddress
+
+    #----------------------------------------
+    # Evaluate base token normally
+    #----------------------------------------
+    base_result = decode_token(base_token, curaddress, CPU, JUSTRESULT, context)
+
     if isinstance(base_result, tuple) and base_result[0] == "string":
         return base_result[1]
 
     result = base_result if not isinstance(base_result, tuple) else base_result[1]
 
+    #----------------------------------------
     # Apply modifiers
+    #----------------------------------------
     for mod in modifiers:
         sign = 1 if mod[0] == '+' else -1
-        base_mod=decode_token(mod[1:], curaddress, CPU, JUSTRESULT, context)
-        # Should always be a truple but also should always be numeric.
+        base_mod = decode_token(mod[1:], curaddress, CPU, JUSTRESULT, context)
+
         if base_mod[0] != "value":
             safeprint("Unexpected mix of strings and numbers.: %s" % (mod[1:]), file=DebugOut)
             return 0
+
         mod_val = base_mod[1]
         result += sign * mod_val
 
+    #----------------------------------------
+    # Return result only (no write)
+    #----------------------------------------
     if JUSTRESULT:
         return result
 
+    #----------------------------------------
     # Memory writing based on prefix
+    #----------------------------------------
     # $$ => byte (8bit)
-    # $$$ -> long (32bit)
-    # $ or none -> word (16 bit, default)
+    # $$$ => long (32bit)
+    # $ or none => word (16 bit, default)
     assert prefix in ('', '$', '$$', '$$$'), f"Unexpected size prefix: {prefix}"
+
     if prefix == '$$':
         CPU.memspace[curaddress] = result & 0xFF
         curaddress += 1
+
     elif prefix == '$$$':
         CPU.memspace[curaddress]     = result & 0xFF
         CPU.memspace[curaddress + 1] = (result >> 8) & 0xFF
         CPU.memspace[curaddress + 2] = (result >> 16) & 0xFF
         CPU.memspace[curaddress + 3] = (result >> 24) & 0xFF
         curaddress += 4
-    else:  # default or $ (2-byte)
+
+    else:  # default or $
         CPU.memspace[curaddress]     = result & 0xFF
         CPU.memspace[curaddress + 1] = (result >> 8) & 0xFF
         curaddress += 2
+
     if context.highwater < curaddress:
-        context.highwater=curaddress
+        context.highwater = curaddress
+
     return curaddress
+
 
 # Load file is also the effective main loop for the assembler
 
@@ -3243,16 +3384,17 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         context.UniqueLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
-
+                        if current_context.Debug > 1 and inline.strip():
+                            safeprint(f"{context.ActiveFile}:{context.FileLineNum+1} MS({len(context.MacroBlockStack)}) {inline.strip()}")
                         FileLineData.add_entry(filename, context.CurrentLineBeingParsed, context.address)
                         context.AddressedLinesSeen.add(context.address)                        
                         if inline:
                             inline = removecomments(inline).strip()
                             if inline.strip()[-1:] == '\\':
                                 GetAnother = True
-                                line = line + inline.strip()[:-1]
+                                line = line + " " + inline.strip()[:-1]
                             else:
-                                line = line + inline.strip()
+                                line = line + " " + inline.strip()
                         else:
                             ExitOut = True
                             break
@@ -3260,19 +3402,11 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         break
             line = removecomments(line).strip()
 
-            if current_context.Debug > 1:
-                if context.is_executing():
-                    safeprint("RUN: ", end="")
-                else:
-                    safeprint("SKIP: ", end="")
-                
-                safeprint(f"{context.ActiveFile}:{context.FileLineNum+1} {line} {len(context.MacroBlockStack)}")
-            
             if not line:
                 continue
 
-            key, size = nextword(line)
 
+            key, size = nextwordplus(line)
             if key.startswith("@"):
                 line = handle_macro_invocation(line, filename, context, CPU)
                 continue
@@ -3320,6 +3454,11 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             line = line[size:]            
             # ----- ENDBLOCK -----
             if key == "ENDBLOCK":
+                if context.Debug > 2:
+                    print(f"[MB STACK] depth={len(context.MacroBlockStack)}")
+                    for b in context.MacroBlockStack[-5:]:
+                        print(f"   id={b['id']} type={b['type']} exec={b['executing']} "
+                              f"@ {b['line']}")
                 context.pop_block()
                 continue
             # Execution guard if inside skipping block.
@@ -3339,6 +3478,60 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
 
 
             if key[0] == ":":
+                # ---------------------------------------------
+                # Parse label name (supports ":FOO" and ": FOO")
+                # ---------------------------------------------
+                if len(key) > 1:
+                    DestKey = key[1:]
+                else:
+                    (DestKey, size) = nextword(line)
+                    line = line[size:].lstrip()
+
+                SrcVal = context.address
+
+                # ---------------------------------------------
+                # Generate mangled/local-safe name
+                # ---------------------------------------------
+                newitem = IsLocalVar(DestKey, context)
+
+                # ---------------------------------------------
+                # Remove auto-generated line label if present
+                # ---------------------------------------------
+                auto_label = f"F.{filename}:{context.FileLineNum}"
+                if auto_label in context.FileLabels:
+                    del context.FileLabels[auto_label]
+
+                # ---------------------------------------------
+                # Store definition (always mangled internally)
+                # ---------------------------------------------
+                context.FileLabels[newitem] = SrcVal
+                context.DefinedSymbols.add(newitem)
+
+                # ---------------------------------------------
+                # If declared global, export unmangled name
+                # ---------------------------------------------
+                if hasattr(context, "GlobalDeclarations") and DestKey in context.GlobalDeclarations:
+                    # Optional: detect duplicate global definitions
+                    # if DestKey in context.GlobeLabels:
+                    #     print(f"ERROR: duplicate global definition of {DestKey}")
+
+                    context.GlobeLabels[DestKey] = SrcVal
+
+                # ---------------------------------------------
+                # Track history/debug
+                # ---------------------------------------------
+                UpdateVarHistory(newitem, SrcVal, SrcVal)
+
+                if current_context.Debug > 2:
+                    safeprint(
+                        f"DEF ':' {DestKey} -> {newitem} @ {SrcVal:#04x} "
+                        f"{current_context.ActiveFile}:{current_context.FileLineNum + 1}"
+                    )
+
+                continue
+
+
+                
                 # The ":" is a label whos value is current address
                 if len(key)>1:           # Handle cases were no space followed key
                     DestKey=key[1:]                    
@@ -3352,14 +3545,18 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     del context.FileLabels["F."+filename+":"+str(context.FileLineNum)]
                 context.FileLabels.update({newitem:SrcVal})
                 UpdateVarHistory(newitem,SrcVal,SrcVal)
-                if current_context.Debug > 1:    
-                    safeprint(f"DEF ':' {DestKey} -> {newitem} @ {SrcVal} {current_context.ActiveFile}:{current_context.FileLineNum+1}")
+                context.DefinedSymbols.add(newitem)
+                if current_context.Debug > 2:    
+                    safeprint(f"DEF ':' {DestKey} -> {newitem} @ {SrcVal:#04x} {current_context.ActiveFile}:{current_context.FileLineNum+1}")
                 continue
-            elif key[0] == ";":
+            elif key.startswith(";"):
+                line = handle_semicolon(line, filename, context, CPU)
+                continue
+            elif key[0] == ";--disable":
                 if len(key)>1:           # Handle cases were no space followed key
                     DestKey=key[1:]                    
                 elif len(key) == 1:
-                    (DestKey, size) = nextword(line)
+                    (DestKey, size) = nextwordequation(line)
                     line=line[size:].lstrip()
                 (dsize,size) = nextword(line)
                 line = line[size:]                    
@@ -3390,7 +3587,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 newitem=IsLocalVar(DestKey, context)                
                 context.FileLabels.update({newitem: value})
                 UpdateVarHistory(newitem,value,context.address)
-                if current_context.Debug > 1:    
+                if current_context.Debug > 2:
                     safeprint(f"DEF '=' {DestKey} -> {newitem} @ {value} {current_context.ActiveFile}:{current_context.FileLineNum+1}")
                 continue
             elif ( key[0] == "." and IsOneChar) or (key[:4].upper() == ".ORG" and len(key) == 4):
@@ -3499,7 +3696,10 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             elif key[0] == "G" and IsOneChar:
                 # Globale labels are an override of 'Local' Labels by 'pre-defining them.
                 (key, size) = nextword(line)
-                context.GlobeLabels.update({key: context.address})
+                context.GlobalDeclarations[key]=(
+                    current_context.ActiveFile,
+                    current_context.FileLineNum
+                )
                 line = line[size:]
                 continue
             else:
@@ -3520,28 +3720,140 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         context.ExpectData -= (context.dataaddress - prevval)
                     else:
                         context.address = DecodeStr(key, context.address, CPU, False, context)
+        #
+        #
+        # --------------------------------------------------
+        # Resolve forward references (FWORDLIST)
+        # --------------------------------------------------
+
         context.GlobeLabels["_END_"] = context.highwater
+
+        # Ensure tracking structures exist
+        if not hasattr(context, "UsedSymbols"):
+            from collections import defaultdict
+            context.UsedSymbols = defaultdict(int)
+
+        if not hasattr(context, "MissingSymbols"):
+            context.MissingSymbols = {}
+
+        if not hasattr(context, "GlobalDeclarations"):
+            context.GlobalDeclarations = set()
+
+        # --------------------------------------------------
+        # Precompute undefined globals
+        # --------------------------------------------------
+
+        UndefinedGlobals = {
+            sym for sym in context.GlobalDeclarations
+            if sym not in context.GlobeLabels
+            and context.UsedSymbols.get(sym, 0) > 0
+            and sym in context.MissingSymbols
+        }
+
+        # --------------------------------------------------
+        # Resolve forward references
+        # --------------------------------------------------
+
         for store in context.FWORDLIST:
             key = store[0]
             vaddress = store[1]
-            if key in context.FileLabels.keys():
+
+            # Track usage
+            context.UsedSymbols[key] += 1
+
+            resolved = False
+
+            # --------------------------------------------------
+            # Try resolving from local labels
+            # --------------------------------------------------
+            if key in context.FileLabels:
                 v = Str2Word(context.FileLabels[key])
-                if (len(store) > 2):
-                    if store[2] != 0:
-                        v = v + Str2Word(store[2])
-                        # This extra bit logic handles the case of labels+## math.
-                CPU.memspace[int(vaddress)] = CPU.lowbyte(v)
-                CPU.memspace[int(vaddress + 1)] = CPU.highbyte(v)
-            elif key in context.GlobeLabels.keys():
+                resolved = True
+
+            # --------------------------------------------------
+            # Try resolving from global labels
+            # --------------------------------------------------
+            elif key in context.GlobeLabels:
                 v = Str2Word(context.GlobeLabels[key])
-                if (len(store) > 2):
-                    if store[2] != 0:
-                        v = v + Str2Word(store[2])
-                        # This extra bit logic handles the case of labels+## math.
+                resolved = True
+
+            # --------------------------------------------------
+            # If resolved, write to memory
+            # --------------------------------------------------
+            if resolved:
+                if len(store) > 2 and store[2] != 0:
+                    v = v + Str2Word(store[2])
+
                 CPU.memspace[int(vaddress)] = CPU.lowbyte(v)
                 CPU.memspace[int(vaddress + 1)] = CPU.highbyte(v)
+
+            # --------------------------------------------------
+            # Otherwise track as missing
+            # --------------------------------------------------
             else:
-                print(key, " is missing (SYM,ADDR,Delta,LineNum)", store,key,vaddress,file=DebugOut)
+                # Skip if this is an undefined global (reported separately)
+                if key in UndefinedGlobals:
+                    continue
+
+                entry = context.MissingSymbols.setdefault(key, {
+                    "count": 0,
+                    "refs": []
+                })
+
+                entry["count"] += 1
+
+                linenum = store[3] if len(store) > 3 else None
+
+                entry["refs"].append((
+                    current_context.ActiveFile,
+                    linenum,
+                    vaddress
+                ))
+
+                # Optional debug output
+                print(
+                    key,
+                    " is missing (SYM,ADDR,Delta,LineNum)",
+                    store,
+                    key,
+                    vaddress,
+                    file=DebugOut
+                )
+
+        # --------------------------------------------------
+        # Final summary report
+        # --------------------------------------------------
+
+        # --- Undefined globals (always shown if present) ---
+        if UndefinedGlobals:
+            print("\n=== Global Symbols Declared but Not Defined ===")
+
+            for sym in sorted(UndefinedGlobals):
+                used = context.UsedSymbols.get(sym, 0)
+                print(f"  {sym} (declared global, never defined, used {used} times)")
+
+        # --- Missing symbols (likely missing @USE) ---
+        if context.MissingSymbols:
+            print("\n=== Missing Symbols (likely missing @USE) ===")
+
+            for sym, info in sorted(context.MissingSymbols.items()):
+                print(f"\n  {sym}  (used {info['count']} times)")
+
+                for (file, line, addr) in info["refs"][:5]:
+                    if line is not None:
+                        print(f"     at {file}:{line} (addr {addr:#04x})")
+                    else:
+                        print(f"     at {file} (addr {addr:#04x})")
+
+                if len(info["refs"]) > 5:
+                    print(f"     ... {len(info['refs']) - 5} more")
+
+                # Only suggest @USE if not a declared global
+                if sym not in context.GlobalDeclarations:
+                    print(f"     suggestion: @USE {sym}")
+
+
+                        
     if context.Debug > 1:
         i = 0
     if context.address > context.highaddress:
@@ -3671,8 +3983,8 @@ def debugger(passline, context: AssemblerContext):
                 continue
 
             safeprint(f"HW Stack Depth: {depth}\n")
-            safeprint("Idx  Offset  Value   Mem[v]  Mem[Mem[v]]")
-            safeprint("---------------------------------------")
+            safeprint("Idx Value   Mem[v]  Mem[Mem[v]]")
+            safeprint("-------------------------------")
 
             for idx in range(0, min(depth, 64)):
 
@@ -3693,7 +4005,7 @@ def debugger(passline, context: AssemblerContext):
                 tos_marker = " <- TOS" if idx == 0 else ""
 
                 safeprint(
-                    f"{CPU.hwstacksp-idx:3d} {v:04x}   {mem1_str:>4}   {mem2_str:>4}{tos_marker}"
+                    f"{CPU.hwstacksp-idx:3d} {v:04x}    {mem1_str:>4}    {mem2_str:>4}{tos_marker}"
                 )
             continue
         if cmdword == "spush":

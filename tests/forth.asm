@@ -3236,12 +3236,15 @@ Word_AGAIN_COMPILE
 @PUSHI SrcPtr @CALL strlen
 @IF_ZERO
    # Src is zero, check to see if Dst is also zero
+   @POPNULL
    @PUSHI DstPtr @CALL strlen
    @IF_NOTZERO
       # Src was zero, but dst had 'something' always -1
+      @POPNULL
       @PUSH -1
    @ELSE
       # Both where zero, so treat as equal
+      @POPNULL
       @PUSH 0
    @ENDIF
    # ether case, quick exit.
@@ -3256,15 +3259,11 @@ Word_AGAIN_COMPILE
 @ENDIF
 @ForIA2V Index 0 Length
    @PUSHII SrcPtr
+   @AND 0xdf
    @AND 0xff
-   @DUP
-   @AND 0xdf            # 5th bit changes lowercase to upper bit
-   @ANDS
    @PUSHII DstPtr
+   @AND 0xdf
    @AND 0xff
-   @DUP
-   @AND 0xdf            # 5th bit changes lowercase to upper bit
-   @ANDS
    @IF_LT_S
       @POPNULL @POPNULL
       @PUSH -1         # LT means -1

@@ -1,13 +1,6 @@
 ! TOKENSKIP
 M TOKENSKIP 1
 
-? __EX716_EXPLICIT_LINK
-   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION  :_HERE%0 MF __ENDOF _HERE%0%__LastFunc ENDBLOCK
-   M FUNCTIONNEEDS ? __%1_INUSE
-   M ENDNEEDS ENDBLOCK
-ENDBLOCK
-
 I common.mc
 
 # Before we load library functions, declaire what functions we will require.
@@ -23,12 +16,6 @@ ENDBLOCK
 L string.ld
 L softstack.ld
 M SIZESINCECOMMENT tokenizer.ld
-###########
-# Global
-G GetNextWord
-G Tokenize
-
-
 
 
 # This library provides two major functions

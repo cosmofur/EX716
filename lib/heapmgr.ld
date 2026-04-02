@@ -1,6 +1,7 @@
 ! HeapMgrSeen
 M HeapMgrSeen 1
 L softstack.ld
+P Loading heapmgr.ld
 
 ####################################################
 # Define Link Chain of functions that require other functions.
@@ -33,7 +34,7 @@ ENDBLOCK
 @FUNCTIONNEEDS HeapNewObject
    @USE GetObjectRealSize
 ENDBLOCK
-G OBJ_FLAG_LOC G OBJ_NEXT_LOC G OBJ_HEAD_SIZE G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC G HEAP_HEAD_SIZE
+#G OBJ_FLAG_LOC G OBJ_NEXT_LOC G OBJ_HEAD_SIZE G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC G HEAP_HEAD_SIZE
 = OBJ_FLAG_LOC  3
 = OBJ_NEXT_LOC  2
 = OBJ_HEAD_SIZE 3
@@ -43,14 +44,14 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G OBJ_HEAD_SIZE G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_L
 = MinObjectSize OBJ_HEAD_SIZE+2
 = SizeFirstHead HEAP_SIZE_LOC+HEAP_FIRST_OBJ_LOC+1
 
-G HeapDefineMemory      # HeapDefineMemory(Address,SizeBytes):HeapID
-G HeapNewObject         # HeapNewObject(HeapID,SizeBytes):ObjectID
-G HeapResizeObject      # HeapResizeObject(HeapID,ObjectID,NewSizeBytes):ObjectID
-G HeapDeleteObject      # HeapDeleteObject(HeapID,ObjectID):0|error
-G HeapListMap           # HeapListMap(HeapID)
-G GetObjectRealSize     # GetObjectRealSize(HeapID, ObjectID):SizeBytes
-G HeapAppend            # HeapAppend(ObjID1,ObjID2,Offset):NewObjectID
-G HeapValidate          # HeapValidate(HeapID):0|error(1|2|3)
+#G HeapDefineMemory      # HeapDefineMemory(Address,SizeBytes):HeapID
+#G HeapNewObject         # HeapNewObject(HeapID,SizeBytes):ObjectID
+#G HeapResizeObject      # HeapResizeObject(HeapID,ObjectID,NewSizeBytes):ObjectID
+#G HeapDeleteObject      # HeapDeleteObject(HeapID,ObjectID):0|error
+#G HeapListMap           # HeapListMap(HeapID)
+#G GetObjectRealSize     # GetObjectRealSize(HeapID, ObjectID):SizeBytes
+#G HeapAppend            # HeapAppend(ObjID1,ObjID2,Offset):NewObjectID
+#G HeapValidate          # HeapValidate(HeapID):0|error(1|2|3)
 
 # Global Variabls
 G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRSTOBJ_LOC 
@@ -446,39 +447,41 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRSTOBJ_LOC
    @PUSHI ObjectID @SUB 2
    @PUSHS
    @IF_ZERO
+      @POPNULL
       @PRTLN "Empty Heap"
+   @ELSE
+       @POPNULL
+       @PUSHI ObjectID
+       @WHILE_NOTZERO
+          @POPI ObjectID
+          @PRT "Object: " @PRTHEXI ObjectID
+          @PUSHI ObjectID @SUB OBJ_HEAD_SIZE @PUSHS @AND 0xff
+          @IF_ZERO
+             @PRT "( )"
+          @ELSE
+             @PRT "(X)"
+          @ENDIF
+          @POPNULL
+          @PUSHI HeapID
+          @PUSHI ObjectID
+          @CALL GetObjectRealSize
+          @PRT " Size(0x"
+          @PRTHEXTOP
+          @PRT ") Next ID->"
+          @POPNULL
+          @PUSHI ObjectID @SUB OBJ_NEXT_LOC @PUSHS
+          @PRTHEXTOP
+          @PUSHII ObjectID @AND 0xff
+          @IF_GE_A "0\0"
+             @IF_LE_A "z\0"
+                @PRT " " @PRTSI ObjectID
+             @ENDIF
+          @ENDIF
+          @POPNULL
+          @PRTNL
+       @ENDWHILE      
+       @POPNULL
    @ENDIF
-   @POPNULL
-   @PUSHI ObjectID
-   @WHILE_NOTZERO
-      @POPI ObjectID
-      @PRT "Object: " @PRTHEXI ObjectID
-      @PUSHI ObjectID @SUB OBJ_HEAD_SIZE @PUSHS @AND 0xff
-      @IF_ZERO
-         @PRT "( )"
-      @ELSE
-         @PRT "(X)"
-      @ENDIF
-      @POPNULL
-      @PUSHI HeapID
-      @PUSHI ObjectID
-      @CALL GetObjectRealSize
-      @PRT " Size(0x"
-      @PRTHEXTOP
-      @PRT ") Next ID->"
-      @POPNULL
-      @PUSHI ObjectID @SUB OBJ_NEXT_LOC @PUSHS
-      @PRTHEXTOP
-      @PUSHII ObjectID @AND 0xff
-      @IF_GE_A "0\0"
-         @IF_LE_A "z\0"
-            @PRT " " @PRTSI ObjectID
-         @ENDIF
-      @ENDIF
-      @POPNULL
-      @PRTNL
-   @ENDWHILE
-   @POPNULL
    @RestoreVar 02
    @RestoreVar 01
 @POPRETURN
