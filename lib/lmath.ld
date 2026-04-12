@@ -222,10 +222,14 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @POPI SumLow
 
     # Compute carry = (A32_Low + B32_Low) - SumLow
-    @PUSHI A32_Low
-    @ADDI B32_Low
-    @SUBI SumLow
-    @POPI CarryAmt
+
+    @PUSHI SumLow
+    @IF_ULT_V A32_Low
+       @MA2V 1 CarryAmt
+    @ELSE
+       @MA2V 0 CarryAmt
+    @ENDIF
+    @POPNULL
 
     # --- Add high words + carry ---
     @PUSHI A32_High
@@ -237,7 +241,6 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @PUSHI SumLow
     @PUSHI R32_High
     @PUSHI CarryAmt
-
   @RestoreVar 08
   @RestoreVar 07
   @RestoreVar 06
@@ -2521,6 +2524,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @LocalVar Length 09
     @LocalVar Digit 10
     @LocalVar Digit_High 11
+    @LocalVar Temp_Low 12
 
     # --- Initialize ---
     @POPI StrPtr
@@ -2596,8 +2600,13 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
         @POPI Digit
 
         # Multiply digit by multiplier → add to accumulator
+        # Compute product → store in temp
         @Call32(VV) MUL32U Mult_Low Digit
+        @POP32I(V) Temp_Low
+
+        # Add to accumulator explicitly
         @PUSH32I(V) InValue_Low
+        @PUSH32I(V) Temp_Low
         @CALL ADD32U
         @POP32I(V) InValue_Low
 
@@ -2617,6 +2626,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     # --- Return ---
     @PUSH32I(V) InValue_Low
+    @RestoreVar 12    
     @RestoreVar 11
     @RestoreVar 10
     @RestoreVar 09

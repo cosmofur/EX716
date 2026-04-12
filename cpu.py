@@ -229,7 +229,8 @@ class AssemblerContext:
         self.DefinedSymbols = set()
         from collections import defaultdict
         self.UsedSymbols = defaultdict(int)
-        self.GlobalDeclarations={}
+        self.GlobalDeclarations=set()
+        self.GlobalDeclInfo={}
         
 
         # Macro state
@@ -2711,7 +2712,7 @@ def IsLocalVar(inlabel, context: AssemblerContext):
     # Global symbols are NEVER mangled
     # (must use GlobalDeclarations, not GlobeLabels)
     # ---------------------------------------------
-    if hasattr(context, "GlobalDeclarations") and inlabel in context.GlobalDeclarations:
+    if inlabel in context.GlobalDeclarations:
         return inlabel
 
     # ---------------------------------------------
@@ -3278,6 +3279,99 @@ def DecodeStr(instr, curaddress, CPU, JUSTRESULT, context: AssemblerContext):
 
     return curaddress
 
+def IsUserSymbol(sym):
+    # Hide compiler-generated symbols
+    if sym.startswith("__"):
+        return False
+
+    # Hide mangled locals
+    if "___" in sym:
+        return False
+
+    return True
+
+def IsCompilerGenerated(sym):
+    return (
+        sym.startswith("_J_") or
+        sym.startswith("_U_") or
+        sym.startswith("__")
+    )
+
+def FinalSymbolReport(context):
+    
+    print("\n=== Symbol Resolution Report ===")
+
+    # -----------------------------------------
+    # Build final symbol sets
+    # -----------------------------------------
+    defined = set(context.GlobeLabels.keys())   # keep for reporting only
+    declared = context.GlobalDeclarations
+    used = set(context.UsedSymbols.keys())
+    resolved = getattr(context, "ResolvedSymbols", set())
+
+    unresolved = used - resolved
+
+    undefined_globals = sorted(sym for sym in unresolved if sym in declared)
+    missing_symbols = sorted(sym for sym in unresolved if sym not in declared)
+    print("DEBUG:",
+      "used=", len(used),
+      "resolved=", len(resolved),
+      "unresolved=", len(unresolved))
+
+
+    # -----------------------------------------
+    # Declared globals not defined
+    # -----------------------------------------
+    if undefined_globals:
+        print("\n=== Declared Global but NOT Defined ===")
+
+        for sym in undefined_globals:
+            count = context.UsedSymbols.get(sym, 0)
+            print(f"  {sym}  (used {count} times)")
+
+            # Show where it was declared
+            if hasattr(context, "GlobalDeclInfo") and sym in context.GlobalDeclInfo:
+                file, line = context.GlobalDeclInfo[sym]
+                print(f"     declared at {file}:{line}")
+
+    # -----------------------------------------
+    # Missing symbols (likely missing @USE)
+    # -----------------------------------------
+    if missing_symbols:
+        print("\n=== Missing Symbols (likely missing @USE) ===")
+
+        for sym in missing_symbols:
+            if not IsUserSymbol(sym):
+                continue
+
+            count = context.UsedSymbols.get(sym, 0)
+
+            print(f"\n  {sym}  (used {count} times)")
+
+            refs = context.MissingSymbols.get(sym, {}).get("refs", [])
+
+            for (file, line, addr) in refs[:5]:
+                if line is not None:
+                    print(f"     at {file}:{line} (addr {addr:#04x})")
+                else:
+                    print(f"     at {file} (addr {addr:#04x})")
+
+            if len(refs) > 5:
+                print(f"     ... {len(refs) - 5} more")
+
+            print(f"     suggestion: @USE {sym}")
+
+    # -----------------------------------------
+    # Summary
+    # -----------------------------------------
+    print("\n=== Summary ===")
+    print(f"  Defined symbols   : {len(defined)}")
+    print(f"  Used symbols      : {len(used)}")
+    print(f"  Unresolved symbols: {len(unresolved)}")
+
+    if not unresolved:
+        print("  ✔ All symbols resolved")            
+
 
 # Load file is also the effective main loop for the assembler
 
@@ -3291,7 +3385,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
     prior_localid = context.LocalID
     prior_activefile = context.ActiveFile
     prior_lorgflag = context.LORGFLAG
-    
+
     context.LORGFLAG = LorgFlag
     if LorgFlag == LOCALFLAG:
         context.LocalID = LocalID
@@ -3510,12 +3604,11 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 # ---------------------------------------------
                 # If declared global, export unmangled name
                 # ---------------------------------------------
-                if hasattr(context, "GlobalDeclarations") and DestKey in context.GlobalDeclarations:
-                    # Optional: detect duplicate global definitions
-                    # if DestKey in context.GlobeLabels:
-                    #     print(f"ERROR: duplicate global definition of {DestKey}")
+                if DestKey in context.GlobalDeclarations:
+                     context.GlobeLabels[DestKey] = SrcVal
+                     context.DefinedSymbols.add(DestKey) 
 
-                    context.GlobeLabels[DestKey] = SrcVal
+
 
                 # ---------------------------------------------
                 # Track history/debug
@@ -3530,25 +3623,6 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
 
                 continue
 
-
-                
-                # The ":" is a label whos value is current address
-                if len(key)>1:           # Handle cases were no space followed key
-                    DestKey=key[1:]                    
-                elif len(key) == 1:
-                    (DestKey, size) = nextword(line)
-                    line=line[size:].lstrip()
-                SrcVal = context.address
-                newitem=IsLocalVar(DestKey, context)
-                if ("F."+filename+":"+str(context.FileLineNum) in context.FileLabels):
-                    # We created an internal label for each line number, but this label will replace it.
-                    del context.FileLabels["F."+filename+":"+str(context.FileLineNum)]
-                context.FileLabels.update({newitem:SrcVal})
-                UpdateVarHistory(newitem,SrcVal,SrcVal)
-                context.DefinedSymbols.add(newitem)
-                if current_context.Debug > 2:    
-                    safeprint(f"DEF ':' {DestKey} -> {newitem} @ {SrcVal:#04x} {current_context.ActiveFile}:{current_context.FileLineNum+1}")
-                continue
             elif key.startswith(";"):
                 line = handle_semicolon(line, filename, context, CPU)
                 continue
@@ -3694,9 +3768,18 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     context.MacroData.update({key: value})
                     context.MacroPCount.update({key: 0})
             elif key[0] == "G" and IsOneChar:
-                # Globale labels are an override of 'Local' Labels by 'pre-defining them.
+                # Globale labels are an override of 'Local' Labels by 'pre-defining them.                
                 (key, size) = nextword(line)
-                context.GlobalDeclarations[key]=(
+                if key in context.GlobalDeclInfo and context.Debug > 2:
+                    print(f"WARNING: duplicate global declaration of {key} "
+                          f"(first at {context.GlobalDeclInfo[key]}, "
+                          f"again at {current_context.ActiveFile}:{current_context.FileLineNum})")                
+                context.GlobalDeclarations.add(key)
+                # Optional debug info (recommended)
+                if not hasattr(context, "GlobalDeclInfo"):
+                    context.GlobalDeclInfo = {}
+
+                context.GlobalDeclInfo[key] = (
                     current_context.ActiveFile,
                     current_context.FileLineNum
                 )
@@ -3736,19 +3819,8 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
         if not hasattr(context, "MissingSymbols"):
             context.MissingSymbols = {}
 
-        if not hasattr(context, "GlobalDeclarations"):
-            context.GlobalDeclarations = set()
-
-        # --------------------------------------------------
-        # Precompute undefined globals
-        # --------------------------------------------------
-
-        UndefinedGlobals = {
-            sym for sym in context.GlobalDeclarations
-            if sym not in context.GlobeLabels
-            and context.UsedSymbols.get(sym, 0) > 0
-            and sym in context.MissingSymbols
-        }
+        if not hasattr(context, "ResolvedSymbols"):
+            context.ResolvedSymbols = set()
 
         # --------------------------------------------------
         # Resolve forward references
@@ -3759,7 +3831,8 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             vaddress = store[1]
 
             # Track usage
-            context.UsedSymbols[key] += 1
+            if not IsCompilerGenerated(key):
+                context.UsedSymbols[key] += 1
 
             resolved = False
 
@@ -3781,78 +3854,13 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
             # If resolved, write to memory
             # --------------------------------------------------
             if resolved:
+                context.ResolvedSymbols.add(key)   # <-- ADD THIS LINE ONLY
+
                 if len(store) > 2 and store[2] != 0:
                     v = v + Str2Word(store[2])
 
                 CPU.memspace[int(vaddress)] = CPU.lowbyte(v)
                 CPU.memspace[int(vaddress + 1)] = CPU.highbyte(v)
-
-            # --------------------------------------------------
-            # Otherwise track as missing
-            # --------------------------------------------------
-            else:
-                # Skip if this is an undefined global (reported separately)
-                if key in UndefinedGlobals:
-                    continue
-
-                entry = context.MissingSymbols.setdefault(key, {
-                    "count": 0,
-                    "refs": []
-                })
-
-                entry["count"] += 1
-
-                linenum = store[3] if len(store) > 3 else None
-
-                entry["refs"].append((
-                    current_context.ActiveFile,
-                    linenum,
-                    vaddress
-                ))
-
-                # Optional debug output
-                print(
-                    key,
-                    " is missing (SYM,ADDR,Delta,LineNum)",
-                    store,
-                    key,
-                    vaddress,
-                    file=DebugOut
-                )
-
-        # --------------------------------------------------
-        # Final summary report
-        # --------------------------------------------------
-
-        # --- Undefined globals (always shown if present) ---
-        if UndefinedGlobals:
-            print("\n=== Global Symbols Declared but Not Defined ===")
-
-            for sym in sorted(UndefinedGlobals):
-                used = context.UsedSymbols.get(sym, 0)
-                print(f"  {sym} (declared global, never defined, used {used} times)")
-
-        # --- Missing symbols (likely missing @USE) ---
-        if context.MissingSymbols:
-            print("\n=== Missing Symbols (likely missing @USE) ===")
-
-            for sym, info in sorted(context.MissingSymbols.items()):
-                print(f"\n  {sym}  (used {info['count']} times)")
-
-                for (file, line, addr) in info["refs"][:5]:
-                    if line is not None:
-                        print(f"     at {file}:{line} (addr {addr:#04x})")
-                    else:
-                        print(f"     at {file} (addr {addr:#04x})")
-
-                if len(info["refs"]) > 5:
-                    print(f"     ... {len(info['refs']) - 5} more")
-
-                # Only suggest @USE if not a declared global
-                if sym not in context.GlobalDeclarations:
-                    print(f"     suggestion: @USE {sym}")
-
-
                         
     if context.Debug > 1:
         i = 0
@@ -4738,6 +4746,8 @@ def main():
         NewLocalID = curfile
         maxusedmem = \
             loadfile(curfile, maxusedmem, CPU , GLOBALFLAG, NewLocalID, context)
+    FinalSymbolReport(context)
+
     context.GlobalOptCnt = 0
 
     if len(files) == 0:
@@ -4745,6 +4755,8 @@ def main():
         # Default to common.mc to provide base macros
         maxusedmem = \
             loadfile("common.mc", maxusedmem, CPU, GLOBALFLAG, "common.mc",  context)
+        FinalSymbolReport(context)
+        
         UseDebugger = True
     if OptCodeFlag:
         # Write the 'compiled' code as a hex dump file.

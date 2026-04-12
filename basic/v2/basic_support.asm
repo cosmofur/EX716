@@ -1,0 +1,524 @@
+I common.mc
+L string.ld
+#
+#
+# basic/v0/basic_support.asm
+# BASIC v0 – Support Functions
+#
+# Purpose:
+#   - BASIC-specific helpers that do not belong in libraries
+#   - Resolve editor-shell dispatch targets
+#
+# This file intentionally avoids:
+#   - String algorithms (use string.ld)
+#   - Tokenization
+#   - Program execution
+#
+# Included by basic_main.asm after string.ld and basic_storage.asm
+
+
+# --------------------------------------------------
+# ListProgram
+# --------------------------------------------------
+# Walk BASIC program storage and print each line
+# --------------------------------------------------
+#--------------------------------------------------
+# ListProgram
+#--------------------------------------------------
+:ListProgram
+@PUSHRETURN
+   @LocalVar Ptr       01
+   @LocalVar DataPtr   02
+   @LocalVar OutBuf    03
+   @LocalVar EndPtr    04
+   @LocalVar OutLen    05
+
+   @IF_EQ_AV 1 NullProgram
+      @PRTLN "No Program."
+      @JMP LP_EXIT
+   @ENDIF
+
+   # Allocate temp ASCII buffer
+   @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE
+   @IF_ULT_A 100
+      @PRT "Memory Error"
+      @Call(AA) BasicRaiseError ERR_MEMORY 0      
+   @ENDIF
+   @POPI OutBuf
+
+   @MV2V LineTableBase Ptr
+   @PUSHI LineTableBase
+   @PUSHI ProgramLineCount @SHL2   # *4
+   @ADDS
+   @POPI EndPtr
+   
+   @PUSHI EndPtr
+   @WHILE_UGT_V Ptr          # While EndPtr > Ptr
+#      @PUSHI Ptr @ADD 2 @PUSHS
+#      @PUSH 16
+#      @PUSH 1         # Mode = bytes
+#      @CALL HexDump
+#      @PRTNL
+   
+      @PUSHII Ptr
+      @PRTTOP
+      @PRTSP
+      @POPNULL
+      
+      @PUSHI Ptr @ADD 2 @PUSHS                      # Start of Line
+#      @ADD 2                                        # Start of Text part
+      @Call(VA) RenderLine OutBuf TOLKBUF_SIZE      # Convert tolkenized data in string into human readable string.
+      @POPI OutLen
+
+      @PUSH 0 @PUSHI OutBuf @ADDI OutLen            # Null last byte.
+      @POPS
+
+      @PRTSI OutBuf
+      @PRTNL
+      @PUSHI Ptr @ADD 4 @POPI Ptr
+   @ENDWHILE
+   @POPNULL
+   @PRTNL
+   # Free buffer
+   @Call(VV) HeapDeleteObject RunTimeHeap OutBuf
+   @POPNULL
+   :LP_EXIT
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+
+
+#--------------------------------------------------
+# RenderLine(DataPtr, OutPtr, MaxLen) : Length
+#--------------------------------------------------
+:RenderLine
+@PUSHRETURN
+   @LocalVar DataPtr   01
+   @LocalVar OutPtr    02
+   @LocalVar MaxLen    03
+   @LocalVar TokenID   04
+   @LocalVar StrLength 05
+   @LocalVar EntryPtr  06
+   @LocalVar OutLen    07
+
+   @POPI MaxLen
+   @POPI OutPtr
+   @POPI DataPtr
+
+   @MA2V 0 OutLen
+
+   @PUSHII DataPtr @AND 0xff
+   @POPI TokenID
+
+   @WHILE_NEQ_AV EOL_TOKEN TokenID
+
+      @PUSHI TokenID
+      @SWITCH
+
+      #--------------------------
+      # STRING_TOKEN
+      #--------------------------
+      @CASE STRING_TOKEN
+         @POPNULL
+
+         # emit "
+         @Call(VAV) EmitByte OutPtr "\"\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+
+         @INCI DataPtr
+         @PUSHII DataPtr @AND 0xff
+         @POPI StrLength
+         @INCI DataPtr
+
+         @Call(VVVV) EmitBlock OutPtr DataPtr StrLength OutLen
+         @POPI OutLen
+         @POPI OutPtr
+
+         @PUSHI DataPtr @ADDI StrLength @POPI DataPtr
+
+         # emit closing "
+         @Call(VAV) EmitByte OutPtr "\"\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         
+         @Call(VAV) EmitByte OutPtr " \0" OutLen
+         @POPI OutLen
+         @POPI OutPtr                              
+
+         @CBREAK
+
+      #--------------------------
+      # Numeric Token
+      #--------------------------
+      @CASE_RANGE INT_TOKEN FLOAT_TOKEN
+         @POPNULL
+
+         @INCI DataPtr
+         @PUSHII DataPtr @AND 0xff
+         @POPI StrLength
+         @INCI DataPtr
+
+         @Call(VVVV) EmitBlock OutPtr DataPtr StrLength OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         
+         @Call(VAV) EmitByte OutPtr " \0" OutLen
+         @POPI OutLen
+         @POPI OutPtr                     
+         @PUSHI DataPtr @ADDI StrLength @POPI DataPtr
+         @CBREAK
+
+      #--------------------------
+      # VAR_TOKEN
+      #--------------------------
+      @CASE VAR_TOKEN
+         @POPNULL
+         @INCI DataPtr
+         @PUSHII DataPtr @AND 0xff
+         @POPI StrLength
+         @INCI DataPtr
+
+         @Call(VVVV) EmitBlock OutPtr DataPtr StrLength OutLen
+         @POPI OutLen
+         @POPI OutPtr
+
+         @Call(VAV) EmitByte OutPtr " \0" OutLen
+         @POPI OutLen
+         @POPI OutPtr                     
+
+         @PUSHI DataPtr @ADDI StrLength @POPI DataPtr
+         @CBREAK
+
+      #--------------------------
+      # Special operator tokens
+      #--------------------------
+      @CASE NE_TOKEN
+         @POPNULL
+         @Call(VAV) EmitByte OutPtr "<\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         @Call(VAV) EmitByte OutPtr ">\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         @INCI DataPtr
+         @CBREAK
+
+      @CASE LE_TOKEN
+         @POPNULL
+         @Call(VAV) EmitByte OutPtr "<\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         @Call(VAV) EmitByte OutPtr "=\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         @INCI DataPtr
+         @CBREAK
+
+      @CASE GE_TOKEN
+         @POPNULL
+         @Call(VAV) EmitByte OutPtr ">\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         @Call(VAV) EmitByte OutPtr "=\0" OutLen
+         @POPI OutLen
+         @POPI OutPtr
+         @INCI DataPtr
+         @CBREAK
+
+      #--------------------------
+      # Default (ASCII or keyword)
+      #--------------------------
+      @CDEFAULT        
+         @IF_LT_A 0x80
+            @POPNULL
+            @Call(VVV) EmitByte OutPtr TokenID OutLen
+            @POPI OutLen
+            @POPI OutPtr
+         @ELSE
+            @POPNULL
+            @Call(VA) FindByID TokenID KeyWordTable
+            @POPI StrLength
+            @POPI EntryPtr
+
+            @Call(VVVV) EmitBlock OutPtr EntryPtr StrLength OutLen
+            @POPI OutLen
+            @POPI OutPtr
+            @Call(VAV) EmitByte OutPtr " \0" OutLen
+            @POPI OutLen
+            @POPI OutPtr            
+         @ENDIF
+
+         @INCI DataPtr
+         @CBREAK
+
+      @ENDCASE
+
+#      @POPNULL
+
+      @PUSHII DataPtr @AND 0xff
+      @POPI TokenID
+
+   @ENDWHILE
+
+   @PUSHI OutLen
+
+   @RestoreVar 07
+   @RestoreVar 06
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+
+@POPRETURN
+@RET
+
+
+#-------------------------------
+# FindByID(TokenID, KeyWordTable):(EntryPtr,StrLength)
+# searchs table looking for ID rather than String.
+#-------------------------------
+:FindByID
+@PUSHRETURN
+   @LocalVar TokenID    01
+   @LocalVar TablePtr   02
+   @LocalVar EntryPtr   03
+   @LocalVar StrLength  04
+   @LocalVar LastAnswer 05
+
+
+   @POPI TablePtr
+   @POPI TokenID
+
+   @PUSHII TablePtr
+   @WHILE_NOTZERO
+      @POPI StrLength
+      @PUSHI TablePtr @ADD 2 @POPI LastAnswer # Location where string starts
+      @PUSHI TablePtr @ADDI StrLength @ADD 2
+      @POPI TablePtr
+      @PUSHII TablePtr @AND 0xff
+      @IF_NEQ_V TokenID
+         @POPNULL
+         @INC2I TablePtr
+         @PUSHII TablePtr @AND 0xff
+      @ELSE
+         @JMP FBI_FOUND
+      @ENDIF
+   @ENDWHILE
+   @PRT "No Match for " @PRTHEXI TokenID @PRTNL
+:FBI_FOUND
+   @IF_NOTZERO
+      @POPNULL
+      @PUSHI LastAnswer
+      @PUSHI StrLength
+   @ELSE
+      @PRTLN "No Match:"
+      @POPNULL
+   @ENDIF
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+
+#-----------------------------------
+# CleanQuotes(StrPtr):StrPtr
+# Moves StrPtr to just past first quote if any
+# then turns the second quote, if any, into NULL
+#-----------------------------------
+:CleanQuotes
+@PUSHRETURN
+    @LocalVar StrPtr 01
+    @LocalVar CharPtr 02
+    @LocalVar StrLen 03
+    @LocalVar Index 04
+    
+    @POPI StrPtr
+
+    # IF 1st char is quote, inc StrPtr past quote
+    @PUSHII StrPtr @AND 0xff
+    @IF_EQ_A "\"\0"
+       @INCI StrPtr
+    @ENDIF
+    @POPNULL
+
+    @Call(V) strlen StrPtr
+    @POPI StrLen
+    @MA2V 0 Index
+
+    @MV2V StrPtr CharPtr
+
+    # Change any remaining quotes with null
+    @ForIA2V Index 0 StrLen
+       @PUSHII CharPtr
+       @DUP
+       @AND 0xff
+       @IF_EQ_A "\"\0"
+          # Is a quote, replace with null
+          @POPNULL
+          @AND 0xff00    # Keep high byte
+          @POPII CharPtr
+       @ELSE
+          @POPNULL
+          @POPNULL
+       @ENDIF
+       @INCI CharPtr
+    @Next Index
+    #
+    @PUSHI StrPtr
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+#--------------------------------
+# IsDigit(ch):0|1
+# True if "0" <= ch <= "9" or "-" for negative numbers
+#--------------------------------
+:IsDigit
+@PUSHRETURN
+    @LocalVar IDResult 01
+    @MA2V 0 IDResult
+    @AND 0xff
+    @IF_LE_A "9\0"
+       @IF_GE_A "0\0"
+          @MA2V 1 IDResult
+       @ENDIF
+    @ENDIF
+    @POPNULL
+    @PUSHI IDResult
+    @RestoreVar 01
+@POPRETURN
+@RET
+#---------------------------------
+# IsLetter(ch):0|1
+# True is character is letter a-z
+#---------------------------------
+:IsLetter
+@PUSHRETURN
+   @LocalVar ILResult 01
+   @MA2V 0 ILResult
+   @AND 0xff
+   # Test for Lowercase
+   @IF_GE_A "a\0"
+      @IF_LE_A "z\0"
+         @AND 0xdf   #Mask out bit 5 to turn to uppercase
+      @ENDIF
+   @ENDIF
+   @IF_GE_A "A\0"
+      @IF_LE_A "Z\0"
+         @MA2V 1 ILResult
+      @ENDIF
+   @ENDIF
+   @POPNULL
+   @PUSHI ILResult
+   @RestoreVar 01
+@POPRETURN
+@RET
+#--------------------------------
+# IsIdentChar(ch):0|1
+# True is a-z or 0-9 or _
+#--------------------------------
+:IsIdentChar
+@PUSHRETURN
+    @LocalVar ICResult 01
+    @LocalVar TestCh 02
+    @AND 0xff
+    @POPI TestCh
+    @MA2V 0 ICResult
+
+    @PUSHI TestCh
+    @SWITCH
+    @CASE "_\0"
+       @MA2V 1 ICResult
+       @CBREAK
+    @CASE_RANGE "0\0" "9\0"
+       @MA2V 1 ICResult
+       @CBREAK
+    @CASE_RANGE "A\0" "z\0"
+       @MA2V 1 ICResult
+       @CBREAK    
+    @CASE "#\0"
+       @MA2V 1 ICResult
+       @CBREAK
+    @CASE "%\0"
+       @MA2V 1 ICResult
+       @CBREAK
+    @CASE "$\0"
+       @MA2V 1 ICResult
+       @CBREAK       
+    @CDEFAULT
+       @CBREAK        
+    @ENDCASE
+    @POPNULL
+    @PUSHI ICResult
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+#------------------------------
+# IsWhiteSpace(ch):0|1
+# True if space, tab
+#------------------------------
+:IsWhiteSpace
+@PUSHRETURN
+   @LocalVar IWResult 01
+   @MA2V 0 IWResult
+   @AND 0xff
+   @IF_EQ_A " \0"             # Space test
+      @MA2V 1 IWResult
+   @ELSE
+      @IF_EQ_A "\t\0"
+         @MA2V 1 IWResult       # TAB test
+      @ENDIF
+   @ENDIF
+   @POPNULL
+   @PUSHI IWResult
+   @RestoreVar 01
+@POPRETURN
+@RET
+#-------------------------------
+# IsOperator(ch):0|1
+# Tests if character in set "+-*/=<>(),;:"
+#-------------------------------
+:IsOperator
+@PUSHRETURN
+   @LocalVar IOResult 01
+
+   @MA2V 0 IOResult
+   @AND 0xff
+   @SWITCH
+   @CASE_RANGE 0x28 0x2d   # Ascii ( to -
+      @MA2V 1 IOResult
+      @CBREAK
+   @CASE_RANGE 0x3a 0x3e   # Ascii : to >
+      @MA2V 1 IOResult
+      @CBREAK
+   @CASE 0x2f              # Ascii /
+      @MA2V 1 IOResult
+      @CBREAK
+   @CDEFAULT
+      @CBREAK
+   @ENDCASE
+   @POPNULL
+   @PUSHI IOResult
+   @RestoreVar 01
+@POPRETURN
+@RET
+
+   
+
+
+   
+    
+          
+
+    

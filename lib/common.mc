@@ -1116,7 +1116,7 @@ M TRUE 1
       :_HERE%0 \
       MF __DEFINE_%1 _HERE%0 \
       MF __LastFunc %1 \
-      G %1 P Defined %1 ;
+      G %1 # P Defined %1 ;
 
    M ENDFUNCTION \
       :_HERE%0 \
@@ -1124,9 +1124,9 @@ M TRUE 1
       ENDBLOCK
 
    # Dependency declaration hook
-   M FUNCTIONNEEDS ? __USE_%1 P "Including " %1 ;
+   M FUNCTIONNEEDS ? __USE_%1 # P "Including " %1 ;
 
-   M USE MF __USE_%1 %1 G %1  P Mark for Use %1 ;
+   M USE MF __USE_%1 %1 G %1 #  P Mark for Use %1 ;
    M ENDBLOCK ENDBLOCK
 
 ENDBLOCK

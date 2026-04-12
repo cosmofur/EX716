@@ -1438,7 +1438,6 @@ G FSFileBitMapStore
 # and extent-based files.
 # DiskFileRead(FilePtr, MemPtr, ByteCount)
 #---------------------------------------------------------
-P Before DiskFileRead
 @FUNCTION DiskFileRead
 :DiskFileRead
 @PUSHRETURN
@@ -1599,7 +1598,6 @@ P Before DiskFileRead
 @RET
 @ENDFUNCTION
 #-------------------------------------------------
-P Before WildCardMatch
 @FUNCTION  WildCardMatch
 # WildCardMatch(pattern,text):1|0
 # Returns 1 if pattern matches test
@@ -1701,7 +1699,6 @@ P Before WildCardMatch
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before DirFindFile
 #--------------------------------------------
 @FUNCTION  DirFindFile
 # DirFindFile(Pattern, StartPoint):FileNum | 0
@@ -1790,7 +1787,6 @@ P Before DirFindFile
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before DirFindFree
 #-------------------------------------------
 @FUNCTION  DirFindFree
 # DirFindFree():FileNum | 0
@@ -1856,7 +1852,6 @@ P Before DirFindFree
 
 
 
-P Before file_open
 #--------------------------------------------
 @FUNCTION  file_open
 # file_open(FileName, Mode): FilePointer | 0
@@ -2012,7 +2007,6 @@ P Before file_open
 #-----------------------------------
 # DiskFileSetLineCount(FilePtr, LineCount)
 #-----------------------------------
-P Before DiskFileSetLineCount
 @FUNCTION DiskFileSetLineCount
 :DiskFileSetLineCount
 @PUSHRETURN
@@ -2034,7 +2028,6 @@ P Before DiskFileSetLineCount
 # _DF_SetLine_Mod
 # Modifies ArgTable LineNumer Field
 #----------------------------------
-P Before _DF_SetLine_Mod
 @FUNCTION _DF_SetLine_Mod
 :_DF_SetLine_Mod
 @PUSHRETURN
@@ -2054,7 +2047,6 @@ P Before _DF_SetLine_Mod
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before DiskGetLineCount
 #-----------------------------------
 @FUNCTION  DiskGetLineCount
 # DiskGetLineCount(FilePtr):LineCount
@@ -2077,7 +2069,6 @@ P Before DiskGetLineCount
 # _DF_GetLine_Mod
 # Modifies ArgTable LineNumer Field
 #----------------------------------
-P Before _DF_GetLine_Mod
 @FUNCTION _DF_GetLine_Mod
 :_DF_GetLine_Mod
 @PUSHRETURN
@@ -2094,7 +2085,6 @@ P Before _DF_GetLine_Mod
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before DiskFileSetType
 #-----------------------------------
 # DiskSetFileType(FilePtr, TypeWord)
 #-----------------------------------
@@ -2119,7 +2109,6 @@ P Before DiskFileSetType
 # _DF_SetType_Mod
 # Modifies ArgTable SetType Field
 #----------------------------------
-P Before _DF_SetType_Mod
 @FUNCTION _DF_SetType_Mod
 :_DF_SetType_Mod
 @PUSHRETURN
@@ -2139,7 +2128,6 @@ P Before _DF_SetType_Mod
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before DiskGetFileType
 #-----------------------------------
 @FUNCTION  DiskGetFileType
 # DiskGetFileType(FilePtr):TypeWord
@@ -2162,7 +2150,6 @@ P Before DiskGetFileType
 # _DF_GetType_Mod
 # Modifies ArgTable SetType Field
 #----------------------------------
-P Before _DF_GetType_Mod
 @FUNCTION _DF_GetType_Mod
 :_DF_GetType_Mod
 @PUSHRETURN
@@ -2183,7 +2170,6 @@ P Before _DF_GetType_Mod
 #------------------------------------
 # DiskFileName
 #------------------------------------
-P Before DiskFileName
 @FUNCTION DiskFileName
 :DiskFileName
 @PUSHRETURN
@@ -2203,7 +2189,6 @@ P Before DiskFileName
 #------------------------------
 # DiskFileName Modifier function.
 #------------------------------
-P Before _DFN_MOD
 @FUNCTION _DFN_Mod
 :_DFN_Mod
 @PUSHRETURN
@@ -2238,7 +2223,6 @@ P Before _DFN_MOD
 # This is a generic functon, that when called is passed a pointer to a
 # modifier funciton that modifies the ArgTable, which is then written back
 #-----------------------------------------
-P Before DiskWithDirEntry
 @FUNCTION DiskWithDirEntry
 :DiskWithDirEntry
 @PUSHRETURN
@@ -2308,10 +2292,8 @@ P Before DiskWithDirEntry
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before FSReadHeader
 #--------------------------------
 @FUNCTION  FSReadHeader
-P After Loading FSReadHeader
 # FSReadHeader(DISK_NUMBER):1|0 # Reads filesystem superblock (FS header) and establishes FS context
 #--------------------------------
 :FSReadHeader
@@ -2372,7 +2354,6 @@ P After Loading FSReadHeader
 #----------------------------------------
 # FSWriteHeader() Stores current FS Disk meta data back to disk.
 #----------------------------------------
-P Before FSWriteHeader
 @FUNCTION FSWriteHeader
 :FSWriteHeader
 @PUSHRETURN
@@ -2445,7 +2426,6 @@ P Before FSWriteHeader
 @ENDFUNCTION
 
 #---------------------------------
-P Before FSIsFileUsed
 @FUNCTION  FSIsFileUsed
 # FSIsFileUsed(FileNum):0|1  tests if bitmap says file in use
 #---------------------------------
@@ -2495,7 +2475,6 @@ P Before FSIsFileUsed
 #---------------------------------
 # FSSetFileUsed(FileNum) Sets BitMap At FileNum spot
 #---------------------------------
-P Before FSSetFileUsed
 @FUNCTION FSSetFileUsed
 :FSSetFileUsed
 @PUSHRETURN
@@ -2551,7 +2530,6 @@ P Before FSSetFileUsed
 #---------------------------------
 # FSClearFileUsed(FileNum) Cleats BitMap at FileNum spot
 #---------------------------------
-P Before FSClearFileUsed
 @FUNCTION FSClearFileUsed
 :FSClearFileUsed
 @PUSHRETURN
@@ -2607,7 +2585,6 @@ P Before FSClearFileUsed
 @RET
 @ENDFUNCTION
 #--------------------------------------
-P Before FSFindFreeFile
 @FUNCTION  FSFindFreeFile
 # FSFindFreeFile():FileNum|0
 #--------------------------------------
@@ -2658,7 +2635,6 @@ P Before FSFindFreeFile
 # FSFormat(DiskID, DiskNum)
 # Format DiskNum and applies DiskID
 #--------------------------------------
-P Before FSFormat
 @FUNCTION FSFormat
 :FSFormat
 @PUSHRETURN
@@ -2724,7 +2700,6 @@ P Before FSFormat
 @ENDFUNCTION
 
 #-----------------------------------
-P Before FSNextUsedFile
 @FUNCTION  FSNextUsedFile
 # FSNextUsedFile(Index):FileNum
 # Utility to find next used file, skipping blocks of unused files.
@@ -2783,7 +2758,6 @@ P Before FSNextUsedFile
 @POPRETURN
 @RET
 @ENDFUNCTION
-P Before FSFindFile
 #--------------------------------------------
 @FUNCTION  FSFindFile
 # FSFindFile(Pattern, StartPoint): FileNum | 0
@@ -2867,7 +2841,6 @@ P Before FSFindFile
 @RET
 @ENDFUNCTION
 #--------------------------------------------
-P Before DiskFileReadLine
 @FUNCTION  DiskFileReadLine
 # DiskFileReadLine(FilePtr, MemPtr):Bytes_Read
 # Read file as stream, looking for LF ('\n')
