@@ -18,8 +18,11 @@ L softstack.ld
 #
 # All functions expect 16-bit values and preserve stack order.
 ############################################################
+@FUNCTIONNEEDS BITMASK16
+   @USE SHL16_BY_N
+ENDBLOCK
 
-@FUNCTIONNEEDS BITTEST16
+@FUNCTIONNEEDS BITCLEAR16
    @USE BITMASK16
 ENDBLOCK
 
@@ -27,12 +30,8 @@ ENDBLOCK
    @USE BITMASK16
 ENDBLOCK
 
-@FUNCTIONNEEDS BITCLEAR16
+@FUNCTIONNEEDS BITTEST16
    @USE BITMASK16
-ENDBLOCK
-
-@FUNCTIONNEEDS BITMASK16
-   @USE SHL16_BY_N
 ENDBLOCK
 
 
@@ -235,7 +234,7 @@ ENDBLOCK
     @LocalVar N 01
     @POPI N
 
-    @Call(Av) SHL16_BY_N 1 N
+    @Call(AV) SHL16_BY_N 1 N
 
     @RestoreVar 01
 @POPRETURN
@@ -257,7 +256,7 @@ ENDBLOCK
     @POPI N
     @POPI A
 
-    @Call(v) BITMASK16 N
+    @Call(V) BITMASK16 N
     @ANDI A
 @POPRETURN
 @RET
@@ -277,7 +276,7 @@ ENDBLOCK
     @POPI N
     @POPI A
 
-    @Call(v) BITMASK16 N
+    @Call(V) BITMASK16 N
     @ORI A
 
 @POPRETURN
@@ -297,7 +296,7 @@ ENDBLOCK
     @POPI N
     @POPI A
 
-    @Call(v) BITMASK16 N
+    @Call(V) BITMASK16 N
     @INV               # invert mask
     @ANDI A
 

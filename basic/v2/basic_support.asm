@@ -37,7 +37,7 @@ L string.ld
       @PRTLN "No Program."
       @JMP LP_EXIT
    @ENDIF
-
+ 
    # Allocate temp ASCII buffer
    @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE
    @IF_ULT_A 100
@@ -54,19 +54,18 @@ L string.ld
    
    @PUSHI EndPtr
    @WHILE_UGT_V Ptr          # While EndPtr > Ptr
-#      @PUSHI Ptr @ADD 2 @PUSHS
-#      @PUSH 16
-#      @PUSH 1         # Mode = bytes
-#      @CALL HexDump
-#      @PRTNL
    
       @PUSHII Ptr
       @PRTTOP
       @PRTSP
       @POPNULL
+      @PRT "Hex Image of Line"
+      
+      @PUSHI Ptr @ADD 2 @PUSHS
+      @Call(AA) HexDump 16 1
+
       
       @PUSHI Ptr @ADD 2 @PUSHS                      # Start of Line
-#      @ADD 2                                        # Start of Text part
       @Call(VA) RenderLine OutBuf TOLKBUF_SIZE      # Convert tolkenized data in string into human readable string.
       @POPI OutLen
 
@@ -297,9 +296,10 @@ L string.ld
 
    @PUSHII TablePtr
    @WHILE_NOTZERO
+      @AND 0xff
       @POPI StrLength
-      @PUSHI TablePtr @ADD 2 @POPI LastAnswer # Location where string starts
-      @PUSHI TablePtr @ADDI StrLength @ADD 2
+      @PUSHI TablePtr @ADD 1 @POPI LastAnswer # Location where string starts
+      @PUSHI TablePtr @ADDI StrLength @ADD 1
       @POPI TablePtr
       @PUSHII TablePtr @AND 0xff
       @IF_NEQ_V TokenID
@@ -518,6 +518,9 @@ L string.ld
 
 
    
+M SIZESINCECOMMENT basic_support.h
+@SIZESINCE  
+
     
           
 

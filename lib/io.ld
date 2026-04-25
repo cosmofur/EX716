@@ -2,6 +2,10 @@
 ! IOLIB_DONE
 M IOLIB_DONE 1
 
+@FUNCTIONNEEDS StrReadToChar
+   @USE strcat
+ENDBLOCK
+
 L string.ld
 M SIZESINCECOMMENT io.ld
 G StrReadToChar

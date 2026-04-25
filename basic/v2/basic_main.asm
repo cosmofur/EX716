@@ -37,17 +37,19 @@ I basic_eval.asm
     @PRT "> "
 
     # Read a full line (device handles editing & termination)
-    @READS InputBuf
-
+    @READSI InputBuf
+    @PRTNL
+    @PRTSI InputBuf @PRTNL
     # If empty line, reprompt
-    @LOADBI InputBuf
+    :Break1
+    @LOADBII InputBuf
     @IF_ZERO
         @POPNULL
         @JMP MainLoop
     @ENDIF
 
     @POPNULL
-    @Call(A) ParseLineOrCommand InputBuf    
+    @Call(V) ParseLineOrCommand InputBuf    
 
     @JMP MainLoop
 
@@ -70,8 +72,6 @@ I basic_eval.asm
     # No multiply for constants so use add three times to get sizeable buffer.
 
     @POPI StrPtr
-#    @Call(A) RmComments StrPtr
-#    @POPI StrPtr
 
     @Call(v) ISNumeric StrPtr
     @IF_NOTZERO
@@ -95,6 +95,7 @@ I basic_eval.asm
         @POPI WorkBuf
         @Call(vvAA) TokenizeStr StrPtr WorkBuf TOLKBUF_SIZE CommandTable
         @POPI TextLen
+        @PRT "Tolkenized: "
         @Call(v) ExecuteCommand WorkBuf
         @Call(VV) HeapDeleteObject RunTimeHeap WorkBuf @IF_GT_A 0 @PRT "Error Deleting Heap" @JMP BasicPanic @ENDIF @POPNULL
     @ENDIF
@@ -139,7 +140,7 @@ I basic_eval.asm
     @WHILE_ZERO
        @POPNULL
        @INCI Ptr       
-       @LOADBII Ptr
+       @LOADBII  Ptr
        @IF_EQ_A " \0"
           # Space means just continue.
           @POPNULL
@@ -161,7 +162,7 @@ I basic_eval.asm
     @ENDWHILE
     @POPNULL
     # Its possible that PTR is pointing at null EOS
-    @LOADBII Ptr
+    @LOADBII  Ptr
     @IF_NOTZERO
        @Call(v) strlen Ptr
        @POPI TextLen
@@ -198,7 +199,7 @@ I basic_eval.asm
 
     @POPI BufPtr
     @WHEN
-       @PUSHII BufPtr @AND 0xff
+       @LOADBII BufPtr
        @IF_EQ_A EOL_TOKEN    # Loop until EOL code
           @POPNULL
           @PUSH 0
@@ -233,15 +234,15 @@ I basic_eval.asm
        @CASE SAVECODE
           @POPNULL
           # Save must be followed by a Quoted Filename.
-          @PUSHII BufPtr @AND 0xff
+          @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
              @POPNULL
              @PRTLN "SAVE requires a quoted filename. SAVE \"name\""
              @JMP PCExit
           @ENDIF
           @POPNULL
-          @INCI BufPtr          
-          @PUSHII BufPtr @AND 0xff      # Get Length.
+          @INCI BufPtr
+          @LOADBII BufPtr                # Get Length
           @POPI StrLength
           @INCI StrLength               # Add a spot for the Null
           @Call(VV) HeapNewObject RunTimeHeap StrLength
@@ -263,15 +264,15 @@ I basic_eval.asm
           @CBREAK
        @CASE LOADCODE
           @POPNULL
-          @PUSHII BufPtr @AND 0xff
+          @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
              @POPNULL
              @PRTLN "LOAD requires a quoted filename. SAVE \"name\""
              @JMP PCExit
           @ENDIF
           @POPNULL
-          @INCI BufPtr          
-          @PUSHII BufPtr @AND 0xff      # Get Length.
+          @INCI BufPtr
+          @LOADBII BufPtr                # Get Length
           @POPI StrLength
           @INCI StrLength               # Add a spot for the Null
           @Call(VV) HeapNewObject RunTimeHeap StrLength
@@ -304,6 +305,15 @@ I basic_eval.asm
              @POPI BufPtr
           @ENDIF
           @CBREAK
+       @CASE LETCMDCODE
+          @POPNULL
+          @Call(V) ParseLET BufPtr
+          @IF_ULT_A 100
+             @Call(AA) BasicRaiseError ERR_SYNTAX 0
+          @ELSE
+             @POPI BufPtr
+          @ENDIF
+          @CBREAK
        @CDEFAULT
           @PRTLN "Unknown Command"
           @POPNULL           # Consume Selector
@@ -320,47 +330,70 @@ I basic_eval.asm
    @RestoreVar 01
  @POPRETURN
  @RET
- 
-    
-#--------------------------------------------------
-# NextToken(InPtr):(TokenType,StartPtr,EndPtr,NextPtr)
-#
-# TokenType:
-#   0 = EOS
-#   VAR_TOKEN
-#   INT_TOKEN
-#   FLOAT_TOKEN
-#   LONG_TOKEN
-#   STRING_TOKEN
-#   ASCII operator OR special operator token
-#
-# StartPtr = first character of token
-# EndPtr   = first character AFTER token
-# NextPtr  = same as EndPtr (convenience)
-#
-# Uses WHEN loops for predicate-driven scanning.
-#--------------------------------------------------
 
+#-------------------------------
+# MatchToken(PtrA,PtrB, Len):(0|1)
+# Searches string for exact match of LEN characters between PtrA and  PtrB
+#-------------------------------
+:MatchToken
+@PUSHRETURN
+   @LocalVar PtrA 01
+   @LocalVar PtrB 02
+   @LocalVar Len  03
+
+   @POPI Len
+   @POPI PtrB
+   @POPI PtrA
+
+   @Call(VVV) strncmp PtrA PtrB Len
+   # MatchToken return 1 for true and 0 for false, but strncmp returns 0 for 'equal' (like Z Flag)
+   # So our logic requires a forced reversal
+
+   @IF_ZERO
+      # Strings matched up to Length, check next byte to make sure not false match.
+      @POPNULL
+      @PUSHI PtrA
+      @ADDI Len
+      @CALL ISAlphaNum   # (ptr in stack)
+      @IF_NOTZERO
+         # There was another alphanum letter, so not real match, return 0 for false.
+         @POPNULL
+         @PUSH 0
+      @ELSE
+         # Boundry checks out, return true for found match
+         @POPNULL
+         @PUSH 1
+      @ENDIF
+   @ELSE
+      # Not a match at all.
+      @POPNULL
+      @PUSH 0       # MatchToken returns 1 on true, and 0 on false.
+   @ENDIF
+
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+   
+
+@POPRETURN
+@RET
+
+#-----------------------------------------------------
+# NextToken(InPtr):(TokenType,StartPtr,EndPtr)
+#------------------------------------------------------
 :NextToken
 @PUSHRETURN
     @LocalVar InPtr     01
-    @LocalVar CH        02
-    @LocalVar CH2       03
+    @LocalVar CurPtr    02
+    @LocalVar TblPtr    03
     @LocalVar StartPtr  04
-    @LocalVar EndPtr    05
-    @LocalVar NextPtr   06
-    @LocalVar TokenType 07
-    @LocalVar SeenDot   08
-    @LocalVar AlphaFlag 09
-    #------------------------------------------
-    # Initialize
-    #------------------------------------------
-    @POPI InPtr
+    @LocalVar Len       05
+    @LocalVar TOK       06
+    @LocalVar Match     07
+    @LocalVar CH        08
 
-    @MV2V InPtr StartPtr
-    @MV2V InPtr EndPtr
-    @MV2V InPtr NextPtr
-    @MA2V 0 TokenType
+    @POPI InPtr
+    @MV2V InPtr CurPtr
 
     #------------------------------------------
     # Skip whitespace
@@ -369,7 +402,7 @@ I basic_eval.asm
     #    InPtr++
     #------------------------------------------
     @WHEN
-        @PUSHII InPtr @AND 0xff @POPI CH
+        @LOADBII CurPtr @POPI CH
         @IF_EQ_AV 0 CH
             @PUSH 0
         @ELSE
@@ -377,206 +410,122 @@ I basic_eval.asm
         @ENDIF
     @DO_NOTZERO
         @POPNULL
-        @INCI InPtr
+        @INCI CurPtr
     @ENDWHEN
     @POPNULL
-    @MV2V InPtr StartPtr
+    @LOADBII CurPtr @POPI CH
+    @MV2V CurPtr StartPtr
 
-    #------------------------------------------
-    # Check for EOS
-    #------------------------------------------
-
-    @PUSHII InPtr @AND 0xff @POPI CH
+    # Check for Line End
     @IF_EQ_AV 0 CH
-        @MA2V 0 TokenType
-        @JMP NT_DONE
+        @PUSH 0
+        @PUSH 0
+        @PUSH 0
+       @JMP NTReturnBlock
     @ENDIF
+    # Check for quoted strings.
+    @IF_EQ_AV "\"\0" CH
+       # It is a string, look for matching end quote.
+       @INCI CurPtr  # Add StartPtr here.       
+       @LOADBII CurPtr
+       @WHEN
+          @IF_ZERO
+              # Invalid end of line or end of string without ending quote
+              @Call(AA) BasicRaiseError ERR_SYNTAX 0
+          @ENDIF
+          @IF_EQ_A "\"\0"
+              # Reached End Of string
+              @POPNULL      # Get rid of testing character
+              @PUSH 0
+          @ENDIF
+       @DO_NOTZERO
+          @POPNULL
+          @INCI CurPtr
+          @LOADBII CurPtr
+       @ENDWHEN
+       # When we reach he StartPtr is at first character of string
+       # and CurPtr is at the ending quote
+       @POPNULL
+       # Prepare the results for exit.
+       @PUSH STRING_TOKEN
+       @PUSHI StartPtr
+       @PUSHI CurPtr
+       @ADD 1        # make next InPtr start after second quote
+       @JMP NTReturnBlock
+    @ENDIF
+   
+    # Now check for numbers
 
-    #==========================================
-    # STRING TOKEN
-    #
-    # Format: " ... "
-    #------------------------------------------
-    @IF_EQ_AV "\"\0" CH    
-        @INCI InPtr    # skip opening quote
-        @MV2V InPtr StartPtr        
-        @WHEN
-            @PUSHII InPtr @AND 0xff @POPI CH
-            @IF_EQ_AV 0 CH
-                @PUSH 0
-            @ELSE
-                @IF_EQ_AV "\"\0" CH
-                    @PUSH 0
-                @ELSE
-                    @PUSH 1
-                @ENDIF
-            @ENDIF
-        @DO_NOTZERO
-            @POPNULL
-            @INCI InPtr
-        @ENDWHEN
-        @POPNULL
-        # For strings EndPtr and NextPtr differ as the trailing quote needs to be skipped.
-        @MV2V InPtr EndPtr
-        @PUSHI InPtr @ADD 1 @POPI NextPtr
-        @MA2V STRING_TOKEN TokenType
-        @JMP NT_DONE
-    @ENDIF
-    #==========================================
-    # NUMBER TOKEN
-    #
-    # Format: digit+ [. digit+]
-    #
-    # Float support ready
-    #------------------------------------------
-    @IF_EQ_AV "-\0" CH
-       @PUSH 1               # If first character is '-' then still a digit, but only for first character.
-    @ELSE
-       @Call(V) IsDigit CH   # Handle test for 0-9
-    @ENDIF
+    @Call(v) ISNumeric CurPtr
     @IF_NOTZERO
-        @POPNULL
-        @MA2V 0 SeenDot
-        @MV2V InPtr StartPtr        
-        @WHEN
-            @PUSHII InPtr @AND 0xff @POPI CH
-            @Call(V) IsDigit CH
-            @IF_NOTZERO
-                @POPNULL
-                @PUSH 1
-            @ELSE
-                @POPNULL
-                @IF_EQ_AV ".\0" CH
-                    @IF_EQ_AV 0 SeenDot
-                        @MA2V 1 SeenDot
-                        @PUSH 1
-                    @ELSE
-                        @PUSH 0
-                    @ENDIF
-                @ELSE
-                    @PUSH 0
-                @ENDIF
-            @ENDIF
-        @DO_NOTZERO
-            @POPNULL
-            @INCI InPtr
-        @ENDWHEN
-        @POPNULL
-        @IF_EQ_AV 1 SeenDot
-           @MA2V FLOAT_TOKEN TokenType
-        @ELSE
-           @MA2V INT_TOKEN TokenType
-        @ENDIF
-        @JMP NT_SET_END
+       # Like string we'll just loop until end of number, but unlike string will not error if reach EOL
+       @WHILE_NOTZERO
+           @POPNULL
+           @INCI CurPtr
+           @Call(v) ISNumeric CurPtr
+           @IF_ZERO
+              @LOADBII CurPtr
+              @IF_EQ_A ".\0"
+                  # It's a float just allow it for now.
+                  @POPNULL    #Remove  "."
+                  @POPNULL    #Remove default 0
+                  @PUSH 1
+              @ELSE
+                  @POPNULL    # Remove non numeric character
+                  # Leave zero on stack
+              @ENDIF
+           @ENDIF
+       @ENDWHILE
+       @POPNULL
+       # Prepare the results exit.
+       @PUSH INT_TOKEN
+       @PUSHI StartPtr
+       @PUSHI CurPtr
+       @JMP  NTReturnBlock
     @ELSE
-        @POPNULL
+       @POPNULL
     @ENDIF
-    #==========================================
-    # IDENTIFIER OR KEYWORD
-    #
-    # Format:
-    #    Letter or _
-    #    followed by Letter|Digit|_
-    #------------------------------------------
-    @Call(V) IsLetter CH
-    @POPI AlphaFlag
-    @IF_EQ_AV "_\0" CH
-        @MA2V 1 AlphaFlag
-    @ENDIF
-    @IF_EQ_AV 1 AlphaFlag
-        @WHEN
-            @PUSHII InPtr @AND 0xff @POPI CH
-            @Call(V) IsIdentChar CH
-        @DO_NOTZERO
-            @POPNULL
-            @INCI InPtr
-        @ENDWHEN
-        @POPNULL
-        @MA2V VAR_TOKEN TokenType
-        @JMP NT_SET_END
-    @ENDIF
-    #==========================================
-    # OPERATOR TOKEN
-    #
-    # Handles:
-    #   + - * / = < > ( ) , ; :
-    #   <= >= <>
-    #------------------------------------------
-    @Call(V) IsOperator CH
-    @IF_NOTZERO
-        @POPNULL    
-        @MV2V CH TokenType     # default: ASCII operator
-        # Peek next character without consuming
-        @MV2V InPtr StartPtr        
-        @PUSHI InPtr @ADD 1 @PUSHS @AND 0xff @POPI CH2
-        @PUSHI CH
-        @SWITCH
-         # Test first character, if one that MIGHT be followed by a second char, do the extra tests
-         # else just use the first character ASCII as the token to use.
-         @CASE "<\0"
-             @POPNULL
-             @IF_EQ_AV "=\0" CH2
-                 @INCI InPtr
-                 @MA2V LE_TOKEN TokenType
-             @ENDIF
-             @IF_EQ_AV ">\0" CH2
-                 @INCI InPtr
-                 @MA2V NE_TOKEN TokenType
-             @ENDIF
-             @CBREAK
-         @CASE ">\0"
-             @POPNULL
-             @IF_EQ_AV "=\0" CH2
-                 @INCI InPtr
-                 @MA2V GE_TOKEN TokenType
-             @ENDIF
-             @CBREAK
-         @CASE "=\0"
-             @POPNULL
-             @IF_EQ_AV "<\0" CH2
-                @INCI InPtr
-                @MA2V LE_TOKEN TokenType
-             @ENDIF
-             @IF_EQ_AV ">\0" CH2
-                @INCI InPtr
-                @MA2V GE_TOKEN TokenType
-             @ENDIF
-             @CBREAK
-         @CDEFAULT
-             @POPNULL
-             @CBREAK
-        @ENDCASE
-        
-        @INCI InPtr
-        @JMP NT_SET_END
-    @ELSE
-        @POPNULL
-    @ENDIF
-    
-    #==========================================
-    # UNKNOWN CHARACTER
-    #
-    # Treat as single-character token
-    #------------------------------------------
-    @MV2V CH TokenType
-    @INCI InPtr
-#------------------------------------------
-# Finalize token boundaries
-#------------------------------------------
-:NT_SET_END
-    @MV2V InPtr EndPtr
-    @MV2V InPtr NextPtr
-#------------------------------------------
-# Return values
-#------------------------------------------
-:NT_DONE
+         
+    # Reach Here means search the TokenTable next
 
-    @PUSHI TokenType
+    @MA2V TokenTable TblPtr
+
+    @LOADBII TblPtr
+    @WHILE_NOTZERO
+       @POPI Len
+       @INCI TblPtr   # Get past LEN byte
+       @Call(VVV) MatchToken CurPtr TblPtr Len
+       @POPI Match
+       @IF_EQ_AV 0 Match
+          # No Match Found Move TblPtr to next entry.
+          @PUSHI TblPtr     # Still pointing at entry LEN
+          @ADDI Len         # End of string
+          @ADD 2           # Past the TokenID
+          @POPI TblPtr
+          @LOADBII TblPtr
+       @ELSE
+          # A match was found.
+          # Out InPtr needs to be updated to CurPtr+LEN
+          # Fill at return form and jump to return block.
+          @PUSHI TblPtr  @ADDI Len  @PUSHS  # Token ID
+          @PUSHI StartPtr                           # Where it started
+          @PUSHI CurPtr  @ADDI Len                  # New InPtr location
+          @JMP NTReturnBlock  # (Match, CurPtr, NextInPtr)
+       @ENDIF
+    @ENDWHILE
+    @POPNULL
+    # We reach here means no matchs in TokenTable
+    # Next option is user or funciton variable.
+    @Call(V) ISAlphaNum CurPtr
+    @WHILE_NOTZERO
+       @POPNULL
+       @INCI CurPtr
+       @Call(V) ISAlphaNum CurPtr
+    @ENDWHILE
+    @PUSH VAR_TOKEN
     @PUSHI StartPtr
-    @PUSHI EndPtr
-    @PUSHI NextPtr
-
-    @RestoreVar 09
+    @PUSHI CurPtr
+:NTReturnBlock
     @RestoreVar 08
     @RestoreVar 07
     @RestoreVar 06
@@ -585,9 +534,9 @@ I basic_eval.asm
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
-
 @POPRETURN
 @RET
+
 
 #--------------------------------------------------
 # RmComments(StrPtr):StrPtr
@@ -602,7 +551,7 @@ I basic_eval.asm
    @MV2V StrPtr RetPtr
    @MA2V 0 QuoteFlag      # Toggle to deal with possible '#'s in quoted text.
 
-   @PUSHII StrPtr @AND 0xff
+   @LOADBII StrPtr
    @WHILE_NOTZERO
       @IF_EQ_A "#\0"
          # Found Quote, but check to see if we're in a quoted string.
@@ -628,7 +577,7 @@ I basic_eval.asm
       @ENDIF
       @POPNULL
       @INCI StrPtr
-      @PUSHII StrPtr @AND 0xff
+      @LOADBII StrPtr
     @ENDWHILE
     # No Comments, just return the string unchanged.
     @POPNULL
@@ -693,12 +642,11 @@ I basic_eval.asm
    @LocalVar TokenType  05
    @LocalVar StartPtr   06
    @LocalVar EndPtr     07
-   @LocalVar NextPtr    08
-   @LocalVar Length     09
-   @LocalVar TokenCode  10
-   @LocalVar OutSize    11
-   @LocalVar TablePtr   12
-   @LocalVar FutureSize 13
+   @LocalVar Length     08
+   @LocalVar TokenCode  09
+   @LocalVar OutSize    10
+   @LocalVar TablePtr   11
+   @LocalVar FutureSize 12
 
    @POPI TablePtr
    @POPI MaxOutSize
@@ -710,7 +658,6 @@ I basic_eval.asm
    @PUSH 0 @POPII OutPtr    # Null out OutPtr 1st word for clearity.
    @WHEN
       @Call(V) NextToken CurPtr
-      @POPI NextPtr
       @POPI EndPtr
       @POPI StartPtr
       @POPI TokenType
@@ -748,6 +695,12 @@ I basic_eval.asm
          @IF_ULE_V MaxOutSize
             @POPNULL
             @Call(VVV) EmitByte OutPtr TokenType OutSize @POPI OutSize @POPI OutPtr
+            @PUSHI Length
+            @IF_GT_A 2
+               @SUB 2     # Get rid of paired quotes.
+            @ENDIF
+            @POPI Length
+            @INCI StartPtr
             @Call(VVV) EmitByte OutPtr Length OutSize @POPI OutSize @POPI OutPtr
             @Call(VVVV) EmitBlock OutPtr StartPtr Length OutSize @POPI OutSize @POPI OutPtr
             @JMP TK_CONTINUE
@@ -815,13 +768,13 @@ I basic_eval.asm
 # DEBUG: raw token slice from input
 #--------------------------------------------
    
-   @MV2V NextPtr CurPtr
+   @MV2V EndPtr CurPtr
    @ENDWHEN
    @POPNULL
    
    @Call(VAV) EmitByte OutPtr EOL_TOKEN OutSize @POPI OutSize @POPI OutPtr
    @PUSHI OutSize
-   @RestoreVar 13
+
    @RestoreVar 12
    @RestoreVar 11
    @RestoreVar 10
@@ -974,3 +927,5 @@ I basic_eval.asm
 # Program entry point
 # --------------------------------------------------
 . BasicMain
+M SIZESINCECOMMENT basic_main.h
+@SIZESINCE  

@@ -3,25 +3,7 @@ M HeapMgrSeen 1
 L softstack.ld
 P Loading heapmgr.ld
 
-####################################################
-# Define Link Chain of functions that require other functions.
-# Order is Important.
-####################################################
 
-@FUNCTIONNEEDS HeapAppend
-   @USE HeapResizeObject
-   @USE GetObjectRealSize
-ENDBLOCK
-
-@FUNCTIONNEEDS HeapListMap
-   @USE GetObjectRealSize
-ENDBLOCK
-
-@FUNCTIONNEEDS HeapResizeObject
-   @USE GetObjectRealSize
-   @USE HeapNewObject
-   @USE HeapDeleteObject
-ENDBLOCK
 
 @FUNCTIONNEEDS HeapDeleteObject
    @USE HeapDefrag
@@ -31,32 +13,49 @@ ENDBLOCK
    @USE GetObjectRealSize
 ENDBLOCK
 
-@FUNCTIONNEEDS HeapNewObject
+@FUNCTIONNEEDS HeapResizeObject
+   @USE GetObjectRealSize
+   @USE HeapDeleteObject
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS HeapAppend
+   @USE GetObjectRealSize
+   @USE HeapResizeObject
+ENDBLOCK
+
+@FUNCTIONNEEDS HeapListMap
    @USE GetObjectRealSize
 ENDBLOCK
-#G OBJ_FLAG_LOC G OBJ_NEXT_LOC G OBJ_HEAD_SIZE G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC G HEAP_HEAD_SIZE
-= OBJ_FLAG_LOC  3
-= OBJ_NEXT_LOC  2
-= OBJ_HEAD_SIZE 3
-= HEAP_SIZE_LOC 2
-= HEAP_FIRST_OBJ_LOC 0
-= HEAP_HEAD_SIZE 4
-= MinObjectSize OBJ_HEAD_SIZE+2
-= SizeFirstHead HEAP_SIZE_LOC+HEAP_FIRST_OBJ_LOC+1
 
-#G HeapDefineMemory      # HeapDefineMemory(Address,SizeBytes):HeapID
-#G HeapNewObject         # HeapNewObject(HeapID,SizeBytes):ObjectID
-#G HeapResizeObject      # HeapResizeObject(HeapID,ObjectID,NewSizeBytes):ObjectID
-#G HeapDeleteObject      # HeapDeleteObject(HeapID,ObjectID):0|error
-#G HeapListMap           # HeapListMap(HeapID)
-#G GetObjectRealSize     # GetObjectRealSize(HeapID, ObjectID):SizeBytes
-#G HeapAppend            # HeapAppend(ObjID1,ObjID2,Offset):NewObjectID
-#G HeapValidate          # HeapValidate(HeapID):0|error(1|2|3)
+# --- External dependencies (not defined in this file) ---
+#  GetObjectRealSize
+
+G OBJ_FLAG_LOC G OBJ_NEXT_LOC G OBJ_HEAD_SIZE G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC G HEAP_HEAD_SIZE
+G HeapDefrag
+
+G HeapDefineMemory      # HeapDefineMemory(Address,SizeBytes):HeapID
+G HeapNewObject         # HeapNewObject(HeapID,SizeBytes):ObjectID
+G HeapResizeObject      # HeapResizeObject(HeapID,ObjectID,NewSizeBytes):ObjectID
+G HeapDeleteObject      # HeapDeleteObject(HeapID,ObjectID):0|error
+G HeapListMap           # HeapListMap(HeapID)
+G GetObjectRealSize     # GetObjectRealSize(HeapID, ObjectID):SizeBytes
+G HeapAppend            # HeapAppend(ObjID1,ObjID2,Offset):NewObjectID
+G HeapValidate          # HeapValidate(HeapID):0|error(1|2|3)
 
 # Global Variabls
-G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRSTOBJ_LOC 
+G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC 
 
 # This is the heap manager module
+=OBJ_FLAG_LOC  3
+=OBJ_NEXT_LOC  2
+=OBJ_HEAD_SIZE 3
+=HEAP_SIZE_LOC 2
+=HEAP_FIRST_OBJ_LOC 0
+=HEAP_HEAD_SIZE 4
+=MinObjectSize OBJ_HEAD_SIZE+2
+=SizeFirstHead HEAP_SIZE_LOC+HEAP_FIRST_OBJ_LOC+1
+
 
 # It provides the following services
 # HeapDefineMemory(LowAddress(>100), SizeInBytes):HeapID Return < 100 is error code
@@ -68,7 +67,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRSTOBJ_LOC
 # HeapAppend(ObjectID1,ObjectId2,offset):ObjectID  Appends Object2 to Object1[:offset] 
 #
 # HeapID is ptr to memory
-# HeapID[HEAP_FIRSTOBJ_LOC]=16b Ptr to First Object in Heap
+# HeapID[HEAP_FIRST_OBJ_LOC]=16b Ptr to First Object in Heap
 # HeapID[HEAP_SIZE_LOC]=16b total size of heap to help avoid overflow.
 #
 # ObjectID[- OBJ_NEXT_LOC]=16b Ptr to Next Object Entry or zero if last entry
@@ -615,7 +614,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRSTOBJ_LOC
    @POPI HeapEnd
 
    # Load first object
-   @PUSHI HeapID @ADD HEAP_FIRSTOBJ_LOC @PUSHS
+   @PUSHI HeapID @ADD HEAP_FIRST_OBJ_LOC @PUSHS
    @POPI IndexX
 
    @PUSHI IndexX

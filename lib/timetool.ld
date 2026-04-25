@@ -10,41 +10,33 @@ L mul.ld
 L div.ld
 :ClockCalib 0 0   # 32 bit Calibration value
 G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G SleepMilli
-
-@FUNCTION Sleep
-   @USE TimeCalabrate
-ENDBLOCK
-
-@FUNCTION SleepMilli
-   @USE TimeCalabrate
-ENDBLOCK
-
-
-
-@FUNCTION TimeCalabrate
-
-ENDBLOCK
-
-
-@FUNCTIONNEEDS Time2Units
-  @USE DaysInMonth
-  @USE DaysInYear
-ENDBLOCK
-
-@FUNCTIONNEEDS DaysInYear
-  @USE IsLeapYear
+@FUNCTIONNEEDS IsLeapYear
+   @USE DIVU
 ENDBLOCK
 
 @FUNCTIONNEEDS DaysInMonth
-  @USE IsLeapYear
+   @USE IsLeapYear
 ENDBLOCK
 
-
-
-@FUNCTIONNEEDS IsLeapYear
-  @USE DIVU
+@FUNCTIONNEEDS DaysInYear
+   @USE IsLeapYear
 ENDBLOCK
 
+@FUNCTIONNEEDS Sleep
+   @USE TimeCalabrate
+ENDBLOCK
+
+@FUNCTIONNEEDS SleepMilli
+   @USE TimeCalabrate
+ENDBLOCK
+
+@FUNCTIONNEEDS Time2Units
+   @USE DaysInMonth
+   @USE DaysInYear
+ENDBLOCK
+
+# --- External dependencies (not defined in this file) ---
+#  DIVU
 
 #
 #
@@ -215,7 +207,7 @@ ENDBLOCK
    @PUSHI Year
    @CALL DaysInMonth
    @IF_ULT_V Day
-      # Day = Day - DaysInMonth (value is at TOS)
+      # Day = Day - DaysInMonth (Value is at TOS)
       @PUSHI Day
       @SWP
       @SUBS

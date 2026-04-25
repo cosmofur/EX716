@@ -1,6 +1,5 @@
 ! DISKOS_SEEN
 M DISKOS_SEEN 1
-@StackDump
 P Loading diskio.ld
 # ================================================================
 # diskos.asm
@@ -247,6 +246,9 @@ G DiskFileGetType
 G DiskWithDirEntry
 G DiskFileReadLine
 
+G DataBlockFirstSector
+G FSNextUsedFile
+
 #====================================================
 #Directory Entry Layout (on disk)
 #====================================================
@@ -426,39 +428,196 @@ G FSFileBitMapStore
 :FSFileBitMapStore
 . FSFileBitMapStore+128
 
-@USE DataBlockFirstSector
-@USE DirArgTableToEntry
-@USE DirClearArgTable
-@USE DirEntryPtr
-@USE DirEntryToArgTable
-@USE DirFindFree
-@USE DirLocate
-@USE DirNewArgTable
-@USE DirReadEntry
-@USE DirWriteEntry
-@USE DiskFileName
-@USE DiskFileRead
-@USE DiskNewBuffer
-@USE DiskOpen
-@USE DiskReadBlock
-@USE DiskReadSector
-@USE DiskReadSector
-@USE DiskWithDirEntry
-@USE DiskWriteBlock
-@USE DiskWriteSector
-@USE FSFindFile
-@USE FSIsFileUsed
-@USE FSNextUsedFile
-@USE FSReadHeader
-@USE FSSetFileUsed
-@USE FSWriteHeader
-@USE HeapDeleteObject
-@USE HeapNewObject
-@USE WildCardMatch
-@USE file_open
 @USE _DFN_Mod
+@FUNCTIONNEEDS DirNewArgTable
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS WildCardMatch
+   @USE strcmp
+   @USE strfndc
+   @USE strlen
+   @USE strncmp
+ENDBLOCK
+
+@FUNCTIONNEEDS DirReadEntry
+   @USE DirClearArgTable
+   @USE DirEntryPtr
+   @USE DirEntryToArgTable
+   @USE DirLocate
+   @USE DiskReadSector
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskNewBuffer
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS DirFindFile
+   @USE DirNewArgTable
+   @USE DirReadEntry
+   @USE DiskNewBuffer
+   @USE HeapDeleteObject
+   @USE WildCardMatch
+ENDBLOCK
+
+@FUNCTIONNEEDS DirFindFree
+   @USE DirNewArgTable
+   @USE DirReadEntry
+   @USE DiskNewBuffer
+   @USE HeapDeleteObject
+ENDBLOCK
+
+@FUNCTIONNEEDS DirWriteEntry
+   @USE DirArgTableToEntry
+   @USE DirEntryPtr
+   @USE DirLocate
+   @USE DiskReadSector
+   @USE DiskWriteSector
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskClose
+   @USE DirNewArgTable
+   @USE DirReadEntry
+   @USE DirWriteEntry
+   @USE DiskNewBuffer
+   @USE HeapDeleteObject
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskWithDirEntry
+   @USE DirNewArgTable
+   @USE DirReadEntry
+   @USE DirWriteEntry
+   @USE DiskNewBuffer
+   @USE HeapDeleteObject
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskFileName
+   @USE DiskWithDirEntry
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskReadBlock
+   @USE DiskReadSector
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskFileRead
+   @USE DiskNewBuffer
+   @USE DiskReadBlock
+   @USE HeapDeleteObject
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskFileReadLine
+   @USE DiskFileRead
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskFileSetLineCount
+   @USE DiskWithDirEntry
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskFileSetType
+   @USE DiskWithDirEntry
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskWriteBlock
+   @USE DiskReadSector
+   @USE DiskWriteSector
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskFileWrite
+   @USE DiskNewBuffer
+   @USE DiskWriteBlock
+   @USE HeapDeleteObject
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskGetFileType
+   @USE DiskWithDirEntry
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskGetLineCount
+   @USE DiskWithDirEntry
+ENDBLOCK
+
+@FUNCTIONNEEDS DiskOpen
+   @USE DataBlockFirstSector
+   @USE DirNewArgTable
+   @USE DirReadEntry
+   @USE DirWriteEntry
+   @USE DiskNewBuffer
+   @USE HeapDeleteObject
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS FSFindFreeFile
+   @USE FSIsFileUsed
+ENDBLOCK
+
+@FUNCTIONNEEDS FSFormat
+   @USE DiskReadSector
+   @USE DiskWriteSector
+   @USE HeapDeleteObject
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS FSReadHeader
+   @USE DiskReadSector
+   @USE HeapDeleteObject
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS FSWriteHeader
+   @USE DiskReadSector
+   @USE DiskWriteSector
+   @USE HeapDeleteObject
+   @USE HeapNewObject
+ENDBLOCK
+
+@FUNCTIONNEEDS _DFN_Mod
+   @USE strlen
+   @USE strncpy
+ENDBLOCK
+
+@FUNCTIONNEEDS file_open
+   @USE DirFindFree
+   @USE DiskClose
+   @USE DiskFileName
+   @USE DiskOpen
+   @USE FSFindFile
+   @USE FSSetFileUsed
+   @USE FSWriteHeader
+ENDBLOCK
+
+@FUNCTIONNEEDS FSFindFile
+   @USE DirNewArgTable
+   @USE DirReadEntry
+   @USE DiskNewBuffer
+   @USE FSNextUsedFile
+   @USE HeapDeleteObject
+   @USE WildCardMatch
+ENDBLOCK
+
+@FUNCTIONNEEDS FSNextUsedFile
+   @USE FSIsFileUsed
+ENDBLOCK
 
 
+
+# --- External dependencies (not defined in this file) ---
+#  DataBlockFirstSector
+#  DirArgTableToEntry
+#  DirClearArgTable
+#  DirEntryPtr
+#  DirEntryToArgTable
+#  DirLocate
+#  DiskReadSector
+#  DiskWriteSector
+#  FSIsFileUsed
+#  FSSetFileUsed
+#  HeapDeleteObject
+#  HeapNewObject
+#  strcmp
+#  strfndc
+#  strlen
+#  strncmp
+#  strncpy
 
 #####################################################################################
 #--------------------------------------------------
@@ -1081,8 +1240,8 @@ G FSFileBitMapStore
     @ENDIF
     @CALL DirNewArgTable @IF_ZERO @PRT "Error allocating ArgTable" @END @ENDIF
 
-@POPI ArgTable
-   @CALL DiskNewBuffer
+    @POPI ArgTable
+    @CALL DiskNewBuffer
     @POPI DiskBuffer
 
     @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer

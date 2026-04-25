@@ -3,11 +3,12 @@ M IMath32Define 1
 P Loading lmath.ld
 
 
-@USE lmathMacros
+
 @FUNCTIONNEEDS stoi32
    @USE MUL32U
    @USE ADD32U
    @USE COMP232
+   @USE strlen
 ENDBLOCK
 
 @FUNCTIONNEEDS ADD32U
@@ -22,9 +23,65 @@ ENDBLOCK
 
 @FUNCTIONNEEDS MUL32U
    @USE MUL16x32U
+   @USE ADD16U
+   @USE ADD32U
 ENDBLOCK
 
-   
+@FUNCTIONNEEDS MUL32S
+   @USE COMP232
+   @USE MUL32U
+ENDBLOCK
+
+@FUNCTIONNEEDS i32tos
+   @USE CMP32U
+   @USE CMP32S
+   @USE COMP232
+ENDBLOCK
+
+@FUNCTIONNEEDS DIV32S
+   @USE CMP32U
+   @USE CMP32S
+   @USE COMP232
+   @USE DIV32U
+ENDBLOCK
+
+@FUNCTIONNEEDS DIV32U
+   @USE CMP32U
+   @USE CMP32S
+   @USE SHL_32_1
+   @USE OR32   
+ENDBLOCK
+
+@FUNCTIONNEEDS COMP232
+   @USE CMP32S   
+ENDBLOCK
+
+@FUNCTIONNEEDS DIV10_32U
+   @USE DIV32U
+ENDBLOCK
+
+@FUNCTIONNEEDS ClearBit32
+   @USE SHL16x32
+ENDBLOCK
+
+@FUNCTIONNEEDS SetBit32
+   @USE SHL16_BY_N
+ENDBLOCK
+
+@FUNCTIONNEEDS SetBit32
+   @USE SHL16_BY_N
+ENDBLOCK
+
+@FUNCTIONNEEDS SHL3264
+   @USE SHL16_BY_N   
+ENDBLOCK
+
+@FUNCTIONNEEDS 
+   @USE SHL32
+   @USE SetFlags32
+   @USE SHR32_8
+   @USE SHR32_small
+ENDBLOCK
 
 L mul.ld
 L shift16.ld
@@ -34,9 +91,11 @@ M SIZESINCECOMMENT lmath.ld
 ########################
 # Published functions
 G ADD32S G ADD32U G SUB32S G SUB32U                   # Core math functoins Signed Unsigned
+G ADD16U G ADD32 G SUB32
 G MUL32U G MUL32S
 G DIV32U G DIV32S
 G CMP32S G CMP32U                                   # Compair Signed Unsigned
+G CMP32
 G AND32 G OR32 G XOR32 G INV32                      # Boolean operations.
 G SHL32 G SHR32                                     # Multi bit shifts
 G SHL32_1 G SHR32_1 G SHL32_8 G SHR32_8             # fixed bit shifts
@@ -74,7 +133,6 @@ M IF32_EQ @PUSHI Flags32 @AND Z32Flag @CMP Z32Flag @POPNULL @IF_ZFLAG
 M IF32_NE @PUSHI Flags32 @AND Z32Flag @CMP Z32Flag @POPNULL @IF_NOTZF
 # Unsigned group
 #
-@FUNCTION lmathMacros
 M IF32_ULT         @PUSHI Flags32 @AND C32Flag @CMP 0 @POPNULL @IF_NOTZF     # A < B  (borrow)
 M IF32_UGE         @PUSHI Flags32 @AND C32Flag @CMP 0 @POPNULL @IF_ZFLAG     # A ≥ B  (no borrow)
 M IF32_ULE         @PUSHI Z32Flag @ANDI Flags32 \
@@ -190,7 +248,6 @@ M M32VTO16V @PUSHI %1 @POPI %2
 M M16VTO32V @PUSHI %1 @POPI %2 @PUSH 0 @POPI %2+2
 M PRT32HEXI @PRTHEXI %1+2 @PRTHEXI %1
 M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
-@ENDFUNCTION
 
 
 # ===========================================================
@@ -258,6 +315,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 # Purpose  : Signed 32-bit addition with signed overflow flag
 # ===========================================================
 @FUNCTION ADD32S
+:ADD32
 :ADD32S
   @PUSHRETURN
   @LocalVar SumLow 01
@@ -354,6 +412,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 #   - Discards borrow out of high word.
 # ===========================================================
 @FUNCTION SUB32S
+:SUB32
 :SUB32S
 @PUSHRETURN
     @LocalVar BorrowFlag 01
@@ -486,6 +545,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 #   - Uses same carry convention as SUB32S (carry = borrow).
 # ===========================================================
 @FUNCTION CMP32S
+:CMP32
 :CMP32S
 @PUSHRETURN
 @LocalVar LowBorrowTmp    01   # borrow from low word (used for CF)
@@ -1546,8 +1606,8 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     ? DebugFlag
        @PRT "\nUnsigned Multiply: "
-       @PRTHEXI A_High @PRTHEXI A_Low @PRT ":" @PRT32 A_Low  @PRT " X "
-       @PRTHEXI B_High @PRTHEXI B_Low @PRT ":"  @PRT32 B_Low @PRTNL       
+       @PRTHEXI A_High @PRTHEXI A_Low @PRT ":" @PRT32I A_Low  @PRT " X "
+       @PRTHEXI B_High @PRTHEXI B_Low @PRT ":"  @PRT32I B_Low @PRTNL       
    ENDBLOCK
        
 
@@ -1578,10 +1638,10 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     ? DebugFlag
       @PRT "Partial Products are:\n"
-      @PRT "PO: " @PRTHEXI P0_Low @PRTHEXI P0_High @PRTSP @PRT32 P0_Low @PRTNL
-      @PRT "P1: " @PRTHEXI P1_Low @PRTHEXI P1_High @PRTSP @PRT32 P1_Low @PRTNL
-      @PRT "P2: " @PRTHEXI P2_Low @PRTHEXI P2_High @PRTSP @PRT32 P2_Low @PRTNL
-      @PRT "P3: " @PRTHEXI P3_Low @PRTHEXI P3_High @PRTSP @PRT32 P3_Low @PRTNL
+      @PRT "PO: " @PRTHEXI P0_Low @PRTHEXI P0_High @PRTSP @PRT32I P0_Low @PRTNL
+      @PRT "P1: " @PRTHEXI P1_Low @PRTHEXI P1_High @PRTSP @PRT32I P1_Low @PRTNL
+      @PRT "P2: " @PRTHEXI P2_Low @PRTHEXI P2_High @PRTSP @PRT32I P2_Low @PRTNL
+      @PRT "P3: " @PRTHEXI P3_Low @PRTHEXI P3_High @PRTSP @PRT32I P3_Low @PRTNL
     ENDBLOCK
     
     
@@ -1597,7 +1657,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     ? DebugFlag
       @PRT "    # Step 1: Sum (P1_Low + P2_Low)\n"
-      @PRT "Su(1)m=" @PRTHEXI Sum_High @PRTHEXI Sum_Low @PRT ":" @PRT32 Sum_Low @PRTNL
+      @PRT "Su(1)m=" @PRTHEXI Sum_High @PRTHEXI Sum_Low @PRT ":" @PRT32I Sum_Low @PRTNL
     ENDBLOCK
 
     # Step 2: Add ((Sum_Low << 16) + P0)
@@ -1608,7 +1668,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
     ? DebugFlag
       @PRT "    # Step 2: Add ((Sum_Low << 16) + P0)\n"
-      @PRT "Sum(2)=" @PRTHEXI Sum_High @PRTHEXI Sum_Low @PRT ":"  @PRT32 Sum_Low @PRTNL
+      @PRT "Sum(2)=" @PRTHEXI Sum_High @PRTHEXI Sum_Low @PRT ":"  @PRT32I Sum_Low @PRTNL
     ENDBLOCK
     # Step 3: Compute upper 32 bits (for overflow / mantissa)
     # OVF32 = P3 + P1_High + P2_High + carry

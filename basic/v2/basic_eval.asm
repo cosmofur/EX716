@@ -8,7 +8,6 @@
    
    @CALL RunTimeInit
    @MV2V LineTableBase BPC
-#   @Call(VAA) HexDump BPC 32 1
 
    @WHILE_NEQ_AV 0 BPC
        @MV2V BPC LRL
@@ -160,18 +159,20 @@
              @POPNULL         
              @Call(V) BasicEval Ptr
              @POPI Ptr
-             @POPI EvalType
              @POPI EvalHigh
              @POPI EvalLow
+             @POPI EvalType
 
              @PUSHI EvalType
              @SWITCH
              @CASE INT_TYPE
-                @PRTI EvalLow
+                @PRTSGNI EvalLow
                 @MA2V 0 NoNewLine
                 @CBREAK
              @CASE LONG_TYPE
-                @PRT32 EvalLow
+                @PUSHI EvalHigh
+                @PRT32SignI EvalLow                
+                @POPNULL
                 @MA2V 0 NoNewLine
                 @CBREAK
              @CASE STRING_TYPE
@@ -243,15 +244,17 @@
     
 
 #----------------------------------------
-# ParseVar(Ptr):((VarPtr,Updated_Ptr)|(0 0))
+# ParseVal(Ptr):((VarPtr,Updated_Ptr)|(0 0))
 #----------------------------------------
-:ParseVar
+:ParseVal
 @PUSHRETURN
    @LocalVar PtrIn 01
    @LocalVar StrLen 02
    @LocalVar VarType 03
 
    @POPI PtrIn
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseVal(" @PRTHEXI PtrIn @PRT ")\n" @ENDIF
 
    @PUSHII PtrIn @AND 0xff
    @IF_EQ_A VAR_TOKEN
@@ -296,6 +299,7 @@
       @PUSHI PtrIn @ADDI StrLen
    @ENDIF
 
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseVal: " @StackDump @ENDIF
    @RestoreVar 03
    @RestoreVar 02
    @RestoreVar 01
@@ -326,6 +330,9 @@
       @CASE INT_TYPE
          @CBREAK     # Do nothing INT<->INT
       @CASE LONG_TYPE
+         @IF_NEQ_AV 0 HighWord
+            @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+         @ENDIF
          @MA2V 0 HighWord   # truncate
          @CBREAK
       @CASE STRING_TYPE     # At this time need fucnction to convert string to int.
@@ -393,12 +400,13 @@
    @LocalVar FinalType  09
 
    @POPI PtrIn
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Top ParseLet PtrIn:" @PUSHI PtrIn @AND 0xff @PRTHEXTOP @POPNULL @PUSHI PtrIn @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL @ENDIF
+   
    @MA2V 0 HasIndex
-
    #-------------------------
    # Parse Variable
    #-------------------------
-   @Call(V) ParseVar PtrIn
+   @Call(V) ParseVal PtrIn
    @IF_ZERO
       @Call(AA) BasicRaiseError ERR_SYNTAX 0
    @ENDIF
@@ -418,12 +426,12 @@
       @POPNULL
 
       @INCI PtrIn
-
+       @IF_NEQ_AV 0 Debug_Mode      @PRT "Inbound PtrIn:" @PUSHI PtrIn @AND 0xff @PRTHEXTOP @POPNULL @PUSHI PtrIn @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL @ENDIF
       @Call(V) BasicEval PtrIn
       @POPI PtrIn
-      @POPI EvalType
       @POPI EvalHigh
       @POPI EvalLow
+      @POPI EvalType
 
       @IF_NEQ_AV INT_TYPE EvalType
          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
@@ -456,9 +464,9 @@
    #-------------------------
    @Call(V) BasicEval PtrIn
    @POPI PtrIn
-   @POPI EvalType
    @POPI EvalHigh
    @POPI EvalLow
+   @POPI EvalType
 
    #-------------------------
    # Get Variable Type
@@ -525,7 +533,7 @@
    #-------------------------
    # Parse Variable
    #-------------------------
-   @Call(V) ParseVar PtrIn
+   @Call(V) ParseVal PtrIn
    @IF_ZERO
       @Call(AA) BasicRaiseError ERR_SYNTAX 0
    @ENDIF
@@ -549,9 +557,9 @@
    @Call(V) BasicEval PtrIn
 
    @POPI PtrIn
-   @POPI EvalType
    @POPI HighWord
    @POPI DimSize
+   @POPI EvalType
 
    @IF_NEQ_AV INT_TYPE EvalType
       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
@@ -603,104 +611,32 @@
 @POPRETURN
 @RET
 #------------------------------------------------
-# BasicEval(Ptr)
-# Returns: LowWord, HighWord, Type, NewPtr
+# BasicEval(Ptr):(type, Low, High, Ptr)
 #------------------------------------------------
 :BasicEval
 @PUSHRETURN
    @LocalVar InPtr       01
    @LocalVar TypeVal     02
    @LocalVar CurrentType 03
-   @LocalVar LeftLow     04
-   @LocalVar LeftHigh    05
-   @LocalVar RightLow    06
-   @LocalVar RightHigh   07
+   @LocalVar LowWord     04
+   @LocalVar HighWord    05
 
-
+    
    @POPI InPtr
-   @Call(V) ParseVal InPtr
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "BasicEval(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
+   
+   @Call(V) ParseLogical InPtr
    @POPI InPtr
-   @POPI TypeVal
-   @POPI LeftHigh
-   @POPI LeftLow
+   @POPI HighWord
+   @POPI LowWord
+   @POPI CurrentType
 
-   # Logic for Currentype is for when we supprot Long and Floats
-   @MV2V TypeVal CurrentType 
-
-   @PUSHII InPtr @AND 0xff
-   @WHILE_NEQ_A EOL_TOKEN
-       @SWITCH
-       @CASE "+\0"
-          @POPNULL
-          @INCI InPtr
-          @Call(V) ParseVal InPtr
-          @POPI InPtr
-          @POPI TypeVal
-          @POPI RightHigh
-          @POPI RightLow
-          @PUSHI CurrentType
-          @SWITCH
-          @CASE INT_TYPE       # Stick to 16 bits
-             @PUSHI LeftLow @ADDI RightLow
-             @POPI LeftLow
-             @MA2V 0 LeftHigh
-             @CBREAK
-          @CASE LONG_TYPE      # 32 bit math
-              @Call32(VV) ADD32S LeftLow RightLow
-              @POP32I(V) LeftLow
-              @CBREAK
-          @CDEFAULT
-              @PRTLN "Not Yet supported type"
-              @INCI InPtr
-              @CBREAK
-          @ENDCASE
-          @POPNULL
-          @CBREAK
-       @CASE "-\0"
-          @POPNULL
-          @INCI InPtr
-
-          # Recursively parse the value after '-'
-          @Call(V) ParseVal InPtr
-
-          @POPI InPtr
-          @POPI OutType
-          @POPI HighWord
-          @POPI LowWord
-
-          # Negate based on type
-          @PUSHI OutType
-          @SWITCH
-          @CASE INT_TYPE
-             @PUSHI LowWord
-             @COMP2
-             @POPI LowWord
-             @MA2V 0 HighWord
-             @CBREAK
-
-          @CASE LONG_TYPE
-             @Call32(V) COMP232 LowWord
-             @POP32I(V) LowWord
-             @CBREAK
-          @ENDCASE
-          @POPNULL
-          @CBREAK
-       @CDEFAULT
-          @POPNULL
-          @PRTLN "Function not yet supported."
-          @INCI InPtr
-          @CBREAK
-       @ENDCASE
-       @PUSHII InPtr @AND 0xff
-   @ENDWHILE
-   @POPNULL
-   #
-   @PUSHI LeftLow
-   @PUSHI LeftHigh
    @PUSHI CurrentType
+   @PUSHI LowWord
+   @PUSHI HighWord
    @PUSHI InPtr
-   @RestoreVar 07
-   @RestoreVar 06
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return BasicEval: " @StackDump @ENDIF
    @RestoreVar 05
    @RestoreVar 04
    @RestoreVar 03
@@ -710,21 +646,12 @@
 @RET
    
              
-             
-          
-       
-       
-
-
-   
-
-
 
 #------------------------------------------------
-# ParseValue
+# ParseFactor(Inptr):(Type, Low, High, InPtr)
 # Returns: LowWord, HighWord, Type, NewPtr
 #------------------------------------------------
-:ParseVal
+:ParseFactor
 @PUSHRETURN
    @LocalVar InPtr     01
    @LocalVar FieldLen  02
@@ -737,11 +664,95 @@
    @LocalVar EndPtr    09
 
    @POPI InPtr
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseFactor("@PRTHEXI InPtr @PRT ")\n" @ENDIF
+
    @MA2V INT_TYPE OutType   # default
 
    @PUSHII InPtr @AND 0xff
    @SWITCH
 
+   #-------------------------
+   # Unary Minus
+   #-------------------------
+   @CASE "-\0"
+      @INCI InPtr
+      @Call(V) ParseFactor InPtr
+      @POPI InPtr
+      @POPI HighWord
+      @POPI LowWord
+      @PUSHI OutType
+      @POPI OutType
+      @SWITCH
+      @CASE INT_TYPE
+          @PUSHI LowWord
+          @COMP2
+          @POPI LowWord
+          @MA2V 0 HighWord
+          @CBREAK
+      @CASE LONG_TYPE
+          @Call32(V) COMP232 LowWord
+          @POP32I(V) LowWord
+          @CBREAK          
+      @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+      @ENDCASE
+      @POPNULL
+      @CBREAK
+   @CASE NOT_TOKEN
+      @INCI InPtr
+      @Call(V) ParseFactor InPtr
+      @POPI InPtr
+      @POPI HighWord
+      @POPI LowWord
+      @MA2V INT_TYPE OutType
+      @SWITCH
+      @CASE INT_TYPE
+          @IF_EQ_AV 0 LowWord
+             @MA2V 1 LowWord
+          @ELSE
+             @MA2V 0 LowWord
+          @ENDIF
+          @MA2V 0 HighWord
+          @CBREAK
+      @CASE LONG_TYPE
+          @Call32(VA) CMP32S LowWord $$$0
+          @IF32_ZERO
+             @M32A2V $$$1 LowWord
+          @ELSE
+             @M32A2V $$$0 LowWord
+          @ENDIF
+          @CBREAK          
+      @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+      @ENDCASE
+      @POPNULL
+      @CBREAK      
+
+   #-------------------------
+   # Parenthese
+   #-------------------------
+   @CASE "(\0"
+#      @PRT "Open (: Before INCI:" @PRTHEXI InPtr @PRTNL
+      @INCI InPtr
+#      @PRT "In ( InPtr:" @PUSHI InPtr @AND 0xff @PRTHEXTOP @POPNULL @PUSHI InPtr @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL
+      
+      @Call(V) BasicEval InPtr
+#      @PRT "Returned from Recursive Basic Eval with results: " @StackDump
+      @POPI InPtr
+      @POPI HighWord
+      @POPI LowWord
+      @POPI OutType      
+      # Expect ')'
+      @PUSHII InPtr @AND 0xff
+      @IF_NEQ_A ")\0"
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @POPNULL
+      @INCI InPtr
+      @CBREAK
    #-------------------------
    # INTEGER TOKEN
    #-------------------------
@@ -761,8 +772,6 @@
       @POPII EndPtr
       @POPI HighWord
       @POPI LowWord
-      @PRT "LOW=" @PRTI LowWord
-      @PRT " High=" @PRTI HighWord @PRTNL
       @PUSHI InPtr
       @ADDI FieldLen
       @POPI InPtr
@@ -906,9 +915,9 @@
    #---------------------------------
    # Return stack: Low, High, Type, Ptr
    #---------------------------------
+   @PUSHI OutType
    @PUSHI LowWord
    @PUSHI HighWord
-   @PUSHI OutType
    @PUSHI InPtr
 
    @RestoreVar 09
@@ -920,5 +929,687 @@
    @RestoreVar 03
    @RestoreVar 02
    @RestoreVar 01
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseFactor: " @StackDump @ENDIF
 @POPRETURN
 @RET
+
+#------------------------------
+# ParseTerm(InPtr):(Type, Low, High,Ptr)
+#------------------------------
+:ParseTerm
+@PUSHRETURN
+   @LocalVar LeftLow    01
+   @LocalVar LeftHigh   02
+   @LocalVar LeftType   03
+   @LocalVar RightLow   04
+   @LocalVar RightHigh  05
+   @LocalVar RightType  06
+   @LocalVar InPtr      07
+   @LocalVar Operation  08
+   @LocalVar ResultType 09
+
+   @POPI InPtr
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseTerm(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
+
+   @Call(V) ParseFactor InPtr
+   @POPI InPtr
+   @POPI LeftHigh
+   @POPI LeftLow
+   @POPI LeftType
+   
+
+   @WHEN
+      @PUSHII InPtr @AND 0xff
+      @SWITCH
+         @CASE "*\0"
+            @CBREAK
+         @CASE "/\0"
+            @CBREAK
+         @CDEFAULT
+            @POPNULL
+            @PUSH 0
+            @CBREAK
+         @ENDCASE
+      @DO_NOTZERO
+         @POPI Operation
+         @INCI InPtr
+         @Call(V) ParseFactor InPtr
+         @POPI InPtr
+         @POPI RightHigh
+         @POPI RightLow
+         @POPI RightType
+         
+         # We'll need to rewrite for Floats, but until then
+         # If LeftType and RightType are not same, then one has to be LONG_TYPE
+         @MV2V LeftType ResultType
+         @IF_NEQ_VV LeftType RightType
+            @MA2V LONG_TYPE ResultType
+         @ENDIF
+         @IF_NEQ_VV ResultType LeftType
+            @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
+            @POPI LeftType @POPI LeftHigh @POPI LeftLow
+         @ENDIF
+         @IF_NEQ_VV ResultType RightType         
+            @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
+            @POPI RightType @POPI RightHigh @POPI RightLow
+         @ENDIF
+         @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
+         @CALL ApplyOpt
+         @POPI LeftHigh
+         @POPI LeftLow
+         @POPI LeftType
+   @ENDWHEN
+   @POPNULL
+   @PUSHI LeftType
+   @PUSHI LeftLow
+   @PUSHI LeftHigh
+   @PUSHI InPtr
+
+   @RestoreVar 09
+   @RestoreVar 08
+   @RestoreVar 07
+   @RestoreVar 06
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
+@POPRETURN
+@RET
+#---------------------------------------
+# ApplyOpt(OptCode, TypeCode, AVarLow,AVarHigh, BVarLow, BVarHigh):(Type,Low,High)
+#---------------------------------------
+:ApplyOpt
+@PUSHRETURN
+    @LocalVar OptCode    01
+    @LocalVar TypeCode   02
+    @LocalVar AVarLow    03
+    @LocalVar AVarHigh   04
+    @LocalVar BVarLow    05
+    @LocalVar BVarHigh   06
+    
+    @POPI BVarHigh
+    @POPI BVarLow
+    @POPI AVarHigh
+    @POPI AVarLow
+    @POPI TypeCode
+    @POPI OptCode
+
+       @IF_NEQ_AV 0 Debug_Mode    @PRT "ApplyOpt(" @PRTHEXI OptCode @PRT ", " @PRTHEXI TypeCode @PRT ", " @PRTHEXI AVarLow
+           @PRT ", " @PRTHEXI AVarHigh @PRT ", " @PRTHEXI BVarLow @PRT ", " @PRTHEXI BVarHigh @PRT ")\n" @ENDIF
+
+    @PUSHI OptCode
+    @SWITCH
+    @CASE "+\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow @ADDI BVarLow
+          @POPI AVarLow
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(VV) ADD32S AVarLow BVarLow
+          @POP32I(V) AVarLow
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE "-\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow @SUBI BVarLow
+          @POPI AVarLow
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(VV) SUB32S AVarLow BVarLow
+          @POP32I(V) AVarLow
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK      
+    @CASE "*\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @Call(VV) MUL AVarLow BVarLow
+          @POPI AVarLow
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(VV) MUL32S AVarLow BVarLow
+          @POP32I(V) AVarLow
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE "/\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @IF_EQ_AV 0 BVarLow
+              @Call(AA) BasicRaiseError ERR_DIV_ZERO 0
+          @ENDIF
+          @Call(VV) DIV AVarLow BVarLow
+          @POPI AVarLow
+          @POPNULL
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(AV) CMP32U $$$0 BVarLow
+          @IF32_ZERO           # 32 bit library cms use 32 flag register not stack.
+              @Call(AA) BasicRaiseError ERR_DIV_ZERO 0
+          @ENDIF
+          @Call32(VV) DIV32S AVarLow BVarLow
+          @POP32I(V) AVarLow
+          @POP32I(V) BVarLow
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE AND_TOKEN
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow @ANDI BVarLow
+          @POPI AVarLow
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(VV) AND32 AVarLow BVarLow
+          @POP32I(V) AVarLow
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE OR_TOKEN
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow @ORI BVarLow
+          @POPI AVarLow
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(VV) OR32 AVarLow BVarLow
+          @POP32I(V) AVarLow
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE ">\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow
+          @IF_GT_V BVarLow
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @POPNULL
+          @MA2V 0 AVarHigh
+          # TypeCode must already be INT_TYPE to reach here.
+          @CBREAK
+       @CASE LONG_TYPE          
+          @Call32(VV) CMP32S AVarLow BVarLow
+          @IF32_GT
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @MA2V 0 AVarHigh
+          @MA2V INT_TYPE TypeCode
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE GE_TOKEN
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow
+          @IF_GE_V BVarLow
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @POPNULL
+          @MA2V 0 AVarHigh
+          # TypeCode must already be INT_TYPE to reach here.
+          @CBREAK
+       @CASE LONG_TYPE          
+          @Call32(VV) CMP32S AVarLow BVarLow
+          @IF32_GE
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @MA2V 0 AVarHigh
+          @MA2V INT_TYPE TypeCode
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE "<\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow
+          @IF_LT_V BVarLow
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @POPNULL
+          @MA2V 0 AVarHigh
+          # TypeCode must already be INT_TYPE to reach here.
+          @CBREAK
+       @CASE LONG_TYPE          
+          @Call32(VV) CMP32S AVarLow BVarLow
+          @IF32_GT
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @MA2V 0 AVarHigh
+          @MA2V INT_TYPE TypeCode
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE LE_TOKEN
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow
+          @IF_LE_V BVarLow
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @POPNULL
+          @MA2V 0 AVarHigh
+          # TypeCode must already be INT_TYPE to reach here.
+          @CBREAK
+       @CASE LONG_TYPE          
+          @Call32(VV) CMP32S AVarLow BVarLow
+          @IF32_GT
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @MA2V 0 AVarHigh
+          @MA2V INT_TYPE TypeCode
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CASE "=\0"
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow
+          @IF_EQ_V BVarLow
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @POPNULL
+          @MA2V 0 AVarHigh
+          # TypeCode must already be INT_TYPE to reach here.
+          @CBREAK        
+       @CASE LONG_TYPE
+          @Call32(VV) CMP32S AVarLow BVarLow
+          @IF32_EQ
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @MA2V 0 AVarHigh
+          @MA2V INT_TYPE TypeCode
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+    @CDEFAULT
+       @Call(AA) BasicRaiseError ERR_SYNTAX 0
+       @CBREAK
+    @ENDCASE
+    @POPNULL    
+
+    @PUSHI TypeCode
+    @PUSHI AVarLow
+    @PUSHI AVarHigh
+
+       @IF_NEQ_AV 0 Debug_Mode    @PRT "Return ApplyOpt: " @StackDump @ENDIF
+
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+#-----------------------------------------------
+# ParseExpr(InPtr):(Type,LowWord,HighWord,InPtr)
+#-----------------------------------------------
+:ParseExpr
+@PUSHRETURN
+    @LocalVar InPtr     01
+    @LocalVar LeftLow   02
+    @LocalVar LeftHigh  03
+    @LocalVar LeftType  04
+    @LocalVar RightLow  05
+    @LocalVar RightHigh 06
+    @LocalVar RightType 07
+    @LocalVar ResultType 08
+    @LocalVar Operation 09
+
+    
+    @POPI InPtr
+
+       @IF_NEQ_AV 0 Debug_Mode    @PRT "ParseExpr(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
+
+    @Call(V) ParseTerm (InPtr)
+    @POPI InPtr
+    @POPI LeftHigh
+    @POPI LeftLow
+    @POPI LeftType
+    @WHEN
+       @PUSHII InPtr @AND 0xff
+       @SWITCH
+       @CASE "+\0"
+          @CBREAK
+       @CASE "-\0"
+          @CBREAK
+       @CASE AND_TOKEN
+          @CBREAK
+       @CASE OR_TOKEN
+          @CBREAK
+       @CDEFAULT
+          @POPNULL
+          @PUSH 0
+          @CBREAK
+       @ENDCASE
+    @DO_NOTZERO
+       @POPI Operation
+       @INCI InPtr
+       @Call(V) ParseTerm InPtr
+       @POPI InPtr
+       @POPI RightHigh
+       @POPI RightLow
+       @POPI RightType       
+       # We'll need to rewrite for Floats, but until then
+       # If LeftType and RightType are not same, then one has to be LONG_TYPE
+       @MV2V LeftType ResultType
+       @IF_NEQ_VV LeftType RightType
+          @MA2V LONG_TYPE ResultType
+       @ENDIF
+       @IF_NEQ_VV ResultType LeftType
+       @POPI Operation
+       @INCI InPtr
+       @Call(V) ParseTerm InPtr
+       @POPI InPtr
+       @POPI RightHigh
+       @POPI RightLow
+       @POPI RightType
+       # We'll need to rewrite for Floats, but until then
+       # If Le          @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
+          @POPI LeftType @POPI LeftHigh @POPI LeftLow
+       @ENDIF
+       @IF_NEQ_VV ResultType RightType         
+          @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
+          @POPI RightType @POPI RightHigh @POPI RightLow
+       @ENDIF
+       @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
+       @CALL ApplyOpt
+       @POPI LeftHigh
+       @POPI LeftLow
+       @POPI LeftType
+   @ENDWHEN
+   @POPNULL
+   @PUSHI LeftType
+   @PUSHI LeftLow
+   @PUSHI LeftHigh
+   @PUSHI InPtr
+
+   @RestoreVar 09
+   @RestoreVar 08
+   @RestoreVar 07
+   @RestoreVar 06
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseExpr: " @StackDump @ENDIF
+
+@POPRETURN
+@RET
+
+#------------------------------
+# ParseRelation(InPtr):(Type, Low, High,Ptr)
+#------------------------------
+:ParseRelation
+@PUSHRETURN
+   @LocalVar LeftLow    01
+   @LocalVar LeftHigh   02
+   @LocalVar LeftType   03
+   @LocalVar RightLow   04
+   @LocalVar RightHigh  05
+   @LocalVar RightType  06
+   @LocalVar InPtr      07
+   @LocalVar Operation  08
+   @LocalVar ResultType 09
+
+   @POPI InPtr
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseReleation(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
+
+   @Call(V) ParseExpr InPtr
+   @POPI InPtr
+   @POPI LeftHigh
+   @POPI LeftLow
+   @POPI LeftType
+   
+
+   @WHEN
+      @PUSHII InPtr @AND 0xff
+      @SWITCH
+         @CASE NE_TOKEN
+            @CBREAK
+         @CASE LE_TOKEN
+            @CBREAK
+         @CASE LE_TOKEN
+            @CBREAK
+         @CASE GE_TOKEN
+            @CBREAK
+         @CASE "=\0"
+            @CBREAK
+         @CASE ">\0"
+            @CBREAK
+         @CASE "<\0"
+            @CBREAK
+         @CDEFAULT
+            @POPNULL
+            @PUSH 0
+            @CBREAK
+         @ENDCASE
+      @DO_NOTZERO
+         @POPI Operation
+         @INCI InPtr
+         @Call(V) ParseExpr InPtr
+         @POPI InPtr
+         @POPI RightHigh
+         @POPI RightLow
+         @POPI RightType
+         
+         # We'll need to rewrite for Floats, but until then
+         # If LeftType and RightType are not same, then one has to be LONG_TYPE
+         @MV2V LeftType ResultType
+         @IF_NEQ_VV LeftType RightType
+            @MA2V LONG_TYPE ResultType
+         @ENDIF
+         @IF_NEQ_VV ResultType LeftType
+            @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
+            @POPI LeftType @POPI LeftHigh @POPI LeftLow
+         @ENDIF
+         @IF_NEQ_VV ResultType RightType         
+            @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
+            @POPI RightType @POPI RightHigh @POPI RightLow
+         @ENDIF
+         @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
+         @CALL ApplyOpt
+         @POPI LeftHigh
+         @POPI LeftLow
+         @POPI LeftType
+   @ENDWHEN
+   @POPNULL
+   @PUSHI LeftType
+   @PUSHI LeftLow
+   @PUSHI LeftHigh
+   @PUSHI InPtr
+
+   @RestoreVar 09
+   @RestoreVar 08
+   @RestoreVar 07
+   @RestoreVar 06
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
+@POPRETURN
+@RET
+
+#------------------------------
+# ParseLogical(InPtr):(Type, Low, High,Ptr)
+#------------------------------
+:ParseLogical
+@PUSHRETURN
+   @LocalVar LeftLow    01
+   @LocalVar LeftHigh   02
+   @LocalVar LeftType   03
+   @LocalVar RightLow   04
+   @LocalVar RightHigh  05
+   @LocalVar RightType  06
+   @LocalVar InPtr      07
+   @LocalVar Operation  08
+   @LocalVar ResultType 09
+
+   @POPI InPtr
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseLogical(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
+
+   @Call(V) ParseRelation InPtr
+   @POPI InPtr
+   @POPI LeftHigh
+   @POPI LeftLow
+   @POPI LeftType
+   
+
+   @WHEN
+      @PUSHII InPtr @AND 0xff
+      @SWITCH
+         @CASE AND_TOKEN
+            @CBREAK
+         @CASE OR_TOKEN
+            @CBREAK
+         @CDEFAULT
+            @POPNULL
+            @PUSH 0
+            @CBREAK
+         @ENDCASE
+      @DO_NOTZERO
+         @POPI Operation
+         @INCI InPtr
+         @Call(V) ParseExpr InPtr
+         @POPI InPtr
+         @POPI RightHigh
+         @POPI RightLow
+         @POPI RightType
+         
+         # We'll need to rewrite for Floats, but until then
+         # If LeftType and RightType are not same, then one has to be LONG_TYPE
+         @MV2V LeftType ResultType
+         @IF_NEQ_VV LeftType RightType
+            @MA2V LONG_TYPE ResultType
+         @ENDIF
+         @IF_NEQ_VV ResultType LeftType
+            @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
+            @POPI LeftType @POPI LeftHigh @POPI LeftLow
+         @ENDIF
+         @IF_NEQ_VV ResultType RightType         
+            @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
+            @POPI RightType @POPI RightHigh @POPI RightLow
+         @ENDIF
+         @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
+         @CALL ApplyOpt
+         @POPI LeftHigh
+         @POPI LeftLow
+         @POPI LeftType
+   @ENDWHEN
+   @POPNULL
+   @PUSHI LeftType
+   @PUSHI LeftLow
+   @PUSHI LeftHigh
+   @PUSHI InPtr
+
+   @RestoreVar 09
+   @RestoreVar 08
+   @RestoreVar 07
+   @RestoreVar 06
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+
+       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
+@POPRETURN
+@RET
+
+M SIZESINCECOMMENT basic_eval.h
+@SIZESINCE  
+

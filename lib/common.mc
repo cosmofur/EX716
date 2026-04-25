@@ -111,19 +111,24 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
+=CastPrintErrMsg 19
+=CastSelectDisk 20
+=CastSeekDisk 21
+=CastWriteSector 22
+=CastSyncDisk 23
+=CastSelectDiskI 24
+=CastSeekDiskI 25
+=CastWriteSectorI 26
 =CastPrint32I 32
 =CastPrint32II 33
-=CastPrintErrMsg 36
-=CastSelectDisk 20
-=CastSelectDiskI 24
-=CastSeekDisk 21
-=CastSeekDiskI 25
-=CastWriteSector 22
-=CastWriteSectorI 26
-=CastSyncDisk 23
-=CastPrint32S 33
-=CastTapeWrite 34
-=CastTapeWriteI 35
+=CastPrint32S 34
+=CastPrint32SignI 35
+=CastPrint32SignS 36
+=CastTapeWrite 40
+=CastTapeWriteI 41
+=CastEnd 99
+=CastDebugToggle 100
+=CastStackDump 102
 =PollReadIntI 1
 =PollReadStrI 2
 =PollReadCharI 3
@@ -308,12 +313,12 @@ M LOADBI \
       @PUSHI %1 @AND 0xff
 #
 
-M JMPNZ @JMPZ %01_SKIP @JMP %1 :%01_SKIP        # A != B
-M JMPNZI @JMPZ %01 @JMPI %1 :%01_SKIP
-M JMPZI @JMPNZ %01_SKIP @JMPI %1 :%01_SKIP
-M JMPNC @JMPC %01_SKIP @JMP %1 :%01_SKIP   # No Carry
-M JMPNO @JMPO %01_SKIP @JMP %1 :%01_SKIP        # No Overflow
-M JMPNN @JMPO %01_SKIP @JMP %1 :%01_SKIP   # Not Negative
+M JMPNZ @JMPZ %0_SKIP @JMP %1 :%0_SKIP        # A != B
+M JMPNZI @JMPZ %0 @JMPI %1 :%0_SKIP
+M JMPZI @JMPNZ %0_SKIP @JMPI %1 :%0_SKIP
+M JMPNC @JMPC %0_SKIP @JMP %1 :%0_SKIP   # No Carry
+M JMPNO @JMPO %0_SKIP @JMP %1 :%0_SKIP        # No Overflow
+M JMPNN @JMPO %0_SKIP @JMP %1 :%0_SKIP   # Not Negative
 #  For this group, remeber the flags are based on the B-A
 #  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
 #          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
@@ -418,10 +423,10 @@ M JUGT \
 # --------------------------------------------------------------
 # CALL and Return Functions
 # --------------------------------------------------------------
-M CALL @PUSH $_%01 @JMP %1 :_%01
+M CALL @PUSH $_%0A @JMP %1 :_%0A
 M CALLZ @PUSH $_%0_Loc @JMPZ _%0_Do @JMP _%0_After :_%0_Do @JMP %1 :_%0_Loc :_%0_After
 M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
-M CALLI @PUSH $_%01 @PUSHI %1 @JMPS :_%01
+M CALLI @PUSH $_%0A @PUSHI %1 @JMPS :_%0A
 
 M RET @JMPS
 M JNZ @JMPZ _%0J @JMP %1 :_%0J
@@ -468,12 +473,12 @@ M PRTSGNI @PUSH CastPrintSignI @CAST %1
 # Print value in binary
 M PRTBINI @PUSH CastPrintBinI @CAST %1
 # Print Line feed
-M PRTNL @JMP _%01 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0NL
+M PRTNL @JMP _%0A :_%0NL 10 $$0 :_%0A @PUSH CastPrintStr @CAST _%0NL
 # Print a space by itself
-M PRTSP @JMP _%01J :_%0M " \0" :_%01J @PUSH CastPrintStr @CAST _%0M
+M PRTSP @JMP _%0AJ :_%0M " \0" :_%0AJ @PUSH CastPrintStr @CAST _%0M
 # Print immediate value (usefull to print value of pointer)
 # Print N number of spaces
-M PRTSPN  @JMP _%01  :_%0M  %REPEAT %1  " "  %ENDR $$0  :_%01 @PUSH CastPrintStr @CAST _%0M
+M PRTSPN  @JMP _%0A  :_%0M  %REPEAT %1  " "  %ENDR $$0  :_%0A @PUSH CastPrintStr @CAST _%0M
 M PRTREF @PUSH CastPrintInt @CAST %1
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTI _%0M1
@@ -484,14 +489,11 @@ M PRTHEXREF @PUSH %1 @PRTHEXTOP @POPNULL
 # Print Top with Sign
 M PRTSGNTOP @DUP @POPI _%0Store @PRTSGNI _%0Store @JMP _%0Skip :_%0Store 0 :_%0Skip
 # Print 32bit number starting at address
-M PRT32 @PUSH CastPrint32I @CAST %1
-M PRT32I @PUSH CastPrint32II @CAST %1
-#M PRT32I @JMP _%0Jmp :_%0store1 0 :_%0store2 0 \
-#   :_%0Jmp @PUSHII %1 @POPI _%0store1 \
-#   @PUSHI %1 @ADD 2 @PUSHS @POPI _%0store2 \
-#   @PUSH CastPrint32I @CAST _%0store1
-# Print 32bit number that tos is pointing to.
+M PRT32I @PUSH CastPrint32I @CAST %1
+M PRT32II @PUSH CastPrint32II @CAST %1
 M PRT32S @PUSH CastPrint32S @CAST 0
+M PRT32SignI @PUSH CastPrint32SignI @CAST %1
+M PRT32SignS @PUSH CastPrint32SignS @CAST %1
 #
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1
@@ -517,11 +519,11 @@ M TTYRAWOFF @PUSH PollReSetRaw @POLL 0
 # Report current TTY State
 M TTYSTATE  @PUSH PollTTYState @POLL 0
 # End Program
-M END @PUSH 99 @CAST 0
+M END @PUSH CastEnd @CAST 0
 # Like POPI but leaves copy of value on stack
 M TOP @DUP @POPI %1
 # Print a debug dump of the stack
-M StackDump @JMP _%0J :_%0J @PUSH 102 @CAST 0
+M StackDump @JMP _%0J :_%0J @PUSH CastStackDump @CAST 0
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
@@ -557,7 +559,7 @@ M TAPEREWIND @PUSH PollRewindTape @POLL 0
 
 
 # A way to enable/disable debugging in running code without requireing the -g option.
-M DEBUGTOGGLE @PUSH 100 @CAST 0
+M DEBUGTOGGLE @PUSH CastDebugToggle @CAST 0
 
 # For readablity it is frquently usefull to combine with a macro CALL functions with their paramaters in
 # order of their pushes without haveing to do it line by line. Here some macros that help with funcitons
@@ -1062,6 +1064,7 @@ M Call(V)     @PUSHI %2     @CALL %1
 
 ? USE_ONLY
    M __EX716_USE_ONLY 1
+   P Enable USE_ONLY, all library functions must be specified.
 ENDBLOCK
 
 
@@ -1080,8 +1083,6 @@ M ISUSED        ?  __STORE_%1
 #--------------------------------------------------
 
 M TRUE 1
-
-##! __EX716_USE_ONLY
 
    # Mark function as used (optional in this mode)
    M USE MF __USE_%1 %1
@@ -1109,7 +1110,7 @@ M TRUE 1
 #--------------------------------------------------
 
 ? __EX716_USE_ONLY
-
+   P Assemble with USE_ONLY Enabled.
    # FUNCTION only emits if explicitly used
    M FUNCTION \
       ? __USE_%1 \
@@ -1133,10 +1134,12 @@ ENDBLOCK
 
 
 
+
 # Size Reporting Macro - usefule durring assembling to see how much memory each library module consumes.
 M SIZESINCE :NewHereMem \
              =SizeHereVar NewHereMem-OldHereVar \
              =OldHereVar NewHereMem \
+             P Module {SIZESINCECOMMENT} : Size {SizeHereVar} Bytes
 M SIZESINCECOMMENT common.mc
 @SIZESINCE
 #

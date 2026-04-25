@@ -58,6 +58,7 @@ G RunTimeHeap
 :RET_ERRINFO  0
 :RUN_ACTIVE   0
 :Debug_Mode   0
+:InputBuf     0
 #
 
 
@@ -67,8 +68,6 @@ G RunTimeHeap
 
 =INPUTBUF_SIZE 256
 G InputBuf
-:InputBuf
-. InputBuf+INPUTBUF_SIZE   # Allocate storage for fixed input buffer.
 =TOLKBUF_SIZE INPUTBUF_SIZE+INPUTBUF_SIZE+INPUTBUF_SIZE
 
 =LINE_HEADER_SIZE 4
@@ -77,61 +76,56 @@ G InputBuf
 #--------------------------------------------------
 # SystemInit, one time system setup.
 #--------------------------------------------------
+# As the SystemInit setups things like the SoftStack
+# it can not safely use SoftStack dependended functions
+# So we keep a few words of local storage here.
+:InitWorkSize 0
+:InitReturn 0
+
 :SystemInit
     #
     # Setup Heap (one time)
-    #
-    @LocalVar TotalHeapSize 01
-    @LocalVar VarHeapObject 02
-    @LocalVar WorkSize 03
 
-    #-------------------------
-    # Memory Layout:
-    #-------------------------
-    # Low Mem: Register Tmp Vars
-    #-------------------------
-    # Program Code
-    #-------------------------
-    # _END_
-    #------------------------- 
-    # Heap Storage
-    #-------------------------
-    # 0xff00
-    #-------------------------
-    # Reserved
-    #-------------------------
-    # 0xffff
-    #--------------------------
-    @PUSH 0xff00
+    @POPI InitReturn
+    
+    @PUSH 0xfffe
     @SUB _END_
-    @POPI WorkSize
-    @Call(AV) HeapDefineMemory _END_ WorkSize
+    @POPI InitWorkSize
+    @Call(AV) HeapDefineMemory _END_ InitWorkSize
     @IF_ULT_A 100
         @PRT "Error allocating main heap."
         @END
     @ENDIF
     @POPI RunTimeHeap
 
+    # Create the SoftStack large enough to allow some decent level of funciton recursion.
+    =SoftStackSize 2048
+    @Call(VA) HeapNewObject RunTimeHeap SoftStackSize
+    @DUP @ADD SoftStackSize @SWP
+    @CALL SetSSStack
+    #
+    # Setup in the InputBuf
+    @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE
+    @POPI InputBuf
+
     #
     # Allocate the Basic 100 line LineTableBase  or 4*100
 
-    @Call(VV) HeapNewObject RunTimeHeap 400
+    @Call(VA) HeapNewObject RunTimeHeap 400
     @POPI LineTableBase
     @MA2V 0 ProgramLineCount
 
 
+    @PRTLN "Initial Memory Map:" 
     @Call(V) HeapListMap RunTimeHeap
-
 
     @Call(V) SetDiskHeap RunTimeHeap
     # Initilize DiskOS for Disk00
     @Call(A) FSReadHeader 0
     @IF_ZERO @PRT "File System failed to initilize.\n" @POPNULL @JMP BasicPanic @ENDIF
-    @POPNULL
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
-    
+    @POPNULL    
+
+@PUSHI InitReturn    
 @RET
 #---------------------------------------------------
 # ProgramInit
@@ -297,10 +291,15 @@ M ZeroOutVar @MA2V 0 %1
     @POPI TextPtr
     @POPI LineNum
 
+    @PRT "Inserting line: " @PRTI LineNum @PRT " with data: "
+    @Call(VVA) HexDump TextPtr TextLen 1
+
     @Call(V) FindLine LineNum
     @POPI Found
     @POPI PrevPtr
     @POPI CurPtr
+
+    @PRT " Located at: " @PRTHEXI CurPtr
 
     # delete case
     @IF_EQ_AV 0 TextLen
@@ -509,7 +508,7 @@ M ZeroOutVar @MA2V 0 %1
    @LocalVar OutStrPtr 03
    @POPI RecPtr
    
-   @MA2V InputBuf OutStrPtr
+   @MV2V InputBuf OutStrPtr
 
    @PUSHII RecPtr # Get the Line Number
    @POPI LineNum
@@ -535,7 +534,7 @@ M ZeroOutVar @MA2V 0 %1
    @ADDI OutStrPtr
    @POPS           # This should put LF hex 0xa and null at end of line
 
-   @PUSH InputBuf
+   @PUSHI InputBuf
 
    @RestoreVar 03
    @RestoreVar 02
@@ -644,11 +643,11 @@ M ZeroOutVar @MA2V 0 %1
         @JMP LM_EXIT
     @ELSE
         @MA2V 0 ReadCount
-        @Call(VA) DiskFileReadLine  FilePtr InputBuf
+        @Call(VV) DiskFileReadLine  FilePtr InputBuf
         @WHILE_NOTZERO
             @POPNULL
-            @Call(A) ParseLineOrCommand InputBuf
-            @Call(VA) DiskFileReadLine  FilePtr InputBuf
+            @Call(V) ParseLineOrCommand InputBuf
+            @Call(VV) DiskFileReadLine  FilePtr InputBuf
         @ENDWHILE
         @POPNULL
     @ENDIF       
@@ -1268,6 +1267,9 @@ M ZeroOutVar @MA2V 0 %1
    @RestoreVar 01
 @POPRETURN
 @RET
+
+M SIZESINCECOMMENT basic_storage.h
+@SIZESINCE  
 
 
             

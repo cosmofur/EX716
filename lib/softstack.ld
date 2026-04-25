@@ -69,6 +69,8 @@ G __SS_StackError
 G SaveSSStack
 G RestoreSSStack
 
+@USE __MOVE_HW_SS
+@USE __MOVE_SS_HW
 
 :__SS_TOP 0xfff0   # Default stack is top of mem 0xff00 to 0xfff0 about 240 bytes
 :__SS_SP 0xfff2    # The First time we push, we dec SP to TOP
@@ -80,7 +82,10 @@ M ENABLETRACE M PUSHRETURN @PRT "Entry: " @StackDump @CALL __MOVE_HW_SS
 M ENABLERETTRACE M POPRETURN @PRT "Return: " @StackDump @CALL __MOVE_SS_HW
 M DISABLETRACE M PUSHRETURN @CALL __MOVE_HW_SS
 M DISABLERETTRACE M RET @JMPS
-M PUSHRETURN @CALL __MOVE_HW_SS
+#M PUSHRETURN @CALL __MOVE_HW_SS @PRT "Enter Function: With SS_SP:" @PRTHEXI __SS_SP  @StackDump
+#M PUSHRETURN @CALL __MOVE_HW_SS @PRT "Enter Function: With SS_SP:" \
+#  @PUSHI __SS_SP @SUBI __SS_BOTTOM @PRTHEXTOP @POPNULL @StackDump
+M PUSHRETURN  @CALL __MOVE_HW_SS
 M PUSHHW @CALL __MOVE_HW_SS
 M PUSHLOCALI @PUSHI %1 @CALL __MOVE_HW_SS
 M PUSHLOCALII @PUSHII %1 @CALL __MOVE_HW_SS
@@ -92,12 +97,12 @@ M RestoreVar @POPLOCAL Var%1
 
 # Function __MOVE_HW_SS
 #  Pushes top of HW Stack to SoftStack
+@FUNCTION __MOVE_HW_SS
 :__MOVE_HW_SS
-#@PRTHEXTOP @PRTSP
 @PUSHI __SS_SP
+@SUB 2
 @IF_ULT_V __SS_BOTTOM
    @POPNULL
-   @PRT "PUSH:"
    @StackDump   
    @JMP __SS_StackError
 @ENDIF
@@ -107,8 +112,12 @@ M RestoreVar @POPLOCAL Var%1
 @POPII __SS_SP
 
 @RET
+@ENDFUNCTION
 #
 #
+#M POPRETURN @CALL __MOVE_SS_HW @PRT "End Function: SS_SP:"  @PRTHEXI __SS_SP @StackDump
+#M POPRETURN @CALL __MOVE_SS_HW @PRT "End Function: SS_SP:" \
+#   @PUSHI __SS_SP @SUBI __SS_BOTTOM @PRTHEXTOP @POPNULL @StackDump
 M POPRETURN @CALL __MOVE_SS_HW
 M POPHW @CALL __MOVE_SS_HW
 M POPLOCAL @CALL __MOVE_SS_HW @POPI %1
@@ -116,11 +125,11 @@ M POPLOCALII @CALL __MOVE_SS_HW @POPII %1
 M TOPLOCAL @PUSHII __SS_SP
 # Function __MOVE_SS_HW
 # POPS top of Softstack onto HW Stack
+@FUNCTION __MOVE_SS_HW
 :__MOVE_SS_HW
 @PUSHI __SS_SP
 @IF_UGT_V __SS_TOP
    @POPNULL
-   @PRT "POP:"
    @StackDump
    @JMP __SS_StackError
 @ENDIF
@@ -129,11 +138,13 @@ M TOPLOCAL @PUSHII __SS_SP
 @INC2I __SS_SP
 @SWP
 @RET
+@ENDFUNCTION
 #
 # Function
 # Sets the Stack storage to a new range of memory.
 # This initilizes the stack, save/set the global __SS_SP if you need to preserve data
 # SetSSStack(TopAddress,BottomAddress)
+@FUNCTION SetSSStack
 :SetSSStack
 @SWP
 @POPI __SS_BOTTOM
@@ -143,11 +154,13 @@ M TOPLOCAL @PUSHII __SS_SP
 @MV2V __SS_TOP __SS_SP
 @INC2I __SS_SP
 @RET
+@ENDFUNCTION
 #
 # Function
 # SaveSSStack(IDStore)
 # With an eye on managing multiple stacks, this function will save
 # the TOP,BOTTOM and SP to a 6 byte strutucture pointed to by IDStore.
+@FUNCTION SaveStack
 :SaveStack
 @SWP       # It would be self defeating if SaveStack used the stack for temp storage.
 # Top of Stack holds address of IDStore, we'll need it three times.
@@ -168,11 +181,13 @@ M TOPLOCAL @PUSHII __SS_SP
 @POPS
 # [return]
 @RET
+@ENDFUNCTION
 #
 # Function
 # RestoreSSStack(IDStore)
 # With an eye on managing multiple stacks, this funciton will restore from
 # previous 'SAVE' TOP, BOTTOM and SP from a 6 byte structure pointed to by IDSTORE
+@FUNCTION RestoreStack
 :RestoreStack
 @SWP
 # We'll need IDStore 3 times.
@@ -190,6 +205,7 @@ M TOPLOCAL @PUSHII __SS_SP
 @POPI __SS_SP
 # [return]
 @RET
+@ENDFUNCTION
 # The Following macros are to make the Stack manipulation functions follow I and A rules.
 #
 # 1) @SetSStackAB Lable1(Highval) Label2(LowVal)

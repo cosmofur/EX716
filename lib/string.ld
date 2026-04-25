@@ -7,78 +7,90 @@ P Loading string.ld
 @USE strlen
 @USE MULU
 
-@FUNCTIONNEEDS strcat
-  @USE strlen
-ENDBLOCK
 
-@FUNCTIONNEEDS strncat
-  @USE strlen
-ENDBLOCK
+# --- External dependencies (not defined in this file) ---
+#  DIV
+#  HeapDeleteObject
+#  HeapNewObject
+#  MULU
+#  strcpy
+#  strlen
+#  strtok
 
-@FUNCTIONNEEDS strncpy
-  @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strncmp
-  @USE strlen
+@FUNCTIONNEEDS SplitDelete
+   @USE HeapDeleteObject
 ENDBLOCK
 
 @FUNCTIONNEEDS itos
-  @USE strlen
-  @USE DIV
-ENDBLOCK
-
-@FUNCTIONNEEDS stoifirst
-  @USE MULU
-  @USE stoi
-ENDBLOCK
-
-
-@FUNCTIONNEEDS strncmp
-  @USE stoi
-ENDBLOCK
-
-@FUNCTIONNEEDS strcmp
-  @USE strncmp
-ENDBLOCK
-
-@FUNCTIONNEEDS strrchr
-  @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strstr
-  @USE strlen
-  @USE strncmp
-ENDBLOCK
-
-@FUNCTIONNEEDS strfndc
-  @USE strstr
+   @USE DIV
 ENDBLOCK
 
 @FUNCTIONNEEDS splitstr
-  @USE strlen
-  @USE HeapNewObject
-  @USE strtok
-  @USE strcpy
-ENDBLOCK
-
-@FUNCTIONNEEDS SplitDelete
-  @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS strUpCase
-  @USE strlen
+   @USE HeapNewObject
+   @USE strcpy
+   @USE strlen
+   @USE strtok
 ENDBLOCK
 
 @FUNCTIONNEEDS stoi
-  P Defining stoi with MULU
-  @USE strlen
-  @USE MULU
+   @USE MULU
+   @USE strlen
 ENDBLOCK
 
+@FUNCTIONNEEDS stoifirst
+   @USE stoi
+ENDBLOCK
 
+@FUNCTIONNEEDS strLowCase
+   @USE strlen
+ENDBLOCK
 
+@FUNCTIONNEEDS strUpCase
+   @USE strlen
+ENDBLOCK
 
+@FUNCTIONNEEDS strcat
+   @USE strlen
+ENDBLOCK
+
+@FUNCTIONNEEDS strncmp
+   @USE strlen
+ENDBLOCK
+
+@FUNCTIONNEEDS strcmp
+   @USE strncmp
+ENDBLOCK
+
+@FUNCTIONNEEDS strstr
+   @USE strlen
+   @USE strncmp
+ENDBLOCK
+
+@FUNCTIONNEEDS strfndc
+   @USE strstr
+ENDBLOCK
+
+@FUNCTIONNEEDS stringMacros
+   @USE strcpy
+ENDBLOCK
+
+@FUNCTIONNEEDS strncat
+   @USE strlen
+ENDBLOCK
+
+@FUNCTIONNEEDS strncpy
+   @USE strlen
+ENDBLOCK
+
+@FUNCTIONNEEDS strrchr
+   @USE strlen
+ENDBLOCK
+
+# --- External dependencies (not defined in this file) ---
+#  DIV
+#  HeapDeleteObject
+#  HeapNewObject
+#  MULU
 L div.ld
 L mul.ld
 L softstack.ld

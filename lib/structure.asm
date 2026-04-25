@@ -609,6 +609,8 @@ M UNTIL_ZERO \
 # Main reason for switch is to prep the Macro Stack so ENDCASE has something to 'pop'
 # You need that so the ENDCASE will work.
 M SWITCH \
+  =_%0_CaseCount 0 \
+  =_%0_BreakCount 0 \
   %S
 #
 # Basic CASE takes 16b constant as test value against stack
@@ -617,96 +619,101 @@ M SWITCH \
 #    are preserving on the stack, and plan to use again, and _%0 for lables that only
 #    have value inside this same macro.
 M CASE \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \
   @CMP %1 \
-  @JMPZ _%V_DoCase1 \
+  %S \
+  @JMPZ _%V_DoCase1_%V \
   @JMP _%V_NextCase \
-  :_%V_DoCase1
+  :_%V_DoCase1_%V
 
 # Takes two constant params (low value then high value, can't be swaped)
 # So some of the complexity is to make sure we can use IF_GE for both the low and high
 # range tests in the CASE. Other wise we could miss the edge cases.
 M CASE_RANGE_AA \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMP %1 \
+  %S \
   @JLT _%V_NextCase \
   @CMP %2 \
   @JGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 M CASE_RANGE @CASE_RANGE_AA %1 %2
 M CASE_RANGE_AV \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMP %1 \
+  %S \
   @JLT _%V_NextCase \
   @CMPI %2 \
   @JGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 M CASE_RANGE_VA \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMPI %1 \
+  %S \
   @JLT _%V_NextCase \
   @CMP %2 \
   @JGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 M CASE_RANGE_VV \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMPI %1 \
+  %S \
   @JLT _%V_NextCase \
   @CMPI %2 \
   @JGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 
 
 # range tests in the Unsigned CASE. Other wise we could miss the edge cases.
 M CASE_URANGE_AA \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMP %1 \
+  %S \
   @JULT _%V_NextCase \
   @CMP %2 \
   @JUGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 M CASE_URANGE @CASE_URANGE_AA %1 %2
 M CASE_URANGE_AV \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMP %1 \
+  %S \
   @JULT _%V_NextCase \
   @CMPI %2 \
   @JUGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 M CASE_URANGE_VA \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMPI %1 \
+  %S \
   @JULT _%V_NextCase \
   @CMP %2 \
   @JUGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 M CASE_URANGE_VV \
-  %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
   @CMPI %1 \
+  %S \
   @JULT _%V_NextCase \
   @CMPI %2 \
   @JUGT _%V_NextCase \
-  @JMP _%V_InRange \
-  :_%V_InRange
+  :_%V_InRange_%0
 
 
 # Compares TOS with value at [%1] 
 M CASE_V \
-   %S \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \
+  %S \
   @CMPI %1 \
-  @JMPNZ _%V_NextCase
+  @JMPNZ _%V_NextCase \
+  :_DoCase_%V
+  
 
 # You Always need CDEFAULT is to balance the Macro Stack, which would underflow without.
 # So always include a CDEFAULT even if you alreay had CASE's for all the valid values.
 M CDEFAULT \
   :_%V_NextCase \
+  =_%V_CaseCount %( _%V_CaseCount+1 %) \
   %S
   
 # Call the CASES need a matching CBREAK main things it does is pop the MacroStack
@@ -718,19 +725,15 @@ M CDEFAULT \
 #    POP the _%V stack, get the right _%V for the endcase and jmp there, lastly we prepare
 #    for the next CASE 
 M CBREAK \
-  @JMP _%0_SkipHeadNextCase \
-     :_%V_NextCase \
-     @JMP _%0_RealHeadNextCase \
-     %P \     
-  :_%0_SkipHeadNextCase \
-     @JMP _%V_EndCASE \
-  :_%0_RealHeadNextCase
-
+  @JMP _%W_EndCase \                 # Jump the BASE frame's END_CASE
+  :_%V_NextCase \
+  %P \                               # Back to BASE frame
+  =_%V_BreakCount %( _%V_BreakCount+1 %)  
 
 # End Case provides a target for, the %P is there to pop the %S from SWITCH
 
 M ENDCASE \
-  :_%V_EndCASE \
+  :_%V_EndCase \
   %P
 #
 #

@@ -31,6 +31,26 @@ L mul.ld
 M RANDOM_SEEN 1
 M SIZESINCECOMMENT random.ld
 
+@FUNCTIONNEEDS frndint
+   @USE DIVU
+   @USE xorshift16
+ENDBLOCK
+
+@FUNCTIONNEEDS rndint
+   @USE DIVU
+   @USE rnd16
+ENDBLOCK
+
+@FUNCTIONNEEDS rndsetseed
+   @USE rnd16
+ENDBLOCK
+
+# --- External dependencies (not defined in this file) ---
+#  DIVU
+#  rnd16
+#  xorshift16
+
+
 # --- public entry points ---
 G rnd16
 G rndint
@@ -66,7 +86,7 @@ G xorshift16
 # - Uses @LocalVar for scratch 32-bit storage (avoids global clutter).
 # - Updates the global Seed32A value in-place.
 # ============================================================
-
+@FUNCTION fnd16
 :rnd16
     # --- Allocate locals for 32-bit scratch space ---
     @LocalVar Scratch32A   01   # low word
@@ -75,12 +95,12 @@ G xorshift16
     @LocalVar Scratch32BHW 04   # high word
 
     # --- Multiply Seed32A * Modulus32 (32-bit multiply) ---
-    @Call32(vv) MUL32U Seed32A Modulus32
-    @POP32I(v) Scratch32A
+    @Call32(VV) MUL32U Seed32A Modulus32
+    @POP32I(V) Scratch32A
 
     # --- Add offset constant (32-bit add) ---
-    @Call32(vv) ADD32U Scratch32A MOffset32
-    @POP32I(v) Scratch32B
+    @Call32(VV) ADD32U Scratch32A MOffset32
+    @POP32I(V) Scratch32B
 
     # --- Copy result back into Seed32A (persistent RNG state) ---
     @M32V2V Scratch32B Seed32A
@@ -100,7 +120,7 @@ G xorshift16
     @RestoreVar 02
     @RestoreVar 01
     @RET
-
+@ENDFUNCTION
 
 
 # ============================================================
@@ -121,7 +141,7 @@ G xorshift16
 #   MINSEEDMASK guarantees at least two bits are set,
 #   preventing the generator from entering the "all zero" state.
 # ============================================================
-
+@FUNCTION rndsetseed
 :rndsetseed
     @PUSHRETURN
 
@@ -150,7 +170,7 @@ G xorshift16
     @POPNULL               # discard last rnd16 result
     @POPRETURN
     @RET
-
+@ENDFUNCTION
 
 # ============================================================
 # rndint(N)  →  Random integer in range 0..N
@@ -163,7 +183,7 @@ G xorshift16
 #   - For N = 2, 4, or 8: uses fast bit-masking.
 #   - Otherwise: divides by N, returns the remainder.
 # ============================================================
-
+@FUNCTION rndint
 :rndint
     @PUSHRETURN
     @LocalVar Range1 01
@@ -201,7 +221,7 @@ G xorshift16
     @RestoreVar 01
     @POPRETURN
     @RET
-
+@ENDFUNCTION
 # ============================================================
 # frndint(N)  →  Fast random integer in range 0..N
 #
@@ -217,7 +237,7 @@ G xorshift16
 #   - XORShift is faster than the LCG (rnd16), but less traditional.
 #   - Uses @LocalVar for range argument (no permanent storage).
 # ============================================================
-
+@FUNCTION frndint
 :frndint
     @PUSHRETURN
     @LocalVar RIRange 01
@@ -255,7 +275,7 @@ G xorshift16
     @RestoreVar 01
     @POPRETURN
     @RET
-
+@ENDFUNCTION
 
 # ============================================================
 # frnd16() / xorshift16()  →  Fast 16-bit random number
@@ -277,7 +297,7 @@ G xorshift16
 #   - Macros ROLn/RORn/SHRn from common.mc provide *pure* rotates/shifts.
 #   - Deterministic: doesn’t depend on previous carry state.
 # ============================================================
-
+@FUNCTION frnd16
 :frnd16
 :xorshift16
     @PUSHRETURN
@@ -311,6 +331,6 @@ G xorshift16
     @RestoreVar 01
     @POPRETURN
     @RET
-
+@ENDFUNCTION
 @SIZESINCE
 ENDBLOCK
