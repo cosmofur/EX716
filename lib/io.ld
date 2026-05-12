@@ -1,10 +1,7 @@
 # Some Helpfull IO funcitions.
-! IOLIB_DONE
-M IOLIB_DONE 1
-
-@FUNCTIONNEEDS StrReadToChar
-   @USE strcat
-ENDBLOCK
+! __LIB_IO_LOADED
+M __LIB_IO_LOADED 1
+I io.ref
 
 L string.ld
 M SIZESINCECOMMENT io.ld

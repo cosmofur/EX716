@@ -1,13 +1,7 @@
 # String Functions Generation two
-! STRING_DONE
-M STRING_DONE 1
-P Loading string.ld
-@USE strcpy
-@USE stringMacros
-@USE strlen
-@USE MULU
-
-
+! __LIB_STRING_LOADED
+M __LIB_STRING_LOADED 1
+I string.ref
 # --- External dependencies (not defined in this file) ---
 #  DIV
 #  HeapDeleteObject
@@ -17,89 +11,16 @@ P Loading string.ld
 #  strlen
 #  strtok
 
-@FUNCTIONNEEDS SplitDelete
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS itos
-   @USE DIV
-ENDBLOCK
-
-@FUNCTIONNEEDS splitstr
-   @USE HeapNewObject
-   @USE strcpy
-   @USE strlen
-   @USE strtok
-ENDBLOCK
-
-@FUNCTIONNEEDS stoi
-   @USE MULU
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS stoifirst
-   @USE stoi
-ENDBLOCK
-
-@FUNCTIONNEEDS strLowCase
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strUpCase
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strcat
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strncmp
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strcmp
-   @USE strncmp
-ENDBLOCK
-
-@FUNCTIONNEEDS strstr
-   @USE strlen
-   @USE strncmp
-ENDBLOCK
-
-@FUNCTIONNEEDS strfndc
-   @USE strstr
-ENDBLOCK
-
-@FUNCTIONNEEDS stringMacros
-   @USE strcpy
-ENDBLOCK
-
-@FUNCTIONNEEDS strncat
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strncpy
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS strrchr
-   @USE strlen
-ENDBLOCK
 
 # --- External dependencies (not defined in this file) ---
 #  DIV
 #  HeapDeleteObject
 #  HeapNewObject
 #  MULU
-L div.ld
-L mul.ld
-L softstack.ld
-L heapmgr.ld
 G strlen G strcat G strcpy G strncpy G strncmp G strcmp G itos G stoi G memcpy G strstr G strfndc
 G ISAlphaNum G IsAlpha G ISNumeric G strncat G stoifirst G strtok G splitstr G SplitDelete
 G strUpCase G strLowCase
 
-@FUNCTION stringMacros
 #
 # Some 'String' Macros
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
@@ -196,7 +117,6 @@ M SafeMove(VVV) \
 # Function strlen
 # strlen(str_var) returns length of string
 :WorkBuff "00000000" $$0       # Long enough for -32000 to +32000
-@ENDFUNCTION
 
 #
 # Function
@@ -401,7 +321,7 @@ M SafeMove(VVV) \
    @PUSHI SrcPtr
    @CALL strlen
    @IF_ZERO
-      @PUSHI DstPtr
+         @PUSHI DstPtr
       @CALL strlen
       @IF_NOTZERO
          @POPNULL
@@ -909,38 +829,53 @@ M SafeMove(VVV) \
    #
    @POPI ssStrB         # SrtB is the SubString
    @POPI ssStrA         # StrA is the Source String
+   
    @PUSHI ssStrB
    @CALL strlen
+   @IF_ZERO             # Empty substring matches at begining of StrA
+      @POPNULL
+      @PUSHI ssStrA
+      @JMP Endstrstr
+   @ENDIF
+   @POPI ssLength
    @PUSHI ssStrA
    @CALL strlen
-   @IF_LT_S       # len(StringB) is < len(StringA)
-      @POPI ssMaxLength      # Full length of source string
-      @POPI ssLength         # Length of SubString
-      @MV2V ssStrA ssIndex  # Index will be pointer In String we Start Search.
-      @PUSHI ssStrA @ADDI ssMaxLength @SUBI ssLength  # We only need to search max of MaxLength-Length
-      @POPI ssDstPtr         # Loop will either find match or continue until Index==DstPtr
-      @PUSHI ssIndex
-      @WHILE_NEQ_V ssDstPtr
-         @POPNULL
-         @PUSHI ssIndex @PUSHI ssStrB @PUSHI ssLength
-         @CALL strncmp
-         @IF_ZERO          # There was a match, return the Index
-            @POPNULL
-            @PUSHI ssIndex
-            @JMP Endstrstr
-         @ENDIF
-         @POPNULL
-         @INCI ssIndex
-         @PUSHI ssIndex
-       @ENDWHILE
-       # No Math if it falls here.
-       @POPNULL
-       @PUSH 0
-   @ELSE
-       # pattern was larger than string, if it falls here.
-       @POPNULL @POPNULL
-       @PUSH 0
+   @POPI ssMaxLength
+
+   @PUSHI ssLength
+   @IF_GT_V ssMaxLength  # Pattern larger than source string
+      @POPNULL
+      @PUSH 0
+      @JMP Endstrstr
    @ENDIF
+   @POPNULL
+
+   @PUSHI ssStrA         # One past last legal starting pointer.
+   @ADDI ssMaxLength
+   @SUBI ssLength
+   @ADD 1
+   @POPI ssDstPtr
+
+   @MV2V ssStrA ssIndex   
+   
+   @PUSHI ssIndex
+   @WHILE_NEQ_V ssDstPtr
+      @POPNULL
+      
+      @Call(VVV)  strncmp ssIndex ssStrB ssLength
+      @IF_ZERO          # There was a match, return as match
+         @POPNULL
+         @PUSHI ssIndex
+         @JMP Endstrstr
+      @ENDIF
+      @POPNULL
+      @INCI ssIndex
+      @PUSHI ssIndex
+   @ENDWHILE
+   # No Math if it falls here.   
+   @POPNULL
+   @PUSH 0
+
    :Endstrstr
    @RestoreVar 06
    @RestoreVar 05
@@ -1032,6 +967,7 @@ M SafeMove(VVV) \
 
 # strfndc searchs string for single character returns ptr to that character
 # (strstr but with character constant on stack)
+# strfndc(String, Character):Ptr_In_String | 0
 @FUNCTION strfndc
    :sfReturn 0
    :ShortString 0 0

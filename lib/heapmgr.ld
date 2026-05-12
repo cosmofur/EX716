@@ -1,32 +1,9 @@
-! HeapMgrSeen
-M HeapMgrSeen 1
+! __LIB_HEAPMGR_LOADED
+M __LIB_HEAPMGR_LOADED 1
+I heapmgr.ref
 L softstack.ld
 P Loading heapmgr.ld
 
-
-
-@FUNCTIONNEEDS HeapDeleteObject
-   @USE HeapDefrag
-ENDBLOCK
-
-@FUNCTIONNEEDS HeapNewObject
-   @USE GetObjectRealSize
-ENDBLOCK
-
-@FUNCTIONNEEDS HeapResizeObject
-   @USE GetObjectRealSize
-   @USE HeapDeleteObject
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS HeapAppend
-   @USE GetObjectRealSize
-   @USE HeapResizeObject
-ENDBLOCK
-
-@FUNCTIONNEEDS HeapListMap
-   @USE GetObjectRealSize
-ENDBLOCK
 
 # --- External dependencies (not defined in this file) ---
 #  GetObjectRealSize
@@ -135,6 +112,12 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
 
    @POPI SizeInBytes
    @POPI HeapID
+
+   @IF_EQ_AV 0 SizeInBytes
+      @PRT "Invalid Empty Heap"
+      @JMP HNO_Exit
+   @ENDIF
+
    #
    @PUSHII HeapID      # Ptr to first Object
    @POPI IndexX
@@ -250,6 +233,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
      @PUSHI IndexX
    # Else the ContinueLoop already on th stack is the error value
    @ENDIF
+   :HNO_Exit
    @RestoreVar 06
    @RestoreVar 05
    @RestoreVar 04
@@ -495,8 +479,8 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
 @FUNCTION GetObjectRealSize
 :GetObjectRealSize
 @PUSHRETURN
-   @PUSHLOCALI ObjectID
-   @PUSHLOCALI HeapID
+   @LocalVar ObjectID 01
+   @LocalVar HeapID 02
    @POPI ObjectID
    @POPI HeapID
    @PUSHI ObjectID
@@ -519,8 +503,8 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
    @SUBI ObjectID
    @SUB OBJ_HEAD_SIZE   # we don't count the Object's header as part of its size.
    #
-   @POPLOCAL HeapID
-   @POPLOCAL ObjectID
+   @RestoreVar 02
+   @RestoreVar 01   
 @POPRETURN
 @RET
 @ENDFUNCTION
@@ -674,6 +658,6 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
 @POPRETURN
 @RET
 @ENDFUNCTION
-M SIZESINCECOMMENT heapmgt.ld
+M SIZESINCECOMMENT heapmgr.ld
 @SIZESINCE
 ENDBLOCK

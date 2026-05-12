@@ -1,4 +1,12 @@
 # Declare common Functions
+#--------------------------------------
+# ApplyOpt is helped with a calling macro to simplify the interface
+# Call_ApplyOpt(OptCode, TypeCode, AVarLow, AVarHigh, BVarLow, BVarHigh, ResultType, ResultLow, ResultHigh)
+#--------------------------------------
+M Call_ApplyOpt \
+   @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6 \
+   @CALL ApplyOpt \
+   @POPI %9 @POPI %8 @POPI %7
 #-----------------------------
 # Basic Run Loop.
 #-----------------------------
@@ -101,6 +109,7 @@
           @CASE LET_CODE
              # Let does nothing.
              @POPNULL
+             @INCI Ptr
              @CBREAK
           @CASE VAR_TOKEN
              @POPNULL
@@ -147,7 +156,7 @@
     @WHILE_NEQ_A EOL_TOKEN
        @IF_EQ_A ",\0"
           # Comma's turn into spaces.
-          @PRT " "
+          @PRT "\t"
           @POPNULL
           @INCI Ptr
        @ELSE
@@ -177,6 +186,8 @@
                 @CBREAK
              @CASE STRING_TYPE
                 @PRTSI EvalLow
+                @Call(VV) HeapDeleteObject RunTimeHeap EvalLow @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+                @POPNULL
                 @MA2V 0 NoNewLine
                 @CBREAK
              @CDEFAULT
@@ -305,10 +316,79 @@
    @RestoreVar 01
 @POPRETURN
 @RET
+#----------------------------------------
+# PromteType uses too many arguments for @Call(V..) so create
+# special purpose macro.
+# Call_PromoteType( LeftType,A-Low,A-High, RightType, B-Low,B-High, ResultType)
+#
+# Updates: A-Low, A-High and ResultType
+# (RestultType, A-Low, A-High)
+#----------------------------------------
+M Call_PromoteType \
+   @PUSHI6 %1 %2 %3 %4 %5 %6 \
+   @CALL PromoteType \
+   @POPI5 %6 %5 %3 %2 %7
+
+
+#----------------------------------------
+# PromoteType(A_Type, A_Low, A_High, B_Type, B_Low, B_High)
+# Return:(ResultType, A_Low, A_High, B_Low, B_High)
+#----------------------------------------
+:PromoteType
+@PUSHRETURN
+   @LocalVar A_Type      01
+   @LocalVar B_Type      02
+   @LocalVar A_Low       03
+   @LocalVar A_High      04
+   @LocalVar B_Low       05
+   @LocalVar B_High      06
+   @LocalVar ResultType  07
+
+   @POPI6 B_High B_Low B_Type A_High A_Low A_Type
+
+   # No auto conversion of strings, reject for assignments without VAL function
+   @IF_EQ_AV STRING_TYPE A_Type
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+   @ENDIF
+   
+   @IF_EQ_AV STRING_TYPE B_Type
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+   @ENDIF
+   
+   # IF either side is Long Result is Long
+   @MV2V A_Type ResultType
+   
+   @IF_NEQ_VV A_Type B_Type
+      @MA2V LONG_TYPE ResultType
+   @ENDIF
+
+   # If Result is long widen INT Operands
+   @IF_EQ_AV LONG_TYPE ResultType
+      @IF_EQ_AV INT_TYPE A_Type
+         @MA2V 0 A_High
+      @ENDIF
+      @IF_EQ_AV INT_TYPE B_Type
+         @MA2V 0 B_High
+      @ENDIF
+   @ENDIF
+
+   @PUSHI5 ResultType  A_Low A_High B_Low B_High
+
+   @RestoreVar 07
+   @RestoreVar 06
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+   
+@POPRETURN
+@RET
+
 
 #-----------------------------------------
 # CoerceType(TargeType, SourceType, LowWord, HighWord)
-# Determins what types can be copied to/over others
+# For Assignment, makes sure Word is comptable with TargetTyp
 #-----------------------------------------
 :CoerceType
 @PUSHRETURN
@@ -317,10 +397,7 @@
    @LocalVar LowWord    03
    @LocalVar HighWord   04
 
-   @POPI HighWord
-   @POPI LowWord
-   @POPI SourceType
-   @POPI TargetType
+   @POPI4 HighWord LowWord SourceType TargetType
    
    @PUSHI TargetType
    @SWITCH
@@ -371,9 +448,7 @@
    @ENDCASE
    @POPNULL
 #
-   @PUSHI LowWord
-   @PUSHI HighWord
-   @PUSHI TargetType
+   @PUSHI3 LowWord HighWord TargetType
 
    @RestoreVar 04
    @RestoreVar 03
@@ -428,10 +503,7 @@
       @INCI PtrIn
        @IF_NEQ_AV 0 Debug_Mode      @PRT "Inbound PtrIn:" @PUSHI PtrIn @AND 0xff @PRTHEXTOP @POPNULL @PUSHI PtrIn @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL @ENDIF
       @Call(V) BasicEval PtrIn
-      @POPI PtrIn
-      @POPI EvalHigh
-      @POPI EvalLow
-      @POPI EvalType
+      @POPI4 PtrIn EvalHigh EvalLow EvalType
 
       @IF_NEQ_AV INT_TYPE EvalType
          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
@@ -463,10 +535,7 @@
    # Evaluate RHS
    #-------------------------
    @Call(V) BasicEval PtrIn
-   @POPI PtrIn
-   @POPI EvalHigh
-   @POPI EvalLow
-   @POPI EvalType
+   @POPI4 PtrIn EvalHigh EvalLow EvalType
 
    #-------------------------
    # Get Variable Type
@@ -478,11 +547,9 @@
 
    #-------------------------
    # Type Checking
-   #-------------------------
+   #-------------------------   
    @Call(VVVV) CoerceType VarType EvalType EvalLow EvalHigh
-   @POPI FinalType
-   @POPI EvalHigh
-   @POPI EvalLow
+   @POPI3 FinalType EvalHigh EvalLow
 
 
    #-------------------------
@@ -601,6 +668,7 @@
 
    # Return updated pointer
    @PUSHI PtrIn
+   @RestoreVar 08   
    @RestoreVar 07
    @RestoreVar 06
    @RestoreVar 05
@@ -758,30 +826,49 @@
    #-------------------------
    @CASE INT_TOKEN
       @INCI InPtr
+
+      # Read Digit field Length
       @PUSHII InPtr @AND 0xff
       @POPI FieldLen
       @INCI InPtr
-      @PUSHI InPtr @ADDI FieldLen
+
+      # EndPtr = First byte after numeric digit field.
+      @PUSHI InPtr
+      @ADDI FieldLen
       @POPI EndPtr
+
+      # Temporarly Null Terminate the numeric text for stoi32
       @PUSHII EndPtr
       @POPI StoreEnd
       @PUSH 0
       @POPII EndPtr
+
       @Call(V) stoi32 InPtr
+
+      # Restore original token stream word
       @PUSHI StoreEnd
       @POPII EndPtr
+
+      # stoi32 returned Low/High word as normal
       @POPI HighWord
       @POPI LowWord
-      @PUSHI InPtr
-      @ADDI FieldLen
-      @POPI InPtr
+
+      #Default type is INT unless value or suffix forces LONG
+      @MA2V INT_TYPE OutType
+
       @IF_NEQ_AV 0 HighWord
          @MA2V LONG_TYPE OutType
-      @ELSE
-         @MA2V INT_TYPE OutType
       @ENDIF
-      @CBREAK
 
+      @MV2V EndPtr InPtr
+      # Optional long literal suffice 123#
+      @PUSHII InPtr @AND 0xff
+      @IF_EQ_A "#\0"
+         @MA2V LONG_TYPE OutType
+         @INCI InPtr
+      @ENDIF
+      @POPNULL
+      @CBREAK
    #-------------------------
    # FLOAT TOKEN
    #-------------------------
@@ -915,10 +1002,7 @@
    #---------------------------------
    # Return stack: Low, High, Type, Ptr
    #---------------------------------
-   @PUSHI OutType
-   @PUSHI LowWord
-   @PUSHI HighWord
-   @PUSHI InPtr
+   @PUSHI4 OutType LowWord HighWord InPtr
 
    @RestoreVar 09
    @RestoreVar 08
@@ -953,10 +1037,9 @@
        @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseTerm(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
    @Call(V) ParseFactor InPtr
-   @POPI InPtr
-   @POPI LeftHigh
-   @POPI LeftLow
-   @POPI LeftType
+   @POPI4  InPtr LeftHigh LeftLow LeftType
+
+   @MV2V LeftType ResultType
    
 
    @WHEN
@@ -975,36 +1058,14 @@
          @POPI Operation
          @INCI InPtr
          @Call(V) ParseFactor InPtr
-         @POPI InPtr
-         @POPI RightHigh
-         @POPI RightLow
-         @POPI RightType
-         
-         # We'll need to rewrite for Floats, but until then
-         # If LeftType and RightType are not same, then one has to be LONG_TYPE
-         @MV2V LeftType ResultType
-         @IF_NEQ_VV LeftType RightType
-            @MA2V LONG_TYPE ResultType
-         @ENDIF
-         @IF_NEQ_VV ResultType LeftType
-            @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
-            @POPI LeftType @POPI LeftHigh @POPI LeftLow
-         @ENDIF
-         @IF_NEQ_VV ResultType RightType         
-            @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
-            @POPI RightType @POPI RightHigh @POPI RightLow
-         @ENDIF
-         @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
-         @CALL ApplyOpt
-         @POPI LeftHigh
-         @POPI LeftLow
-         @POPI LeftType
+         @POPI4 InPtr RightHigh RightLow RightType
+
+         @Call_PromoteType LeftType LeftLow LeftHigh RightType RightLow RightHigh ResultType
+         @Call_ApplyOpt Operation ResultType LeftLow LeftHigh RightLow RightHigh LeftType LeftLow LeftHigh
+                  
    @ENDWHEN
    @POPNULL
-   @PUSHI LeftType
-   @PUSHI LeftLow
-   @PUSHI LeftHigh
-   @PUSHI InPtr
+   @PUSHI4  LeftType LeftLow LeftHigh InPtr
 
    @RestoreVar 09
    @RestoreVar 08
@@ -1030,13 +1091,8 @@
     @LocalVar AVarHigh   04
     @LocalVar BVarLow    05
     @LocalVar BVarHigh   06
-    
-    @POPI BVarHigh
-    @POPI BVarLow
-    @POPI AVarHigh
-    @POPI AVarLow
-    @POPI TypeCode
-    @POPI OptCode
+
+    @POPI6 BVarHigh BVarLow AVarHigh AVarLow TypeCode OptCode
 
        @IF_NEQ_AV 0 Debug_Mode    @PRT "ApplyOpt(" @PRTHEXI OptCode @PRT ", " @PRTHEXI TypeCode @PRT ", " @PRTHEXI AVarLow
            @PRT ", " @PRTHEXI AVarHigh @PRT ", " @PRTHEXI BVarLow @PRT ", " @PRTHEXI BVarHigh @PRT ")\n" @ENDIF
@@ -1236,7 +1292,7 @@
           @CBREAK
        @CASE LONG_TYPE          
           @Call32(VV) CMP32S AVarLow BVarLow
-          @IF32_GT
+          @IF32_LT
              @MA2V 1 AVarLow
           @ELSE
              @MA2V 0 AVarLow
@@ -1266,7 +1322,7 @@
           @CBREAK
        @CASE LONG_TYPE          
           @Call32(VV) CMP32S AVarLow BVarLow
-          @IF32_GT
+          @IF32_LE
              @MA2V 1 AVarLow
           @ELSE
              @MA2V 0 AVarLow
@@ -1280,6 +1336,36 @@
        @ENDCASE
        @POPNULL
        @CBREAK
+    @CASE NE_TOKEN
+       @PUSHI TypeCode
+       @SWITCH
+       @CASE INT_TYPE
+          @PUSHI AVarLow
+          @IF_NEQ_V BVarLow
+             @MA2V 1 AVarLow
+          @ELSE
+             @MA2V 0 AVarLow
+          @ENDIF
+          @POPNULL
+          @MA2V 0 AVarHigh
+          @CBREAK
+       @CASE LONG_TYPE
+          @Call32(VV) CMP32S AVarLow BVarLow
+          @IF32_EQ
+             @MA2V 0 AVarLow
+          @ELSE
+             @MA2V 1 AVarLow
+          @ENDIF
+          @MA2V 0 AVarHigh
+          @MA2V INT_TYPE TypeCode
+          @CBREAK
+       @CDEFAULT
+          @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+          @CBREAK
+       @ENDCASE
+       @POPNULL
+       @CBREAK
+          
     @CASE "=\0"
        @PUSHI TypeCode
        @SWITCH
@@ -1309,16 +1395,14 @@
           @CBREAK
        @ENDCASE
        @POPNULL
-       @CBREAK
+       @CBREAK    
     @CDEFAULT
        @Call(AA) BasicRaiseError ERR_SYNTAX 0
        @CBREAK
     @ENDCASE
-    @POPNULL    
+    @POPNULL
 
-    @PUSHI TypeCode
-    @PUSHI AVarLow
-    @PUSHI AVarHigh
+    @PUSHI3 TypeCode AVarLow AVarHigh
 
        @IF_NEQ_AV 0 Debug_Mode    @PRT "Return ApplyOpt: " @StackDump @ENDIF
 
@@ -1351,10 +1435,9 @@
        @IF_NEQ_AV 0 Debug_Mode    @PRT "ParseExpr(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
     @Call(V) ParseTerm (InPtr)
-    @POPI InPtr
-    @POPI LeftHigh
-    @POPI LeftLow
-    @POPI LeftType
+    @POPI4 InPtr LeftHigh LeftLow LeftType
+
+    @MV2V LeftType ResultType
     @WHEN
        @PUSHII InPtr @AND 0xff
        @SWITCH
@@ -1375,43 +1458,15 @@
        @POPI Operation
        @INCI InPtr
        @Call(V) ParseTerm InPtr
-       @POPI InPtr
-       @POPI RightHigh
-       @POPI RightLow
-       @POPI RightType       
-       # We'll need to rewrite for Floats, but until then
-       # If LeftType and RightType are not same, then one has to be LONG_TYPE
+       @POPI4 InPtr RightHigh RightLow RightType
+       
+       @Call_PromoteType LeftType LeftLow LeftHigh RightType RightLow RightHigh ResultType
+       @Call_ApplyOpt Operation ResultType LeftLow LeftHigh RightLow RightHigh LeftType LeftLow LeftHigh
        @MV2V LeftType ResultType
-       @IF_NEQ_VV LeftType RightType
-          @MA2V LONG_TYPE ResultType
-       @ENDIF
-       @IF_NEQ_VV ResultType LeftType
-       @POPI Operation
-       @INCI InPtr
-       @Call(V) ParseTerm InPtr
-       @POPI InPtr
-       @POPI RightHigh
-       @POPI RightLow
-       @POPI RightType
-       # We'll need to rewrite for Floats, but until then
-       # If Le          @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
-          @POPI LeftType @POPI LeftHigh @POPI LeftLow
-       @ENDIF
-       @IF_NEQ_VV ResultType RightType         
-          @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
-          @POPI RightType @POPI RightHigh @POPI RightLow
-       @ENDIF
-       @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
-       @CALL ApplyOpt
-       @POPI LeftHigh
-       @POPI LeftLow
-       @POPI LeftType
    @ENDWHEN
    @POPNULL
-   @PUSHI LeftType
-   @PUSHI LeftLow
-   @PUSHI LeftHigh
-   @PUSHI InPtr
+
+   @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
    @RestoreVar 09
    @RestoreVar 08
@@ -1447,11 +1502,9 @@
        @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseReleation(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
    @Call(V) ParseExpr InPtr
-   @POPI InPtr
-   @POPI LeftHigh
-   @POPI LeftLow
-   @POPI LeftType
-   
+   @POPI4 InPtr LeftHigh LeftLow LeftType
+
+   @MV2V LeftType ResultType
 
    @WHEN
       @PUSHII InPtr @AND 0xff
@@ -1460,9 +1513,9 @@
             @CBREAK
          @CASE LE_TOKEN
             @CBREAK
-         @CASE LE_TOKEN
-            @CBREAK
          @CASE GE_TOKEN
+            @CBREAK
+         @CASE NE_TOKEN
             @CBREAK
          @CASE "=\0"
             @CBREAK
@@ -1479,36 +1532,14 @@
          @POPI Operation
          @INCI InPtr
          @Call(V) ParseExpr InPtr
-         @POPI InPtr
-         @POPI RightHigh
-         @POPI RightLow
-         @POPI RightType
+         @POPI4 InPtr RightHigh RightLow RightType
+
+         @Call_PromoteType  LeftType LeftLow LeftHigh RightType RightLow RightHigh ResultType
+         @Call_ApplyOpt Operation ResultType LeftLow LeftHigh RightLow RightHigh LeftType LeftLow LeftHigh
          
-         # We'll need to rewrite for Floats, but until then
-         # If LeftType and RightType are not same, then one has to be LONG_TYPE
-         @MV2V LeftType ResultType
-         @IF_NEQ_VV LeftType RightType
-            @MA2V LONG_TYPE ResultType
-         @ENDIF
-         @IF_NEQ_VV ResultType LeftType
-            @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
-            @POPI LeftType @POPI LeftHigh @POPI LeftLow
-         @ENDIF
-         @IF_NEQ_VV ResultType RightType         
-            @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
-            @POPI RightType @POPI RightHigh @POPI RightLow
-         @ENDIF
-         @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
-         @CALL ApplyOpt
-         @POPI LeftHigh
-         @POPI LeftLow
-         @POPI LeftType
    @ENDWHEN
    @POPNULL
-   @PUSHI LeftType
-   @PUSHI LeftLow
-   @PUSHI LeftHigh
-   @PUSHI InPtr
+   @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
    @RestoreVar 09
    @RestoreVar 08
@@ -1543,11 +1574,9 @@
        @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseLogical(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
    @Call(V) ParseRelation InPtr
-   @POPI InPtr
-   @POPI LeftHigh
-   @POPI LeftLow
-   @POPI LeftType
+   @POPI4 InPtr LeftHigh LeftLow LeftType
    
+   @MV2V LeftType ResultType
 
    @WHEN
       @PUSHII InPtr @AND 0xff
@@ -1565,36 +1594,14 @@
          @POPI Operation
          @INCI InPtr
          @Call(V) ParseExpr InPtr
-         @POPI InPtr
-         @POPI RightHigh
-         @POPI RightLow
-         @POPI RightType
+         @POPI4 InPtr RightHigh RightLow RightType
+
+         @Call_PromoteType LeftType LeftLow LeftHigh RightType RightLow RightHigh ResultType
+         @Call_ApplyOpt Operation ResultType LeftLow LeftHigh RightLow RightHigh LeftType LeftLow LeftHigh
          
-         # We'll need to rewrite for Floats, but until then
-         # If LeftType and RightType are not same, then one has to be LONG_TYPE
-         @MV2V LeftType ResultType
-         @IF_NEQ_VV LeftType RightType
-            @MA2V LONG_TYPE ResultType
-         @ENDIF
-         @IF_NEQ_VV ResultType LeftType
-            @Call(VVVV) CoerceType ResultType LeftType LeftLow LeftHigh
-            @POPI LeftType @POPI LeftHigh @POPI LeftLow
-         @ENDIF
-         @IF_NEQ_VV ResultType RightType         
-            @Call(VVVV) CoerceType ResultType RightType RightLow RightHigh
-            @POPI RightType @POPI RightHigh @POPI RightLow
-         @ENDIF
-         @PUSHI Operation @PUSHI ResultType @PUSHI LeftLow @PUSHI LeftHigh @PUSHI RightLow @PUSHI RightHigh
-         @CALL ApplyOpt
-         @POPI LeftHigh
-         @POPI LeftLow
-         @POPI LeftType
    @ENDWHEN
    @POPNULL
-   @PUSHI LeftType
-   @PUSHI LeftLow
-   @PUSHI LeftHigh
-   @PUSHI InPtr
+   @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
    @RestoreVar 09
    @RestoreVar 08

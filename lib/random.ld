@@ -1,4 +1,5 @@
-! RANDOM_SEEN
+! __LIB_RANDOM_LOADED
+M __LIB_RANDOM_LOADED 1
 # ============================================================
 # random.ld  -  Pseudo-Random Number Library for EX716
 #
@@ -14,7 +15,6 @@
 #   rndsetseed(N)  → set RNG seed
 #   frnd16()       → 16-bit random number (XORShift)
 #   frndint(N)     → integer in range 0..N (XORShift)
-#   xorshift16()   → alias for fast RNG core
 #
 # Dependencies:
 #   - softstack.ld : stack helpers
@@ -23,32 +23,15 @@
 # ============================================================
 
 I common.mc
-L softstack.ld
-L lmath.ld
-L mul.ld
-
+I random.ref
 # --- internal build markers ---
-M RANDOM_SEEN 1
 M SIZESINCECOMMENT random.ld
 
-@FUNCTIONNEEDS frndint
-   @USE DIVU
-   @USE xorshift16
-ENDBLOCK
-
-@FUNCTIONNEEDS rndint
-   @USE DIVU
-   @USE rnd16
-ENDBLOCK
-
-@FUNCTIONNEEDS rndsetseed
-   @USE rnd16
-ENDBLOCK
 
 # --- External dependencies (not defined in this file) ---
 #  DIVU
 #  rnd16
-#  xorshift16
+#  frnd16
 
 
 # --- public entry points ---
@@ -57,7 +40,6 @@ G rndint
 G rndsetseed
 G frnd16
 G frndint
-G xorshift16
 
 # ============================================================
 # Internal State and Constants
@@ -86,7 +68,7 @@ G xorshift16
 # - Uses @LocalVar for scratch 32-bit storage (avoids global clutter).
 # - Updates the global Seed32A value in-place.
 # ============================================================
-@FUNCTION fnd16
+@FUNCTION rnd16
 :rnd16
     # --- Allocate locals for 32-bit scratch space ---
     @LocalVar Scratch32A   01   # low word
@@ -229,7 +211,7 @@ G xorshift16
 #   N = upper bound (inclusive) for the random result
 #
 # Behavior:
-#   - Calls xorshift16() for a fast random 16-bit value.
+#   - Calls frnd16() for a fast random 16-bit value.
 #   - For N = 2, 4, or 8: uses fast bit-masking.
 #   - Otherwise: divides by N, returns the remainder.
 #
@@ -246,7 +228,7 @@ G xorshift16
     @POPI RIRange
 
     # --- Generate base random number (XORShift) ---
-    @CALL xorshift16
+    @CALL frnd16
 
     # --- Handle special cases with SWITCH ---
     @PUSHI RIRange
@@ -278,16 +260,11 @@ G xorshift16
 @ENDFUNCTION
 
 # ============================================================
-# frnd16() / xorshift16()  →  Fast 16-bit random number
+# frnd16()  →  Fast 16-bit random number
 #
 # Algorithm:
 #   George Marsaglia’s XORShift, tuned for 16-bit state.
 #   Sequence of rotate/shift/xor steps mutates the Seed value.
-#
-# Aliases:
-#   - frnd16 is the "friendly" name (fast random 16-bit).
-#   - xorshift16 is the technical name of the algorithm.
-#   Both labels point to the same code.
 #
 # State:
 #   - Uses the global :Seed value (16-bit).
@@ -297,9 +274,9 @@ G xorshift16
 #   - Macros ROLn/RORn/SHRn from common.mc provide *pure* rotates/shifts.
 #   - Deterministic: doesn’t depend on previous carry state.
 # ============================================================
+
 @FUNCTION frnd16
-:frnd16
-:xorshift16
+:frnd16 
     @PUSHRETURN
     @LocalVar S1Seed 01
 

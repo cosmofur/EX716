@@ -1,17 +1,9 @@
-! HexDumpDefine
-L softstack.ld
-M HexDumpDefine 1
+! __LIB_HEXDUMP_LOADED
+M __LIB_HEXDUMP_LOADED 1
+
 :HexBuf 0 0
 :ASCIIBuf 0 0 0 0 0 0 0 0 0 0
-
-@FUNCTIONNEEDS HexDump
-   @USE ByteToHexStr
-ENDBLOCK
-
-@FUNCTIONNEEDS ByteToHexStr
-   @USE NibbleToHexChar
-ENDBLOCK
-
+I hexdump.ref
 
 G HexDump
 G NibbleToHexChar

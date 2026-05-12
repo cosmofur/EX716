@@ -59,11 +59,6 @@ L string.ld
       @PRTTOP
       @PRTSP
       @POPNULL
-      @PRT "Hex Image of Line"
-      
-      @PUSHI Ptr @ADD 2 @PUSHS
-      @Call(AA) HexDump 16 1
-
       
       @PUSHI Ptr @ADD 2 @PUSHS                      # Start of Line
       @Call(VA) RenderLine OutBuf TOLKBUF_SIZE      # Convert tolkenized data in string into human readable string.
@@ -240,7 +235,7 @@ L string.ld
             @POPI OutPtr
          @ELSE
             @POPNULL
-            @Call(VA) FindByID TokenID KeyWordTable
+            @Call(V) FindByID TokenID
             @POPI StrLength
             @POPI EntryPtr
 
@@ -279,7 +274,7 @@ L string.ld
 
 
 #-------------------------------
-# FindByID(TokenID, KeyWordTable):(EntryPtr,StrLength)
+# FindByID(TokenID):(EntryPtr,StrLength)
 # searchs table looking for ID rather than String.
 #-------------------------------
 :FindByID
@@ -291,10 +286,10 @@ L string.ld
    @LocalVar LastAnswer 05
 
 
-   @POPI TablePtr
    @POPI TokenID
 
-   @PUSHII TablePtr
+   @MA2V KeyWordTable TablePtr
+   @PUSHII TablePtr @AND 0xff
    @WHILE_NOTZERO
       @AND 0xff
       @POPI StrLength
@@ -514,9 +509,133 @@ L string.ld
 @POPRETURN
 @RET
 
+#-----------------------------------
+# TYPEFILE(filename)
+# TYPES FileName to screen
+#-----------------------------------
+:TYPEFILE
+@PUSHRETURN
+    @LocalVar FileName      01
+    @LocalVar FilePtr       02
+    @LocalVar LineStatus    03
+    @LocalVar LineLen       04
+
+    @POPI FileName
+
+    # Open file for read ("ro")
+    @Call(VA) file_open FileName MODE_RO
+    @POPI FilePtr
+
+    @IF_EQ_AV 0 FilePtr
+       @PRT "File: " @PRTSI FileName @PRT " could not be opened.\n"
+       @JMP TPM_EXIT
+    @ENDIF
+
+    @Call(VVA) DiskFileReadLine  FilePtr InputBuf INPUTBUF_SIZE
+    @DUP
+    @AND LINE_STATE_MASK
+    @POPI LineStatus
+    @AND LINE_LEN_MASK
+    @POPI LineLen    
+    @WHILE_NEQ_AV LINE_EOF LineStatus
+        @PRTSI InputBuf
+        @PRTNL
+        @Call(VVA) DiskFileReadLine  FilePtr InputBuf INPUTBUF_SIZE
+        @DUP
+        @AND LINE_STATE_MASK
+        @POPI LineStatus
+        @AND LINE_LEN_MASK
+        @POPI LineLen
+    @ENDWHILE
+:TPM_EXIT
+    @IF_NEQ_AV 0 FilePtr
+       @Call(V) DiskClose FilePtr
+       @POPNULL
+    @ENDIF
+
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+ @POPRETURN
+ @RET
+
+#-------------------------------------
+# DIRDISK(Filepattern)
+#-------------------------------------
+:DIRDISK
+@PUSHRETURN
+    @LocalVar Pattern     01
+    @LocalVar StartPoint  02
+    @LocalVar FileNum     03
+    @LocalVar Count       04
+    @LocalVar DiskBuff    05
+    @LocalVar ArgTable    06
+    @LocalVar StrPtr      07
+
+    @POPI Pattern
+
+
+    @MA2V 4 StartPoint
+    @MA2V 0 FileNum
+    @MA2V 0 Count
+
+    @CALL DirNewArgTable @IF_ZERO @PRT "Error allocating ArgTable" @END @ENDIF
+    @POPI ArgTable
+    @CALL DiskNewBuffer
+    @POPI DiskBuff
+
+    @PRT "FileName\tSize\tFlags\n"
+
+    @WHEN
+       @Call(VV) FSFindFile Pattern StartPoint
+    @DO_NOTZERO
+       @POPI FileNum
+       @INCI Count
+       @Call(VVV) DirReadEntry FileNum ArgTable DiskBuff
+       @Call(VAA) HexDump ArgTable ARGTABLE_SIZE 0
+       @IF_ZERO
+           @PRT "Disk Error:"
+           @JMP DD_Exit
+       @ENDIF
+       @POPNULL
+       @PRTI Count @PRT "> "
+       @PUSHI ArgTable @ADD DIR_AT_FILENAME
+       @POPI StrPtr
+       @PRTSI StrPtr
+       @PRT "\t"
+       @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
+       @PUSHI ArgTable @ADD DIR_AT_FILESIZE @ADD 2 @PUSHS       
+       @PRT32S
+       @POPNULL @POPNULL
+
+       @PRT "\t"
+       @PUSHI ArgTable @ADD DIR_FLAGS @PUSHS
+       @PRTHEXTOP
+       @POPNULL
+       
+       @PRTNL
+       @MV2V FileNum StartPoint
+       @INCI StartPoint
+   @ENDWHEN
    
+       
+       
+:DD_Exit
+   @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 
-
+    @RestoreVar 07
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
+   
+ 
    
 M SIZESINCECOMMENT basic_support.h
 @SIZESINCE  

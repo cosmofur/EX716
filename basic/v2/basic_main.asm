@@ -1,16 +1,21 @@
 M USE_ONLY 1
 I common.mc
 I basic_common.h
-L hexdump.ld
 L softstack.ld
-L string.ld
+L hexdump.ld
 L diskos.ld
+L string.ld
 L lmath.ld
 L mul.ld
+L div.ld
+L heapmgr.ld
+
 I basic_header.asm
 I basic_storage.asm
 I basic_support.asm
 I basic_eval.asm
+
+
 # basic/v2/basic_main.asm
 # BASIC v2 – Editor Shell (ESX716 compliant)
 #
@@ -41,18 +46,99 @@ I basic_eval.asm
     @PRTNL
     @PRTSI InputBuf @PRTNL
     # If empty line, reprompt
-    :Break1
     @LOADBII InputBuf
     @IF_ZERO
         @POPNULL
         @JMP MainLoop
     @ENDIF
-
     @POPNULL
+    @Call(V) FixUpCaseCmd InputBuf
     @Call(V) ParseLineOrCommand InputBuf    
 
     @JMP MainLoop
 
+#---------------------------------------------------
+# FixUpCaseCmd(InStr)
+#---------------------------------------------------
+ :FixUpCaseCmd
+@PUSHRETURN
+    @LocalVar InStr     01
+    @LocalVar LenStr    02
+    @LocalVar QuoteFlag 03
+    @LocalVar ESCFlag   04
+    @LocalVar Ch        05
+
+    @POPI InStr
+
+    @Call(V) strlen InStr
+    @POPI LenStr
+
+    @MA2V 0 QuoteFlag
+    @MA2V 0 ESCFlag
+
+    @PUSHI LenStr
+    @WHILE_GT_A 0
+       @POPNULL
+
+       # Ch = low byte at InStr
+       @PUSHII InStr
+       @AND 0xff
+       @POPI Ch
+
+       # If Ch == '"' and previous char was not escape, toggle QuoteFlag.
+
+       @IF_EQ_AV "\"\0" Ch
+          @IF_EQ_AV 0 ESCFlag
+              @PUSHI QuoteFlag
+              @INV
+              @AND 1
+              @POPI QuoteFlag
+          @ENDIF
+       @ENDIF
+
+       # Escape only applies from this char to the next char.
+       # So compute the next ESCFlag from current Ch.
+       @MA2V 0 ESCFlag
+
+       @IF_EQ_AV "\\\0" Ch
+          @POPNULL
+          @MA2V 1 ESCFlag
+       @ENDIF
+
+       # Outside quotes, uppercase a-z.
+       @IF_EQ_AV 0 QuoteFlag
+          @PUSHI Ch
+          @IF_GE_A "a\0" 
+             @IF_LE_A "z\0"
+                @SUB 32
+                @POPI Ch
+
+                # Store modified low byte, preserving existing high byte.
+                @PUSHII InStr
+                @AND 0xff00
+                @ORI Ch
+                @POPII InStr
+             @ELSE
+                @POPNULL
+             @ENDIF
+          @ELSE
+             @POPNULL
+          @ENDIF
+       @ENDIF
+
+       @INCI InStr
+       @DECI LenStr
+       @PUSHI LenStr
+   @ENDWHILE
+   @POPNULL
+
+   @RestoreVar 05
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET   
 
 # --------------------------------------------------
 # ParseLineOrCommand
@@ -87,7 +173,8 @@ I basic_eval.asm
            @Call(vvAA) TokenizeStr TextPtr WorkBuf TOLKBUF_SIZE KeyWordTable
            @POPI TextLen
         @ENDIF        
-        @Call(VVV) InsertOrDeleteLine LineNum WorkBuf TextLen                
+        @Call(VVV) InsertOrDeleteLine LineNum WorkBuf TextLen
+        @Call(VV) HeapDeleteObject RunTimeHeap WorkBuf @IF_GT_A 0 @PRT "Error Deleting Heap" @JMP BasicPanic @ENDIF @POPNULL
     @ELSE
         @POPNULL
         # Command Data, no line number
@@ -95,7 +182,6 @@ I basic_eval.asm
         @POPI WorkBuf
         @Call(vvAA) TokenizeStr StrPtr WorkBuf TOLKBUF_SIZE CommandTable
         @POPI TextLen
-        @PRT "Tolkenized: "
         @Call(v) ExecuteCommand WorkBuf
         @Call(VV) HeapDeleteObject RunTimeHeap WorkBuf @IF_GT_A 0 @PRT "Error Deleting Heap" @JMP BasicPanic @ENDIF @POPNULL
     @ENDIF
@@ -267,7 +353,7 @@ I basic_eval.asm
           @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
              @POPNULL
-             @PRTLN "LOAD requires a quoted filename. SAVE \"name\""
+             @PRTLN "LOAD requires a quoted filename. LOAD \"name\""
              @JMP PCExit
           @ENDIF
           @POPNULL
@@ -293,7 +379,77 @@ I basic_eval.asm
           @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
           @JMP PCExit          
           @CBREAK
-       @CASE PRINTCMDCODE
+       @CASE TYPECODE
+          @POPNULL
+          @LOADBII BufPtr
+          @IF_NEQ_A STRING_TOKEN
+             @POPNULL
+             @PRTLN "TYPE requires a quoted filename. TYPE \"name\""
+             @JMP PCExit
+          @ENDIF
+          @POPNULL
+          @INCI BufPtr
+          @LOADBII BufPtr                # Get Length
+          @POPI StrLength
+          @INCI StrLength               # Add a spot for the Null
+          @Call(VV) HeapNewObject RunTimeHeap StrLength
+          @POPI FileData
+          @DECI StrLength               # Return StrLength to real length
+          @INCI BufPtr                  # Point to first letter in string          
+          @ForIA2V Index1 0 StrLength
+              # FileData[I]=BufPtr[I]&0xff
+              @PUSHI BufPtr @ADDI Index1
+              @PUSHS
+              @AND 0xff                 # Want just byte, but also get null term for free
+              @PUSHI FileData @ADDI Index1
+              @POPS
+          @Next Index1          
+          # Call Type
+          @Call(V) TYPEFILE FileData
+          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
+          @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
+          @JMP PCExit          
+          @CBREAK
+       @CASE DIRCODE
+          @POPNULL
+          @Call(VA) HeapNewObject RunTimeHeap 33 # Longest possible filename is 32 bytes.
+          @POPI FileData
+         
+          @LOADBII BufPtr
+          @IF_NEQ_A STRING_TOKEN
+              # No pattern given, use wildcard as default
+              @STRSETI "*\0" FileData          
+          @ELSE
+              @INCI BufPtr          # Move to string len
+              @LOADBII BufPtr                # Get Length
+              @POPI StrLength
+              @INCI BufPtr                  # Point to first letter in string          
+             @ForIA2V Index1 0 StrLength
+                 # FileData[I]=BufPtr[I]&0xff
+                 @PUSHI BufPtr @ADDI Index1
+                 @PUSHS
+                 @AND 0xff                 # Want just byte, but also get null term for free
+                 @PUSHI FileData @ADDI Index1
+                 @POPS
+             @Next Index1
+         @ENDIF
+         @Call(V)  DIRDISK FileData
+         @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
+         @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
+         @JMP PCExit
+         @CBREAK
+       @CASE MEM_CODE
+         @POPNULL
+         @PRT "Memory Report\n"
+         @Call(V) HeapListMap RunTimeHeap
+         @PRT "InputBuf: " @PRTHEXI InputBuf @PRT "\n"
+         @PRT "VarFirstEntry: " @PRTHEXI VarFirstEntry @PRT "\n"
+         @PRT "LineTableBase: " @PRTHEXI LineTableBase @PRT "\n"
+         @StackDump
+         @PRTNL
+         @CBREAK
+         
+       @CASE PRINT_CODE
           @POPNULL
 
           @DECI BufPtr
@@ -305,7 +461,7 @@ I basic_eval.asm
              @POPI BufPtr
           @ENDIF
           @CBREAK
-       @CASE LETCMDCODE
+       @CASE LET_CODE
           @POPNULL
           @Call(V) ParseLET BufPtr
           @IF_ULT_A 100
@@ -350,22 +506,9 @@ I basic_eval.asm
    # So our logic requires a forced reversal
 
    @IF_ZERO
-      # Strings matched up to Length, check next byte to make sure not false match.
       @POPNULL
-      @PUSHI PtrA
-      @ADDI Len
-      @CALL ISAlphaNum   # (ptr in stack)
-      @IF_NOTZERO
-         # There was another alphanum letter, so not real match, return 0 for false.
-         @POPNULL
-         @PUSH 0
-      @ELSE
-         # Boundry checks out, return true for found match
-         @POPNULL
-         @PUSH 1
-      @ENDIF
+      @PUSH 1
    @ELSE
-      # Not a match at all.
       @POPNULL
       @PUSH 0       # MatchToken returns 1 on true, and 0 on false.
    @ENDIF
@@ -494,7 +637,7 @@ I basic_eval.asm
     @WHILE_NOTZERO
        @POPI Len
        @INCI TblPtr   # Get past LEN byte
-       @Call(VVV) MatchToken CurPtr TblPtr Len
+       @Call(VVV) MatchToken TblPtr CurPtr Len
        @POPI Match
        @IF_EQ_AV 0 Match
           # No Match Found Move TblPtr to next entry.
@@ -522,6 +665,16 @@ I basic_eval.asm
        @INCI CurPtr
        @Call(V) ISAlphaNum CurPtr
     @ENDWHILE
+    @POPNULL
+    @LOADBII CurPtr
+    @SWITCH
+    @CASE "%\0" @INCI CurPtr @CBREAK
+    @CASE "#\0" @INCI CurPtr @CBREAK
+    @CASE "$\0" @INCI CurPtr @CBREAK
+    @CDEFAULT @CBREAK
+    @ENDCASE
+    @POPNULL
+    
     @PUSH VAR_TOKEN
     @PUSHI StartPtr
     @PUSHI CurPtr

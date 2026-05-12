@@ -1,6 +1,7 @@
-! SOFTSTACK_DONE
-M SOFTSTACK_DONE 1
+! __LIB_SOFTSTACK_LOADED
+M __LIB_SOFTSTACK_LOADED 1
 P Loading softstack.ld
+I softstack.ref
 # Provides and Alternative small software stack
 
 # Used mostly so some simple low depth recursion can avoid reusing fixed storage

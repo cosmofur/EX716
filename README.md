@@ -119,22 +119,89 @@ It supports single-pass assembly with deferred label resolution and structured m
 ### Directives
 
 - `.` or `.ORG`: Set insertion and entry point  
-- `.DATA`: Start data segment  
+- `.DATA`: Define optional data segment  
 - `:` and `;`: Define labels for code and data  
 - `@MACRO`: Invoke macro with `%1` to `%9` args  
 - `=`: Set constant label  
 - `M`, `MF`, `MC`: Define, set, or clear macros  
 - `I`, `L`: Include or load files/libraries  
-- `!`, `?`, `ENDBLOCK`: Macro conditionals  
-
+- `!`, `?`, `IFDEF`, `IFNDEF`, `IF_*`, `ENDBLOCK`: Assembly-time conditionals  
 ### Literals
 
-- `"text"`: 8 bit ascii string data inserted at point. /n /t type escapes supported.
-- `'text'`: 8 bit ascii string RAW no '/' escape formating.
+- `"text"`: 8-bit ASCII string data inserted at point. `/n` `/t` type escapes supported.
+- `'text'`: 8-bit ASCII string RAW, no `/` escape formatting.
 - `$123`, `0x1234`, `0b1010`: Numeric formats  
-- `$$`,`$`,`$$$`: Byte 8b / word 16b / longword storage  32b
+- `$$`,`$`,`$$$`: Byte 8b / word 16b / longword storage 32b
 
 ---
+## Macro Control Flow (Assembly-Time Conditionals)
+
+In addition to macro-based structured constructs, the assembler provides native conditional control commands that operate during macro expansion.
+
+These are not macros, but built-in assembler directives evaluated at assembly time only.
+
+Definition-Based Conditionals
+IFDEF symbol
+   ...
+ENDBLOCK
+
+IFNDEF symbol
+   ...
+ENDBLOCK
+IFDEF executes the block if symbol is defined
+IFNDEF executes the block if symbol is not defined
+These are functionally equivalent to the legacy shorthand:
+? symbol → IFDEF symbol
+! symbol → IFNDEF symbol
+
+The shorthand forms remain valid but may be considered deprecated in favor of the clearer IFDEF / IFNDEF.
+
+Comparison-Based Conditionals
+
+The assembler also supports simple comparisons between two values:
+
+- IF_EQ a b
+- IF_NE a b
+- IF_LT a b
+- IF_GT a b
+   ...
+ENDBLOCK
+
+Where a and b may be:
+
+- Constants
+- Labels
+- Macro expressions
+
+Semantics:
+
+- IF_EQ → true if a == b
+- IF_NE → true if a != b
+- IF_LT → true if a < b
+- IF_GT → true if a > b
+
+All comparisons are evaluated using the assembler’s standard numeric rules (16-bit unsigned evaluation).
+
+Notes and Limitations
+These conditionals are evaluated at assembly time, not runtime
+Blocks must terminate with ENDBLOCK
+No ELSE support is currently provided
+Conditionals may be freely nested
+Behavior is deterministic and resolved in a single pass
+Example
+=DEBUG 1
+
+IFDEF DEBUG
+    @PRTLN "Debug mode enabled"
+ENDBLOCK
+
+IF_EQ 10 10
+    @PRTLN "Values match"
+ENDBLOCK
+
+IF_LT %LEN 100
+    @PRTLN "Short string"
+ENDBLOCK
 
 ## Common Macros
 
@@ -161,15 +228,13 @@ Support for structured programming, similar to C-like control structures:
 @FORIA2B, @FORIV2A, @NEXT, @NEXTBY  
 ```
 
-Macro Function System
+## Macro Function System
 
 The EX716 assembler includes an inline macro expression evaluator that allows limited arithmetic, bitfield, and repetition logic to be performed entirely at assembly time.
 All macro expressions begin with % and are evaluated left-to-right in a single pass.
 Grouping and precedence are controlled explicitly with parentheses.
 
-Expression Grouping
-
-Parentheses are written as %( and %).
+### Expression Grouping
 These may be nested and define an evaluation boundary; the entire grouped expression is replaced by its resulting value.
 
 Example:
@@ -177,50 +242,46 @@ Example:
 %AND[%(%OR[4 8]%) 2]   ; → 0x0
 
 
-Numeric Width Rules
-
-All macro arithmetic is performed using 16-bit unsigned integers.
+### Numeric Width Rules using 16-bit unsigned integers.
 
 Prefix modifiers adjust literal width:
 
-Prefix	Size	Notes
-$$	8-bit	Truncated to 8 bits
-$$$	32-bit	Zero-padded or truncated to 16 bits internally
+| Prefix | Size   | Notes                                         |
+|--------|--------|-----------------------------------------------|
+| `$$`   | 8-bit  | Truncated to 8 bits                           |
+| `$$$`  | 32-bit | Zero-padded or truncated to 16 bits internally |
 
 
-Macro Logical Stack (MLS)
-
-The Macro Logical Stack is a small internal stack used to keep track of unique identifiers and symbolic values during macro expansion.
+## Macro Logical Stack (MLS) is a small internal stack used to keep track of unique identifiers and symbolic values during macro expansion.
 It acts as a means for macros to share or propagate context — for example, ensuring that @ENDWHILE pairs with the correct @WHILE instance.
 
-Token	Action
-%S	Push current macro argument (%0) onto MLS
-%V	Replace with top of MLS (no pop)
-%W	Replace with second-from-top of MLS
-%P	Pop (discard) top of MLS, emit nothing
+| Token | Action                                    |
+|-------|-------------------------------------------|
+| `%S`  | Push current macro argument (`%0`) onto MLS, emit nothing |
+| `%V`  | Replace with top of MLS (no pop)          |
+| `%W`  | Replace with second-from-top of MLS       |
+| `%P`  | Pop (discard) top of MLS, emit nothing    |
 
 The primary use of the MLS is to maintain unique strings that can be embedded into label or macro names, allowing macros to safely nest and generate unique symbol scopes.
 This system enables higher-level structured constructs such as @IF … @ENDIF and @WHILE … @ENDWHILE to function without collision.
 
 
-Core Macro Functions
-Function	Parameters	Description
-%STRLEN [v1]	String	Computes the length of v1. Stores the numeric result in %LEN. Emits nothing.
-%LEN	—	Expands to the most recent value set by %STRLEN. Useful for embedding string lengths.
-%LINE	—	Expands to a comment marker showing the current filename and line number.
-%REPEAT [v1] body %ENDR	Count, text block	Repeats body v1 times. Each repetition re-evaluates all inner % expressions.
-%AND [v1 v2]	Two numbers	Bitwise AND → pushes result to MLS.
-%OR [v1 v2]	Two numbers	Bitwise OR → pushes result to MLS.
-%Field [start width value]	Three numbers	Extracts width bits from value starting at start, then left-shifts back into position. Equivalent to:
-((value >> start) & ((1 << width) - 1)) << start
-%Bit [bit value]	Two numbers	Returns 1 if bit bit in value is set, else 0. Equivalent to:
-((value >> bit) & 1)
-Examples
+### Core Macro Functions
 
-String length
+| Function                      | Parameters     | Description |
+|-------------------------------|----------------|-------------|
+| `%STRLEN [v1]`                | String         | Computes the length of v1. Stores the numeric result in `%LEN`. Emits nothing. |
+| `%LEN`                        | —              | Expands to the most recent value set by `%STRLEN`. Useful for embedding string lengths. |
+| `%LINE`                       | —              | Expands to a comment marker showing the current filename and line number. |
+| `%REPEAT [v1] body %ENDR`     | Count, text block | Repeats body v1 times. Each repetition re-evaluates all inner `%` expressions. |
+| `%AND [v1 v2]`                | Two numbers    | Bitwise AND → pushes result to MLS. |
+| `%OR [v1 v2]`                 | Two numbers    | Bitwise OR → pushes result to MLS. |
+| `%Field [start width value]`  | Three numbers  | Extracts width bits from value starting at start, then left-shifts back into position. Equivalent to: `((value >> start) & ((1 << width) - 1)) << start` |
+| `%Bit [bit value]`            | Two numbers    | Returns 1 if bit `bit` in `value` is set, else 0. Equivalent to: `((value >> bit) & 1)` |
+### Examples
 
 %STRLEN "Hello"
-.WORD %LEN        ; emits constant 5
+:WORD %LEN        ; Creates label WORD and gives it initial value of 5
 
 
 Bit and field extraction
@@ -255,8 +316,6 @@ The %Field and %Bit functions are commonly used for instruction encoding or pack
 
 Nested macro evaluation is deterministic; all stack operations occur within the macro evaluation phase, not at runtime.
 
-Would you like me to extend this section with an example of how %Field and %Bit are used together in a .REG or instruction encoding macro? It would bridge neatly into your later floating-point or opcode-definition examples.
-
 ---
 ## Function Call Helpers
 
@@ -264,14 +323,17 @@ To simplify common @CALL patterns, shorthand macros exist for up to four paramet
 
 ```
 Call(##)   → expands to @PUSH / @PUSHI + @CALL
-
-
-Each letter in ## describes an argument type:
-
-Symbol	Meaning
-A	Immediate constant
-v	Simple variable
 ```
+
+Each letter in `##` describes an argument type:
+
+| Symbol | Meaning           |
+|--------|-------------------|
+| `A`    | Immediate constant |
+| `v`    | Simple variable   |
+
+These function call helpers are only valid when there are 4 or fewer parameters. If you need more than 4 parameters, either use the traditional `PUSH` and all-uppercase `CALL` macros, or combine them.
+
 Example:
 
 | Macro                | Equivalent                    |
@@ -279,7 +341,7 @@ Example:
 | Call(A) F 123        | @PUSH 123 @CALL F             |
 | Call(Av) F 45 Cat    | @PUSH 45 @PUSHI Cat @CALL F   |
 | Call(v) F Dog        | @PUSHI Dog @CALL F            |
-| Call(vv) F Dog Cat   | @PUSHI Dog @PUHSI Cat @CALL F |
+| Call(vv) F Dog Cat   | @PUSHI Dog @PUSHI Cat @CALL F |
 ---
 Example: Nested Scoping with WHILE / ENDWHILE
 
@@ -302,33 +364,67 @@ When expanded, the %S pushes a unique instance ID also stored in %0, which is un
 The %V and %W operators then substitute that ID into label names, so each loop generates its own :_LoopTop and :_ExitLoop pair without interfering with other nested loops.
 Finally, %P discards the label ID once the block ends.
 
-Example: Logical Blocks and String Concatenation
+Library Selection and @USE
 
-The Forth compiler uses logical macro blocks and multi-append macros to define data that grows over multiple invocations.
-The !…ENDBLOCK form provides conditional execution of macro definitions, while MA allows appending to an existing macro variable.
+EX716 supports an optional mechanism to reduce memory usage by limiting which library functions are assembled.
 
-# DEFPRELOAD defines a block of string memory that holds raw Forth code to act as preload.
-# Multiple PRELOADS will be appended to each other.
-
-M PreCodeVal "( start preload )"
-
-M DEFPRELOAD \
-  ! PreCodeExists \
-    MF PreCodeExists 1 \
-  ENDBLOCK \
-  MA PreCodeVal %1
+By default, when a library is included, all functions within that library are assembled, even if they are never used.
+This is simple and predictable, but can consume a significant portion of the available 64K memory.
 
 
-Here:
+###
 
-! PreCodeExists … ENDBLOCK executes only the first time, defining the initial macro flag.
+USE_ONLY Mode
 
-MA appends to the existing macro PreCodeVal, concatenating additional preload text each time @DEFPRELOAD is used.
+To enable selective inclusion, define the USE_ONLY macro before the first inclusion of common.mc:
 
-MF would have replaced the value instead of appending it.
+M USE_ONLY 1
+I common.mc
 
-This pattern is common for building composite string definitions, code preload blocks, or concatenated initialization data.
----
+When USE_ONLY is enabled:
+
+Only explicitly requested functions are assembled
+Unused library functions are not included, reducing memory usage
+Missing dependencies may result in assembly-time errors
+
+If USE_ONLY is not defined prior to loading common.mc, the assembler defaults to full inclusion mode.
+
+Using @USE
+
+The @USE directive is used to declare which functions your program requires.
+
+Typical usage:
+
+@USE PrintString
+@USE Add32
+@USE Random
+
+Each @USE marks a function (and its required support code) for inclusion during assembly.
+
+Behavior Summary
+Mode	Behavior
+Default	All library functions are included
+USE_ONLY enabled	Only @USE-declared functions are included
+Example
+M USE_ONLY 1
+I common.mc
+
+@USE PrintString
+@USE Random
+
+@PRTLN "Hello World"
+
+In this example:
+
+Only the code required for PrintString, Random, and their dependencies is assembled
+All other library functionality is excluded
+Notes
+USE_ONLY must be defined before the first library load to take effect
+This feature is optional and intended for memory-constrained programs
+It is particularly useful when working with large libraries such as math or string modules
+Errors related to missing functions or incorrect load order may indicate a missing @USE declaration
+
+ ---
 ## Emulator (`cpu.py`)
 
 ### Usage
@@ -364,16 +460,21 @@ This pattern is common for building composite string definitions, code preload b
 | `g`     | Goto specific address                            |
 | `h`     | Help summary                                     |
 | `hex`   | Hex dump of memory                               |
-| `hexi`  | Hex dump of memory starting at lable             |
+| `hexi`  | Hex dump of memory starting at label             |
 | `m`     | Modify memory (inline or interactive)            |
 | `n`     | Next instruction                                 |
 | `s`     | Step over (skip over function call)              |
 | `p`     | Print address contents                           |
-| `pa`    | Print Any (optional pattern) search lables       |
+| `pa`    | Print Any (optional pattern) search labels       |
 | `ps`    | Print hardware stack contents                    |
 | `q`     | Quit debugger                                    |
 | `r`     | Reset program counter                            |
 | `w`     | Set memory watchpoint                            |
+| `bwhen` | Expression-based watch points.                   |
+
+---
+bwhen supports expressions like `bwhen VAR == val`. Word comparisons use `==` and `!=`; byte comparisons use `b==` and `b!=`.
+
 
 ---
 
@@ -395,9 +496,9 @@ Each simulated disk is:
 
 
 ## Appendix A: Core Instruction Set
-Here are the 'core' instructions, many additional 'macro' instructions are
-defined in the commom.mc file. These in this list will assemble into single
-optcodes and are therefore the most efficent to use for performance.
+Here are the 'core' instructions; many additional 'macro' instructions are
+defined in the `common.mc` file. Instructions in this list will assemble into single
+opcodes and are therefore the most efficient to use for performance.
 
 | Name     | Hex   | Dec | Size | Summary                                       |
 |----------|-------|-----|------|-----------------------------------------------|
@@ -456,4 +557,9 @@ optcodes and are therefore the most efficent to use for performance.
 | FLOD     | 0x34  | 52  | 1    | Load flag state from stack                    |
 | ADM      | 0x35  | 53  | 1    | Enter admin mode (experimental)               |
 | SCLR     | 0x36  | 54  | 1    | Stack Clear, zeros out HW Stack.              |
-| SRPT     | 0x37  | 55  | 1    | Stack Repot, Push stack size, -1 on error.    |
+| SRPT     | 0x37  | 55  | 1    | Stack Report, Push stack size, -1 on error.   |
+
+Summary: Core instructions
+NOP, PUSH, DUP, POPNULL, SWP, POP, CMP, ADD, SUB, OR, AND, XOR, JMPZ, JMPC, JMPO, JMP, JMPI, JMPS, CAST, POLL, RRTC, RLTC, SHR, SHL, INV, COMP2, FCLR, FSAV, FLOD, ADM, SCLR, SRPT
+
+There are about 32 instructions if you consider the 'S', 'I', 'II', and default as variants of the same instruction.

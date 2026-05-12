@@ -1,5 +1,6 @@
-! MUL_SEEN
-P Loading MUL.ld
+! __LIB_MUL_LOADED
+M __LIB_MUL_LOADED 1
+I mul.ref
 # ============================================================
 # mul.ld  -  Software Multiply Library for EX716
 #
@@ -21,20 +22,11 @@ P Loading MUL.ld
 #   - MUL uses MULU and adjusts result for sign.
 # ============================================================
 
-M MUL_SEEN 1
-L softstack.ld
 
-@FUNCTIONNEEDS MUL
-   @USE MULU
-ENDBLOCK
-
-@USE mulMacros
-@FUNCTION mulMacros
 M SIZESINCECOMMENT mul.ld
 
 M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @POPRETURN @RET
 
-@ENDFUNCTION
 # --- Public entry points ---
 
 # ============================================================
@@ -47,7 +39,9 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
 # Flags:
 #   Overflow flag set if high word of result ≠ 0
 # ============================================================
+P Before MULU
 @FUNCTION MULU
+P MULU is defined here
 :MULU
     @PUSHRETURN
     @LocalVar MM      01   # multiplier

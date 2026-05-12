@@ -1057,6 +1057,27 @@ M Call(VP)     @PUSHI %2     @PUSHII %3     @CALL %1
 M Call(PV)     @PUSHII %2     @PUSHI %3     @CALL %1
 M Call(V)     @PUSHI %2     @CALL %1
 # Setup Functon headers for profile and Linking
+# Multi PUSHI/POPI helpers.
+# These do NOT compensate for stack reversal.
+# @PUSHI4 A B C D leaves D on top.
+# To restore the same logical order, use @POPI4 D C B A.
+# Nor do they allow PUSHing of constants or double indirect values like pointers.
+M POPI8 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5 @POPI %6 @POPI %7 @POPI %8
+M POPI7 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5 @POPI %6 @POPI %7
+M POPI6 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5 @POPI %6
+M POPI5 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5
+M POPI4 @POPI %1 @POPI %2 @POPI %3 @POPI %4
+M POPI3 @POPI %1 @POPI %2 @POPI %3
+M POPI2 @POPI %1 @POPI %2
+
+M PUSHI8 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6 @PUSHI %7 @PUSHI %8
+M PUSHI7 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6 @PUSHI %7
+M PUSHI6 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6
+M PUSHI5 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5
+M PUSHI4 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4
+M PUSHI3 @PUSHI %1 @PUSHI %2 @PUSHI %3
+M PUSHI2 @PUSHI %1 @PUSHI %2
+
 
 #--------------------------------------------------
 # Mode selection
@@ -1110,7 +1131,7 @@ M TRUE 1
 #--------------------------------------------------
 
 ? __EX716_USE_ONLY
-   P Assemble with USE_ONLY Enabled.
+#   P Assemble with USE_ONLY Enabled.
    # FUNCTION only emits if explicitly used
    M FUNCTION \
       ? __USE_%1 \
@@ -1125,7 +1146,7 @@ M TRUE 1
       ENDBLOCK
 
    # Dependency declaration hook
-   M FUNCTIONNEEDS ? __USE_%1 # P "Including " %1 ;
+   M FUNCTIONNEEDS ? __USE_%1 # P "USEing " %1 ;
 
    M USE MF __USE_%1 %1 G %1 #  P Mark for Use %1 ;
    M ENDBLOCK ENDBLOCK

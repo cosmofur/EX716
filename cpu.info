@@ -1,0 +1,232 @@
+###############################################################################
+# EX716 CPU / Assembler Documentation (auto + manual)
+# Corrected descriptions for all known functions and optcodes
+###############################################################################
+
+CLASS:AssemblerContext:__init__ "Initialize assembler state: symbol tables, local context, file tracking, flags, and terminal I/O state.";
+CLASS:AssemblerContext:restore_tty "Restore terminal settings after raw/no-echo input modes.";
+CLASS:AssemblerContext:PollSetNoEchoFunc "Enable terminal input without local echo for single-character reads.";
+CLASS:AssemblerContext:PollSetEchoFunc "Re-enable terminal echo after no-echo mode.";
+CLASS:AssemblerContext:PollSetRawFunc "Put terminal in raw mode for unbuffered character input.";
+CLASS:AssemblerContext:PollReSetRawFunc "Restore terminal from raw mode back to previous configuration.";
+CLASS:AssemblerContext:PollTTYStateFunc "Return current TTY mode/state information.";
+CLASS:AssemblerContext:tty_reset "Force terminal settings back to sane defaults.";
+CLASS:AssemblerContext:shandler "Signal handler for break/interrupt during assembly or debug.";
+CLASS:AssemblerContext:is_string_numeric "Return True if string matches decimal/hex/octal/binary integer syntax.";
+CLASS:AssemblerContext:digitsonly "Return True if string contains only digit characters.";
+CLASS:AssemblerContext:create_new_filename "Generate a new output filename based on prefix or numeric suffix.";
+CLASS:AssemblerContext:create_new_unique "Return a guaranteed-unique temporary filename.";
+CLASS:AssemblerContext:validatestr "Parse string for 0x, 0o, 0b prefixes and validate numeric syntax.";
+CLASS:AssemblerContext:UpdateVarHistory "Record a variable's assigned value and the memory address where it was defined.";
+CLASS:AssemblerContext:FindHistoricVal "Return the value of a local variable name whose definitions may occur multiple times; resolves by nearest definition at or before the reference address.";
+CLASS:AssemblerContext:FindLabelMatch "Look up a label by exact or prefix match; print an ambiguity table if needed.";
+CLASS:AssemblerContext:Sort_And_Combine_Labels "Return human-readable label list; removes auto-generated labels and collapses suffix variants.";
+
+
+###############################################################################
+# Input File Tracking
+###############################################################################
+
+CLASS:InputFileData:__init__ "Track mapping of filename/line numbers to memory addresses.";
+CLASS:InputFileData:add_entry "Record mapping of (filename,line) → memory address for symbolic debugging.";
+CLASS:InputFileData:get_line_info "Return symbolic source mapping for a given memory address.";
+CLASS:InputFileData:get_nearest_address "Return nearest lower-or-equal symbolic address.";
+CLASS:InputFileData:safeprint "Print while escaping unprintable characters.";
+
+
+###############################################################################
+# Core CPU Accessors
+###############################################################################
+
+CLASS:microcpu:switcher "Dispatch opcode or command name to its handler.";
+CLASS:microcpu:__init__ "Initialize memory, registers, flags, stacks, handlers, and execution state.";
+CLASS:microcpu:insertbyte "Write a single byte to memory at the specified address.";
+CLASS:microcpu:getwordstack "Fetch a 16-bit value from the hardware stack.";
+CLASS:microcpu:getwordmem "Fetch a 16-bit value from RAM.";
+CLASS:microcpu:dumpstack "Display current contents of the hardware stack.";
+CLASS:microcpu:FindWhatLine "Map an instruction address back to a source line.";
+CLASS:microcpu:FindAddressLine "Return stored mapping for filename/line to memory address.";
+CLASS:microcpu:raiseerror "Raise a CPU/runtime error with diagnostic output.";
+CLASS:microcpu:lowbyte "Return low 8 bits of a 16-bit value.";
+CLASS:microcpu:highbyte "Return high 8 bits of a 16-bit value.";
+CLASS:microcpu:fetchAcum "Return accumulator value (direct or loaded).";
+CLASS:microcpu:StoreAcum "Store accumulator value into memory.";
+CLASS:microcpu:getwordat "Return a 16-bit value from an explicit address.";
+CLASS:microcpu:putwordat "Store a 16-bit value to an explicit address.";
+
+
+###############################################################################
+# Stack / Memory Movement Instructions
+###############################################################################
+
+CLASS:microcpu:optNOP "No operation (1 cycle). EX716 Emulator Function";
+CLASS:microcpu:optPUSH "Push literal operand onto TOS. EX716 Emulator Function";
+CLASS:microcpu:optDUP "Duplicate TOS. EX716 Emulator Function";
+
+CLASS:microcpu:optPUSHI "Push value loaded Indirect from address operand. (I = Indirect)";
+CLASS:microcpu:optPUSHII "Push value loaded via Double Indirect pointer dereference. (II = Pointer)";
+CLASS:microcpu:optPUSHS "Push from soft stack / secondary stack. (S = Stack variant)";
+
+CLASS:microcpu:optPOPNULL "Pop and discard TOS.";
+CLASS:microcpu:optSWP "Swap TOS and SFT.";
+CLASS:microcpu:optPOPI "Pop TOS and store to address loaded Indirect.";
+CLASS:microcpu:optPOPII "Pop TOS and store through Double Indirect.";
+CLASS:microcpu:optPOPS "Pop TOS into soft stack.";
+
+
+###############################################################################
+# Comparison Instructions
+###############################################################################
+
+CLASS:microcpu:optCMP "Compare TOS with direct operand; update flags only.";
+CLASS:microcpu:optCMPS "Compare SFT − TOS using stack values only.";
+CLASS:microcpu:optCMPI "Compare TOS with operand loaded Indirect.";
+CLASS:microcpu:optCMPII "Compare TOS with operand loaded through Double Indirect.";
+
+
+###############################################################################
+# Arithmetic Instructions
+###############################################################################
+
+CLASS:microcpu:optADD "TOS = TOS + direct operand.";
+CLASS:microcpu:optADDS "TOS = SFT + TOS (stack-only form).";
+CLASS:microcpu:optADDI "TOS = TOS + value loaded Indirect.";
+CLASS:microcpu:optADDII "TOS = TOS + value loaded Double Indirect.";
+
+CLASS:microcpu:optSUB "TOS = TOS − direct operand.";
+CLASS:microcpu:optSUBS "TOS = SFT − TOS (stack-only form).";
+CLASS:microcpu:optSUBI "TOS = TOS − value loaded Indirect.";
+CLASS:microcpu:optSUBII "TOS = TOS − value loaded Double Indirect.";
+
+
+###############################################################################
+# Bitwise Instructions
+###############################################################################
+
+CLASS:microcpu:optOR "TOS = TOS | direct operand.";
+CLASS:microcpu:optORS "TOS = SFT | TOS (stack-only form).";
+CLASS:microcpu:optORI "TOS = TOS | value loaded Indirect.";
+CLASS:microcpu:optORII "TOS = TOS | value loaded Double Indirect.";
+
+CLASS:microcpu:optAND "TOS = TOS & direct operand.";
+CLASS:microcpu:optANDS "TOS = SFT & TOS (stack-only form).";
+CLASS:microcpu:optANDI "TOS = TOS & operand loaded Indirect.";
+CLASS:microcpu:optANDII "TOS = TOS & operand loaded Double Indirect.";
+
+CLASS:microcpu:optXOR "TOS = TOS ^ direct operand.";
+CLASS:microcpu:optXORS "TOS = SFT ^ TOS (stack-only form).";
+CLASS:microcpu:optXORI "TOS = TOS ^ value loaded Indirect.";
+CLASS:microcpu:optXORII "TOS = TOS ^ value loaded Double Indirect.";
+
+
+###############################################################################
+# Branch Instructions
+###############################################################################
+
+CLASS:microcpu:optJMPZ "Jump if zero flag is set.";
+CLASS:microcpu:optJMPN "Jump if negative flag is set.";
+CLASS:microcpu:optJMPC "Jump if carry flag is set.";
+CLASS:microcpu:optJMPO "Jump if overflow flag is set.";
+CLASS:microcpu:optJMP  "Unconditional jump.";
+CLASS:microcpu:optJMPI "Jump to address loaded Indirect.";
+CLASS:microcpu:optJMPS "Jump to address taken from TOS.";
+
+
+###############################################################################
+# Unary, Flag, and System Instructions
+###############################################################################
+
+CLASS:microcpu:optCAST "Coerce TOS to byte/word depending on mode.";
+CLASS:microcpu:optPOLL "Poll hardware or I/O source.";
+CLASS:microcpu:optRRTC "Rotate TOS right through carry.";
+CLASS:microcpu:optRLTC "Rotate TOS left through carry.";
+CLASS:microcpu:optSHR "Logical right shift of TOS.";
+CLASS:microcpu:optSHL "Logical left shift of TOS.";
+CLASS:microcpu:optINV "Bitwise invert TOS.";
+CLASS:microcpu:optCOMP2 "Replace TOS with its two’s complement.";
+
+CLASS:microcpu:optFCLR "Clear condition flags register.";
+CLASS:microcpu:optFSAV "Push flags register onto soft stack.";
+CLASS:microcpu:optFLOD "Pop flags register from soft stack.";
+
+CLASS:microcpu:optADM "Administrative/system instruction (page register, admin mode, or privileged actions).";
+CLASS:microcpu:optSCLR "Clear hardware or soft-state register (architecture-dependent).";
+CLASS:microcpu:optSRPT "Push current soft-stack depth; push −1 if stack is full.";
+
+
+###############################################################################
+# Execution Loops
+###############################################################################
+
+CLASS:microcpu:evalpc "Primary instruction dispatch loop starting at PC.";
+CLASS:microcpu:_evalpc_c_OLD "Legacy C-accelerated execution loop (retained for comparison).";
+CLASS:microcpu:_evalpc_c "Current optimized C-accelerated execution core.";
+CLASS:microcpu:step_one "Execute a single instruction cycle.";
+CLASS:microcpu:_evalpc_py "Pure Python execution loop.";
+CLASS:microcpu:_handle_return_code "Interpret halts, breaks, and return codes.";
+
+
+###############################################################################
+# Assembler / Parser Helpers
+###############################################################################
+
+CLASS:microcpu:removecomments "Strip assembler comments from a line.";
+CLASS:microcpu:GetQuoted "Extract quoted string token with escapes.";
+CLASS:microcpu:GetRawQuoted "Extract quoted string without interpreting escapes.";
+CLASS:microcpu:nextwordplus "Return next token plus number of characters consumed.";
+CLASS:microcpu:nextword "Return next parsed token.";
+CLASS:microcpu:Str2Word "Convert numeric string to a 16-bit word.";
+CLASS:microcpu:Str32Word "Convert numeric string to a 32-bit word.";
+CLASS:microcpu:Str2Byte "Convert numeric string to an 8-bit byte.";
+CLASS:microcpu:DissAsm "Disassemble a machine instruction into human-readable format.";
+CLASS:microcpu:reverse_lookup "Return mnemonic given opcode value.";
+CLASS:microcpu:getkeyfromval "Reverse-search dictionary to find key for matching value.";
+CLASS:microcpu:hexdump "Format region of memory as hex dump.";
+CLASS:microcpu:fileonpath "Search PATH-like list for file.";
+CLASS:microcpu:IsLocalVar "Return True if token refers to a local variable name.";
+CLASS:microcpu:parse_arg "Parse assembler argument, including stack, indirect, and size modes.";
+CLASS:microcpu:ReplaceMacStr "Perform macro string substitution.";
+CLASS:microcpu:ReplaceMacVars "Substitute macro variables with bound values.";
+CLASS:microcpu:FirstPassVal "Compute value of expression in first assembler pass.";
+CLASS:microcpu:parse_expression "Parse full symbolic expression into evaluable form.";
+CLASS:microcpu:decode_token "Interpret token as symbol, number, or operator.";
+CLASS:microcpu:DecodeStr "Evaluate expression string and return numeric value.";
+CLASS:microcpu:loadfile "Load and assemble source file (multi-pass).";
+CLASS:microcpu:debugger "Interactive debugger for stepping and breakpoints.";
+CLASS:microcpu:main "Top-level driver entry for standalone execution.";
+
+# Automatically added stub entries:
+CLASS:AssemblerContext:__init__ "TODO: describe __init__";
+CLASS:InputFileData:__init__ "TODO: describe __init__";
+CLASS:microcpu:OverCarryTest "TODO: describe OverCarryTest";
+CLASS:microcpu:SetFlags "TODO: describe SetFlags";
+CLASS:microcpu:evalpc "TODO: describe evalpc";
+CLASS:microcpu:optADD "TODO: describe optADD";
+CLASS:microcpu:optCAST "TODO: describe optCAST";
+CLASS:microcpu:optCMP "TODO: describe optCMP";
+CLASS:microcpu:optJMPZ "TODO: describe optJMPZ";
+CLASS:microcpu:optNOP "TODO: describe optNOP";
+CLASS:microcpu:optOR "TODO: describe optOR";
+CLASS:microcpu:removecomments "TODO: describe removecomments";
+CLASS:microcpu:switcher "TODO: describe switcher";
+escape_for_reinsertion: "TODO: describe escape_for_reinsertion";
+get_key: "TODO: describe get_key";
+quote_escape_string: "TODO: describe quote_escape_string";
+restore_tty: "TODO: describe restore_tty";
+setup_raw: "TODO: describe setup_raw";
+
+
+# Automatically added stub entries:
+CLASS:AssemblerContext:__init__ "TODO: describe __init__";
+
+
+# Automatically added stub entries:
+CLASS:AssemblerContext:__init__ "TODO: describe __init__";
+
+
+# Automatically added stub entries:
+CLASS:AssemblerContext:__init__ "TODO: describe __init__";
+
+
+# Automatically added stub entries:
+CLASS:AssemblerContext:__init__ "TODO: describe __init__";

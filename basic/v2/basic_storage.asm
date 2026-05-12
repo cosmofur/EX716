@@ -1,5 +1,4 @@
 I common.mc
-L heapmgr.ld
 # basic/v2/basic_storage.asm
 # BASIC v2 – Program Line Storage (ESX716 compliant)
 #
@@ -100,18 +99,18 @@ G InputBuf
 
     # Create the SoftStack large enough to allow some decent level of funciton recursion.
     =SoftStackSize 2048
-    @Call(VA) HeapNewObject RunTimeHeap SoftStackSize
+    @Call(VA) HeapNewObject RunTimeHeap SoftStackSize @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
     @DUP @ADD SoftStackSize @SWP
     @CALL SetSSStack
     #
     # Setup in the InputBuf
-    @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE
+    @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
     @POPI InputBuf
 
     #
     # Allocate the Basic 100 line LineTableBase  or 4*100
 
-    @Call(VA) HeapNewObject RunTimeHeap 400
+    @Call(VA) HeapNewObject RunTimeHeap 400 @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
     @POPI LineTableBase
     @MA2V 0 ProgramLineCount
 
@@ -133,6 +132,7 @@ G InputBuf
 #---------------------------------------------------
 :ProgramInit
     # Setup Sentinel Header at offset 0
+    @CALL ProgramClear
     
     @MA2V 100 ProgramLineCapacity
     @MA2V 0 ProgramLineCount    
@@ -143,6 +143,74 @@ G InputBuf
     @MA2V 1 NullProgram
  
 @RET
+
+#----------------------------------------------------
+# ProgramClear
+# Agressive clearing out of the heap after a NEW command
+#----------------------------------------------------
+:ProgramClear
+@PUSHRETURN
+   @LocalVar Index    01
+   @LocalVar EntryPtr 02
+   @LocalVar ObjPtr   03
+   @LocalVar NextPtr  04
+   @LocalVar StrPtr   05
+
+   @MA2V 0 Index
+   @MV2V LineTableBase EntryPtr
+
+   @PUSHI Index
+   @ForIA2V Index 0 ProgramLineCount
+      # Acutual String object for each line starts 2 bytes after line number.
+      @PUSHI EntryPtr
+      @ADD 2
+      @PUSHS
+      @POPI ObjPtr
+      @IF_NEQ_AV 0 ObjPtr
+         @Call(VV) HeapDeleteObject RunTimeHeap ObjPtr
+         @IF_NOTZERO
+            @PRT "Failed to delete Line data durring cleanup."
+            @Call(AA) BasicRaiseError ERR_MEMORY 0
+         @ENDIF
+         @POPNULL
+      @ENDIF
+      @PUSH 0      @POPII EntryPtr      @INC2I EntryPtr
+      @PUSH 0      @POPII EntryPtr      @INC2I EntryPtr
+   @Next Index
+   @POPNULL
+
+   @MV2V VarFirstEntry EntryPtr
+   @WHILE_NEQ_AV 0 EntryPtr
+      @PUSHI EntryPtr @ADD VAROFF_Next @PUSHS @POPI NextPtr
+      @PUSHI EntryPtr @ADD VAROFF_TypeID @PUSHS
+      @IF_EQ_A STRING_TYPE
+         @POPNULL
+         @PUSHI EntryPtr @ADD VAROFF_Pay1 @PUSHS
+         @POPI StrPtr
+         @Call(VV) HeapDeleteObject RunTimeHeap StrPtr
+         @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+         @POPNULL
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @Call(VV) HeapDeleteObject RunTimeHeap EntryPtr
+      @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+      @POPNULL
+      @MV2V NextPtr EntryPtr
+   @ENDWHILE
+   @MA2V 0 VarFirstEntry
+         
+      
+   @RestoreVar 05      
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+
+         
+
 M ZeroOutVar @MA2V 0 %1
 #----------------------------------------------------
 # RunTimeInit
@@ -286,20 +354,17 @@ M ZeroOutVar @MA2V 0 %1
     @LocalVar Found   04
     @LocalVar PrevPtr 05
     @LocalVar CurPtr  06
+    @LocalVar NewItem 07
 
     @POPI TextLen
     @POPI TextPtr
     @POPI LineNum
-
-    @PRT "Inserting line: " @PRTI LineNum @PRT " with data: "
-    @Call(VVA) HexDump TextPtr TextLen 1
 
     @Call(V) FindLine LineNum
     @POPI Found
     @POPI PrevPtr
     @POPI CurPtr
 
-    @PRT " Located at: " @PRTHEXI CurPtr
 
     # delete case
     @IF_EQ_AV 0 TextLen
@@ -308,16 +373,21 @@ M ZeroOutVar @MA2V 0 %1
         @ENDIF
         @JMP IOD_Exit
     @ENDIF
-
+    # Create a NewItem by copying functional part of TextPtr to NewItem
+    @Call(VV) HeapNewObject RunTimeHeap TextLen @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
+    @POPI NewItem
+    @Call(VVV) memcpy NewItem TextPtr TextLen
+    
     # replace case
     @IF_NEQ_AV 0 Found
-        @Call(VVV) ReplaceLine CurPtr TextPtr TextLen
+        @Call(VVV) ReplaceLine CurPtr NewItem TextLen
     @ELSE
-        @Call(VAVAV) InsertLine LineNum 0 TextPtr 0  CurPtr
+        @Call(VAVAV) InsertLine LineNum 0 NewItem 0  CurPtr
         @MA2V 0 NullProgram
     @ENDIF
 
     :IOD_Exit
+    @RestoreVar 07        
     @RestoreVar 06
     @RestoreVar 05
     @RestoreVar 04
@@ -427,11 +497,12 @@ M ZeroOutVar @MA2V 0 %1
     @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
     @POPNULL
 
-    @Call(VV) HeapNewObject RunTimeHeap TextLen
-    @POPI NewText
-    @Call(VVV) strncpy NewText TextPtr TextLen
+# We already create a copy of the original line before calling replaceline.
+#    @Call(VV) HeapNewObject RunTimeHeap TextLen @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
+#    @POPI NewText
+#    @Call(VVV) strncpy NewText TextPtr TextLen
     
-    @PUSHI NewText
+    @PUSHI TextPtr
     @PUSHI CurPtr @ADD 2 @POPS
 
     @RestoreVar 05
@@ -544,6 +615,41 @@ M ZeroOutVar @MA2V 0 %1
 @RET
 
 #--------------------------------------------------
+# LinePrefix(StrBuff, Value ):(StrBuf+len(str(value)))
+#--------------------------------------------------
+:LinePrefix
+@PUSHRETURN
+   @LocalVar StrBuff 01
+   @LocalVar Value   02
+
+   @POPI Value
+   @POPI StrBuff
+
+   # Null the first 6 words
+   @PUSH 0   @POPII StrBuff
+   @PUSH 0 @PUSHI StrBuff @ADD 2 @POPS
+   @PUSH 0 @PUSHI StrBuff @ADD 4 @POPS
+
+   @Call(VVA) itos StrBuff Value 10
+   @Call(V) strlen StrBuff
+   @ADDI StrBuff
+   @POPI StrBuff
+
+   @PUSH " \0"
+   @POPII StrBuff
+   @INCI StrBuff
+
+   @PUSHI StrBuff
+
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+   
+   
+   
+
+#--------------------------------------------------
 # SAVEMEM(filename)
 #--------------------------------------------------
 :SAVEMEM
@@ -556,6 +662,7 @@ M ZeroOutVar @MA2V 0 %1
    @LocalVar FileName  06
    @LocalVar LineNum   07
    @LocalVar BufLen    08
+   @LocalVar OutBufHead 09
 
    @IF_EQ_AV 1 NullProgram
       @PRTLN "No Program."
@@ -566,11 +673,12 @@ M ZeroOutVar @MA2V 0 %1
    @Call(VA) file_open FileName 0x6f77   # "wo"
    @POPI FilePtr
    # Allocate temp ASCII buffer
-   @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE
+   @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
    @IF_ULT_A 100
       @Call(AA) BasicRaiseError ERR_MEMORY 0      
    @ENDIF
    @POPI OutBuf
+   @MV2V OutBuf OutBufHead
    @MV2V LineTableBase Ptr
    @PUSHI LineTableBase
    @PUSHI ProgramLineCount @SHL2   # *4
@@ -579,30 +687,29 @@ M ZeroOutVar @MA2V 0 %1
    @PUSHI EndPtr
    @WHILE_UGT_V Ptr          # While EndPtr > Ptr
       @PUSHII Ptr
-      @PRTTOP
-      @PRTSP
-      @POPNULL
-      @PUSHI Ptr @ADD 2 @PUSHS                      # Start of Line
-      @ADD 2                                        # Start of Text part
+      @POPI LineNum
+      @Call(VV) LinePrefix OutBuf LineNum
+      @POPI OutBuf
+      @PUSHI Ptr @ADD 2 @PUSHS
       @Call(VA) RenderLine OutBuf TOLKBUF_SIZE      # Convert tolkenized data in string into human readable string.
       @POPI OutLen
       @PUSH 0 @PUSHI OutBuf @ADDI OutLen            # Null last byte.
       @POPS
-      @Call(V) strlen OutBuf
+      @Call(V) strlen OutBufHead
       @POPI OutLen
-      @Call(VVV) DiskFileWrite FilePtr OutBuf OutLen
+      @PUSH "\n\0" @PUSHI OutBufHead @ADDI OutLen @POPS
+      @INCI OutLen
+      @Call(VVV) DiskFileWrite FilePtr OutBufHead OutLen
       @IF_ULT_V BufLen
          @PRT "Truncated Write."
       @ENDIF
       @POPNULL      
-      @PRTSI OutBuf
-      @PRTNL
       @PUSHI Ptr @ADD 4 @POPI Ptr
+      @MV2V OutBufHead OutBuf
    @ENDWHILE
    @POPNULL
-   @PRTNL
    # Free buffer
-   @Call(VV) HeapDeleteObject RunTimeHeap OutBuf
+   @Call(VV) HeapDeleteObject RunTimeHeap OutBufHead
    @POPNULL
    @Call(V) DiskClose FilePtr
    @IF_ZERO
@@ -611,6 +718,7 @@ M ZeroOutVar @MA2V 0 %1
    @POPNULL
    
    :SM_EXIT
+   @RestoreVar 09
    @RestoreVar 08
    @RestoreVar 07
    @RestoreVar 06
@@ -632,26 +740,75 @@ M ZeroOutVar @MA2V 0 %1
     @LocalVar FileName    01
     @LocalVar FilePtr     02
     @LocalVar ReadCount   03
+    @LocalVar LineStatus  04
+    @LocalVar LineLen     05
+    @LocalVar SkipLong    06
 
     @POPI FileName
+
+    @MA2V 0 ReadCount
+    @MA2V 0 SkipLong
 
     # Open file for read ("ro")
     @Call(VA) file_open FileName MODE_RO  # 0x726f "ro"
     @POPI FilePtr
+    
     @IF_EQ_AV 0 FilePtr
         @PRT "File: " @PRTSI FileName @PRT " could not be opened."
         @JMP LM_EXIT
-    @ELSE
-        @MA2V 0 ReadCount
-        @Call(VV) DiskFileReadLine  FilePtr InputBuf
-        @WHILE_NOTZERO
-            @POPNULL
-            @Call(V) ParseLineOrCommand InputBuf
-            @Call(VV) DiskFileReadLine  FilePtr InputBuf
-        @ENDWHILE
-        @POPNULL
-    @ENDIF       
+    @ENDIF
+
+    @Call(VVA) DiskFileReadLine  FilePtr InputBuf INPUTBUF_SIZE
+  @PRT "Read Line: " @PRTSI InputBuf @StackDump    
+    @DUP
+    @AND LINE_STATE_MASK
+    @POPI LineStatus
+    @AND LINE_LEN_MASK
+    @POPI LineLen    
+    @WHILE_NEQ_AV LINE_EOF LineStatus
+    
+        @IF_EQ_AV LINE_NO_ROOM LineStatus
+            @Call(AA) BasicRaiseError ERR_MEMORY 0
+            @JMP LM_EXIT   # Should never return.
+        @ENDIF
+        
+        @IF_EQ_AV LINE_PARTIAL LineStatus
+            # First or middle fragment(s) of an overlong physical line
+            # Do not parse. Keep reading until non LINE_PARTIAL which
+            # will be the final fragment of long line.
+            @IF_EQ_AV 0 SkipLong
+               @PRTLN "Line too long; skipped."
+            @ENDIF
+            @MA2V 1 SkipLong
+        @ELSE
+            @IF_NEQ_AV 0 SkipLong
+               # First 'non partial' line is tail end of over long line.
+               @MA2V 0 SkipLong      # Reset for next long line.
+            @ELSE
+               @IF_NEQ_AV 0 LineLen
+                  @Call(V) ParseLineOrCommand InputBuf
+                  @INCI ReadCount
+               @ENDIF
+            @ENDIF
+        @ENDIF
+        @Call(VVA) DiskFileReadLine  FilePtr InputBuf INPUTBUF_SIZE
+       @PRT "Read Line: " @PRTSI InputBuf @StackDump
+        
+        @DUP
+        @AND LINE_STATE_MASK
+        @POPI LineStatus
+        @AND LINE_LEN_MASK
+        @POPI LineLen
+    @ENDWHILE
 :LM_EXIT
+    @IF_NEQ_AV 0 FilePtr
+       @Call(V) DiskClose FilePtr
+       @POPNULL
+    @ENDIF
+    
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01

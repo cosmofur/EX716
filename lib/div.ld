@@ -1,14 +1,9 @@
 # Input: Stack RET, NUM DENOM (Reminder NUM is the larger number being divided by the smaller DENOM) 
 # Requires common.mc
-! DEFINEDDIV
-M DEFINEDDIV 0
+! __LIB_DIV_LOADED
+M __LIB_DIV_LOADED 1
+I div.ref
 
-@FUNCTIONNEEDS DIV
-   @USE DIVU
-ENDBLOCK
-
-
-L softstack.ld
 G DIVU G DIV
 # Function DIVU unsigned Divide.
 @FUNCTION DIVU

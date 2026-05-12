@@ -1,6 +1,6 @@
 # Stacktool provides basic Stack like operations when the HW stack is too small.
-! StackToolDef
-M StackToolDef 1
+! __LIB_STACKTOOL_LOADED
+M __LIB_STACKTOOL_LOADED 1
 #
 #
 # ST_INIT(size,storageptr): initilzied a stack of size*words at location starting at storageptr

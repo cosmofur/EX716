@@ -1,7 +1,6 @@
-! SHIFT16SEEN
-M SHIFT16SEEN
-I common.mc
-L softstack.ld
+! __LIB_SHIFT16_LOADED
+M __LIB_SHIFT16_LOADED 1
+I shift16.ld
 
 ############################################################
 # shift16.ld — 16-bit shifting and bit-twiddling primitives
@@ -18,22 +17,6 @@ L softstack.ld
 #
 # All functions expect 16-bit values and preserve stack order.
 ############################################################
-@FUNCTIONNEEDS BITMASK16
-   @USE SHL16_BY_N
-ENDBLOCK
-
-@FUNCTIONNEEDS BITCLEAR16
-   @USE BITMASK16
-ENDBLOCK
-
-@FUNCTIONNEEDS BITSET16
-   @USE BITMASK16
-ENDBLOCK
-
-@FUNCTIONNEEDS BITTEST16
-   @USE BITMASK16
-ENDBLOCK
-
 
 
 ############################################################

@@ -1,96 +1,15 @@
-! IMath32Define
-M IMath32Define 1
+! __LIB_LMATH_LOADED
+M __LIB_LMATH_LOADED 1
 P Loading lmath.ld
-
-
-
-@FUNCTIONNEEDS stoi32
-   @USE MUL32U
-   @USE ADD32U
-   @USE COMP232
-   @USE strlen
-ENDBLOCK
-
-@FUNCTIONNEEDS ADD32U
-   @USE ADD32_BASE
-   @USE SetFlags32
-   @USE ADD16U
-ENDBLOCK
-
-@FUNCTIONNEEDS SetFlags32
-   @USE CMP32S
-ENDBLOCK
-
-@FUNCTIONNEEDS MUL32U
-   @USE MUL16x32U
-   @USE ADD16U
-   @USE ADD32U
-ENDBLOCK
-
-@FUNCTIONNEEDS MUL32S
-   @USE COMP232
-   @USE MUL32U
-ENDBLOCK
-
-@FUNCTIONNEEDS i32tos
-   @USE CMP32U
-   @USE CMP32S
-   @USE COMP232
-ENDBLOCK
-
-@FUNCTIONNEEDS DIV32S
-   @USE CMP32U
-   @USE CMP32S
-   @USE COMP232
-   @USE DIV32U
-ENDBLOCK
-
-@FUNCTIONNEEDS DIV32U
-   @USE CMP32U
-   @USE CMP32S
-   @USE SHL_32_1
-   @USE OR32   
-ENDBLOCK
-
-@FUNCTIONNEEDS COMP232
-   @USE CMP32S   
-ENDBLOCK
-
-@FUNCTIONNEEDS DIV10_32U
-   @USE DIV32U
-ENDBLOCK
-
-@FUNCTIONNEEDS ClearBit32
-   @USE SHL16x32
-ENDBLOCK
-
-@FUNCTIONNEEDS SetBit32
-   @USE SHL16_BY_N
-ENDBLOCK
-
-@FUNCTIONNEEDS SetBit32
-   @USE SHL16_BY_N
-ENDBLOCK
-
-@FUNCTIONNEEDS SHL3264
-   @USE SHL16_BY_N   
-ENDBLOCK
-
-@FUNCTIONNEEDS 
-   @USE SHL32
-   @USE SetFlags32
-   @USE SHR32_8
-   @USE SHR32_small
-ENDBLOCK
-
-L mul.ld
+I lmath.ref
+L heapmgr.ld
 L shift16.ld
-L string.ld
 M SIZESINCECOMMENT lmath.ld
 
 ########################
 # Published functions
 G ADD32S G ADD32U G SUB32S G SUB32U                   # Core math functoins Signed Unsigned
+G ADD32_BASE
 G ADD16U G ADD32 G SUB32
 G MUL32U G MUL32S
 G DIV32U G DIV32S
@@ -241,6 +160,8 @@ M POP32I(V) @PUSH %1+2 @POPS @POPI %1
 M POP32II(V) @PUSHI %1 @ADD 2 @POPS @PUSHI %1 @POPS
 # PUSH32I(V) Pushing 32 bit word by passing name of lower word. LOW, High push
 M PUSH32I(V) @PUSHI %1 @PUSHI %1+2
+# Push 32 value based on ptr to word rather than address of word.
+M PUSH32II(V) PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS
 M PUSH32(A) @JMP _%0_Skip :_%0_Val %1 :_%0_Skip @PUSHI _%0_Val @PUSHI _%0_Val+2
 M M32A2V @PUSH32(A) %1 @POP32I(V) %2
 M M32V2V @PUSH32I(V) %1 @POP32I(V) %2
@@ -310,12 +231,18 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RET
   @ENDFUNCTION
 
+@FUNCTION ADD32
+:ADD32
+@PUSHRETURN
+@CALL ADD32S
+@POPRETURN
+@RET
+@ENDFUNCTION
 # ===========================================================
 # Function : ADD32S
 # Purpose  : Signed 32-bit addition with signed overflow flag
 # ===========================================================
 @FUNCTION ADD32S
-:ADD32
 :ADD32S
   @PUSHRETURN
   @LocalVar SumLow 01
@@ -360,8 +287,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RestoreVar 01
   @POPRETURN
   @RET
-  @ENDFUNCTION
-
+@ENDFUNCTION
 # ===========================================================
 # Function : ADD32U
 # Purpose  : Unsigned 32-bit addition with carry flag
@@ -444,7 +370,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @POPI R32_High
     
     @IF_EQ_AV 1 BorrowFlag
-       @DECI R_High
+       @DECI R32_High
     @ENDIF    
 
 
@@ -452,8 +378,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Call32(VV) CMP32S A32_Low B32_Low
 
     # --- Push result back (low first, then high) ---
-    @PUSHI R32_Low
-    @PUSHI R32_High
+    @PUSH32I(V) R32_Low
     
     @RestoreVar 07
     @RestoreVar 06
@@ -522,8 +447,8 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @CALL SetFlags32
 
     # --- Push result (Low then High) ---
-    @PUSHI UCR_Low
-    @PUSHI UCR_High
+    @PUSH32I(V) UCR_Low
+
 @RestoreVar 07
 @RestoreVar 06
 @RestoreVar 05
@@ -2030,8 +1955,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @POPNULL
     
     # Push final result
-    @PUSHI R_High
-    @PUSHI R_Low
+    @PUSH32I(V) R_Low
 
     @RestoreVar 08
     @RestoreVar 07
@@ -2142,10 +2066,8 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     ########################################################
     # Return:  R then Q
     ########################################################
-    @PUSHI R_L
-    @PUSHI R_H
-    @PUSHI Q_L
-    @PUSHI Q_H
+    @PUSH32I(V) R_L
+    @PUSH32I(V) Q_L
 
     @RestoreVar 09
     @RestoreVar 08
@@ -2429,8 +2351,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @ENDIF
 
 
-    @PUSHI ValL
-    @PUSHI ValH
+    @PUSH32I(V) ValL
     
     @RestoreVar 05
     @RestoreVar 04

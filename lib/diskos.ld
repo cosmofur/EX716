@@ -1,6 +1,6 @@
-! DISKOS_SEEN
-M DISKOS_SEEN 1
-P Loading diskio.ld
+! __LIB_DISKOS_LOADED
+M __LIB_DISKOS_LOADED 1
+I diskos.ref
 # ================================================================
 # diskos.asm
 #
@@ -342,6 +342,12 @@ G MODE_RW        # Read Write
 G MODE_WP        # Write Append
 G MODE_AP        # Open RW Append
 
+=MODE_RO 0x6f72 # "ro"
+=MODE_WO 0x6f77 # "wo"
+=MODE_RW 0x7772 # "rw"
+=MODE_WP 0x2b77 # "w+"
+=MODE_AP 0x2b61 # "a+"
+
 =FP_OPEN_READ    0b0001
 =FP_OPEN_WRITE   0b0010
 =FP_OPEN_APPEND  0b0100
@@ -417,6 +423,32 @@ G FSHeaderFlagStore
 G FSHeadValidStore
 G FSFileBitMapStore
 
+#====================================================
+# DiskFileReadLine return status format:
+#   high nibble = status
+#   low 12 bits = length/detail
+#
+# 0x0nnn = complete line, nnn = payload length
+# 0x8nnn = partial line, nnn = payload length, LF not yet seen
+# 0xf000 = EOF before any byte read
+#
+# Max payload length is 0x0fff.
+G LINE_LEN_MASK
+G LINE_STATE_MASK
+G LINE_OK
+G LINE_NO_ROOM
+G LINE_PARTIAL
+G LINE_EOF
+
+= LINE_LEN_MASK      0x0fff
+= LINE_STATE_MASK    0xf000
+
+= LINE_OK            0x0000
+= LINE_NO_ROOM       0x1000
+= LINE_PARTIAL       0x8000
+= LINE_EOF           0xf000
+
+
 # Only one buffer supported (non-reentrant)
 :DiskHeap            -1
 :FSDiskNumStore      -1
@@ -427,176 +459,6 @@ G FSFileBitMapStore
 :FSHeadValidStore    0
 :FSFileBitMapStore
 . FSFileBitMapStore+128
-
-@USE _DFN_Mod
-@FUNCTIONNEEDS DirNewArgTable
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS WildCardMatch
-   @USE strcmp
-   @USE strfndc
-   @USE strlen
-   @USE strncmp
-ENDBLOCK
-
-@FUNCTIONNEEDS DirReadEntry
-   @USE DirClearArgTable
-   @USE DirEntryPtr
-   @USE DirEntryToArgTable
-   @USE DirLocate
-   @USE DiskReadSector
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskNewBuffer
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS DirFindFile
-   @USE DirNewArgTable
-   @USE DirReadEntry
-   @USE DiskNewBuffer
-   @USE HeapDeleteObject
-   @USE WildCardMatch
-ENDBLOCK
-
-@FUNCTIONNEEDS DirFindFree
-   @USE DirNewArgTable
-   @USE DirReadEntry
-   @USE DiskNewBuffer
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS DirWriteEntry
-   @USE DirArgTableToEntry
-   @USE DirEntryPtr
-   @USE DirLocate
-   @USE DiskReadSector
-   @USE DiskWriteSector
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskClose
-   @USE DirNewArgTable
-   @USE DirReadEntry
-   @USE DirWriteEntry
-   @USE DiskNewBuffer
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskWithDirEntry
-   @USE DirNewArgTable
-   @USE DirReadEntry
-   @USE DirWriteEntry
-   @USE DiskNewBuffer
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskFileName
-   @USE DiskWithDirEntry
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskReadBlock
-   @USE DiskReadSector
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskFileRead
-   @USE DiskNewBuffer
-   @USE DiskReadBlock
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskFileReadLine
-   @USE DiskFileRead
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskFileSetLineCount
-   @USE DiskWithDirEntry
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskFileSetType
-   @USE DiskWithDirEntry
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskWriteBlock
-   @USE DiskReadSector
-   @USE DiskWriteSector
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskFileWrite
-   @USE DiskNewBuffer
-   @USE DiskWriteBlock
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskGetFileType
-   @USE DiskWithDirEntry
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskGetLineCount
-   @USE DiskWithDirEntry
-ENDBLOCK
-
-@FUNCTIONNEEDS DiskOpen
-   @USE DataBlockFirstSector
-   @USE DirNewArgTable
-   @USE DirReadEntry
-   @USE DirWriteEntry
-   @USE DiskNewBuffer
-   @USE HeapDeleteObject
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS FSFindFreeFile
-   @USE FSIsFileUsed
-ENDBLOCK
-
-@FUNCTIONNEEDS FSFormat
-   @USE DiskReadSector
-   @USE DiskWriteSector
-   @USE HeapDeleteObject
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS FSReadHeader
-   @USE DiskReadSector
-   @USE HeapDeleteObject
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS FSWriteHeader
-   @USE DiskReadSector
-   @USE DiskWriteSector
-   @USE HeapDeleteObject
-   @USE HeapNewObject
-ENDBLOCK
-
-@FUNCTIONNEEDS _DFN_Mod
-   @USE strlen
-   @USE strncpy
-ENDBLOCK
-
-@FUNCTIONNEEDS file_open
-   @USE DirFindFree
-   @USE DiskClose
-   @USE DiskFileName
-   @USE DiskOpen
-   @USE FSFindFile
-   @USE FSSetFileUsed
-   @USE FSWriteHeader
-ENDBLOCK
-
-@FUNCTIONNEEDS FSFindFile
-   @USE DirNewArgTable
-   @USE DirReadEntry
-   @USE DiskNewBuffer
-   @USE FSNextUsedFile
-   @USE HeapDeleteObject
-   @USE WildCardMatch
-ENDBLOCK
-
-@FUNCTIONNEEDS FSNextUsedFile
-   @USE FSIsFileUsed
-ENDBLOCK
 
 
 
@@ -1285,6 +1147,7 @@ ENDBLOCK
     @IF_EQ_AV 1 DoCreateFlag
        @FILL_AT_A ArgTable DIR_AT_FLAGS FLAG_INUSE
        @FILL_AT_A ArgTable DIR_AT_FILESIZE 0
+       @FILL_AT_A ArgTable DIR_AT_FILESIZE+2 0       
        @FILL_AT_V ArgTable DIR_AT_FIRSTBLOCK FileNum
        @FILL_AT_A ArgTable DIR_AT_BLOCKCOUNT 1
        @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Writer error" @END @ELSE @POPNULL @ENDIF
@@ -1303,16 +1166,48 @@ ENDBLOCK
     @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
     @PUSHI FilePtr @ADD FPTR_FILESIZE
     @POPS
+    @PUSHI ArgTable @ADD DIR_AT_FILESIZE+2 @PUSHS
+    @PUSHI FilePtr @ADD FPTR_FILESIZE+2
+    @POPS
     
     # IF MODE flag is OPEN_APPEND set Cursor to EOF
     @PUSHI Mode @AND FP_OPEN_APPEND
     @IF_NOTZERO
-       @POPNULL
-       @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
-    # ELSE already zero
+        @POPNULL
+
+        # Cursor low = FileSize low
+        @PUSHI FilePtr
+        @ADD FPTR_FILESIZE
+        @PUSHS
+        @PUSHI FilePtr
+        @ADD FPTR_CURSOR
+        @POPS
+
+        # Cursor high = FileSize high
+        @PUSHI FilePtr
+        @ADD FPTR_FILESIZE+2
+        @PUSHS
+        @PUSHI FilePtr
+        @ADD FPTR_CURSOR+2
+        @POPS
+
+    @ELSE
+        @POPNULL
+
+        # Cursor low = 0
+        @PUSH 0
+        @PUSHI FilePtr
+        @ADD FPTR_CURSOR
+        @POPS
+
+        # Cursor high = 0
+        @PUSH 0
+        @PUSHI FilePtr
+        @ADD FPTR_CURSOR+2
+        @POPS
+
     @ENDIF
     
-    @PUSHI FilePtr @ADD FPTR_CURSOR @POPS
     @PUSHI Mode
     @PUSHI FilePtr @ADD FPTR_MODE @POPS
 
@@ -1779,7 +1674,7 @@ ENDBLOCK
     @MA2V 0 Result
 
     # star will be 0 or have index of wildcard
-    @PUSHI pattern @PUSH "*\0" @CALL strfndc
+    @Call(VA) strfndc pattern "*\0"
     @POPI star               # Star is pointer to where in string wildcard is.
 
     @IF_EQ_AV 0 star
@@ -2030,12 +1925,6 @@ ENDBLOCK
     @MA2V 0 FilePointer    # For Safe return on error.
 
     # Validate mode
-    # We only use these Mode tests here, so putting the definition local
-    =MODE_RO 0x6f72 # "ro"
-    =MODE_WO 0x6f77 # "wo"
-    =MODE_RW 0x7772 # "rw"
-    =MODE_WP 0x2b77 # "w+"
-    =MODE_AP 0x2b61 # "a+"
 
     @PUSHI Mode
     @SWITCH
@@ -2073,9 +1962,7 @@ ENDBLOCK
         @CBREAK
     @ENDCASE
     # Locate file
-    @PUSHI FileName
-    @PUSH 0
-    @CALL FSFindFile
+    @Call(VA) FSFindFile FileName 0
     @POPI FileNum
     @IF_EQ_AV 0 FileNum
        # We only can create a new File if the FP_OPEN_WRITE is set, otherwise its a 'not found' error
@@ -2176,7 +2063,7 @@ ENDBLOCK
     @POPI FilePtr
 
     @PUSHI LineCount     # Push lowest in stack for argument to SetLine_Mod
-    @Call(VA) DiskWithDirEntry FilePtr _DF_SetLine_Mod
+    @Call(VA) DiskWithDirEntry FilePtr _DF_SetLine_Mod # @DEP: _DF_SetLine_Mod modifier
 
     @RestoreVar 02
     @RestoreVar 01
@@ -2217,7 +2104,7 @@ ENDBLOCK
 
     @POPI FilePtr
 
-    @Call(VA) DiskWithDirEntry FilePtr _DF_GetLine_Mod
+    @Call(VA) DiskWithDirEntry FilePtr _DF_GetLine_Mod  # @DEP: _DF_GetLine_Mod modifier
 
     @RestoreVar 02
     @RestoreVar 01
@@ -2298,7 +2185,7 @@ ENDBLOCK
 
     @POPI FilePtr
 
-    @Call(VA) DiskWithDirEntry FilePtr _DF_GetType_Mod
+    @Call(VA) DiskWithDirEntry FilePtr _DF_GetType_Mod # @DEP: _DF_GetType_Mod modifier
 
     @RestoreVar 02
     @RestoreVar 01
@@ -2338,7 +2225,7 @@ ENDBLOCK
     @POPI StrPtr
     @POPI FilePtr
     @PUSHI StrPtr
-    @Call(VA) DiskWithDirEntry FilePtr _DFN_Mod
+    @Call(VA) DiskWithDirEntry FilePtr _DFN_Mod   # @DEP: _DFN_Mod modifier
 
     @RestoreVar 02
     @RestoreVar 01
@@ -2363,7 +2250,7 @@ ENDBLOCK
         @PUSHI StrPtr @ADD 31
         @POPS
         @POPNULL
-        @CALL strlen StrPtr
+        @Call(V) strlen StrPtr
     @ENDIF
     @POPI Len
 
@@ -2999,54 +2886,171 @@ ENDBLOCK
 @POPRETURN
 @RET
 @ENDFUNCTION
+
 #--------------------------------------------
 @FUNCTION  DiskFileReadLine
-# DiskFileReadLine(FilePtr, MemPtr):Bytes_Read
-# Read file as stream, looking for LF ('\n')
-# Needs to handle EOF as both EOF and EOL
+# DiskFileReadLine(FilePtr, MemPtr, MaxLen):StatusLen
+#
+# MaxLen is total buffer capacity including final NUL.
+#
+# Reads at most:
+#     min(MaxLen-1, LINE_LEN_MASK)
+#
+# LF is consumed but not stored.
+# NUL is stored but not counted.
+#
+# Return:
+#   LINE_OK | N          Complete line, N payload bytes.
+#                        N may be 0 for empty line.
+#
+#   LINE_PARTIAL | N     Buffer filled before LF was seen.
+#                        N payload bytes were stored.
+#                        Caller may call again to get the next fragment.
+#
+#   LINE_EOF            EOF before any byte was read.
+#
+#   LINE_NO_ROOM        MaxLen was 0 or 1, so no payload could be read
+#                        while preserving NUL termination.
 #--------------------------------------------
 :DiskFileReadLine
 @PUSHRETURN
-    @LocalVar FilePtr   01
-    @LocalVar MemPtr    02
-    @LocalVar Consumed  03 
+    @LocalVar FilePtr       01
+    @LocalVar MemPtr        02
+    @LocalVar Consumed      03
+    @LocalVar MaxLen        04
+    @LocalVar PayloadLimit  05
+    @LocalVar StatusLen     06
+    @LocalVar Continue      07
 
+    @POPI MaxLen
     @POPI MemPtr
     @POPI FilePtr
 
     @MA2V 0 Consumed
-    @WHEN
-       @Call(VVA) DiskFileRead FilePtr MemPtr 1
-    @DO_NOTZERO
-       @POPNULL
-       @PUSHII MemPtr
-       @AND 0xff
-       @IF_EQ_A 10     # New Line
-          # END of Line detected, turn into terminator.
-          @POPNULL
-          @PUSHII MemPtr
-          @AND 0xff00      # Zero low byte
-          @POPII MemPtr
-          @JMP DFRL_ENDLINE
-       @ELSE
-          @POPNULL
-       @ENDIF
-       @INCI Consumed
-       @INCI MemPtr
-    @ENDWHEN
-    @POPNULL 
-    :DFRL_ENDLINE
-    @PUSHI Consumed
+    @MA2V 0 StatusLen
+    @MA2V 0 Continue
 
+    # Need room for at least one payload byte plus final NUL.
+    @IF_EQ_AV 0 MaxLen
+        @MA2V LINE_NO_ROOM StatusLen
+
+    @ELSE
+        @IF_EQ_AV 1 MaxLen
+            # MaxLen == 1: preserve a valid empty string if possible.
+            @PUSHII MemPtr
+            @AND 0xff00
+            @POPII MemPtr
+
+            @MA2V LINE_NO_ROOM StatusLen
+
+        @ELSE
+            # PayloadLimit = MaxLen - 1, reserving room for final NUL.
+            @MV2V MaxLen PayloadLimit
+            @DECI PayloadLimit
+
+            # if PayloadLimit > LINE_LEN_MASK, cap it to prevent overflow into status bits
+            @PUSHI PayloadLimit
+            @IF_GT_A LINE_LEN_MASK
+                @MA2V LINE_LEN_MASK PayloadLimit
+            @ENDIF
+            @POPNULL
+
+            @MA2V 1 Continue
+
+            @WHILE_NEQ_AV 0 Continue
+
+                # If payload capacity is exhausted before LF, return partial.
+                @IF_EQ_AV 0 PayloadLimit
+                    @PUSHII MemPtr
+                    @AND 0xff00
+                    @POPII MemPtr
+
+                    @PUSHI Consumed
+                    @AND LINE_LEN_MASK
+                    @OR LINE_PARTIAL
+                    @POPI StatusLen
+
+                    @MA2V 0 Continue
+
+                @ELSE
+                    # Read one byte into current MemPtr.
+                    @Call(VVA) DiskFileRead FilePtr MemPtr 1
+
+                    # DiskFileRead returns 0 on EOF/no byte read.
+                    @IF_ZERO
+                        @POPNULL
+
+                        # EOF before any byte was read by this call.
+                        @IF_EQ_AV 0 Consumed
+                            @PUSHII MemPtr
+                            @AND 0xff00
+                            @POPII MemPtr
+
+                            @MA2V LINE_EOF StatusLen
+
+                        @ELSE
+                            # EOF after a partial final line.
+                            # Treat as a complete line even without trailing LF.
+                            @PUSHII MemPtr
+                            @AND 0xff00
+                            @POPII MemPtr
+
+                            @PUSHI Consumed
+                            @AND LINE_LEN_MASK
+                            @POPI StatusLen
+                        @ENDIF
+
+                        @MA2V 0 Continue
+
+                    @ELSE
+                        @POPNULL
+
+                        # Check byte just read.
+                        @PUSHII MemPtr
+                        @AND 0xff
+
+                        @IF_EQ_A 10       # LF '\n'
+                            @POPNULL
+
+                            # Replace LF with NUL terminator.
+                            @PUSHII MemPtr
+                            @AND 0xff00
+                            @POPII MemPtr
+
+                            @PUSHI Consumed
+                            @AND LINE_LEN_MASK
+                            @POPI StatusLen
+
+                            @MA2V 0 Continue
+
+                        @ELSE
+                            @POPNULL
+
+                            # Normal payload byte.
+                            @INCI Consumed
+                            @INCI MemPtr
+                            @DECI PayloadLimit
+                        @ENDIF
+                    @ENDIF
+                @ENDIF
+
+            @ENDWHILE
+        @ENDIF
+    @ENDIF
+
+    @PUSHI StatusLen
+
+    @RestoreVar 07
+    @RestoreVar 06
+    @RestoreVar 05
+    @RestoreVar 04
     @RestoreVar 03
     @RestoreVar 02
     @RestoreVar 01
 @POPRETURN
 @RET
+
 @ENDFUNCTION
-
-
-
 
 
 

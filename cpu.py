@@ -963,7 +963,7 @@ class microcpu:
         self.flags = np.uint16(0)    # B0 = ZF, B1=NF, B2=CF, B3=OF
         self.identity = next(self.cpu_id_iter)
 #        self.hwstack = np.zeros(256, dtype=np.uint16)
-        self.hwstack = [0] * MAXHWSTACK
+        self.hwstack = np.zeros(MAXHWSTACK, dtype=np.uint16)
         self.hwstacksp = 0
         self.memspace = np.zeros(memsize, dtype=np.uint8)
         self.netqueue = []
@@ -1116,7 +1116,7 @@ class microcpu:
         if address < 0 or address >= sp or address >= MAXHWSTACK:
             self.raiseerror("210 Stack address out of range.")
         index=sp - 1 - address
-        return self.hwstack[index]
+        return int(self.hwstack[index])
 
     def StoreAcum(self, address, value):
         # Saves at top of stack the Acum value. Does not change stack.
@@ -1904,7 +1904,7 @@ class microcpu:
                         self.memspace[tidx] = int(i) & 0xff
                         tidx += 1
                 else:
-                    self.raiseerror("550 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
+                    self.raiseerror(f"550 Attempted to read block with insuffient memory {v:04x} < {MAXMEMSP-0xff}")
         if cmd == PollReadTape:
             self.optPOPNULL(address)            
             if current_context.DeviceHandle is not None:
@@ -2042,21 +2042,22 @@ class microcpu:
             while not halted:
                 # --- snapshot current state ---
                 pc0, flags0 = self.pc, self.flags
+                sp0 = self.hwstacksp
                 mem0 = self.memspace[:]   # Main Memory snapshot
-                mb0  = self.hwstack[:]         # HW stack snapshot
+                mb0  = self.hwstack.copy()         # HW stack snapshot
 
                 # --- run C version with its own copies ---
                 memC = mem0[:]            # independent copy for C
-                mbC  = mb0[:]
-                pcC, flagsC, rcC = cpuCfunc.EvalOne(memC, mbC, pc0, flags0, 1, 0)
+                mbC  = mb0.copy()
+                pcC, flagsC, spC, rcC = cpuCfunc.EvalOne(memC, mbC, pc0, flags0, sp0, 1, 0)
 
                 # --- run Python version with its own copies ---
-                self.pc, self.flags = pc0, flags0
+                self.pc, self.flags, self.hwstacksp = pc0, flags0, sp0
                 self.memspace = mem0[:]   # independent copy for Python
-                self.hwstack       = mb0[:]
+                self.hwstack       = mb0.copy()
                 rcPy = self._evalpc_py(context, dosteps=1)
 
-                pcPy, flagsPy = self.pc, self.flags
+                pcPy, flagsPy, spPy = self.pc, self.flags, self.hwstacksp
                 memPy, mbPy   = self.memspace, self.hwstack
 
                 # --- compare results ---
@@ -2066,6 +2067,9 @@ class microcpu:
                 if flagsC != flagsPy:
                     print(f"[CrossCheck] Step {step_count}: Flags mismatch at PC={pc0:04x} "
                            f"C={flagsC:04x}, Py={flagsPy:04x}")
+                if spC != spPy:
+                    print(f"[CrossCheck] Step {step_count}: Stack pointer mismatch at PC={pc0:04x} "
+                          f"C={spC}, Py={spPy}")
                 for addr, (wC, wP) in enumerate(zip(memC, memPy)):
                     if wC != wP:
                         print(f"[CrossCheck] Step {step_count}: Memory mismatch at {addr:04x} "
@@ -2094,8 +2098,8 @@ class microcpu:
                 while ReturnCode == 0:
                     DissAsm(self.pc, 1, self)
                     context.GlobalOptCnt += 1                    
-                    (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
-                        self.memspace, self.hwstack, self.pc, self.flags, 1, ReturnCode )
+                    (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
+                        self.memspace, self.hwstack, self.pc, self.flags, self.hwstacksp, 1, ReturnCode )
             else:
                 # Run fixed number of steps.
                 for _ in range(dosteps):
@@ -2103,11 +2107,11 @@ class microcpu:
                         break
                     DissAsm(self.pc, 1, self)                
                     context.GlobalOptCnt += 1
-                    (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
-                        self.memspace, self.hwstack, self.pc, self.flags, 1, ReturnCode )
+                    (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
+                        self.memspace, self.hwstack, self.pc, self.flags, self.hwstacksp, 1, ReturnCode )
         else:
-            (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
-                self.memspace, self.hwstack, self.pc, self.flags, dosteps, ReturnCode )
+            (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
+                self.memspace, self.hwstack, self.pc, self.flags, self.hwstacksp, dosteps, ReturnCode )
             if dosteps>0:
                 context.GlobalOptCnt += dosteps
         if ReturnCode != 0:
@@ -2133,11 +2137,12 @@ class microcpu:
                 DissAsm(self.pc, 1, self)
                 context.GlobalOptCnt += 1
 
-            (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
+            (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
                 self.memspace,
                 self.hwstack,
                 self.pc,
                 self.flags,
+                self.hwstacksp,
                 1,
                 ReturnCode
             )
@@ -2167,8 +2172,8 @@ class microcpu:
                 if steps_remaining is not None and steps_remaining > 1:
                     # use the C batch executor for speed
                     batch = steps_remaining
-                    (self.pc, self.flags, ReturnCode) = cpuCfunc.EvalOne(
-                        self.memspace, self.hwstack, self.pc, self.flags, batch, ReturnCode
+                    (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
+                        self.memspace, self.hwstack, self.pc, self.flags, self.hwstacksp, batch, ReturnCode
                     )
                     context.GlobalOptCnt += batch
 
@@ -3732,8 +3737,18 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         context.UniqueLineNum += 1
                         GetAnother = False
                         inline = infile.readline()
-                        if current_context.Debug > 1 and inline.strip():
-                            safeprint(f"{context.ActiveFile}:{context.FileLineNum+1} MS({len(context.MacroBlockStack)}) {inline.strip()}")
+
+                        if context.Debug > 1 and inline.strip():
+                            exec_state = "EXEC" if context.is_executing() else "SKIP"
+                            depth = len(context.MacroBlockStack)
+
+                            safeprint(
+                                f"{context.ActiveFile}:{context.FileLineNum} "
+                                f"[{exec_state} d={depth}] RAW: {inline.rstrip()}",
+                                file=DebugOut
+                            )                        
+
+
                         FileLineData.add_entry(filename, context.CurrentLineBeingParsed, context.address)
                         context.AddressedLinesSeen.add(context.address)                        
                         if inline:
@@ -3757,6 +3772,10 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 dprint(3,f"[TRACE LOST %] line became: '{line}'")
             key, size = nextwordplus(line)
             if key.startswith("@"):
+                if key =="@MACRONEEDS":
+                    # Special comment macro, used to define relationsip macros have to functions for link optimization
+                    line=""
+                    continue            
                 line = handle_macro_invocation(line, filename, context, CPU)
                 continue
 
@@ -3827,7 +3846,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
 
 
             if key[0] == ":":
-                # ---------------------------------------------
+                # ---------------------------------------------                
                 # Parse label name (supports ":FOO" and ": FOO")
                 # ---------------------------------------------
                 if len(key) > 1:
@@ -3837,6 +3856,9 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     line = line[size:].lstrip()
 
                 SrcVal = context.address
+                if context.Debug > 2:
+                    exec_state=context.is_executing()
+                    print(f"[LABEL] {DestKey} exec={exec_state} file={context.ActiveFile}")                 
 
                 # ---------------------------------------------
                 # Generate mangled/local-safe name
@@ -4027,7 +4049,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     context.MacroData.update({key: value})
                     context.MacroPCount.update({key: 0})
             elif key[0] == "G" and IsOneChar:
-                # Globale labels are an override of 'Local' Labels by 'pre-defining them.                
+                # Globale labels are an override of 'Local' Labels by 'pre-defining them. 
                 (key, size) = nextword(line)
                 if key in context.GlobalDeclInfo and context.Debug > 2:
                     print(f"WARNING: duplicate global declaration of {key} "

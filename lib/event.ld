@@ -1,6 +1,6 @@
-! MOUSELIBSEEN
-M MouseLibSeen 1
-I common.mc
+! __LIB_EVENT_LOADED
+M __LIB_EVENT_LOADED 1
+I event.ref
 
 ? __EX716_EXPLICIT_LINK
    M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
@@ -8,41 +8,6 @@ I common.mc
    M FUNCTIONNEEDS ? __%1_INUSE
 ENDBLOCK
 
-@FUNCTIONNEEDS EventPoll
-   @USE KeySearchKeyBoard
-   @USE KeyDeQueue
-   @USE KeySearchTimer
-   @USE KeyQueueSize
-   @USE KeySearchMouse
-   @USE KeyEnQueue
-   @USE KeyReadMouseSeq
-   @USE ReadKeyTimeOut
-ENDBLOCK
-
-@FUNCTIONNEEDS KeySearchKeyBoard
-   @USE FindCh
-ENDBLOCK
-
-@FUNCTIONNEEDS KeyReadMouseSeq
-   @USE ReadKeyTimeOut
-ENDBLOCK
-
-@FUNCTIONNEEDS EventAdd
-   @USE MUL
-ENDBLOCK
-
-@FUNCTIONNEEDS EventTableFree
-   @USE HeapDeleteObject
-ENDBLOCK
-
-@FUNCTIONNEEDS EventTableNew
-   @USE HeapNewObject
-ENDBLOCK
-
-
-
-L heapmgr.ld
-L mul.ld
 #########################
 # These are the main public Functions.
 #
@@ -430,7 +395,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION KeyQueueSize
+@ENDFUNCTION
 ########################################
 # Function KeyQueueSize()
 @FUNCTION

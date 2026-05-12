@@ -1,9 +1,10 @@
 # Timelib provides some time functions, that should work reasonsably well both
 # regardless of how fast the emulator is running (other than single step)
 #
-! TIMELIBSeen
-M TIMELIBSeen 1
+! __LIB_TIMETOOL_LOADED
+M __LIB_TIMETOOL_LOADED 1
 M SIZESINCECOMMENT timetool.ld
+I timetool.ref
 L lmath.ld
 I lmath.md
 L mul.ld
@@ -12,27 +13,6 @@ L div.ld
 G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G SleepMilli
 @FUNCTIONNEEDS IsLeapYear
    @USE DIVU
-ENDBLOCK
-
-@FUNCTIONNEEDS DaysInMonth
-   @USE IsLeapYear
-ENDBLOCK
-
-@FUNCTIONNEEDS DaysInYear
-   @USE IsLeapYear
-ENDBLOCK
-
-@FUNCTIONNEEDS Sleep
-   @USE TimeCalabrate
-ENDBLOCK
-
-@FUNCTIONNEEDS SleepMilli
-   @USE TimeCalabrate
-ENDBLOCK
-
-@FUNCTIONNEEDS Time2Units
-   @USE DaysInMonth
-   @USE DaysInYear
 ENDBLOCK
 
 # --- External dependencies (not defined in this file) ---

@@ -16,8 +16,6 @@ M BASIC_COMMONFLAG 1
 =TYPECODE 0xd7
 =RENAMECODE 0xd8
 =DELETECODE 0xd9
-=PRINTCMDCODE 0xda
-=LETCMDCODE 0xdb
 
 
 #
@@ -34,11 +32,12 @@ M BASIC_COMMONFLAG 1
 =GOTO_CODE    0x89
 =GOSUB_CODE   0x8a
 =RETURN_CODE  0x8b
-=LET_CODE     LETCMDCODE      # Match up keywords that also happen to be commands.
+=LET_CODE     0x8c      # Match up keywords that also happen to be commands.
 =DIM_CODE     0x8d
 =END_CODE     0x8e
 =STOP_CODE    0x8f
-=PRINT_CODE   PRINTCMDCODE
+=PRINT_CODE   0x90
+=MEM_CODE     0x91
 # I/O & Filesystem
 =OPEN_CODE     0xa0
 =CLOSE_CODE    0xa1
@@ -74,7 +73,6 @@ M BASIC_COMMONFLAG 1
 =AND_TOKEN    0xd0
 =OR_TOKEN     0xd1
 =NOT_TOKEN    0xd2
-
 # Data Catagoty and Multi character tolkens
 =STRING_TOKEN   0xe0
 =VAR_TOKEN      0xe1
@@ -108,9 +106,7 @@ $$3 "DIR" DIRCODE
 $$4 "TYPE" TYPECODE
 $$6 "RENAME" RENAMECODE
 $$6 "DELETE" DELETECODE
-$$5 "PRINT" PRINTCMDCODE
-$$1 "?"     PRINTCMDCODE
-$$3 "LET"   LETCMDCODE
+$$5 "PRINT" PRINT_CODE
 $$7 "COLORBG" COLORBG_CODE
 $$7 "COLORFG" COLORFG_CODE
 $$6 "CURSOR" CURSOR_CODE
@@ -153,6 +149,7 @@ $$3 "END" END_CODE
 $$3 "DIM" DIM_CODE
 $$3 "LET" LET_CODE
 $$3 "FOR" FOR_CODE
+$$3 "MEM" MEM_CODE
 $$2 "TO" TO_CODE
 $$2 "IF" IF_CODE
 $$2 "<>" NE_TOKEN
@@ -168,6 +165,22 @@ $$6 "Symbol" VAR_TOKEN
 $$7 "LineNum" LINE_REFERENCE
 $$8 "FloatNum" FLOAT_TOKEN
 $$7 "LongNum" LONG_TOKEN
+$$1 "?"     PRINT_CODE
+$$1 "=" "=\0"          # Single character codes with valid values are here.
+$$1 "+" "+\0"
+$$1 "-" "-\0"
+$$1 "*" "*\0"
+$$1 "/" "/\0"
+$$1 "^" "^\0"
+$$1 "(" "(\0"
+$$1 ")" ")\0"
+$$1 "<" "<\0"
+$$1 ">" ">\0"
+$$1 "," ",\0"
+$$1 ";" ";\0"
+$$1 "#" "#\0"
+$$1 "^" "^\0"
+
 0       # END OF LIST
 #
 # Return Codes:
@@ -210,55 +223,48 @@ $$7 "LongNum" LONG_TOKEN
 =VAROFF_Next 8
 #
 =MaxVarNameLen 10
-@USE ADD32S
-@USE AND32
-@USE DiskClose
-@USE DiskFileReadLine
-@USE DiskFileWrite
-@USE DiskReadBlock
-@USE DiskWithDirEntry
-@USE DiskWriteSector
-@USE WildCardMatch
-@USE DirArgTableToEntry
-@USE DirClearArgTable
-@USE DirEntryPtr
-@USE DirEntryToArgTable
-@USE DirLocate
-@USE FSReadHeader
-@USE file_open
-@USE HeapDefineMemory
-@USE HeapDeleteObject
-@USE HeapListMap
-@USE HeapNewObject
-@USE HeapResizeObject
-@USE HexDump
-@USE itos
-@USE ISNumeric
-@USE ISAlphaNum
-@USE memcpy
-@USE MUL
-@USE MUL32S
-@USE DIV32S
-@USE SetDiskHeap
-@USE SetSSStack
-@USE stoi32
-@USE stoifirst
-@USE strcpy
-@USE strlen
-@USE strncmp
-@USE strncpy
-@USE strfndc
-@USE strcmp
-@USE SUB32S
-@USE SHL32_1
-@USE SUB32U
-@USE SHL32
-@USE SHL32_8
-@USE SHL32_small
-@USE DiskOpen
 
-G BasicPanic
-G BasicRaiseError
+@USE  ADD32S
+@USE  AND32
+@USE  CMP32S
+@USE  CMP32U
+@USE  COMP232
+@USE  DIV
+@USE  DIV32S
+@USE  DiskClose
+@USE  DiskFileReadLine
+@USE  DiskFileWrite
+@USE  DiskOpen
+@USE  DirReadEntry
+@USE  FSFindFile
+@USE  FSReadHeader
+@USE  file_open
+@USE  HeapDefineMemory
+@USE  HeapDeleteObject
+@USE  HeapListMap
+@USE  HeapNewObject
+@USE  HeapResizeObject
+@USE  HexDump
+@USE  ISAlphaNum
+@USE  ISNumeric
+@USE  MODE
+@USE  MUL
+@USE  MULU
+@USE  MUL32S
+@USE  OR32
+@USE  SUB32S
+@USE  SetDiskHeap
+@USE  SetSSStack
+@USE  file
+@USE  itos
+@USE  memcpy
+@USE  stoi32
+@USE  stoifirst
+@USE  strcpy
+@USE  strlen
+@USE  strncmp
+@USE  strncpy
+
 
 ENDBLOCK
 M SIZESINCECOMMENT basic_common.h

@@ -1,7 +1,7 @@
-! SCREEN_DONE
-M SCREEN_DONE 1
+! __LIB_SCREEN_LOADED
+M __LIB_SCREEN_LOADED 1
 I common.mc
-L softstack.ld
+I screen.ref
 # DEBUGSCREEN option:
 # If defined, ANSI escape codes are replaced by "<ESC>["
 # so debugging output shows literally instead of altering terminal.
@@ -10,26 +10,6 @@ L softstack.ld
 # -----------------------------
 # Exported Symbols
 # -----------------------------
-@FUNCTIONNEEDS WinBox
-   @USE WinCursor
-ENDBLOCK
-
-@FUNCTIONNEEDS WinClear
-   @USE WinShowCursor
-ENDBLOCK
-
-@FUNCTIONNEEDS WinPlot
-   @USE WinCursor
-ENDBLOCK
-
-@FUNCTIONNEEDS WinScrollRegion
-   @USE WinCursor
-ENDBLOCK
-
-@FUNCTIONNEEDS WinScrollRight
-   @USE WinCursor
-ENDBLOCK
-
 # Screen management
 G WinClear G WinResize G WinWidth G WinHeight
 
