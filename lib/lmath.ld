@@ -2,7 +2,9 @@
 M __LIB_LMATH_LOADED 1
 P Loading lmath.ld
 I lmath.ref
-L heapmgr.ld
+G strlen
+L string.ld
+P Past string.ld load in lmath
 L shift16.ld
 M SIZESINCECOMMENT lmath.ld
 
@@ -229,7 +231,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RestoreVar 01
   @POPRETURN
   @RET
-  @ENDFUNCTION
+  ENDBLOCK
 
 @FUNCTION ADD32
 :ADD32
@@ -237,7 +239,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @CALL ADD32S
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : ADD32S
 # Purpose  : Signed 32-bit addition with signed overflow flag
@@ -287,7 +289,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RestoreVar 01
   @POPRETURN
   @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : ADD32U
 # Purpose  : Unsigned 32-bit addition with carry flag
@@ -324,7 +326,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RestoreVar 01
   @POPRETURN
   @RET
-  @ENDFUNCTION
+  ENDBLOCK
 
 
 # ===========================================================
@@ -389,7 +391,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : SUB32U
@@ -458,7 +460,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : CMP32S
@@ -603,7 +605,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -682,7 +684,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : AND32
@@ -731,7 +733,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01    
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : OR32
 # Purpose  : Bitwise OR of two 32-bit values on the stack
@@ -777,7 +779,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01        
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : XOR32
 # Purpose  : Bitwise XOR of two 32-bit values on the stack
@@ -822,7 +824,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01    
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : INV32
 # Purpose  : Bitwise INV/NOT of a 32-bit value on the stack
@@ -863,7 +865,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01        
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : COMP232
 # Purpose  : Take the 2's compliment of 32-bit value on stack
@@ -908,7 +910,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -994,7 +996,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #===========================================================
 # Function : SHL32_8
 # Purpose  : Shifts 32 bit value left by 8 bits for efficency
@@ -1020,7 +1022,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RestoreVar 02
   @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #===========================================================
 # Function : SHR32_8
@@ -1052,7 +1054,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @RestoreVar 02
   @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -1169,7 +1171,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : SHL32_small
@@ -1263,7 +1265,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -1287,7 +1289,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 #    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : SHR32
 # Purpose  : Shift 32-bit value right by N bits (unsigned)
@@ -1400,7 +1402,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ===========================================================
 # Function : SHR32_small
 # Purpose  : Shift 32-bit value right by 1..7 bits (unsigned)
@@ -1472,7 +1474,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : SHR32_1
@@ -1496,7 +1498,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : MUL32U
@@ -1653,7 +1655,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : MUL16x32U
@@ -1754,7 +1756,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : ADD16U
@@ -1795,7 +1797,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -1843,7 +1845,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ===========================================================
 # Function : SHR16x32
@@ -1887,7 +1889,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -1967,7 +1969,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ############################################################
 # DIV32U  -  Unsigned 32-bit divide A/B
 # Inputs:  ( A_L A_H B_L B_H )
@@ -2080,7 +2082,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -2192,7 +2194,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 
@@ -2244,7 +2246,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
      
 ############################################################
 # SetBit32
@@ -2313,7 +2315,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ===========================================================
@@ -2360,7 +2362,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ============================================================
 # Function : DIV10_32U
 # Purpose  : 'quick' divide by ten (When later optimized)
@@ -2374,7 +2376,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
    @CALL DIV32U
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ============================================================
 # Some Later time to optimied with multiplicative inverse
 # This will require 64 bit multiple, so do later.
@@ -2481,7 +2483,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
    @RestoreVar 01
    @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 :WorkBuff "00000000000" $$0   # 11 bytes for max length int32 string.
 # ============================================================
@@ -2621,7 +2623,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 

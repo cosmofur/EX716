@@ -593,7 +593,7 @@ L string.ld
        @POPI FileNum
        @INCI Count
        @Call(VVV) DirReadEntry FileNum ArgTable DiskBuff
-       @Call(VAA) HexDump ArgTable ARGTABLE_SIZE 0
+#       @Call(VAA) HexDump ArgTable ARGTABLE_SIZE 1
        @IF_ZERO
            @PRT "Disk Error:"
            @JMP DD_Exit
@@ -607,7 +607,6 @@ L string.ld
        @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
        @PUSHI ArgTable @ADD DIR_AT_FILESIZE @ADD 2 @PUSHS       
        @PRT32S
-       @POPNULL @POPNULL
 
        @PRT "\t"
        @PUSHI ArgTable @ADD DIR_FLAGS @PUSHS
@@ -618,7 +617,7 @@ L string.ld
        @MV2V FileNum StartPoint
        @INCI StartPoint
    @ENDWHEN
-   
+   @POPNULL   
        
        
 :DD_Exit
@@ -634,7 +633,54 @@ L string.ld
     @RestoreVar 01
 @POPRETURN
 @RET
-   
+#-----------------------------------
+# FindLine(LineNumber): EntryPtr | 0
+# Searchs Basic LibeTable for matching LineNumber or 0 if none found
+:FindLine
+@PUSHRETURN
+    @LocalVar TargetLine 01
+    @LocalVar Index      02
+    @LocalVar EntryPtr   03
+    @LocalVar CurLine    04
+    @LocalVar Result     05
+
+    @POPI TargetLine
+
+    @MA2V 0 Result
+    @MA2V 0 Index
+    @MV2V LineTableBase EntryPtr
+
+    @ForIA2V Index 0 ProgramLineCount
+        @PUSHII EntryPtr
+        @POPI CurLine
+
+        @IF_EQ_VV CurLine TargetLine
+            @MV2V EntryPtr Result
+            @FORBREAK
+        @ENDIF
+
+        # Since table is sorted, stop early if current line is greater.
+        @PUSHI CurLine
+        @IF_GT_V TargetLine
+            @POPNULL
+            @FORBREAK
+        @ENDIF
+        @POPNULL
+
+        @PUSHI EntryPtr
+        @ADD 4
+        @POPI EntryPtr
+    @Next Index
+
+    @PUSHI Result
+
+    @RestoreVar 05
+    @RestoreVar 04
+    @RestoreVar 03
+    @RestoreVar 02
+    @RestoreVar 01
+@POPRETURN
+@RET
  
    
 M SIZESINCECOMMENT basic_support.h

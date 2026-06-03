@@ -9,17 +9,27 @@ MF COMMON_SEEN 1
 G SizeHereVar
 G NewHereMem
 G OldHereVar
-=OldHereVar NewHereMem
+=OldHereVar {NewHereMem}
 G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
 G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
+G Var1 G Var2 G Var3 G Var4 G Var5 G Var6 G Var7 G Var8 G Var9
+:Var1          # Allow both Var01 and Var1 to be same memory location.
 :Var01 0
+:Var2
 :Var02 0
+:Var3
 :Var03 0
+:Var4
 :Var04 0
+:Var5
 :Var05 0
+:Var6
 :Var06 0
+:Var7
 :Var07 0
+:Var8
 :Var08 0
+:Var9
 :Var09 0
 :Var10 0
 :Var11 0
@@ -245,7 +255,7 @@ M ROR2 @CLC @RRTC @RRTC
 M ROR3 @CLC @RRTC @RRTC @RRTC
 M ROR4 @CLC @RRTC @RRTC @RRTC @RRTC
 M ROR5 @CLC @RRTC @RRTC @RRTC @RRTC @RRTC
-M ROLN @CLC \
+M RORN @CLC \
      %REPEAT %1 @RRTC %ENDR
 # Logical Shifts (no carry involvement)
 M SHL2 @SHL @SHL
@@ -289,11 +299,11 @@ M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
 # moves, so for convience here are some macros that mimic that.
 #
 # Word Versions are alias of PUSH and POP
-M STOREI @POPI
-M STOREII @POPII
-M LOADI @PUSHI
-M LOADII @PUSHII
-M LOAD @PUSHS
+M STOREI @POPI %1
+M STOREII @POPII %1
+M LOADI @PUSHI %1
+M LOADII @PUSHII %1
+M LOAD @PUSHS %1
 #
 # Byte version of Store stack to Pointer
 M STOREBII \        
@@ -409,8 +419,7 @@ M JULE \
 # CF=0 (no borrow)
 # ============================================================
 M JUGE \
-  @JMPNC %1          \      # Jump if CF=0 (A ≥ B)
-
+  @JMPNC %1      # Jump if CF=0 (A ≥ B)
 # ============================================================
 # Jump if A > B (unsigned)
 # CF=0 (no borrow) AND Z=0 (not equal)
@@ -431,7 +440,6 @@ M CALLI @PUSH $_%0A @PUSHI %1 @JMPS :_%0A
 M RET @JMPS
 M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
-
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
 M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1
@@ -478,7 +486,10 @@ M PRTNL @JMP _%0A :_%0NL 10 $$0 :_%0A @PUSH CastPrintStr @CAST _%0NL
 M PRTSP @JMP _%0AJ :_%0M " \0" :_%0AJ @PUSH CastPrintStr @CAST _%0M
 # Print immediate value (usefull to print value of pointer)
 # Print N number of spaces
-M PRTSPN  @JMP _%0A  :_%0M  %REPEAT %1  " "  %ENDR $$0  :_%0A @PUSH CastPrintStr @CAST _%0M
+M PRTSPN  @JMP _%0A  \
+         :_%0M %REPEAT %1 $$0x20  %ENDR \
+         $$0  :_%0A @PUSH \
+         CastPrintStr @CAST _%0M
 M PRTREF @PUSH CastPrintInt @CAST %1
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTI _%0M1
@@ -1094,7 +1105,7 @@ ENDBLOCK
 #--------------------------------------------------
 
 M REQUIREDSTORE MF __STORE_%1
-M ISUSED        ?  __STORE_%1
+M ISUSED        `?  __STORE_%1`
 
 # Default: nothing required unless overridden
 
@@ -1102,7 +1113,6 @@ M ISUSED        ?  __STORE_%1
 #--------------------------------------------------
 # Default mode (include everything)
 #--------------------------------------------------
-
 M TRUE 1
 
    # Mark function as used (optional in this mode)
@@ -1120,11 +1130,8 @@ M TRUE 1
       :_HERE%0 \
       MF __ENDOF __LastFunc _HERE%0 \
       ENDBLOCK
-   M FUNCTIONNEEDS ? __EX716_NEVER   # undefined → always false
-   M ENDBLOCK ENDBLOCK
+   M FUNCTIONNEEDS `? __EX716_NEVER  ENDBLOCK`
       
-
-##ENDBLOCK
 
 #--------------------------------------------------
 # USE_ONLY mode (explicit inclusion)
@@ -1134,22 +1141,21 @@ M TRUE 1
 #   P Assemble with USE_ONLY Enabled.
    # FUNCTION only emits if explicitly used
    M FUNCTION \
-      ? __USE_%1 \
+      ` ? __USE_%1 \
       :_HERE%0 \
       MF __DEFINE_%1 _HERE%0 \
       MF __LastFunc %1 \
-      G %1 # P Defined %1 ;
+      G %1 # P Defined %1 ` ;
 
    M ENDFUNCTION \
-      :_HERE%0 \
+      `:_HERE%0 \
       MF __ENDOF _HERE%0 \
-      ENDBLOCK
+      ENDBLOCK`
 
    # Dependency declaration hook
-   M FUNCTIONNEEDS ? __USE_%1 # P "USEing " %1 ;
+   M FUNCTIONNEEDS `? __USE_%1` # P "USEing " %1 ;
 
    M USE MF __USE_%1 %1 G %1 #  P Mark for Use %1 ;
-   M ENDBLOCK ENDBLOCK
 
 ENDBLOCK
 
@@ -1158,13 +1164,13 @@ ENDBLOCK
 
 # Size Reporting Macro - usefule durring assembling to see how much memory each library module consumes.
 M SIZESINCE :NewHereMem \
-             =SizeHereVar NewHereMem-OldHereVar \
-             =OldHereVar NewHereMem \
+             =SizeHereVar {NewHereMem}-{OldHereVar} \
+             =OldHereVar {NewHereMem} \
              P Module {SIZESINCECOMMENT} : Size {SizeHereVar} Bytes
-M SIZESINCECOMMENT common.mc
-@SIZESINCE
 #
 # FOR NEXT WHILE and CASE logic structures can be found in this related file.
 #
 I structure.asm
+M SIZESINCECOMMENT common.mc
+@SIZESINCE
 ENDBLOCK

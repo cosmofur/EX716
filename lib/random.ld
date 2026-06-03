@@ -102,7 +102,7 @@ G frndint
     @RestoreVar 02
     @RestoreVar 01
     @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ============================================================
@@ -152,7 +152,7 @@ G frndint
     @POPNULL               # discard last rnd16 result
     @POPRETURN
     @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ============================================================
 # rndint(N)  →  Random integer in range 0..N
@@ -203,7 +203,7 @@ G frndint
     @RestoreVar 01
     @POPRETURN
     @RET
-@ENDFUNCTION
+ENDBLOCK
 # ============================================================
 # frndint(N)  →  Fast random integer in range 0..N
 #
@@ -257,7 +257,7 @@ G frndint
     @RestoreVar 01
     @POPRETURN
     @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ============================================================
 # frnd16()  →  Fast 16-bit random number
@@ -308,6 +308,6 @@ G frndint
     @RestoreVar 01
     @POPRETURN
     @RET
-@ENDFUNCTION
+ENDBLOCK
 @SIZESINCE
 ENDBLOCK

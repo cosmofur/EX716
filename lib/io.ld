@@ -45,6 +45,6 @@ G StrReadToChar
 :SRCChar 0
 :SRCStrPtr 0
 :SRCReadCH 0 0  # Note we reserver 4 bytes ReadCH because READC might return small strings
-@ENDFUNCTION
+ENDBLOCK
 @SIZESINCE
 ENDBLOCK

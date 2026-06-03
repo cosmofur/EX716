@@ -492,7 +492,7 @@ G LINE_EOF
    @POPI DiskHeap
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #
 # Low Level Disk IO
@@ -512,7 +512,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------------
 # DiskWriteSector(Sector, *Buffer)
 #--------------------------------------------------
@@ -530,7 +530,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #---------------------------------------------
 @FUNCTION  DataBlockFirstSector
 # DataBlockFirstSector(FileNum):(Sector)
@@ -551,7 +551,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #---------------------------------------------
 @FUNCTION  DirLocate
 # DirLocate(FileNum):(Sector, Offset)
@@ -595,7 +595,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #------------------------------------------
 @FUNCTION  DirEntryPtr
@@ -615,7 +615,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #
 #------------------------------------------
@@ -644,7 +644,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #------------------------------------------------
 # DirClearArgTable(*ArgTable)
 # Clears the ArgTable, does not yet rewrite new entry to Disk
@@ -668,7 +668,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #--------------------------------------------
 # DirArgTableToDirEntry(*DirEntry,*ArgTable)
@@ -697,7 +697,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #----------------------------------------
 # DirWriteEntry(FileNum, *ArgTable, *DiskBuffer)
@@ -773,7 +773,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #--------------------------------------
 @FUNCTION  DirReadEntry
@@ -822,7 +822,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-----------------------------------------
 # DirNewArgTable
 # Returns a new ArgTable pointer.
@@ -839,7 +839,7 @@ G LINE_EOF
    @ENDIF
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #-----------------------------------------
 @FUNCTION  DiskNewBuffer
@@ -856,7 +856,7 @@ G LINE_EOF
    @ENDIF
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-----------------------------------------
 # DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer)
 # Writes ByteCount bytes from memory starting at MemPtr into consecutive disk sectors starting at Sector.
@@ -967,7 +967,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #---------------------------------------
 @FUNCTION  DiskReadBlock
@@ -1060,7 +1060,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #---------------------------------------
 # DiskOpen(FileNum,Mode)
@@ -1227,7 +1227,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 #-----------------------------------------
@@ -1372,7 +1372,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #-----------------------------------------------------
 @FUNCTION  DiskClose
@@ -1467,7 +1467,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #---------------------------------------------------------
 # DiskFileRead(FilePtr, MemPtr, ByteCount)
 #
@@ -1650,7 +1650,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-------------------------------------------------
 @FUNCTION  WildCardMatch
 # WildCardMatch(pattern,text):1|0
@@ -1752,7 +1752,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------
 @FUNCTION  DirFindFile
 # DirFindFile(Pattern, StartPoint):FileNum | 0
@@ -1840,7 +1840,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-------------------------------------------
 @FUNCTION  DirFindFree
 # DirFindFree():FileNum | 0
@@ -1902,7 +1902,7 @@ G LINE_EOF
    @RestoreVar 01
  @POPRETURN
  @RET
- @ENDFUNCTION
+ ENDBLOCK
 
 
 
@@ -2043,7 +2043,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #---------------------------------------------------------
 # Series of API to modify/access DIR header data.
@@ -2069,7 +2069,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #----------------------------------
 # _DF_SetLine_Mod
 # Modifies ArgTable LineNumer Field
@@ -2092,7 +2092,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-----------------------------------
 @FUNCTION  DiskGetLineCount
 # DiskGetLineCount(FilePtr):LineCount
@@ -2110,7 +2110,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #----------------------------------
 # _DF_GetLine_Mod
 # Modifies ArgTable LineNumer Field
@@ -2130,7 +2130,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-----------------------------------
 # DiskSetFileType(FilePtr, TypeWord)
 #-----------------------------------
@@ -2150,7 +2150,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #----------------------------------
 # _DF_SetType_Mod
 # Modifies ArgTable SetType Field
@@ -2173,7 +2173,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #-----------------------------------
 @FUNCTION  DiskGetFileType
 # DiskGetFileType(FilePtr):TypeWord
@@ -2191,7 +2191,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #----------------------------------
 # _DF_GetType_Mod
 # Modifies ArgTable SetType Field
@@ -2212,7 +2212,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #------------------------------------
 # DiskFileName
 #------------------------------------
@@ -2231,7 +2231,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #------------------------------
 # DiskFileName Modifier function.
 #------------------------------
@@ -2260,7 +2260,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 #-----------------------------------------
@@ -2337,7 +2337,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------
 @FUNCTION  FSReadHeader
 # FSReadHeader(DISK_NUMBER):1|0 # Reads filesystem superblock (FS header) and establishes FS context
@@ -2396,7 +2396,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #----------------------------------------
 # FSWriteHeader() Stores current FS Disk meta data back to disk.
 #----------------------------------------
@@ -2469,7 +2469,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #---------------------------------
 @FUNCTION  FSIsFileUsed
@@ -2517,7 +2517,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #---------------------------------
 # FSSetFileUsed(FileNum) Sets BitMap At FileNum spot
 #---------------------------------
@@ -2572,7 +2572,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #---------------------------------
 # FSClearFileUsed(FileNum) Cleats BitMap at FileNum spot
 #---------------------------------
@@ -2629,7 +2629,7 @@ G LINE_EOF
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------
 @FUNCTION  FSFindFreeFile
 # FSFindFreeFile():FileNum|0
@@ -2676,7 +2676,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------
 # FSFormat(DiskID, DiskNum)
 # Format DiskNum and applies DiskID
@@ -2743,7 +2743,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #-----------------------------------
 @FUNCTION  FSNextUsedFile
@@ -2803,7 +2803,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------
 @FUNCTION  FSFindFile
 # FSFindFile(Pattern, StartPoint): FileNum | 0
@@ -2885,7 +2885,7 @@ G LINE_EOF
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #--------------------------------------------
 @FUNCTION  DiskFileReadLine
@@ -3050,7 +3050,7 @@ G LINE_EOF
 @POPRETURN
 @RET
 
-@ENDFUNCTION
+ENDBLOCK
 
 
 

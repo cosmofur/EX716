@@ -135,7 +135,7 @@ G NibbleToHexChar
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #--------------------------------------------
 # NibbleToHexChar(nibble) -> ASCII in TOS
@@ -151,7 +151,7 @@ G NibbleToHexChar
    @ENDIF
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------
 # ByteToHexStr(Byte, StrPtr)
 #--------------------------------------------
@@ -187,5 +187,5 @@ G NibbleToHexChar
 
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ENDBLOCK

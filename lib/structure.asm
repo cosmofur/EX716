@@ -365,8 +365,8 @@ M IF_CARRY \
   :_%0_True
 #
 M IF_NOTCARRY \
-  @JMPC _%0_ENDIF \
   %S \
+  @JMPC _%V_ENDIF \
   :_%0_True
 
 
@@ -375,30 +375,19 @@ M IF_NOTCARRY \
 # ELSE is common to all the IF type blocks.
 # Note how if we fall into the ELSE block from the code right above.
 # It jumps right to the 'JustEnd' label. We do the same thing for ENDIF
-# We also set with MF a _%V_ElseFlag so correctly nested ENDIF will know if
+# We also set with MF a _%V_E lseFlag so correctly nested ENDIF will know if
 # an 'else' was in effect or not.
 M ELSE \
-  MF _%V_ElseFlag true \
   @JMP _%V_JustEnd \
-  :_%V_ENDIF
-
-#
-# The Tricky part of ENDIF is determining if we used an ELSE block or not.
-# If no ELSE had been used the %V_ElseFlag will not exist.
-# We also Define an V_ElseBlock to zero because if there was no ELSE, it would never be
-# defined, or used, but would still trigger a warning message during assembly since
-# it had been indirectly referenced but not defined.
+  MF _%V_ELSEUSED 1 \   
+  :_%V_ENDIF ;
 
 M ENDIF \
-  ? _%V_ElseFlag \
-  @JMP _%V_JustEnd \
-  ENDBLOCK \
-  ! _%V_ElseFlag \
-  :_%V_ENDIF \
-  ENDBLOCK \
   :_%V_JustEnd \
-  %P
-
+  IFNDEF _%V_ELSEUSED \
+     :_%V_ENDIF \
+  ENDBLOCK \
+  %P ;
 #
 # Now this section is for simple While loop block structures.
 #
@@ -571,7 +560,7 @@ M FORBREAK \
   @JMP _%W_NextEnd
 
 M FORCONTINUE \
-  @JMP _%W_
+  @JMP _%W_NextEnd
 
 M ENDWHILE \
   @JMP _%V_LoopTop \
@@ -619,7 +608,7 @@ M SWITCH \
 #    are preserving on the stack, and plan to use again, and _%0 for lables that only
 #    have value inside this same macro.
 M CASE \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \
+  =_%V_CaseCount  {_%V_CaseCount+1} \
   @CMP %1 \
   %S \
   @JMPZ _%V_DoCase1_%V \
@@ -630,7 +619,7 @@ M CASE \
 # So some of the complexity is to make sure we can use IF_GE for both the low and high
 # range tests in the CASE. Other wise we could miss the edge cases.
 M CASE_RANGE_AA \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMP %1 \
   %S \
   @JLT _%V_NextCase \
@@ -639,7 +628,7 @@ M CASE_RANGE_AA \
   :_%V_InRange_%0
 M CASE_RANGE @CASE_RANGE_AA %1 %2
 M CASE_RANGE_AV \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMP %1 \
   %S \
   @JLT _%V_NextCase \
@@ -647,7 +636,7 @@ M CASE_RANGE_AV \
   @JGT _%V_NextCase \
   :_%V_InRange_%0
 M CASE_RANGE_VA \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMPI %1 \
   %S \
   @JLT _%V_NextCase \
@@ -655,7 +644,7 @@ M CASE_RANGE_VA \
   @JGT _%V_NextCase \
   :_%V_InRange_%0
 M CASE_RANGE_VV \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMPI %1 \
   %S \
   @JLT _%V_NextCase \
@@ -666,7 +655,7 @@ M CASE_RANGE_VV \
 
 # range tests in the Unsigned CASE. Other wise we could miss the edge cases.
 M CASE_URANGE_AA \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMP %1 \
   %S \
   @JULT _%V_NextCase \
@@ -675,7 +664,7 @@ M CASE_URANGE_AA \
   :_%V_InRange_%0
 M CASE_URANGE @CASE_URANGE_AA %1 %2
 M CASE_URANGE_AV \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMP %1 \
   %S \
   @JULT _%V_NextCase \
@@ -683,7 +672,7 @@ M CASE_URANGE_AV \
   @JUGT _%V_NextCase \
   :_%V_InRange_%0
 M CASE_URANGE_VA \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMPI %1 \
   %S \
   @JULT _%V_NextCase \
@@ -691,7 +680,7 @@ M CASE_URANGE_VA \
   @JUGT _%V_NextCase \
   :_%V_InRange_%0
 M CASE_URANGE_VV \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \  
+  =_%V_CaseCount {_%V_CaseCount+1} \  
   @CMPI %1 \
   %S \
   @JULT _%V_NextCase \
@@ -702,7 +691,7 @@ M CASE_URANGE_VV \
 
 # Compares TOS with value at [%1] 
 M CASE_V \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \
+  =_%V_CaseCount {_%V_CaseCount+1} \
   %S \
   @CMPI %1 \
   @JMPNZ _%V_NextCase \
@@ -713,7 +702,7 @@ M CASE_V \
 # So always include a CDEFAULT even if you alreay had CASE's for all the valid values.
 M CDEFAULT \
   :_%V_NextCase \
-  =_%V_CaseCount %( _%V_CaseCount+1 %) \
+  =_%V_CaseCount {_%V_CaseCount+1} \
   %S
   
 # Call the CASES need a matching CBREAK main things it does is pop the MacroStack
@@ -728,7 +717,7 @@ M CBREAK \
   @JMP _%W_EndCase \                 # Jump the BASE frame's END_CASE
   :_%V_NextCase \
   %P \                               # Back to BASE frame
-  =_%V_BreakCount %( _%V_BreakCount+1 %)  
+  =_%V_BreakCount {_%V_BreakCount+1}  
 
 # End Case provides a target for, the %P is there to pop the %S from SWITCH
 

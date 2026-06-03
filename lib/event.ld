@@ -113,7 +113,7 @@ G ActiveEventTable
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #########################################
 # function: EventTableFree(EventTableID)
 @FUNCTION EventTableFree
@@ -135,7 +135,7 @@ G ActiveEventTable
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ##########################################
 # function: EventSetActive(EventTableID)
 # This function sets the ActiveEventTable
@@ -144,7 +144,7 @@ G ActiveEventTable
 @SWP
 @POPI ActiveEventTable
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ##########################################
 # function: EventGetActive():EventTableID
 # Queries what the current ActiveEventTable is.
@@ -153,7 +153,7 @@ G ActiveEventTable
 @PUSHI ActiveEventTable
 @SWP
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # For MouseEvents:
@@ -175,7 +175,7 @@ G ActiveEventTable
 @PRTS CSICODE @PRT "?1000l"
 @PRTS CSICODE @PRT "?1006l"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ########################################
 # Function: TermMouseEnable()
 @FUNCTION TermMouseEnable
@@ -183,7 +183,7 @@ G ActiveEventTable
 @PRTS CSICODE @PRT "?1000h"
 @PRTS CSICODE @PRT "?1006h"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #######################################
 # Macros for EventAdd
@@ -328,7 +328,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #########################################
 # Function ReadKeyTimeOut
 # Polls for next character but also times out if not seen in 10 cycles
@@ -355,7 +355,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ########################################
 #
 =KQ_MASK 0x1f
@@ -395,7 +395,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ########################################
 # Function KeyQueueSize()
 @FUNCTION
@@ -410,7 +410,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 #@SWP   # put (retaddr) on top so @RET pops it; leaves size to caller
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #########################################
 # Function KeyDeQueue
@@ -437,7 +437,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 ########################################
 # Function: KeyReadMouseSeq():(x,y)
@@ -535,7 +535,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ############################################
 # Helper Macros for the ActiveEventTable Search functions
 M ExtractXMin @PUSHII %1 @AND 0xff
@@ -622,7 +622,7 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 ########################################
 # Function FindCh(String,Char):(0|Ptr)
@@ -657,7 +657,7 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 ########################################
 # Function: KeySearchKeyBoard(ch) -> EventID|0
@@ -714,7 +714,7 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 ##############################################
 # Function: KeySearchTimer() -> EventID | 0
@@ -817,7 +817,7 @@ M Between_U \
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 ########################################
@@ -913,7 +913,7 @@ M Between_U \
  @RestoreVar 03  @RestoreVar 02  @RestoreVar 01
  @POPRETURN
  @RET
- @ENDFUNCTION
+ ENDBLOCK
 ###########################
 # Mouse Test
 @FUNCTION EventList
@@ -966,7 +966,7 @@ M Between_U \
 @RestoreVar 05 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ############# Storage
 ########################################
 # Event Meta Data Struture:

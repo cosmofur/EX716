@@ -76,7 +76,7 @@ I shift16.ld
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 ############################################################
@@ -127,7 +127,7 @@ I shift16.ld
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 ############################################################
@@ -203,7 +203,7 @@ I shift16.ld
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 ############################################################
@@ -222,7 +222,7 @@ I shift16.ld
     @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 ############################################################
@@ -243,7 +243,7 @@ I shift16.ld
     @ANDI A
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 
@@ -264,7 +264,7 @@ I shift16.ld
 
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 ############################################################
@@ -285,5 +285,5 @@ I shift16.ld
 
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ENDBLOCK

@@ -68,7 +68,7 @@ G DIVU G DIV
 @POPLOCAL A_VAL
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # Function DIV, this version knows about Signs, but uses the DIVU version to do the main work.
 @FUNCTION DIV
@@ -120,7 +120,7 @@ G DIVU G DIV
    @POPLOCAL A_VAL
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 M SIZESINCECOMMENT div.ld
 @SIZESINCE
 ENDBLOCK

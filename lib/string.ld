@@ -1,7 +1,9 @@
 # String Functions Generation two
 ! __LIB_STRING_LOADED
 M __LIB_STRING_LOADED 1
+
 I string.ref
+
 # --- External dependencies (not defined in this file) ---
 #  DIV
 #  HeapDeleteObject
@@ -10,7 +12,6 @@ I string.ref
 #  strcpy
 #  strlen
 #  strtok
-
 
 # --- External dependencies (not defined in this file) ---
 #  DIV
@@ -142,7 +143,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #
 # Function strcat(strA,strB)
@@ -173,7 +174,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #
 # function strncat(StrA,StrB,maxlen)
@@ -221,7 +222,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #
 # Function strncpy(dest, src, length) Copies from src[0:length] to dest[0:length]
@@ -268,7 +269,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # Function(StrA, StrB) 
 # strcpy without the 'n' just copies all of StrB into StrA
@@ -295,7 +296,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # strncmp(StrA,StrB,MaxChars)  compairs two string and returns -1,0 or 1
 # based on their relationship. -1 if str1 lexicongraphically < str2
@@ -378,7 +379,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # 
 # itos is an Integer to String function
@@ -459,7 +460,7 @@ M SafeMove(VVV) \
 
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # stoi, reverse of itos, takes text version of number and returns integer.
 # Function stoi(string)
@@ -558,7 +559,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #
 # Function stoifirst(strptr) is very  much like stoi but does not require the string to terminat on a null
@@ -663,7 +664,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #
 # Function strcmp is just an alternative for strncmp with a super sized 'n'
@@ -674,7 +675,7 @@ M SafeMove(VVV) \
    @CALL strncmp
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # Function memcpy(dest,src,size) Copies size bytes from src to dest
 #
@@ -742,7 +743,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # strchr(string,word) finds character (lower 8 bits) from word in string, returns pointer to occurance, 0 is not found
 @FUNCTION strchr
@@ -776,7 +777,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # strrchr(string,word) Returns pointer to 'last' instance of character in string, null it not found.
 @FUNCTION strrchr
@@ -813,7 +814,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # strstr(string,substring) Return pointer in string, where substring can be found. NULL if no match
 # Extra Local Variables
@@ -885,7 +886,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 ###########
 #
@@ -918,7 +919,7 @@ M SafeMove(VVV) \
 @POPRETURN
 @RET
 #
-@ENDFUNCTION
+ENDBLOCK
 # Function IsAlpha(string):T|F
 # Return T|F if first char in string is in set [A-Za-z]
 @FUNCTION ISAlpha
@@ -941,7 +942,7 @@ M SafeMove(VVV) \
    @POPNULL
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 #
 # Function ISNumeric(String):T|F
@@ -963,7 +964,7 @@ M SafeMove(VVV) \
    @POPNULL
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # strfndc searchs string for single character returns ptr to that character
 # (strstr but with character constant on stack)
@@ -978,7 +979,7 @@ M SafeMove(VVV) \
    @CALL strstr
    @PUSHI sfReturn
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # strtok(InString, Delim) searchs string and replaces delim(s) with null
 # keeps an internal pointer so when string is null it will continue from
@@ -1051,7 +1052,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # This string split returns from an input string a HeapManager array of strings
 # Function splitstr(instring,splitlist,heapid):(heaparray,size_array)
@@ -1171,7 +1172,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ###############################################
 # Function SplitDeltete(object,heapid)
 # Deletes the object which is a list created by splitstr
@@ -1209,7 +1210,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ###################################################
 # Function strUpCase(instring)
 # Changes all lowercase letters instring to uppercase
@@ -1241,7 +1242,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ###################################################
 # Function strLowCase(instring)
 # Changes all Uppercase letters instring to lowercase
@@ -1273,7 +1274,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 M SIZESINCECOMMENT string.ld

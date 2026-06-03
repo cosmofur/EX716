@@ -22,7 +22,7 @@ I mul.ref
 #   - MUL uses MULU and adjusts result for sign.
 # ============================================================
 
-
+G MULU G MUL 
 M SIZESINCECOMMENT mul.ld
 
 M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @POPRETURN @RET
@@ -41,7 +41,6 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
 # ============================================================
 P Before MULU
 @FUNCTION MULU
-P MULU is defined here
 :MULU
     @PUSHRETURN
     @LocalVar MM      01   # multiplier
@@ -164,7 +163,7 @@ P MULU is defined here
 
     # --- Clean up ---
     @RETURN_RESULT
-@ENDFUNCTION
+ENDBLOCK
 
 # ============================================================
 # MUL(N, M) → Signed multiply
@@ -239,6 +238,6 @@ P MULU is defined here
     @RestoreVar 01
     @POPRETURN
     @RET
-@ENDFUNCTION
+ENDBLOCK
 @SIZESINCE
 ENDBLOCK

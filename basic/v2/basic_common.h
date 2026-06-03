@@ -198,6 +198,7 @@ $$1 "^" "^\0"
 =ERR_BAD_RETURN       6
 =ERR_OUT_RANGE        7
 =ERR_MEMORY           8
+=ERR_UNDEF_LINE       9
 # Error Resource
 =ERR_OUT_OF_MEMORY    1
 =ERR_STRING_SPACE     2

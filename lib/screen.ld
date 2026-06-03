@@ -65,7 +65,7 @@ ENDBLOCK
 @PRTS CSICODE @PRT "2J"
 @CALL WinShowCursor
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function: WinCursor
@@ -83,7 +83,7 @@ ENDBLOCK
 @PRTTOP @POPNULL
 @PRT "H"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function: WinHideCursor
@@ -96,7 +96,7 @@ ENDBLOCK
 :WinHideCursor
 @PRTS CSICODE @PRT "?25l"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function: WinShowCursor
@@ -109,7 +109,7 @@ ENDBLOCK
 :WinShowCursor
 @PRTS CSICODE @PRT "?25h"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinPlot
@@ -225,7 +225,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinResize
@@ -327,7 +327,7 @@ ENDBLOCK
 @RestoreVar 02
 @RestoreVar 01
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ENDBLOCK
 @TTYRAWOFF
 ? DEBUGSCREEN
@@ -358,7 +358,7 @@ ENDBLOCK
 @PRTS CSICODE  @PRT "48;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ---------------------------------------------------------------------
 #    ANSI Color 'table'
 #  The “256-color” ANSI palette splits into ranges:
@@ -393,7 +393,7 @@ ENDBLOCK
 @PRTS CSICODE @PRT "38;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : ColorReset
 # Purpose  : Reset all text attributes to default.
@@ -405,7 +405,7 @@ ENDBLOCK
 :ColorReset
 @PRTS CSICODE @PRT "0m"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ########################### Direction
 # ----------------------------------------------------------------------
 # Function : WinNorth
@@ -425,7 +425,7 @@ ENDBLOCK
 @PRT "A"
 @RET
 # --
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------------------------------
 # Function : WinSouth
 # Purpose  : Move the cursor down (south) by N cells.
@@ -444,7 +444,7 @@ ENDBLOCK
 @PRT "B"
 @RET
 # --
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------------------------------
 # Function : WinEast
 # Purpose  : Move the cursor right (east) by N cells.
@@ -463,7 +463,7 @@ ENDBLOCK
 @PRT "C"
 @RET
 # --
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------------------------------
 # Function : WinWest
 # Purpose  : Move the cursor left (west) by N cells.
@@ -482,7 +482,7 @@ ENDBLOCK
 @PRT "D"
 @RET
 # --
-@ENDFUNCTION
+ENDBLOCK
 #--------------------------------------------------------------------
 # Function : WinScrollRegion
 # Purpose  : Define a scrolling region within the screen.
@@ -522,7 +522,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # Save for future use in scroll right / letf
 :TopRow 0
 :BottomRow 0
@@ -552,7 +552,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : WinResetScrollRegion
 # Purpose  : Restore full-screen scrolling region.
@@ -571,7 +571,7 @@ ENDBLOCK
    @PRTS CSICODE
    @PRT "r"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinScrollDown
@@ -598,7 +598,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinScrollRight
@@ -630,7 +630,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : WinScrollLeft
 # Purpose  : Scroll text right within the current scroll region.
@@ -661,7 +661,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : WinUnderLineOn
 # Purpose  : Enable underlining for subsequent printed text.
@@ -677,7 +677,7 @@ ENDBLOCK
    @PRTS CSICODE
    @PRT "4m"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinUnderLineOff
@@ -694,7 +694,7 @@ ENDBLOCK
    @PRTS CSICODE
    @PRT "24m"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinBoldOn
@@ -710,7 +710,7 @@ ENDBLOCK
    @PRTS CSICODE
    @PRT "1m"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinBoldOff
@@ -726,7 +726,7 @@ ENDBLOCK
    @PRTS CSICODE
    @PRT "22m"
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 # ----------------------------------------------------------------------
@@ -784,7 +784,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 
 

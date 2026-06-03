@@ -16,22 +16,29 @@ M Call_ApplyOpt \
    
    @CALL RunTimeInit
    @MV2V LineTableBase BPC
-
+   @MA2V 0 BreakFlag        # Reset Break Flag of start of all RUNs
+   
    @WHILE_NEQ_AV 0 BPC
-       @MV2V BPC LRL
-       @IF_NEQ_AV 0 Debug_Mode @PRT "Before ExecuteLine: " @PUSHII BPC @PRTTOP @POPNULL @StackDump @PRTNL @ENDIF
-       @Call(V) ExecuteLine BPC
-       @IF_NEQ_AV RET_OK RET_CODE
-           @WHILEBREAK
-       @ENDIF
-       # GOTO's and GOSUBS will modify BPC so don't do NextLine if its been changed already.
-        @IF_NEQ_AV 0 Debug_Mode @PRT "After ExeuteLine: Cmp LRL:" @PRTHEXI LRL @PRT " and BPC:" @PRTHEXI BPC @PRTNL @ENDIF
-       @IF_EQ_VV LRL BPC
-          @Call(V) NextLine BPC
-          @POPI BPC
-       @ENDIF
-       @IF_NEQ_AV 0 Debug_Mode          @PRT "Post BPC: " @PRTHEXI BPC @PRTNL  @ENDIF
-         
+       @CALL BasicCheckBreak
+       @IF_NOTZERO
+         @POPNULL       
+         @MV2V BPC LRL
+
+         @Call(V) ExecuteLine BPC
+         @IF_NEQ_AV RET_OK RET_CODE
+           @MA2V 0 BPC
+         @ELSE
+           # GOTO's and GOSUBS will modify BPC so don't do NextLine if its been changed already.
+           @IF_EQ_VV LRL BPC
+              @Call(V) NextLine BPC
+              @POPI BPC
+           @ENDIF
+         @ENDIF
+       @ELSE
+         @POPNULL
+         @PRT "Break"
+         @MA2V 0 BPC         
+       @ENDIF         
    @ENDWHILE
    @RestoreVar 01
 @POPRETURN
@@ -64,6 +71,10 @@ M Call_ApplyOpt \
 :ExecuteLine
 @PUSHRETURN
     @LocalVar Ptr 01
+    @LocalVar NewLineNum 02
+    @LocalVar NewBPC 03
+    @LocalVar NoVal 04
+    
     @ADD 2               # Tokenized Line starts at address at 2nd word
     @PUSHS
     @POPI Ptr
@@ -72,11 +83,7 @@ M Call_ApplyOpt \
 #       @PUSHI Ptr @ADD 4 @POPI Ptr
 
        @PUSHII Ptr @AND 0xff
-       @IF_NEQ_AV 0 Debug_Mode
-          @PRT "Eval Code: " @PRTHEXTOP
-          @CALL CodeToString
-          @PRT " "          
-       @ENDIF
+
        @POPNULL
        @PUSHII Ptr @AND 0xff
 
@@ -119,8 +126,21 @@ M Call_ApplyOpt \
              @ELSE
                 @POPI Ptr
              @ENDIF
+             @CBREAK
+          @CASE GOTO_CODE
+             @POPNULL
+             @INCI Ptr
+             @Call(V) BasicEval Ptr
+             @POPI4 Ptr NoVal NewLineNum NoVal
+             @Call(V) FindLine NewLineNum
+             @POPI NewBPC
+             @IF_EQ_AV 0 NewBPC
+                @PRT "Undefined Line Number: " @PRTI NewLineNum @PRTNL
+                @Call(AA) BasicRaiseError ERR_UNDEF_LINE 0
+             @ELSE
+                @MV2V NewBPC BPC
+             @ENDIF
              @CBREAK             
-             
           @CDEFAULT
              @POPNULL
              @Call(AA) BasicRaiseError ERR_SYNTAX 0
@@ -134,6 +154,9 @@ M Call_ApplyOpt \
       @ENDWHILE
       @POPNULL
     @ENDIF
+    @RestoreVar 04    
+    @RestoreVar 03
+    @RestoreVar 02
     @RestoreVar 01
 @POPRETURN
 @RET

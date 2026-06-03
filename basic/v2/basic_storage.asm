@@ -58,6 +58,13 @@ G RunTimeHeap
 :RUN_ACTIVE   0
 :Debug_Mode   0
 :InputBuf     0
+#  Break Logic Control
+G BreakPollMask
+:BreakPollMask 0xf
+G BreakPollCounter
+:BreakPollCounter
+G BreakFlag
+:BreakFlag 0
 #
 
 

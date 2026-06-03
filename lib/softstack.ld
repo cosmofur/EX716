@@ -86,6 +86,13 @@ M DISABLERETTRACE M RET @JMPS
 #M PUSHRETURN @CALL __MOVE_HW_SS @PRT "Enter Function: With SS_SP:" @PRTHEXI __SS_SP  @StackDump
 #M PUSHRETURN @CALL __MOVE_HW_SS @PRT "Enter Function: With SS_SP:" \
 #  @PUSHI __SS_SP @SUBI __SS_BOTTOM @PRTHEXTOP @POPNULL @StackDump
+
+M POPRETURN @CALL __MOVE_SS_HW
+M POPHW @CALL __MOVE_SS_HW
+M POPLOCAL @CALL __MOVE_SS_HW @POPI %1
+M POPLOCALII @CALL __MOVE_SS_HW @POPII %1
+M TOPLOCAL @PUSHII __SS_SP
+
 M PUSHRETURN  @CALL __MOVE_HW_SS
 M PUSHHW @CALL __MOVE_HW_SS
 M PUSHLOCALI @PUSHI %1 @CALL __MOVE_HW_SS
@@ -94,8 +101,43 @@ M PUSHLOCAL @PUSH %1 @CALL __MOVE_HW_SS
 # These require that you define labels Var00 to VarNN and allow
 # them to be used like 'Registers' or local variables inside functions.
 M LocalVar = %1 Var%2 @PUSHI Var%2 @CALL __MOVE_HW_SS
-M RestoreVar @POPLOCAL Var%1
+M RestoreVar `@POPLOCAL Var%1`
+#
+# Advance Variable Stack Frame Logic
+# Concept is to replace the @LocalVar var ## with a more automated system where
+# user does not have to care how many variables are defined and make the RestoreVar logic cleaner
+#
+# Usage:
+# @Locals        # Starts the current LocalBlock
+# @Local VarName       # Default is 16 bit VarNmae = Ptr to storage
+# @Local32 VarName     # Define a 32 bit space
+# @EndLocals           # Resets the system and restores the previous state of local varaibles.
+M Locals `MF VarCount 1 ; MF VarLimit 0`
 
+M Local `\
+  MF __LocalNum {VarCount} ; \
+  @LocalVar %1 {__LocalNum} ; \
+  MF VarCount %EVAL {__LocalNum}+1 ; \
+  MF VarLimit {__LocalNum} \
+`
+M Local32 `\
+  MF __LocalNum {VarCount} ; \
+  @LocalVar %1 {__LocalNum} ; \
+  MF VarCount %EVAL {__LocalNum}+1 ; \
+  MF VarLimit {__LocalNum} ; \
+  MF __LocalNum {VarCount} ; \
+  @LocalVar %1.high {__LocalNum} ; \
+  MF VarCount %EVAL {__LocalNum}+1 ; \
+  MF VarLimit {__LocalNum} \
+`
+
+M EndLocals `\
+  %REPEAT {VarLimit} \
+    MF VarCount %EVAL {VarCount}-1 ; \
+    MF __LocalNum {VarCount} ; \
+    @RestoreVar {__LocalNum} ; \
+  %ENDR \
+`
 # Function __MOVE_HW_SS
 #  Pushes top of HW Stack to SoftStack
 @FUNCTION __MOVE_HW_SS
@@ -113,17 +155,12 @@ M RestoreVar @POPLOCAL Var%1
 @POPII __SS_SP
 
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 #
 #M POPRETURN @CALL __MOVE_SS_HW @PRT "End Function: SS_SP:"  @PRTHEXI __SS_SP @StackDump
 #M POPRETURN @CALL __MOVE_SS_HW @PRT "End Function: SS_SP:" \
 #   @PUSHI __SS_SP @SUBI __SS_BOTTOM @PRTHEXTOP @POPNULL @StackDump
-M POPRETURN @CALL __MOVE_SS_HW
-M POPHW @CALL __MOVE_SS_HW
-M POPLOCAL @CALL __MOVE_SS_HW @POPI %1
-M POPLOCALII @CALL __MOVE_SS_HW @POPII %1
-M TOPLOCAL @PUSHII __SS_SP
 # Function __MOVE_SS_HW
 # POPS top of Softstack onto HW Stack
 @FUNCTION __MOVE_SS_HW
@@ -139,7 +176,7 @@ M TOPLOCAL @PUSHII __SS_SP
 @INC2I __SS_SP
 @SWP
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # Function
 # Sets the Stack storage to a new range of memory.
@@ -155,7 +192,7 @@ M TOPLOCAL @PUSHII __SS_SP
 @MV2V __SS_TOP __SS_SP
 @INC2I __SS_SP
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # Function
 # SaveSSStack(IDStore)
@@ -182,7 +219,7 @@ M TOPLOCAL @PUSHII __SS_SP
 @POPS
 # [return]
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #
 # Function
 # RestoreSSStack(IDStore)
@@ -206,7 +243,7 @@ M TOPLOCAL @PUSHII __SS_SP
 @POPI __SS_SP
 # [return]
 @RET
-@ENDFUNCTION
+ENDBLOCK
 # The Following macros are to make the Stack manipulation functions follow I and A rules.
 #
 # 1) @SetSStackAB Lable1(Highval) Label2(LowVal)
@@ -237,3 +274,4 @@ M RestoreSSStackI @PUSHI %1 @CALL RestoreSSStack
 M SIZESINCECOMMENT softstack.ld
 @SIZESINCE
 ENDBLOCK
+

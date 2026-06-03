@@ -62,7 +62,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ####################################################################
 # Function DaysInYear(int:year) return int
 @FUNCTION DaysInYear
@@ -78,7 +78,7 @@ ENDBLOCK
 @ENDIF
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ####################################################################
 # Function DaysInMonth(int month, int year)
 ###### data
@@ -121,7 +121,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 #####################################################################
 # Function Time2Units(int32Ptr seconds):(int year, int month, int day, int hour, int minute, int second)
 # Storage
@@ -212,7 +212,7 @@ ENDBLOCK
 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ###################################################################################
 # Function TimeCalabrate():int OpsPerUnit
 #     Goal is to calculate NOS per 1/256th of second
@@ -298,7 +298,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 
 ################################################################
 ## The Sleep Functions are only aproximations. Not exact times.
@@ -332,7 +332,7 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 ##################################################################
 # SleepMilli(MilliSeconds) Sleep for number of millisecond
 @FUNCTION SleepMilli
@@ -363,6 +363,6 @@ ENDBLOCK
 @RestoreVar 01
 @POPRETURN
 @RET
-@ENDFUNCTION
+ENDBLOCK
 @SIZESINCE
 ENDBLOCK

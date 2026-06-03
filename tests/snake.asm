@@ -1,6 +1,8 @@
 I common.mc
+L softstack.ld
 L screen.ld
 L random.ld
+L heapmgr.ld
 
 # Putting this hear to take care of bugs which jump to 0000
 @PRT "Bad Entry:"
@@ -18,7 +20,7 @@ L random.ld
 @PUSHI PNLow
 @PUSHI SNReturn
 @RET
-:PNLow b0
+:PNLow $$0
 :PNHigh 0      # We are wasteing one byte, the 'high' byte of PNHigh as that will also be zero
 #
 
@@ -72,10 +74,12 @@ L random.ld
 # We'll use the human reaction time between these two to create a unique seed for random
 @PRT "Hit S<ENTER> to start:"  # We are cheating here by suggesting an 'S' But any will do
 @PUSH 0
+@TTYRAW
 @WHILE_ZERO
   @POPNULL
   @INCI Rseed
   @READCNW CHIN
+  @PRTSI CHIN @PRTHEXI CHIN @PRTSP
   @PUSHI CHIN
   @ADDI Rseed
   @POPI Rseed
@@ -83,16 +87,18 @@ L random.ld
 @ENDWHILE
 @POPNULL @PUSH 0
 # Now look only of a <ENTER>
-@WHILE_NEQ_A 10
+@WHILE_NEQ_A "\n\0"
   @POPNULL
   @INC2I Rseed
   @READCNW CHIN
-  @PUSHI CHIN
+  @PRTSI CHIN @PRTHEXI CHIN @PRTSP  
+  @PUSHI CHIN @AND 0xff
   @DUP  
   @ADDI Rseed
   @POPI Rseed 
 @ENDWHILE
 @POPNULL
+@PRT "After Random Seed"
 @PUSHI Rseed
 @CALL rndsetseed
 @CALL WinClear
@@ -128,7 +134,7 @@ L random.ld
    @READCNW CHIN    # This is the No Wait version of Read Character. 0 is no input is waiting.
    @PUSHI CHIN
    @SWITCH
-       @CASE 0x0061   # "a"
+       @CASE "a\0"   # "a"
           @POPNULL
           @PUSHI CHX
 	  @IF_GT_A 0
@@ -136,7 +142,7 @@ L random.ld
 	  @ENDIF
 	  @POPNULL
 	  @CBREAK
-       @CASE 0x0064   # "d"
+       @CASE "d\0"   # "d"
           @POPNULL
           @PUSHI CHX
 	  @IF_LT_V WinWidth
@@ -144,7 +150,7 @@ L random.ld
 	  @ENDIF
 	  @POPNULL
 	  @CBREAK
-       @CASE 0x0077   # "w"
+       @CASE "w\0"  # "w"
           @POPNULL
           @PUSHI CHY
 	  @IF_GT_A 0
@@ -152,7 +158,7 @@ L random.ld
 	  @ENDIF
 	  @POPNULL
 	  @CBREAK
-       @CASE 0x0073   # "s"
+       @CASE "s\0"   # "s"
           @POPNULL
           @PUSHI CHY
 	  @IF_LT_V WinHeight
@@ -160,15 +166,16 @@ L random.ld
 	  @ENDIF
 	  @POPNULL
 	  @CBREAK
-       @CASE 0x0051  # "Q"        Quit
+       @CASE "Q\0"  # "Q"        Quit
           @MA2V 0 Continue
 	  @POPNULL
           @CALL WinShowCursor
           @PUSH 0
           @PUSHI WinHeight
           @CALL WinCursor
+          @TTYRAWOFF
 	  @CBREAK
-       @CASE 0x0072   # "r"
+       @CASE "r\0"   # "r"
           @POPNULL
           @CALL WinClear
           @CALL WinHideCursor
@@ -193,7 +200,7 @@ L random.ld
           @CALL WinCursor
           @PRTI "@"
           @CBREAK
-       @CASE 0x006C   # "l"
+       @CASE "l\0"   # "l"
           @POPNULL                                                 # 0
           @CALL ListData
           @CBREAK
@@ -219,6 +226,7 @@ L random.ld
     @POPNULL
     @PUSHI Continue
 @UNTIL_ZERO
+@TTYRAWOFF
 @TTYECHO
 @END
 #
@@ -374,9 +382,9 @@ L random.ld
 @PRT "Score: " @PRTI Score @PRT "  "
 @RET
 
-:LowByte b0
-:HighByte b0
-:BufferByte b0  # Overflow from when we push a word the 'HighByte'
+:LowByte $$0
+:HighByte $$0
+:BufferByte $$0  # Overflow from when we push a word the 'HighByte'
 :SnakeLength 0
 :InsertPoint 0
 :HeadPoint 0

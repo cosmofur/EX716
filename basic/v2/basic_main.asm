@@ -433,6 +433,7 @@ I basic_eval.asm
                  @POPS
              @Next Index1
          @ENDIF
+         @POPNULL
          @Call(V)  DIRDISK FileData
          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
          @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
@@ -994,6 +995,7 @@ I basic_eval.asm
    @CASE ERR_FILE_READ_FAIL @PRTLN "? Read File Error:"     @CBREAK
    @CASE ERR_FILE_WRITE_FAIL @PRTLN "? Write File Error :"     @CBREAK
    @CASE ERR_INTERNAL_FAULT @PRTLN "? Internal Fault :"     @CBREAK
+   @CASE ERR_UNDEF_LINE @PRTLN "? Undefined Line:"          @CBREAK
    @CDEFAULT
          @PRTLN "? Unknown Error:"
          @CBREAK
@@ -1071,6 +1073,36 @@ I basic_eval.asm
     @RestoreVar 01
 @POPRETURN
 @RET
+#----------------------------------------
+# BasicCheckBreak():BreakFlag
+#----------------------------------------
+:BasicCheckBreak
+@PUSHRETURN
+
+   @INCI BreakPollCounter
+   @PUSHI BreakPollCounter @ANDI BreakPollMask
+   @IF_ZERO
+      @LocalVar CH 01
+      @READCNW CH
+      @PUSHI CH
+      @IF_NOTZERO
+         @AND 0xff
+         @IF_EQ_A "Q\0"
+            @MA2V 1 BreakFlag
+         @ENDIF
+      @ENDIF
+      @POPNULL
+      @RestoreVar 01
+   @ENDIF
+   @StackDump
+   @POPNULL
+
+   @PUSHI BreakFlag
+@POPRETURN
+@RET
+
+
+
     
 # End of Code, start of data
 :ENDOFCODE
