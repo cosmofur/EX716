@@ -1,404 +1,448 @@
-# EX716
+# EX716 Development System
 
-An experimental toy CPU emulator inspired by fictional 1970s microcomputers.  
-EX716 aims to make assembly/machine code experimentation approachable by avoiding the complexity and legacy quirks of real CPUs from the era.
+The EX716 project is a complete experimental computing environment consisting of:
 
-While EX716 is not optimized for performance and would be easily outpaced by even the most basic modern microcontroller, it has value as an educational tool and as an assembly language playground.
+- A custom 16-bit stack-oriented CPU architecture
+- A macro assembler
+- An emulator/debugger
+- A growing standard library system
+- A structured assembly language
+- Experimental higher-level language support (Forth, BASIC, etc.)
 
----
-
-## Overview
-
-EX716 is a fictional hybrid 8-bit/16-bit CPU with a consistent and idealized instruction set.  
-It has influences from processors such as the Intel 8085, RCA 1802, and the Apple I.
-
-### Features:
-
-- 16-bit internal data path and ALU  
-- Little-endian storage for all large numbers  
-- 64K of directly accessible memory  
-- Stack-based architecture with a 255-byte (127-word) hardware stack  
-- No hardware floating point or BCD  
-- Best suited for single-threaded programs  
+The project is intended both as a practical development platform and as an exploration of CPU, compiler, operating system, and language design.
 
 ---
 
-## Hypothetical Hardware Description
+# Project Components
 
-- **Package**: 48–64 pins  
-- **Data Bus**: 24 bits (8-bit opcode + 16-bit parameter), serialized or parallel  
-- **Address Bus**: 16-bit  
-- **Optional**: External page register via I/O for extended memory  
-- **Control Pins**:
-  - Read / Write / Ready  
-  - Data / Memory selector  
-  - Chip disable  
-
----
-
-## Instruction Format
-
-- Most instructions are:
-  - 8-bit opcode (OPT)
-  - 16-bit parameter (PRM)
-
-- Supported addressing modes:
-  - Direct
-  - Indirect
-  - Double Indirect
-  - Stack
-
-- Operates primarily on 16-bit values
+| Component | Description |
+|------------|-------------|
+| cpu.py | Assembler, linker, emulator, debugger |
+| common.mc | Core macro library |
+| structure.asm | Structured programming macros |
+| lib/*.ld | Standard libraries |
+| tests/* | Sample programs and regression tests |
 
 ---
 
-## Addressing Modes
+# CPU Architecture
 
-| Mode           | Description                                                             |
-|----------------|-------------------------------------------------------------------------|
-| **Direct**     | PRM contains immediate value. No write support.                         |
-| **Indirect**   | PRM contains memory address of value. One extra memory cycle.           |
-| **Dbl Indirect** | PRM points to address which holds another address. Two extra cycles.  |
-| **Stack**      | Operands from top of stack (TOS) and second (SFT). No PRM fetch needed. |
+The EX716 is a 16-bit stack-based processor.
 
----
+Key characteristics:
 
-## Instruction Groups
+- 16-bit word size
+- 64K word address space
+- Hardware evaluation stack
+- Flag register
+- Indirect addressing support
+- Fast instruction decoding
+- Compact opcode encoding
 
-Instruction groups vary by addressing mode:
-
-- **Direct**: `ADD`, `CMP`, `PUSH`  
-- **Indirect**: `ADDI`, `CMPI`, `PUSHI`  
-- **Double Indirect**: `ADDII`, `CMPII`, `PUSHII`  
-- **Stack**: `ADDS`, `CMPS`, `PUSHS`  
-
-**Examples**:
-
-```
-PUSH, PUSHI, PUSHII, PUSHS  
-POP, POPI, POPII, POPS  
-CMP, CMPI, CMPII, CMPS  
-ADD, ADDI, ADDII, ADDS  
-SUB, SUBI, SUBII, SUBS  
-AND, ANDI, ANDII, ANDS  
-OR, ORI, ORII, ORS  
-XOR, XORI, XORII, XORS  
-```
-
-**Notes**:
-
-- Stack-mode ops consume one or two stack items; result replaces top of stack  
-- Subtraction is always `A - B`  
-  - A = SFT (second from top)  
-  - B = TOS (top of stack)
+The CPU is intentionally simple enough to implement in FPGA hardware while remaining practical for larger software projects.
 
 ---
 
-## Special Instructions
+# Programming Model
 
-| Instruction         | Function                                      |
-|---------------------|-----------------------------------------------|
-| `JMP`, `JMPI`, `JMPS` | Jump variants                                |
-| `JMPZ`, `JMPN`, `JMPO`| Conditional jumps based on flags             |
-| `NOP`               | No operation                                  |
-| `DUP`               | Duplicate TOS                                 |
-| `SWP`               | Swap TOS and SFT                              |
-| `CAST`, `POLL`      | Device I/O                                    |
-| `RRTC`, `RLTC`, `SHR`, `SHL` | Bitwise shift/rotate                |
-| `INV`               | Invert TOS                                    |
-| `COMP2`             | Two's complement of TOS                       |
-| `FCLR`, `FSAV`, `FLOD` | Flag control                              |
+The EX716 is programmed primarily through its macro assembler.
 
----
+Raw machine instructions are available, but most software uses:
 
-## Macro Assembler
+- Structured programming macros
+- Function macros
+- Library modules
+- Local variable support
+- Software stack support
 
-EX716 includes a built-in macro assembler with a unique syntax.  
-It supports single-pass assembly with deferred label resolution and structured macros.
-
-### Directives
-
-- `.` or `.ORG`: Set insertion and entry point  
-- `.DATA`: Start data segment  
-- `:` and `;`: Define labels for code and data  
-- `@MACRO`: Invoke macro with `%1` to `%9` args  
-- `=`: Set constant label  
-- `M`, `MF`, `MC`: Define, set, or clear macros  
-- `I`, `L`: Include or load files/libraries  
-- `!`, `?`, `ENDBLOCK`: Macro conditionals  
-
-### Literals
-
-- `"text"`: 8 bit ascii string data inserted at point. /n /t type escapes supported.
-- `'text'`: 8 bit ascii string RAW no '/' escape formating.
-- `$123`, `0x1234`, `0b1010`: Numeric formats  
-- `$$`,`$`,`$$$`: Byte 8b / word 16b / longword storage  32b
+The goal is to allow assembly language to be written using techniques normally associated with higher-level languages.
 
 ---
 
-## Common Macros
+# Source File Structure
 
-Some examples:
+Typical program:
 
-```
-@CALL, @RET, @JMPNZ, @PRTLN, @PRTI, @PRTS  
-@DISKSEL, @DISKSEEK, @DISKREAD, @DISKWRITE  
-```
+```assembly
+I common.mc
 
-See `common.mc` for the full list.
+:Main
 
----
+@PRTLN "Hello World"
 
-## Structured Macros
+@END
+.ORG Main
 
-Support for structured programming, similar to C-like control structures:
+| Directive | Purpose                             |
+| --------- | ----------------------------------- |
+| I file    | Include file in current label scope |
+| L file    | Load file in local scope            |
+| M         | Define macro                        |
+| MF        | Define macro variable               |
+| G         | Declare global symbol               |
+| =         | Define constant                     |
+| :         | Define label                        |
+| .ORG      | Define current address and entry    |
+Labels
 
-```
-@IF_*, @ELSE, @ENDIF  
-@WHILE_*, @DO, @ENDWHILE  
-@LOOP, @UNTIL_ZERO, @UNTIL_NOTZERO  
-@SWITCH, @CASE, @CDEFAULT, @ENDCASE  
-@FORIA2B, @FORIV2A, @NEXT, @NEXTBY  
-```
+Labels define memory locations.
 
-Macro Function System
+:Start
 
-The EX716 assembler includes an inline macro expression evaluator that allows limited arithmetic, bitfield, and repetition logic to be performed entirely at assembly time.
-All macro expressions begin with % and are evaluated left-to-right in a single pass.
-Grouping and precedence are controlled explicitly with parentheses.
+Labels may be:
 
-Expression Grouping
+Global
+Local
+Generated automatically by macros
 
-Parentheses are written as %( and %).
-These may be nested and define an evaluation boundary; the entire grouped expression is replaced by its resulting value.
+The assembler performs automatic forward-reference resolution.
+
+Constants
+
+Constants are defined with:
+
+=BufferSize 1024
+
+Constants may participate in assembler expressions.
+
+Macro System
+
+The macro system is one of the most powerful parts of the EX716 toolchain.
+
+Macros are expanded dynamically by the assembler.
 
 Example:
 
-%AND[%(%OR[4 8]%) 2]   ; → 0x0
+M INC \
+   @ADD 1
 
+Usage:
 
-Numeric Width Rules
+@INC
+Macro Parameters
 
-All macro arithmetic is performed using 16-bit unsigned integers.
+Parameters use:
 
-Prefix modifiers adjust literal width:
+%1
+%2
+%3
+...
 
-Prefix	Size	Notes
-$$	8-bit	Truncated to 8 bits
-$$$	32-bit	Zero-padded or truncated to 16 bits internally
+Example:
 
+M ADDTO \
+   @ADD %1
 
+Usage:
+
+@ADDTO 10
+Macro Variables
+
+Macros may define variables:
+
+MF Counter 10
+
+Referenced as:
+
+{Counter}
+
+Variables may contain:
+
+Numbers
+Strings
+Expressions
+Macro Expressions
+
+Expression evaluation:
+
+MF Count %EVAL {Count}+1
+
+Supports:
+
+Arithmetic
+Parentheses
+Macro variables
+Constants
 Macro Logical Stack (MLS)
 
-The Macro Logical Stack is a small internal stack used to keep track of unique identifiers and symbolic values during macro expansion.
-It acts as a means for macros to share or propagate context — for example, ensuring that @ENDWHILE pairs with the correct @WHILE instance.
+The Macro Logical Stack allows nested macro state to be managed safely.
 
-Token	Action
-%S	Push current macro argument (%0) onto MLS
-%V	Replace with top of MLS (no pop)
-%W	Replace with second-from-top of MLS
-%P	Pop (discard) top of MLS, emit nothing
+Operations:
 
-The primary use of the MLS is to maintain unique strings that can be embedded into label or macro names, allowing macros to safely nest and generate unique symbol scopes.
-This system enables higher-level structured constructs such as @IF … @ENDIF and @WHILE … @ENDWHILE to function without collision.
+Command	Meaning
+%S	Push current macro context (No output)
+%V	Top of stack
+%W	One level below top
+%P	Pop stack (No output)
 
+Example:
+%S
+...
+_%V_Label
+...
+%P
 
-Core Macro Functions
-Function	Parameters	Description
-%STRLEN [v1]	String	Computes the length of v1. Stores the numeric result in %LEN. Emits nothing.
-%LEN	—	Expands to the most recent value set by %STRLEN. Useful for embedding string lengths.
-%LINE	—	Expands to a comment marker showing the current filename and line number.
-%REPEAT [v1] body %ENDR	Count, text block	Repeats body v1 times. Each repetition re-evaluates all inner % expressions.
-%AND [v1 v2]	Two numbers	Bitwise AND → pushes result to MLS.
-%OR [v1 v2]	Two numbers	Bitwise OR → pushes result to MLS.
-%Field [start width value]	Three numbers	Extracts width bits from value starting at start, then left-shifts back into position. Equivalent to:
-((value >> start) & ((1 << width) - 1)) << start
-%Bit [bit value]	Two numbers	Returns 1 if bit bit in value is set, else 0. Equivalent to:
-((value >> bit) & 1)
-Examples
+MLS is heavily used by structured programming macros.
 
-String length
+Conditional Assembly
 
-%STRLEN "Hello"
-.WORD %LEN        ; emits constant 5
+Conditional assembly is block-based.
 
+Supported forms include:
 
-Bit and field extraction
+IFNDEF also ! SYMBOL
+IFDEF  also ? SYMBOL
+IF_EQ
+IF_NE
+IF_LT
+IF_GT
 
-%Bit 3 0b1001            ; → 1
-%Field 4 4 0xABCD        ; → 0x0B0
-
-
-Stacked operations
-
-%S                       ; save current %0
-%Field 0 3 %V            ; extract 3 bits
-%AND %V 0x07             ; mask result
-
-
-Repetition
-
-%REPEAT 4 
-   @NOP
-%ENDR
-; expands to four NOP instructions
-
-Implementation Notes
-
-All macro functions expand inline — no deferred parsing beyond %(/%).
-
-Numeric results can be inserted anywhere a literal is valid.
-
-The %Field and %Bit functions are commonly used for instruction encoding or packed register formats.
-
-%STRLEN and %LEN are often used to embed string sizes in structure definitions.
-
-Nested macro evaluation is deterministic; all stack operations occur within the macro evaluation phase, not at runtime.
-
-Would you like me to extend this section with an example of how %Field and %Bit are used together in a .REG or instruction encoding macro? It would bridge neatly into your later floating-point or opcode-definition examples.
-
----
-## Function Call Helpers
-
-To simplify common @CALL patterns, shorthand macros exist for up to four parameters:
-
-```
-Call(##)   → expands to @PUSH / @PUSHI + @CALL
-
-
-Each letter in ## describes an argument type:
-
-Symbol	Meaning
-A	Immediate constant
-v	Simple variable
-```
 Example:
 
-| Macro                | Equivalent                    |
-|----------------------|-------------------------------|
-| Call(A) F 123        | @PUSH 123 @CALL F             |
-| Call(Av) F 45 Cat    | @PUSH 45 @PUSHI Cat @CALL F   |
-| Call(v) F Dog        | @PUSHI Dog @CALL F            |
-| Call(vv) F Dog Cat   | @PUSHI Dog @PUHSI Cat @CALL F |
----
-Example: Nested Scoping with WHILE / ENDWHILE
+! DEBUG
 
-Structured macros such as @WHILE and @ENDWHILE use the MLS to track loop identity and prevent label collisions between nested loops.
+   P Debug Build
 
-M WHILE_GT_A \
-   %S \
-   :_%V_LoopTop \
-   @CMP %1 \
-   @JLE _%V_ExitLoop \
-   :_%0_True
+ENDBLOCK
 
-M ENDWHILE \
-   @JMP _%W_LoopTop \
-   :_%V_ExitLoop \
-   %P
+Blocks may be nested.
+
+Block Execution Engine
+
+The assembler maintains a conditional block stack.
+
+Each block tracks:
+
+Nesting depth
+Execution state
+Conditional type
+
+Commands inside disabled blocks are skipped while still maintaining nesting integrity.
+
+This guarantees that deeply nested conditionals remain balanced.
+
+Structured Programming
+
+EX716 provides high-level structured constructs.
+
+Examples:
+
+@IF_EQ_A Value
+   ...
+@ENDIF
+@WHILE_NE_A Value
+   ...
+@ENDWHILE
+
+Supported constructs include:
+
+IF
+ELSE
+ENDIF
+WHILE
+ENDWHILE
+LOOP
+UNTIL
+WHEN
+SWITCH
+CASE
+
+These expand into labels and jumps during assembly.
+
+ELSE Support
+
+ELSE is implemented entirely through macro expansion.
+
+Example:
+
+@IF_EQ_A Value
+
+   @PRTLN "Equal"
+
+@ELSE
+
+   @PRTLN "Not Equal"
+
+@ENDIF
+
+The assembler correctly tracks nesting and matching ENDIF blocks.
+
+Functions
+
+Functions are library-managed code blocks.
+
+Example:
+
+@FUNCTION AddNumbers
+
+:AddNumbers
+
+...
+
+@RET
+
+ENDBLOCK
+
+Functions may be selectively linked through the dependency system.
+
+USE_ONLY Linking
+
+Large libraries can be selectively linked.
+
+Enable:
+
+M __EX716_USE_ONLY 1
+
+Mark required functions:
+
+@USE strcpy
+@USE itos32
+
+Only referenced functions and their dependencies are assembled.
+
+Benefits:
+
+Smaller binaries
+Faster assembly
+Cleaner dependency tracking
+Local Variables
+
+The assembler supports automatic local variable management.
+
+Example:
+
+@Locals
+   @Local Count
+   @Local Index
+
+Cleanup:
+
+@EndLocals
+
+These expand into save/restore sequences.
+
+Software Stack Library
+
+The standard soft stack library provides:
+
+Recursive call support
+Local variable storage
+Additional stack depth
+
+Common macros:
+
+@PUSHRETURN
+@POPRETURN
+
+@PUSHLOCAL
+@POPLOCAL
+Standard Libraries
+
+Common libraries include:
+
+Library	Purpose
+softstack.ld	Software stack
+string.ld	String functions
+screen.ld	ANSI terminal support
+heapmgr.ld	Dynamic memory
+random.ld	Random numbers
+mul.ld	Multiplication
+div.ld	Division
+lmath.ld	32-bit math
+timetool.ld	Timing support
+Emulator (cpu.py)
+
+The assembler and emulator are integrated.
+
+Usage:
+
+cpu.py source.asm
+
+Common flags:
+
+Flag	Description
+-g	Interactive debugger
+-d	Debug output, repeat for additioal levels of debug output.
+-l	Listing file
+-c	Compile object file
+-r	Remote debugger
+Debugger
+
+The debugger supports:
+
+Single stepping
+Breakpoints
+Memory inspection
+Stack inspection
+Symbol lookup
+Source mapping
+
+Example:
+
+0104> n        < Execute Next Optcode
+0107> s        < Step to Next 'Line' in program, avoids stepping into function calls or complex macros.
+010a> c        < Continue until program ends or breakpoint reached.
+Source-Level Debugging
+
+Every generated instruction is mapped back to its originating source line.
+
+This includes:
+
+Main source files
+Included libraries
+Macro expansions
+
+Macro-generated code retains the line number of the macro invocation rather than the internal lines of the macro definition.
+
+This makes debugging significantly easier.
+
+Forward References
+
+The assembler supports:
+
+Forward label references
+Multi-pass resolution
+Deferred expression evaluation
+
+Symbol resolution occurs automatically after assembly.
+
+Disk Simulation
+
+The emulator includes a simple disk simulation system.
+
+Features:
+
+32 MB virtual disks
+512-byte sectors
+Seek/read/write operations
+
+Example:
+
+@DISKSEL 0
+@DISKSEEK 100
+@DISKREAD Buffer
+Design Goals
+
+The EX716 project emphasizes:
+
+Readable assembly language
+Structured programming
+Small implementation size
+FPGA friendliness
+Educational value
+Experimentation with language and CPU design
+
+The project intentionally explores how far assembly language can be pushed toward high-level language usability while remaining transparent and efficient.
+
+Appendix A: Core Instruction Set
 
 
-When expanded, the %S pushes a unique instance ID also stored in %0, which is unique every time the macro is evaluated.
-The %V and %W operators then substitute that ID into label names, so each loop generates its own :_LoopTop and :_ExitLoop pair without interfering with other nested loops.
-Finally, %P discards the label ID once the block ends.
-
-Example: Logical Blocks and String Concatenation
-
-The Forth compiler uses logical macro blocks and multi-append macros to define data that grows over multiple invocations.
-The !…ENDBLOCK form provides conditional execution of macro definitions, while MA allows appending to an existing macro variable.
-
-# DEFPRELOAD defines a block of string memory that holds raw Forth code to act as preload.
-# Multiple PRELOADS will be appended to each other.
-
-M PreCodeVal "( start preload )"
-
-M DEFPRELOAD \
-  ! PreCodeExists \
-    MF PreCodeExists 1 \
-  ENDBLOCK \
-  MA PreCodeVal %1
 
 
-Here:
-
-! PreCodeExists … ENDBLOCK executes only the first time, defining the initial macro flag.
-
-MA appends to the existing macro PreCodeVal, concatenating additional preload text each time @DEFPRELOAD is used.
-
-MF would have replaced the value instead of appending it.
-
-This pattern is common for building composite string definitions, code preload blocks, or concatenated initialization data.
----
-## Emulator (`cpu.py`)
-
-### Usage
-
-```bash
-./cpu.py source.asm [flags]
-```
-
-### Environment
-
-- `CPUPATH`: Colon-separated paths for `lib/` and `test/`
-
-### Flags
-
-| Flag | Function                                 |
-|------|------------------------------------------|
-| `-c` | Compile to `.o` binary format            |
-| `-d` | Debug mode (opcode trace)                |
-| `-g` | Enter interactive debugger               |
-| `-l` | List disassembled output                 |
-| `-r` | Enable remote Python debugger            |
-
----
-
-## Debugger Commands
-
-| Command | Description                                      |
-|---------|--------------------------------------------------|
-| `b`     | Set or list breakpoints                          |
-| `c`     | Continue execution                               |
-| `cb`    | Clear all breakpoints                            |
-| `d`     | Disassemble current or specified address range   |
-| `g`     | Goto specific address                            |
-| `h`     | Help summary                                     |
-| `hex`   | Hex dump of memory                               |
-| `hexi`  | Hex dump of memory starting at lable             |
-| `m`     | Modify memory (inline or interactive)            |
-| `n`     | Next instruction                                 |
-| `s`     | Step over (skip over function call)              |
-| `p`     | Print address contents                           |
-| `pa`    | Print Any (optional pattern) search lables       |
-| `ps`    | Print hardware stack contents                    |
-| `q`     | Quit debugger                                    |
-| `r`     | Reset program counter                            |
-| `w`     | Set memory watchpoint                            |
-
----
-
-## Disk I/O Simulation
-
-EX716 includes macros for simulating simple 1970s-style disk pack access:
-
-- `@DISKSEL A`, `@DISKSELI V`: Select disk  
-- `@DISKSEEK A`, `@DISKSEEKI V`: Seek to sector  
-- `@DISKWRITE V`: Write 512 bytes from memory  
-- `@DISKREAD A`: Read 512 bytes to memory  
-- `@DISKREADI V`: Read 512 bytes to address stored in variable  
-
-Each simulated disk is:
-
-- 32MB total
-- 64K sectors per disk
-- 512 bytes per sector
-
-
-## Appendix A: Core Instruction Set
-Here are the 'core' instructions, many additional 'macro' instructions are
-defined in the commom.mc file. These in this list will assemble into single
-optcodes and are therefore the most efficent to use for performance.
-
+Here are the 'core' instructions; many additional 'macro' instructions are
+defined in the `common.mc` file. Instructions in this list will assemble into single
+opcodes and are therefore the most efficient to use for performance.
+                           Byte
 | Name     | Hex   | Dec | Size | Summary                                       |
 |----------|-------|-----|------|-----------------------------------------------|
 | NOP      | 0x00  | 0   | 1    | No operation                                  |
@@ -456,4 +500,11 @@ optcodes and are therefore the most efficent to use for performance.
 | FLOD     | 0x34  | 52  | 1    | Load flag state from stack                    |
 | ADM      | 0x35  | 53  | 1    | Enter admin mode (experimental)               |
 | SCLR     | 0x36  | 54  | 1    | Stack Clear, zeros out HW Stack.              |
-| SRPT     | 0x37  | 55  | 1    | Stack Repot, Push stack size, -1 on error.    |
+| SRPT     | 0x37  | 55  | 1    | Stack Report, Push stack size, -1 on error.   |
+
+Summary: Core instructions
+NOP, PUSH, DUP, POPNULL, SWP, POP, CMP, ADD, SUB, OR, AND, XOR, JMPZ, JMPC, JMPO, JMP, JMPI, JMPS, CAST, POLL, RRTC, RLTC, SHR, SHL, INV, COMP2, FCLR, FSAV, FLOD, ADM, SCLR, SRPT
+
+There are about 32 instructions if you consider the 'S', 'I', 'II', and default as variants of the same instruction.
+
+ADM mode currently does nothing, but future plans is to enable memory banking, soft and hw interups and protected memory functions as features controled by Adm mode.

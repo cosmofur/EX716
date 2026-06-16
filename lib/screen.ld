@@ -1,10 +1,7 @@
-! SCREEN_DONE
-M SCREEN_DONE 1
+! __LIB_SCREEN_LOADED
+M __LIB_SCREEN_LOADED 1
 I common.mc
-L softstack.ld
-@PRT "Code Ran into screen.ld:" @StackDump
-@END
-
+I screen.ref
 # DEBUGSCREEN option:
 # If defined, ANSI escape codes are replaced by "<ESC>["
 # so debugging output shows literally instead of altering terminal.
@@ -13,7 +10,6 @@ L softstack.ld
 # -----------------------------
 # Exported Symbols
 # -----------------------------
-
 # Screen management
 G WinClear G WinResize G WinWidth G WinHeight
 
@@ -62,12 +58,14 @@ ENDBLOCK
 # SideFX  : Resets colors, moves cursor to (0,0), clears screen,
 #           ensures cursor is visible.
 # ----------------------------------------------------------------------
+@FUNCTION WinClear
 :WinClear
 @PRTS CSICODE @PRT "0m"
 @PRTS CSICODE @PRT "0;0H"
 @PRTS CSICODE @PRT "2J"
 @CALL WinShowCursor
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function: WinCursor
@@ -76,6 +74,7 @@ ENDBLOCK
 # Outputs : (none)
 # SideFX  : Emits ANSI cursor positioning code: CSI Y;XH
 # ----------------------------------------------------------------------
+@FUNCTION WinCursor
 :WinCursor
 @SWP
 @PRTS CSICODE @PRTTOP @POPNULL
@@ -84,6 +83,7 @@ ENDBLOCK
 @PRTTOP @POPNULL
 @PRT "H"
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function: WinHideCursor
@@ -92,9 +92,11 @@ ENDBLOCK
 # Outputs : (none)
 # SideFX  : Emits ANSI CSI ?25l (cursor hidden)
 # ----------------------------------------------------------------------
+@FUNCTION WinHideCursor
 :WinHideCursor
 @PRTS CSICODE @PRT "?25l"
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function: WinShowCursor
@@ -103,9 +105,11 @@ ENDBLOCK
 # Outputs : (none)
 # SideFX  : Emits ANSI CSI ?25h (cursor visible)
 # ----------------------------------------------------------------------
+@FUNCTION WinShowCursor
 :WinShowCursor
 @PRTS CSICODE @PRT "?25h"
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinPlot
@@ -136,20 +140,22 @@ ENDBLOCK
 #       if E2 >= DY: ERR += DY; X0 += SX
 #       if E2 <= DX: ERR += DX; Y0 += SY
 # ----------------------------------------------------------------------
+@FUNCTION WinPlot
 :WinPlot
 @PUSHRETURN
-@LocalVar StrPtr 01
-@LocalVar X0 02
-@LocalVar X1 03
-@LocalVar Y0 04
-@LocalVar Y1 05
-@LocalVar DX 06
-@LocalVar DY 07
-@LocalVar SX 08
-@LocalVar SY 09
-@LocalVar ERR 10
-@LocalVar E2 11
-@LocalVar Direct 12
+@Locals
+@Local StrPtr
+@Local X0
+@Local X1
+@Local Y0
+@Local Y1
+@Local DX
+@Local DY
+@Local SX
+@Local SY
+@Local ERR
+@Local E2
+@Local Direct
 @POPI StrPtr
 @POPI Y1 @POPI X1 @POPI Y0 @POPI X0
 #@PUSHI X0 @SHL @SHL @SHR @POPI X0
@@ -206,20 +212,10 @@ ENDBLOCK
    :WPEndLoop
 @ENDWHILE
 @POPNULL
-@RestoreVar 12
-@RestoreVar 11
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinResize
@@ -240,12 +236,13 @@ ENDBLOCK
 #   - Skips normal logic in DEBUGSCREEN, returning dummy output.
 # ----------------------------------------------------------------------
 
+@FUNCTION WinResize
 :WinResize
 #
 # Windows Resize queries Terminal for it's size
 ! DEBUGSCREEN
-@LocalVar TIBChar 01
-@LocalVar CurVal 02
+@Local TIBChar
+@Local CurVal
 @TTYRAW
 @PRTLN "------------Initilizing....<Hit Enter>"
 @PRTS CSICODE @PRT "s"
@@ -321,6 +318,7 @@ ENDBLOCK
 @RestoreVar 01
 @RET
 ENDBLOCK
+ENDBLOCK
 @TTYRAWOFF
 ? DEBUGSCREEN
   @PRT "DEBUG MODE:"
@@ -343,12 +341,14 @@ ENDBLOCK
 #   - See table of color IDs below.
 # ----------------------------------------------------------------------
 :ColorID 0
+@FUNCTION ColorBGSet
 :ColorBGSet
 @PUSHRETURN
 @POPI ColorID
 @PRTS CSICODE  @PRT "48;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
+ENDBLOCK
 # ---------------------------------------------------------------------
 #    ANSI Color 'table'
 #  The “256-color” ANSI palette splits into ranges:
@@ -376,12 +376,14 @@ ENDBLOCK
 #   - Uses "38;5;" selector = foreground, 256-color mode.
 #   - Same color ID mapping as background.
 # ----------------------------------------------------------------------
+@FUNCTION ColorFGSet
 :ColorFGSet
 @PUSHRETURN
 @POPI ColorID
 @PRTS CSICODE @PRT "38;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : ColorReset
 # Purpose  : Reset all text attributes to default.
@@ -389,9 +391,11 @@ ENDBLOCK
 # Outputs  : (none)
 # SideFX   : Emits CSI "0m" (clears colors, bold, underline, etc.)
 # ----------------------------------------------------------------------
+@FUNCTION ColorReset
 :ColorReset
 @PRTS CSICODE @PRT "0m"
 @RET
+ENDBLOCK
 ########################### Direction
 # ----------------------------------------------------------------------
 # Function : WinNorth
@@ -403,13 +407,16 @@ ENDBLOCK
 # Example  : PUSH 5 CALL WinNorth   ; move up 5 rows
 # ----------------------------------------------------------------------
 # Function WinNorth()
+@FUNCTION WinNorth
 :WinNorth
 @SWP
 @PRT CSICODE
 @PRTTOP @POPNULL
 @PRT "A"
 @RET
-# ----------------------------------------------------------------------
+# --
+ENDBLOCK
+#--------------------------------------------------------------------
 # Function : WinSouth
 # Purpose  : Move the cursor down (south) by N cells.
 # Inputs   : Stack → [N]
@@ -419,13 +426,16 @@ ENDBLOCK
 # Example  : PUSH 2 CALL WinSouth   ; move down 2 rows
 # ----------------------------------------------------------------------
 # Function WinSouth()
+@FUNCTION WinSouth
 :WinSouth
 @SWP
 @PRT CSICODE
 @PRTTOP @POPNULL
 @PRT "B"
 @RET
-# ----------------------------------------------------------------------
+# --
+ENDBLOCK
+#--------------------------------------------------------------------
 # Function : WinEast
 # Purpose  : Move the cursor right (east) by N cells.
 # Inputs   : Stack → [N]
@@ -435,13 +445,16 @@ ENDBLOCK
 # Example  : PUSH 10 CALL WinEast   ; move right 10 columns
 # ----------------------------------------------------------------------
 # Function WinEast()
+@FUNCTION WinEast
 :WinEast
 @SWP
 @PRT CSICODE
 @PRTTOP @POPNULL
 @PRT "C"
 @RET
-# ----------------------------------------------------------------------
+# --
+ENDBLOCK
+#--------------------------------------------------------------------
 # Function : WinWest
 # Purpose  : Move the cursor left (west) by N cells.
 # Inputs   : Stack → [N]
@@ -451,13 +464,16 @@ ENDBLOCK
 # Example  : PUSH 3 CALL WinWest    ; move left 3 columns
 # ----------------------------------------------------------------------
 # Function WinWest()
+@FUNCTION WinWest
 :WinWest
 @SWP
 @PRT CSICODE
 @PRTTOP @POPNULL
 @PRT "D"
 @RET
-# ----------------------------------------------------------------------
+# --
+ENDBLOCK
+#--------------------------------------------------------------------
 # Function : WinScrollRegion
 # Purpose  : Define a scrolling region within the screen.
 # Inputs   : Stack → [TopRow, BottomRow]
@@ -476,10 +492,12 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 #######################################
 # Function WinScrollRegion(TopRow,BottomRow)
+@FUNCTION WinScrollRegion
 :WinScrollRegion
 @PUSHRETURN
-@LocalVar TopRow 01
-@LocalVar BottomRot 02
+@Locals
+@Local TopRow
+@Local BottomRot
 #
 # Setting region CSICODE toprow# ; bottomrow# r
    @POPI BottomRow
@@ -491,10 +509,10 @@ ENDBLOCK
    @PRTI BottomRow
    @PRT "r"
    @PUSHI TopRow @PUSH 1 @CALL WinCursor
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 # Save for future use in scroll right / letf
 :TopRow 0
 :BottomRow 0
@@ -513,16 +531,19 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 ########################################
 # Function: WinScrollUp(NumLines)
+@FUNCTION WinScrollUp
 :WinScrollUp
 @PUSHRETURN
-@LocalVar NumLines 01
+@Locals
+@Local NumLines
     @POPI NumLines
     @PRTS CSICODE
     @PRTI NumLines
     @PRT "S"
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : WinResetScrollRegion
 # Purpose  : Restore full-screen scrolling region.
@@ -536,10 +557,12 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 ########################################
 # Function: WinResetScrollRegion
+@FUNCTION WinResetScrollRegion
 :WinResetScrollRegion
    @PRTS CSICODE
    @PRT "r"
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinScrollDown
@@ -555,16 +578,19 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 ########################################
 # WinScrollDown(N): Scroll down N lines in current scroll region
+@FUNCTION WinScrollDown
 :WinScrollDown
 @PUSHRETURN
-@LocalVar NumLines 01
+@Locals
+@Local NumLines
    @POPI NumLines
    @PRTS CSICODE
    @PRTI NumLines
    @PRT "T"
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinScrollRight
@@ -578,10 +604,12 @@ ENDBLOCK
 # Example  : PUSH 2 CALL WinScrollRight ; scroll Right 2 columns
 # ----------------------------------------------------------------------
 ########################################
+@FUNCTION WinScrollRight
 :WinScrollRight
 @PUSHRETURN
-@LocalVar NumLines 01
-@LocalVar Index 02
+@Locals
+@Local NumLines
+@Local Index
    @POPI NumLines
    @ForIV2V Index TopRow BottomRow
       @PUSHI WinWidth
@@ -591,10 +619,10 @@ ENDBLOCK
       @PRTI NumLines
       @PRT "@"
    @Next Index
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : WinScrollLeft
 # Purpose  : Scroll text right within the current scroll region.
@@ -607,10 +635,12 @@ ENDBLOCK
 # Example  : PUSH 2 CALL WinScrollLeft ; scroll Left 2 columns
 # ----------------------------------------------------------------------
 ########################################
+@FUNCTION WinScrollRight
 :WinScrollRight
 @PUSHRETURN
-@LocalVar NumLines 01
-@LocalVar Index 02
+@Locals
+@Local NumLines
+@Local Index
    @POPI NumLines
    @ForIV2V Index TopRow BottomRow
       @PUSH 1
@@ -620,10 +650,10 @@ ENDBLOCK
       @PRTI NumLines
       @PRT "P"
    @Next Index
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 # ----------------------------------------------------------------------
 # Function : WinUnderLineOn
 # Purpose  : Enable underlining for subsequent printed text.
@@ -634,10 +664,13 @@ ENDBLOCK
 #   - All following text will appear underlined until disabled.
 # Example  : CALL WinUnderLineOn ; begin underlined output
 # ----------------------------------------------------------------------
+@FUNCTION WinUnderLineOn
 :WinUnderLineOn
    @PRTS CSICODE
    @PRT "4m"
 @RET
+ENDBLOCK
+
 # ----------------------------------------------------------------------
 # Function : WinUnderLineOff
 # Purpose  : Disable underlining previously enabled by WinUnderLineOn.
@@ -648,10 +681,13 @@ ENDBLOCK
 #   - Stops underlining without resetting other attributes.
 # Example  : CALL WinUnderLineOff ; end underlined output
 # ----------------------------------------------------------------------
+@FUNCTION WinUnderLineOff
 :WinUnderLineOff
    @PRTS CSICODE
    @PRT "24m"
 @RET
+ENDBLOCK
+
 # ----------------------------------------------------------------------
 # Function : WinBoldOn
 # Purpose  : Enable bold or high-intensity text output.
@@ -661,10 +697,12 @@ ENDBLOCK
 #   - Emits CSI 1m
 # Example  : CALL WinBoldOn
 # ----------------------------------------------------------------------
+@FUNCTION WinBoldOn
 :WinBoldOn
    @PRTS CSICODE
    @PRT "1m"
 @RET
+ENDBLOCK
 
 # ----------------------------------------------------------------------
 # Function : WinBoldOff
@@ -675,10 +713,12 @@ ENDBLOCK
 #   - Emits CSI 1m
 # Example  : CALL WinBoldOn
 # ----------------------------------------------------------------------
+@FUNCTION WinBoldOff
 :WinBoldOff
    @PRTS CSICODE
    @PRT "22m"
 @RET
+ENDBLOCK
 
 
 # ----------------------------------------------------------------------
@@ -705,10 +745,12 @@ ENDBLOCK
 #######################################
 # WinBox(x1,y1,x2,y2)
 # Draw in ANSI a 'box' on the screen.
+@FUNCTION WinBox
 :WinBox
 @PUSHRETURN
-@LocalVar X1 01 @LocalVar Y1 02 @LocalVar X2 03 @LocalVar Y2 04
-@LocalVar Index 05
+@Locals
+@Local X1 @LocalVar Y1 02 @LocalVar X2 03 @LocalVar Y2 04
+@Local Index
 @POPI Y2 @POPI X2 @POPI Y1 @POPI X1
 
 @PUSHI X1 @PUSHI Y1 @CALL WinCursor
@@ -728,13 +770,10 @@ ENDBLOCK
 @PUSHI X2 @PUSHI Y1 @CALL WinCursor @PRT "+"
 @PUSHI X1 @PUSHI Y2 @CALL WinCursor @PRT "+"
 @PUSHI X2 @PUSHI Y2 @CALL WinCursor @PRT "+"
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
+ENDBLOCK
 
 
 

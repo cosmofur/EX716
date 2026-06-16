@@ -1,0 +1,255 @@
+EX716 Emacs Debug Line Following Mode
+
+When single-stepping EX716 programs in the debugger, it is often useful to have the corresponding source line automatically highlighted in Emacs.
+
+This Doc explains how the emacs hooks work, near the bottom you will find the combined lisp code that you paste into your .emacs file. 
+
+This Emacs configuration adds a lightweight “follow mode” that watches debugger output and highlights the active .asm source line in a separate Emacs window as execution progresses.
+
+This is not a full major mode and does not interfere with normal editing. It simply reacts to debugger output.
+
+What This Does
+
+When enabled:
+
+The EX716 debugger prints lines of the form:
+
+# filename.asm:123
+
+
+Emacs watches the debugger output buffer (shell-mode or term-mode)
+
+When a new source location is seen:
+
+The corresponding file buffer is located
+
+Emacs jumps to that line
+
+The line is highlighted using hl-line-mode
+
+The window recenters if needed
+
+You can toggle this behavior on and off interactively.
+
+Requirements / Assumptions
+1. Debugger Output Format
+
+This code expects debugger output lines matching:
+
+# <filename>:<line-number>
+
+
+Example:
+
+# main.asm:417
+
+
+Put the following into your .emacs file or in a loadable elisp file.
+
+;;; ================================================================
+;;; EX716 Emacs Debug Source-Line Following
+;;;
+;;; Highlights the active source line in an .asm buffer while
+;;; single-stepping the EX716 debugger in shell or term mode.
+;;;
+;;; Expected debugger output format:
+;;;   # filename.asm:123
+;;; ================================================================
+
+
+;;; ------------------------------------------------
+;;; Treat .asm as text (disable default asm-mode)
+;;; ------------------------------------------------
+
+(add-to-list 'auto-mode-alist '("\\.asm\\'" . text-mode))
+
+(add-hook 'text-mode-hook
+          (lambda ()
+            (setq indent-tabs-mode nil)))
+
+
+;;; ------------------------------------------------
+;;; Debug follow state
+;;; ------------------------------------------------
+
+(defvar my-debug-output-queue "")
+(defvar my-debug-output-timer nil)
+(defvar my-debug-output-accumulator "")
+(defvar my-debug-follow-enabled t)
+
+(defcustom my-debug-auto-switch-buffers t
+  "When non-nil, automatically display the current source buffer
+for the debugger in the designated source window."
+  :type 'boolean
+  :group 'my-debug)
+
+(defvar my-debug-shell-window nil
+  "The window running the EX716 debugger shell.")
+
+(defvar my-debug-source-window nil
+  "The window used to display source files during debugging.")
+
+
+(defun toggle-debug-follow ()
+  "Toggle live source-line following during debug output."
+  (interactive)
+  (setq my-debug-follow-enabled
+        (not my-debug-follow-enabled))
+  (message "Debugger follow %s"
+           (if my-debug-follow-enabled "enabled" "disabled")))
+
+
+(defun toggle-debug-auto-switch ()
+  "Toggle automatic switching of source buffers during debug follow."
+  (interactive)
+  (setq my-debug-auto-switch-buffers
+        (not my-debug-auto-switch-buffers))
+  (message "Debugger auto-switch %s"
+           (if my-debug-auto-switch-buffers "enabled" "disabled")))
+
+
+;;; ------------------------------------------------
+;;; Safe terminal output accumulation
+;;; ------------------------------------------------
+
+(defun my-safe-append-terminal-output (old new max)
+  "Append NEW to OLD, truncating safely so ANSI escape sequences
+are never split."
+  (let ((combined (concat old new)))
+    (if (<= (length combined) max)
+        combined
+      (let* ((tail (substring combined (- max)))
+             (esc-pos (string-match "\e\
+
+\[" tail)))
+        (if esc-pos
+            (substring tail esc-pos)
+          tail)))))
+
+
+;;; ------------------------------------------------
+;;; Output scheduling (coalesce async output)
+;;; ------------------------------------------------
+
+(defun my-debug-output-schedule-process ()
+  "Schedule periodic processing of accumulated output."
+  (unless my-debug-output-timer
+    (setq my-debug-output-timer
+          (run-with-timer
+           0.2 0.2
+           (lambda ()
+             (when (> (length my-debug-output-queue) 0)
+               (let ((data my-debug-output-queue))
+                 (setq my-debug-output-queue "")
+                 (my-debug-process-output data)))
+             (when (string-empty-p my-debug-output-queue)
+               (cancel-timer my-debug-output-timer)
+               (setq my-debug-output-timer nil)))))))
+
+
+;;; ------------------------------------------------
+;;; Unified process output handler
+;;; ------------------------------------------------
+
+(defun my-debug-output-handler (proc string)
+  "Intercept process output for shell or term modes."
+
+  ;; Pass output through normally
+  (cond
+   ((derived-mode-p 'shell-mode)
+    (comint-output-filter proc string))
+   ((derived-mode-p 'term-mode)
+    (term-emulate-terminal proc string)))
+
+  ;; Accumulate output
+  (setq my-debug-output-queue
+        (my-safe-append-terminal-output
+         my-debug-output-queue string 5000))
+
+  (my-debug-output-schedule-process))
+
+
+;;; ------------------------------------------------
+;;; Parse debugger output and follow source
+;;; ------------------------------------------------
+
+(defun my-debug-process-output (output)
+  "Process debugger output and move highlight to current source line."
+
+  (setq my-debug-output-accumulator
+        (concat my-debug-output-accumulator output))
+
+  (let* ((lines (split-string my-debug-output-accumulator "\n"))
+         (last-line (car (last lines)))
+         (latest-file nil)
+         (latest-line nil))
+
+    ;; Look for:  # filename.asm:123
+    (dolist (line lines)
+      (when (string-match "# \\([^:]+\\):\\([0-9]+\\)" line)
+        (setq latest-file (match-string 1 line))
+        (setq latest-line (string-to-number (match-string 2 line)))))
+
+    (when (and latest-file latest-line my-debug-follow-enabled)
+      (let ((buf (get-buffer latest-file)))
+        (when buf
+
+          ;; Always update point in the buffer (even if hidden)
+          (with-current-buffer buf
+            (goto-char (point-min))
+            (forward-line (1- latest-line))
+            (setq-local hl-line-sticky-flag t)
+            (hl-line-mode 1)
+            (set-face-attribute 'hl-line nil
+                                :background "white"
+                                :foreground "black"))
+
+          ;; Only update the visible window if auto-switch is enabled
+          (when (and my-debug-auto-switch-buffers
+                     (window-live-p my-debug-source-window))
+            (with-selected-window my-debug-source-window
+              (switch-to-buffer buf)
+              (goto-char (point-min))
+              (forward-line (1- latest-line))
+              (unless (pos-visible-in-window-p)
+                (recenter))
+              (redisplay)
+              (sit-for 0))))))
+
+    ;; Preserve partial trailing line
+    (if (string-suffix-p "\n" my-debug-output-accumulator)
+        (setq my-debug-output-accumulator "")
+      (setq my-debug-output-accumulator last-line))))
+
+
+;;; ------------------------------------------------
+;;; Attach handler to shell / term buffers
+;;; ------------------------------------------------
+
+(defun my-debug-attach-filter ()
+  "Attach unified process filter for shell or term modes."
+  (let ((proc (get-buffer-process (current-buffer))))
+    (when proc
+      ;; Record the shell window
+      (setq my-debug-shell-window (selected-window))
+      ;; Record the source window (the other window)
+      (setq my-debug-source-window
+            (car (seq-filter
+                  (lambda (w) (not (eq w my-debug-shell-window)))
+                  (window-list))))
+      (set-process-filter proc #'my-debug-output-handler))))
+
+
+(add-hook 'shell-mode-hook
+          (lambda ()
+            (add-hook 'comint-output-filter-functions
+                      #'ansi-color-process-output nil t)
+            (my-debug-attach-filter)))
+
+(add-hook 'term-mode-hook #'my-debug-attach-filter)
+(add-hook 'term-exec-hook #'my-debug-attach-filter)
+
+
+;;; ================================================================
+;;; End of EX716 debug follow configuration
+;;; ================================================================

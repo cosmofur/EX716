@@ -1,5 +1,5 @@
-! FIXPOINTSEEN
-M FIXPOINTSEEN Yes
+! __LIB_FIXEDPOINT_LOADED
+M __LIB_FIXEDPOINT_LOADED 1
 L lmath.ld
 L shift16.ld
 
@@ -56,8 +56,8 @@ G fx_from_int
    @ENDIF
    @POPNULL
    
-   @Call(vv) MUL16x32U X1 Y1
-   @POP32I(v) B0_1
+   @Call(VV) MUL16x32U X1 Y1
+   @POP32I(V) B0_1
    
    @PUSH B0_1
    @ADD 1
@@ -133,8 +133,8 @@ G fx_from_int
     # Convert X → 32-bit NUM and apply <<8 for fixed point
     ########################################################
     @M16VTO32V X1 NUM
-    @Call32(v) SHL32_8 NUM
-    @POP32I(v) NUM     # NUM now 32-bit shifted X
+    @Call32(V) SHL32_8 NUM
+    @POP32I(V) NUM     # NUM now 32-bit shifted X
 
 
     ########################################################
@@ -170,20 +170,20 @@ G fx_from_int
 
     ########################################################
     # ★★★ Normalize BOTH NUM and DEN
-    @Call32(vv) normalize32_int NUM DEN
+    @Call32(VV) normalize32_int NUM DEN
 
-    @POP32I(v) DEN      # third result
-    @POP32I(v) NUM      # second result
+    @POP32I(V) DEN      # third result
+    @POP32I(V) NUM      # second result
     @POPI Shift         # FIRST result = shift count (!!)
 
 
     ########################################################
     # Perform unsigned 32-bit divide
     ########################################################
-    @Call32(vv) DIV32U NUM DEN
+    @Call32(VV) DIV32U NUM DEN
 
     # DIV32U returns: R_L R_H Q_L Q_H
-    @POP32I(v) QUO_L   # Pop Q_L/Q_H into QUO
+    @POP32I(V) QUO_L   # Pop Q_L/Q_H into QUO
     @POPNULL           # discard Remainder_H
     @POPNULL           # discard Remainder_L
 
@@ -261,8 +261,8 @@ G fx_from_int
    @LocalVar B2_3 03   
 
    @POPI V1
-   @Call(vv) MUL16x32U V1 V1
-   @POP32I(v) B0_1
+   @Call(VV) MUL16x32U V1 V1
+   @POP32I(V) B0_1
 
 #  # No need for sign check, always +
 
@@ -277,7 +277,7 @@ G fx_from_int
 @RET
 
 ##############################
-# fx_mul2(v) (multiply by 2)
+# fx_mul2(V) (multiply by 2)
 ##############################
 :fx_mul2
 @SWP
@@ -312,8 +312,8 @@ G fx_from_int
    @POPI Y1
    @POPI X1
 
-   @Call(v) fx_sqr X1    # Results on Stack
-   @Call(v) fx_sqr Y1
+   @Call(V) fx_sqr X1    # Results on Stack
+   @Call(V) fx_sqr Y1
 
    @ADDS                      # Final result
 
@@ -338,8 +338,8 @@ G fx_from_int
     @LocalVar Shift  05
 
     # Pop inputs
-    @POP32I(v) D_L
-    @POP32I(v) N_L
+    @POP32I(V) D_L
+    @POP32I(V) N_L
 
     @MA2V 0 Shift
 
@@ -362,22 +362,22 @@ G fx_from_int
     ########################################################
     # Count leading zeros in divisor
     ########################################################
-    @Call32(v) CountZero32 D_L      # Count = clz( D_L | D_H )
+    @Call32(V) CountZero32 D_L      # Count = clz( D_L | D_H )
     @POPI Shift
 
     ########################################################
     # Normalize numerator
     ########################################################
     @PUSHI Shift
-    @Call32(v) SHL32 N_L
-    @POP32I(v) N_L
+    @Call32(V) SHL32 N_L
+    @POP32I(V) N_L
 
     ########################################################
     # Normalize divisor
     ########################################################
     @PUSHI Shift
-    @Call32(v) SHL32 D_L
-    @POP32I(v) D_L
+    @Call32(V) SHL32 D_L
+    @POP32I(V) D_L
 
     ########################################################
     # Return results
@@ -446,19 +446,19 @@ G fx_from_int
     @LocalVar High   02
     @LocalVar Count  03
 
-    @POP32I(v) Low       # Low in 01/02, High in 02/03 depending on layout
+    @POP32I(V) Low       # Low in 01/02, High in 02/03 depending on layout
 
     # If High ≠ 0 > just CLZ16(High)
     @PUSHI High
     @IF_NEQ_A 0
         @POPNULL
-        @Call(v) CountZero16 High
+        @Call(V) CountZero16 High
         @POPI Count
     @ELSE
         @POPNULL
 
         # High == 0 → Count = 16 + CountZero16(Low)
-        @Call(v) CountZero16 Low
+        @Call(V) CountZero16 Low
         @POPI Count
 
         @PUSHI Count
@@ -501,8 +501,8 @@ G fx_from_int
     ########################################################
     # Pop inputs: DEN first, then NUM
     ########################################################
-    @POP32I(v) DEN_L
-    @POP32I(v) NUM_L
+    @POP32I(V) DEN_L
+    @POP32I(V) NUM_L
 
     @PUSHI DEN_L
     @ORI DEN_H
@@ -514,11 +514,11 @@ G fx_from_int
     @POPNULL
 
     # Pos_DEV=31-CountZero32(DEN)
-    @Call32(v) CountZero32 DEN_L
+    @Call32(V) CountZero32 DEN_L
     @POPI Pos_DEN
 
     # Pos_NUM=31-CountZero32(NUM)
-    @Call32(v) CountZero32 NUM_L
+    @Call32(V) CountZero32 NUM_L
     @POPI Pos_NUM
 
     @PUSHI Pos_DEN
@@ -528,15 +528,15 @@ G fx_from_int
     @ENDIF
     @POPI Shift
 
-    @PUSH32I(v) NUM_L @PUSHI Shift @CALL SHL32
-    @POP32I(v) NUM_L
-    @PUSH32I(v) DEN_L @PUSHI Shift @CALL SHL32    
-    @POP32I(v) DEN_L
+    @PUSH32I(V) NUM_L @PUSHI Shift @CALL SHL32
+    @POP32I(V) NUM_L
+    @PUSH32I(V) DEN_L @PUSHI Shift @CALL SHL32    
+    @POP32I(V) DEN_L
 
 :norm32ret
     @PUSHI Shift    
-    @PUSH32I(v) NUM_L
-    @PUSH32I(v) DEN_L
+    @PUSH32I(V) NUM_L
+    @PUSH32I(V) DEN_L
 
     @RestoreVar 07
     @RestoreVar 06

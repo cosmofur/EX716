@@ -1,11 +1,13 @@
 #
 I common.mc
 #M DEBUGSCREEN 1
+L heapmgr.ld
+L softstack.ld
+L mul.ld
+L div.ld
 L screen.ld
 L event.ld
 L timetool.ld
-L mul.ld
-L div.ld
 L random.ld
 M DefArray16 %REPEAT %1 0 0 %ENDR
 ##################

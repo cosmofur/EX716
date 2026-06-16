@@ -1,4 +1,5 @@
-! RANDOM_SEEN
+! __LIB_RANDOM_LOADED
+M __LIB_RANDOM_LOADED 1
 # ============================================================
 # random.ld  -  Pseudo-Random Number Library for EX716
 #
@@ -14,7 +15,6 @@
 #   rndsetseed(N)  → set RNG seed
 #   frnd16()       → 16-bit random number (XORShift)
 #   frndint(N)     → integer in range 0..N (XORShift)
-#   xorshift16()   → alias for fast RNG core
 #
 # Dependencies:
 #   - softstack.ld : stack helpers
@@ -23,13 +23,16 @@
 # ============================================================
 
 I common.mc
-L softstack.ld
-L lmath.ld
-L mul.ld
-
+I random.ref
 # --- internal build markers ---
-M RANDOM_SEEN 1
 M SIZESINCECOMMENT random.ld
+
+
+# --- External dependencies (not defined in this file) ---
+#  DIVU
+#  rnd16
+#  frnd16
+
 
 # --- public entry points ---
 G rnd16
@@ -37,7 +40,6 @@ G rndint
 G rndsetseed
 G frnd16
 G frndint
-G xorshift16
 
 # ============================================================
 # Internal State and Constants
@@ -66,21 +68,21 @@ G xorshift16
 # - Uses @LocalVar for scratch 32-bit storage (avoids global clutter).
 # - Updates the global Seed32A value in-place.
 # ============================================================
-
+@FUNCTION rnd16
 :rnd16
     # --- Allocate locals for 32-bit scratch space ---
-    @LocalVar Scratch32A   01   # low word
-    @LocalVar Scratch32AHW 02   # high word
-    @LocalVar Scratch32B   03   # low word
-    @LocalVar Scratch32BHW 04   # high word
+    @Local Scratch32A   # low word
+    @Local Scratch32AHW   # high word
+    @Local Scratch32B   # low word
+    @Local Scratch32BHW   # high word
 
     # --- Multiply Seed32A * Modulus32 (32-bit multiply) ---
-    @Call32(vv) MUL32U Seed32A Modulus32
-    @POP32I(v) Scratch32A
+    @Call32(VV) MUL32U Seed32A Modulus32
+    @POP32I(V) Scratch32A
 
     # --- Add offset constant (32-bit add) ---
-    @Call32(vv) ADD32U Scratch32A MOffset32
-    @POP32I(v) Scratch32B
+    @Call32(VV) ADD32U Scratch32A MOffset32
+    @POP32I(V) Scratch32B
 
     # --- Copy result back into Seed32A (persistent RNG state) ---
     @M32V2V Scratch32B Seed32A
@@ -100,7 +102,7 @@ G xorshift16
     @RestoreVar 02
     @RestoreVar 01
     @RET
-
+ENDBLOCK
 
 
 # ============================================================
@@ -121,7 +123,7 @@ G xorshift16
 #   MINSEEDMASK guarantees at least two bits are set,
 #   preventing the generator from entering the "all zero" state.
 # ============================================================
-
+@FUNCTION rndsetseed
 :rndsetseed
     @PUSHRETURN
 
@@ -150,7 +152,7 @@ G xorshift16
     @POPNULL               # discard last rnd16 result
     @POPRETURN
     @RET
-
+ENDBLOCK
 
 # ============================================================
 # rndint(N)  →  Random integer in range 0..N
@@ -163,10 +165,11 @@ G xorshift16
 #   - For N = 2, 4, or 8: uses fast bit-masking.
 #   - Otherwise: divides by N, returns the remainder.
 # ============================================================
-
+@FUNCTION rndint
 :rndint
     @PUSHRETURN
-    @LocalVar Range1 01
+    @Locals
+    @Local Range1
 
     # --- Store argument ---
     @POPI Range1
@@ -198,10 +201,10 @@ G xorshift16
     @ENDCASE
 
     # --- Restore locals and return result ---
-    @RestoreVar 01
+    @EndLocals
     @POPRETURN
     @RET
-
+ENDBLOCK
 # ============================================================
 # frndint(N)  →  Fast random integer in range 0..N
 #
@@ -209,7 +212,7 @@ G xorshift16
 #   N = upper bound (inclusive) for the random result
 #
 # Behavior:
-#   - Calls xorshift16() for a fast random 16-bit value.
+#   - Calls frnd16() for a fast random 16-bit value.
 #   - For N = 2, 4, or 8: uses fast bit-masking.
 #   - Otherwise: divides by N, returns the remainder.
 #
@@ -217,16 +220,17 @@ G xorshift16
 #   - XORShift is faster than the LCG (rnd16), but less traditional.
 #   - Uses @LocalVar for range argument (no permanent storage).
 # ============================================================
-
+@FUNCTION frndint
 :frndint
     @PUSHRETURN
-    @LocalVar RIRange 01
+    @Locals
+    @Local RIRange
 
     # --- Store argument ---
     @POPI RIRange
 
     # --- Generate base random number (XORShift) ---
-    @CALL xorshift16
+    @CALL frnd16
 
     # --- Handle special cases with SWITCH ---
     @PUSHI RIRange
@@ -252,22 +256,17 @@ G xorshift16
     @ENDCASE
 
     # --- Restore locals and return result ---
-    @RestoreVar 01
+    @EndLocals
     @POPRETURN
     @RET
-
+ENDBLOCK
 
 # ============================================================
-# frnd16() / xorshift16()  →  Fast 16-bit random number
+# frnd16()  →  Fast 16-bit random number
 #
 # Algorithm:
 #   George Marsaglia’s XORShift, tuned for 16-bit state.
 #   Sequence of rotate/shift/xor steps mutates the Seed value.
-#
-# Aliases:
-#   - frnd16 is the "friendly" name (fast random 16-bit).
-#   - xorshift16 is the technical name of the algorithm.
-#   Both labels point to the same code.
 #
 # State:
 #   - Uses the global :Seed value (16-bit).
@@ -278,10 +277,11 @@ G xorshift16
 #   - Deterministic: doesn’t depend on previous carry state.
 # ============================================================
 
-:frnd16
-:xorshift16
+@FUNCTION frnd16
+:frnd16 
     @PUSHRETURN
-    @LocalVar S1Seed 01
+    @Locals
+    @Local S1Seed
 
     # --- Copy Seed into local working variable ---
     @MV2V Seed S1Seed
@@ -308,9 +308,9 @@ G xorshift16
     @XORI S1Seed @POPI Seed
 
     # --- Clean up ---
-    @RestoreVar 01
+    @EndLocals
     @POPRETURN
     @RET
-
+ENDBLOCK
 @SIZESINCE
 ENDBLOCK

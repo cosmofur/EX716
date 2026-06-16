@@ -4,19 +4,32 @@ MF COMMON_SEEN 1
 # Values which make up opcodes
 #
 # The '!' code marks a block to skip if already defined.
+# MF USE_ONLY 1
 :NewHereMem
 G SizeHereVar
 G NewHereMem
 G OldHereVar
-=OldHereVar NewHereMem
+=OldHereVar {NewHereMem}
+G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
+G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
+G Var1 G Var2 G Var3 G Var4 G Var5 G Var6 G Var7 G Var8 G Var9
+:Var1          # Allow both Var01 and Var1 to be same memory location.
 :Var01 0
+:Var2
 :Var02 0
+:Var3
 :Var03 0
+:Var4
 :Var04 0
+:Var5
 :Var05 0
+:Var6
 :Var06 0
+:Var7
 :Var07 0
+:Var8
 :Var08 0
+:Var9
 :Var09 0
 :Var10 0
 :Var11 0
@@ -36,6 +49,8 @@ G RRT G RLTC G RTR G RTL G FCLR G FSAV G FLOD
 G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
 G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 
+=True 1
+=False 0
 
 =NOP 0
 =PUSH 1
@@ -94,6 +109,11 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =SCLR 54
 =SRTP 55
 
+M TRUE 1
+=TRUE 1
+M FALSE 0
+=FALSE 0
+
 # Cast and Poll Codes
 =CastPrintStr 1
 =CastPrintInt 2
@@ -106,19 +126,24 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =CastPrintCharI 16
 =CastPrintHexI 17
 =CastPrintHexII 18
+=CastPrintErrMsg 19
+=CastSelectDisk 20
+=CastSeekDisk 21
+=CastWriteSector 22
+=CastSyncDisk 23
+=CastSelectDiskI 24
+=CastSeekDiskI 25
+=CastWriteSectorI 26
 =CastPrint32I 32
 =CastPrint32II 33
-=CastPrintErrMsg 36
-=CastSelectDisk 20
-=CastSelectDiskI 24
-=CastSeekDisk 21
-=CastSeekDiskI 25
-=CastWriteSector 22
-=CastWriteSectorI 26
-=CastSyncDisk 23
-=CastPrint32S 33
-=CastTapeWrite 34
-=CastTapeWriteI 35
+=CastPrint32S 34
+=CastPrint32SignI 35
+=CastPrint32SignS 36
+=CastTapeWrite 40
+=CastTapeWriteI 41
+=CastEnd 99
+=CastDebugToggle 100
+=CastStackDump 102
 =PollReadIntI 1
 =PollReadStrI 2
 =PollReadCharI 3
@@ -220,6 +245,7 @@ M SETZ  @PUSH 1 @SUB 1 @POPNULL
 # Set Neg (SETN) - Negative Value
 M SETN @PUSH 0 @SUB 1 @POPNULL
 #
+M CLN   @PUSH 2 @SUB 1 @POPNULL
 # Rotate Left n bits (pure, deterministic)
 M ROL1 @CLC @RLTC
 M ROL2 @CLC @RLTC @RLTC
@@ -234,7 +260,7 @@ M ROR2 @CLC @RRTC @RRTC
 M ROR3 @CLC @RRTC @RRTC @RRTC
 M ROR4 @CLC @RRTC @RRTC @RRTC @RRTC
 M ROR5 @CLC @RRTC @RRTC @RRTC @RRTC @RRTC
-M ROLN @CLC \
+M RORN @CLC \
      %REPEAT %1 @RRTC %ENDR
 # Logical Shifts (no carry involvement)
 M SHL2 @SHL @SHL
@@ -273,28 +299,102 @@ M XORAV @PUSH %1 @PUSHI %2 @XORS
 
 M MA2V @PUSH %1 @POPI %2   # Move Constant to Memory
 M MV2V @PUSHI %1 @POPI %2  # Move Memory to Memory
-M JMPNZ @JMPZ %01_SKIP @JMP %1 :%01_SKIP        # A != B
-M JMPNZI @JMPZ %01 @JMPI %1 :%01_SKIP
-M JMPZI @JMPNZ %01_SKIP @JMPI %1 :%01_SKIP
-M JMPNC @JMPC %01_SKIP @JMP %1 :%01_SKIP   # No Carry
-M JMPNO @JMPO %01_SKIP @JMP %1 :%01_SKIP        # No Overflow
-M JMPNN @JMPO %01_SKIP @JMP %1 :%01_SKIP   # Not Negative
-#  For this group, remeber the flags are based on the B-A
-#  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
-#          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
-# ---------------------------------------------------------------
-# Signed Jump Helpers (for use after CMP/CMPI)
-# ---------------------------------------------------------------
-# Signed Logic Tables
-#    NF          OF       ZF           Means
-#    0           0        0             >
-#    0           0        1            ==
-#    0           1        0             <
-#    1           0        0             <
-#    1           1        0             >
-#    -           -        1            ==
 #
-# LT = (NF=1, OF=0) OR (NF=0, OF=1)   (Xor NF and OF)
+# Some people prefer the terms LOAD and STORE for memory
+# moves, so for convience here are some macros that mimic that.
+#
+# Word Versions are alias of PUSH and POP
+M STOREI @POPI %1
+M STOREII @POPII %1
+M LOADI @PUSHI %1
+M LOADII @PUSHII %1
+M LOAD @PUSHS %1
+#
+# Byte version of Store stack to Pointer
+M STOREBII \        
+     @AND 0xff @PUSHII %1 \
+     @AND 0xff00 @ORS \
+     @POPII %1
+# Byte version of Store stack to memory at address %1
+M STOREBI @AND 0xff @PUSHI %1 @AND 0xff00 @ORS @POPII %1
+#
+# LOADB moves BYTE value from memory to stack.
+#
+# Load Byte value from Pointer to stack
+M LOADBII \
+      @PUSHII %1 @AND 0xff
+# Load Byte value from memory at address %1 to stack.
+M LOADBI \
+      @PUSHI %1 @AND 0xff
+#
+
+
+# CMP evaluates:
+#
+#        TOS - Operand
+#
+# For:
+#
+#        PUSH A
+#        CMP B
+#
+# the flags describe A-B.
+#
+# ---------------------------------------------------------------
+# Normal non-overflow examples
+# ---------------------------------------------------------------
+#
+# Signed and unsigned agree when both values have the same sign
+# and no signed overflow occurs.
+#
+#----A------B------A-B------ZF----NF----CF----OF----Signed----Unsigned
+#----10-----10------0--------1-----0-----0-----0------==--------==
+#----10-----11----- -1-------0-----1-----1-----0------<---------<
+#----10------9------ 1-------0-----0-----0-----0------>--------->
+#--- -10--- -10------0-------1-----0-----0-----0------==--------==
+#--- -10--- -11------1-------0-----0-----0-----0------>--------->
+#--- -10---- -9----- -1------0-----1-----1-----0------<---------<
+#
+# ---------------------------------------------------------------
+# Signed vs unsigned disagreement examples
+# ---------------------------------------------------------------
+#
+# These differ because the same 16-bit bit-patterns have different
+# signed and unsigned interpretations.
+#
+#----A------B------A-B------ZF----NF----CF----OF----Signed----Unsigned
+#----10---- -10-----20-------0-----0-----1-----0------>---------<
+#--- -10----10----- -20------0-----1-----0-----0------<--------->
+#
+# ---------------------------------------------------------------
+# Derived comparison logic
+# ---------------------------------------------------------------
+#
+# Equality:
+#
+#        A == B       ZF == 1
+#        A != B       ZF == 0
+#
+# Unsigned comparison:
+#
+#        A <  B       CF == 1
+#        A >= B       CF == 0
+#        A >  B       CF == 0 AND ZF == 0
+#        A <= B       CF == 1 OR  ZF == 1
+#
+# Signed comparison:
+#
+#        A <  B       NF XOR OF
+#        A >= B       NOT (NF XOR OF)
+#        A >  B       ZF == 0 AND NOT (NF XOR OF)
+#        A <= B       ZF == 1 OR  (NF XOR OF)
+#
+M JMPNZ @JMPZ %0_SKIP @JMP %1 :%0_SKIP        # A != B
+M JMPNZI @JMPZ %0_SKIP @JMPI %1 :%0_SKIP      # Indirect Jmp When A !=B
+M JMPZI @JMPNZ %0_SKIP @JMPI %1 :%0_SKIP      # Indirect Jmp when A==B
+M JMPNC @JMPC %0_SKIP @JMP %1 :%0_SKIP        # No Carry
+M JMPNO @JMPO %0_SKIP @JMP %1 :%0_SKIP        # No Overflow
+M JMPNN @JMPN %0_SKIP @JMP %1 :%0_SKIP        # Not Negative
 M CheckSignedLess \
   @JMPN %0_Test1 \ # If NF=1 -> Check OF next
   @JMPO %1        \ # NF=0,O=0 -> Skip else fall though
@@ -369,8 +469,7 @@ M JULE \
 # CF=0 (no borrow)
 # ============================================================
 M JUGE \
-  @JMPNC %1          \      # Jump if CF=0 (A ≥ B)
-
+  @JMPNC %1      # Jump if CF=0 (A ≥ B)
 # ============================================================
 # Jump if A > B (unsigned)
 # CF=0 (no borrow) AND Z=0 (not equal)
@@ -383,14 +482,14 @@ M JUGT \
 # --------------------------------------------------------------
 # CALL and Return Functions
 # --------------------------------------------------------------
-M CALL @PUSH $_%01 @JMP %1 :_%01
+M CALL @PUSH $_%0A @JMP %1 :_%0A
 M CALLZ @PUSH $_%0_Loc @JMPZ _%0_Do @JMP _%0_After :_%0_Do @JMP %1 :_%0_Loc :_%0_After
 M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
+M CALLI @PUSH $_%0A @PUSHI %1 @JMPS :_%0A
 
 M RET @JMPS
 M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
-
 # Simple Text output for headers or labels, LN includes linefeed.
 # Print simple test message with no variables and LineFeed
 M PRTLN @JMP _J%0J1 :_%0M1 %1 "\n\0" :_J%0J1 @PUSH CastPrintStr @CAST $_%0M1
@@ -432,12 +531,15 @@ M PRTSGNI @PUSH CastPrintSignI @CAST %1
 # Print value in binary
 M PRTBINI @PUSH CastPrintBinI @CAST %1
 # Print Line feed
-M PRTNL @JMP _%01 :_%0NL 10 $$0 :_%01 @PUSH CastPrintStr @CAST _%0NL
+M PRTNL @JMP _%0A :_%0NL 10 $$0 :_%0A @PUSH CastPrintStr @CAST _%0NL
 # Print a space by itself
-M PRTSP @JMP _%01J :_%0M " \0" :_%01J @PUSH CastPrintStr @CAST _%0M
+M PRTSP @JMP _%0AJ :_%0M " \0" :_%0AJ @PUSH CastPrintStr @CAST _%0M
 # Print immediate value (usefull to print value of pointer)
 # Print N number of spaces
-M PRTSPN  @JMP _%01  :_%0M  %REPEAT %1  " "  %ENDR $$0  :_%01 @PUSH CastPrintStr @CAST _%0M
+M PRTSPN  @JMP _%0A  \
+         :_%0M %REPEAT %1 $$0x20  %ENDR \
+         $$0  :_%0A @PUSH \
+         CastPrintStr @CAST _%0M
 M PRTREF @PUSH CastPrintInt @CAST %1
 # Print top value in stack but leave it there.
 M PRTTOP @DUP @JMP _J%0J1 :_%0M1 0 :_J%0J1 @POPI _%0M1 @PRTI _%0M1
@@ -448,14 +550,11 @@ M PRTHEXREF @PUSH %1 @PRTHEXTOP @POPNULL
 # Print Top with Sign
 M PRTSGNTOP @DUP @POPI _%0Store @PRTSGNI _%0Store @JMP _%0Skip :_%0Store 0 :_%0Skip
 # Print 32bit number starting at address
-M PRT32 @PUSH CastPrint32I @CAST %1
-M PRT32I @PUSH CastPrint32II @CAST %1
-#M PRT32I @JMP _%0Jmp :_%0store1 0 :_%0store2 0 \
-#   :_%0Jmp @PUSHII %1 @POPI _%0store1 \
-#   @PUSHI %1 @ADD 2 @PUSHS @POPI _%0store2 \
-#   @PUSH CastPrint32I @CAST _%0store1
-# Print 32bit number that tos is pointing to.
+M PRT32I @PUSH CastPrint32I @CAST %1
+M PRT32II @PUSH CastPrint32II @CAST %1
 M PRT32S @PUSH CastPrint32S @CAST 0
+M PRT32SignI @PUSH CastPrint32SignI @CAST %1
+M PRT32SignS @PUSH CastPrint32SignS @CAST %1
 #
 # Read an Integer from keyboard
 M READI @PUSH PollReadIntI @POLL %1
@@ -481,11 +580,11 @@ M TTYRAWOFF @PUSH PollReSetRaw @POLL 0
 # Report current TTY State
 M TTYSTATE  @PUSH PollTTYState @POLL 0
 # End Program
-M END @PUSH 99 @CAST 0
+M END @PUSH CastEnd @CAST 0
 # Like POPI but leaves copy of value on stack
 M TOP @DUP @POPI %1
 # Print a debug dump of the stack
-M StackDump @JMP _%0J :_%0J @PUSH 102 @CAST 0
+M StackDump @JMP _%0J :_%0J @PUSH CastStackDump @CAST 0
 # Adds one to variable
 M INCI @PUSHI %1 @ADD 1 @POPI %1
 # Subtracts one from variable
@@ -521,7 +620,7 @@ M TAPEREWIND @PUSH PollRewindTape @POLL 0
 
 
 # A way to enable/disable debugging in running code without requireing the -g option.
-M DEBUGTOGGLE @PUSH 100 @CAST 0
+M DEBUGTOGGLE @PUSH CastDebugToggle @CAST 0
 
 # For readablity it is frquently usefull to combine with a macro CALL functions with their paramaters in
 # order of their pushes without haveing to do it line by line. Here some macros that help with funcitons
@@ -551,7 +650,251 @@ M DEBUGTOGGLE @PUSH 100 @CAST 0
 #           body = " ".join(pushes + ["    @CALL %1"])
 #           print(f"M Call({sig}) {body}")
 #        
+#     5 Paramater family
 
+M Call(AAAAA)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(AAAAV)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(AAAAP)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(AAAVA)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(AAAVV)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(AAAVP)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(AAAPA)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(AAAPV)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(AAAPP)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(AAVAA)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(AAVAV)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(AAVAP)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(AAVVA)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(AAVVV)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(AAVVP)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(AAVPA)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(AAVPV)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(AAVPP)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(AAPAA)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(AAPAV)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(AAPAP)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(AAPVA)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(AAPVV)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(AAPVP)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(AAPPA)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(AAPPV)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(AAPPP)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(AVAAA)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(AVAAV)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(AVAAP)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(AVAVA)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(AVAVV)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(AVAVP)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(AVAPA)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(AVAPV)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(AVAPP)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(AVVAA)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(AVVAV)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(AVVAP)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(AVVVA)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(AVVVV)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(AVVVP)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(AVVPA)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(AVVPV)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(AVVPP)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(AVPAA)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(AVPAV)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(AVPAP)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(AVPVA)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(AVPVV)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(AVPVP)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(AVPPA)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(AVPPV)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(AVPPP)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(APAAA)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(APAAV)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(APAAP)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(APAVA)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(APAVV)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(APAVP)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(APAPA)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(APAPV)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(APAPP)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(APVAA)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(APVAV)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(APVAP)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(APVVA)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(APVVV)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(APVVP)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(APVPA)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(APVPV)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(APVPP)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(APPAA)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(APPAV)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(APPAP)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(APPVA)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(APPVV)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(APPVP)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(APPPA)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(APPPV)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(APPPP)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VAAAA)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VAAAV)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VAAAP)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VAAVA)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VAAVV)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VAAVP)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VAAPA)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VAAPV)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VAAPP)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VAVAA)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VAVAV)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VAVAP)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VAVVA)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VAVVV)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VAVVP)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VAVPA)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VAVPV)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VAVPP)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VAPAA)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VAPAV)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VAPAP)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VAPVA)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VAPVV)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VAPVP)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VAPPA)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VAPPV)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VAPPP)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VVAAA)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VVAAV)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VVAAP)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VVAVA)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VVAVV)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VVAVP)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VVAPA)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VVAPV)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VVAPP)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VVVAA)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VVVAV)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VVVAP)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VVVVA)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VVVVV)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VVVVP)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VVVPA)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VVVPV)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VVVPP)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VVPAA)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VVPAV)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VVPAP)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VVPVA)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VVPVV)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VVPVP)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VVPPA)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VVPPV)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VVPPP)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VPAAA)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VPAAV)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VPAAP)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VPAVA)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VPAVV)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VPAVP)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VPAPA)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VPAPV)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VPAPP)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VPVAA)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VPVAV)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VPVAP)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VPVVA)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VPVVV)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VPVVP)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VPVPA)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VPVPV)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VPVPP)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(VPPAA)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(VPPAV)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(VPPAP)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(VPPVA)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(VPPVV)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(VPPVP)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(VPPPA)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(VPPPV)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(VPPPP)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PAAAA)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PAAAV)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PAAAP)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PAAVA)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PAAVV)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PAAVP)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PAAPA)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PAAPV)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PAAPP)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PAVAA)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PAVAV)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PAVAP)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PAVVA)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PAVVV)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PAVVP)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PAVPA)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PAVPV)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PAVPP)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PAPAA)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PAPAV)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PAPAP)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PAPVA)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PAPVV)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PAPVP)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PAPPA)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PAPPV)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PAPPP)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PVAAA)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PVAAV)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PVAAP)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PVAVA)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PVAVV)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PVAVP)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PVAPA)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PVAPV)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PVAPP)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PVVAA)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PVVAV)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PVVAP)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PVVVA)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PVVVV)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PVVVP)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PVVPA)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PVVPV)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PVVPP)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PVPAA)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PVPAV)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PVPAP)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PVPVA)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PVPVV)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PVPVP)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PVPPA)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PVPPV)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PVPPP)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PPAAA)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PPAAV)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PPAAP)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PPAVA)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PPAVV)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PPAVP)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PPAPA)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PPAPV)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PPAPP)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PPVAA)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PPVAV)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PPVAP)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PPVVA)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PPVVV)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PPVVP)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PPVPA)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PPVPV)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PPVPP)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @PUSHII %6     @CALL %1
+M Call(PPPAA)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSH %6     @CALL %1
+M Call(PPPAV)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSHI %6     @CALL %1
+M Call(PPPAP)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @PUSHII %6     @CALL %1
+M Call(PPPVA)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSH %6     @CALL %1
+M Call(PPPVV)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSHI %6     @CALL %1
+M Call(PPPVP)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @PUSHII %6     @CALL %1
+M Call(PPPPA)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSH %6     @CALL %1
+M Call(PPPPV)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSHI %6     @CALL %1
+M Call(PPPPP)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @PUSHII %6     @CALL %1
 
 #     4 Paramater family
 M Call(AAAA)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSH %5     @CALL %1
@@ -678,15 +1021,176 @@ M Call(A)     @PUSH %2     @CALL %1
 M Call(v)     @PUSHI %2     @CALL %1
 M Call(P)     @PUSHII %2     @CALL %1
 
+#
+# The recomended notatoin for Call for variable is LOWER case 'v' due to some readablity issues when
+# multiple capital A's and V' are next to each other. But as lower case 'v' is a bit out of sync with
+# the rest the macro standards, the following lines are to 'allow' uppercase 'V' to be used as an alternative.
+# this is probably the only case where 'case sensativity' is in conflict with usage.
+
+M Call(AAAV)     @PUSH %2     @PUSH %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(AAVA)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(AAVV)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(AAVP)     @PUSH %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(AAPV)     @PUSH %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(AVAA)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSH %5     @CALL %1
+M Call(AVAV)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(AVAP)     @PUSH %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @CALL %1
+M Call(AVVA)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(AVVV)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(AVVP)     @PUSH %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(AVPA)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @CALL %1
+M Call(AVPV)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(AVPP)     @PUSH %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @CALL %1
+M Call(APAV)     @PUSH %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(APVA)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(APVV)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(APVP)     @PUSH %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(APPV)     @PUSH %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(VAAA)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSH %5     @CALL %1
+M Call(VAAV)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(VAAP)     @PUSHI %2     @PUSH %3     @PUSH %4     @PUSHII %5     @CALL %1
+M Call(VAVA)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(VAVV)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(VAVP)     @PUSHI %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(VAPA)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSH %5     @CALL %1
+M Call(VAPV)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(VAPP)     @PUSHI %2     @PUSH %3     @PUSHII %4     @PUSHII %5     @CALL %1
+M Call(VVAA)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSH %5     @CALL %1
+M Call(VVAV)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(VVAP)     @PUSHI %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @CALL %1
+M Call(VVVA)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(VVVV)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(VVVP)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(VVPA)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @CALL %1
+M Call(VVPV)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(VVPP)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @CALL %1
+M Call(VPAA)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSH %5     @CALL %1
+M Call(VPAV)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(VPAP)     @PUSHI %2     @PUSHII %3     @PUSH %4     @PUSHII %5     @CALL %1
+M Call(VPVA)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(VPVV)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(VPVP)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(VPPA)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSH %5     @CALL %1
+M Call(VPPV)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(VPPP)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @PUSHII %5     @CALL %1
+M Call(PAAV)     @PUSHII %2     @PUSH %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(PAVA)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(PAVV)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(PAVP)     @PUSHII %2     @PUSH %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(PAPV)     @PUSHII %2     @PUSH %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(PVAA)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSH %5     @CALL %1
+M Call(PVAV)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(PVAP)     @PUSHII %2     @PUSHI %3     @PUSH %4     @PUSHII %5     @CALL %1
+M Call(PVVA)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(PVVV)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(PVVP)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(PVPA)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSH %5     @CALL %1
+M Call(PVPV)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(PVPP)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @PUSHII %5     @CALL %1
+M Call(PPAV)     @PUSHII %2     @PUSHII %3     @PUSH %4     @PUSHI %5     @CALL %1
+M Call(PPVA)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSH %5     @CALL %1
+M Call(PPVV)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHI %5     @CALL %1
+M Call(PPVP)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @PUSHII %5     @CALL %1
+M Call(PPPV)     @PUSHII %2     @PUSHII %3     @PUSHII %4     @PUSHI %5     @CALL %1
+M Call(AAV)     @PUSH %2     @PUSH %3     @PUSHI %4     @CALL %1
+M Call(AVA)     @PUSH %2     @PUSHI %3     @PUSH %4     @CALL %1
+M Call(AVV)     @PUSH %2     @PUSHI %3     @PUSHI %4     @CALL %1
+M Call(AVP)     @PUSH %2     @PUSHI %3     @PUSHII %4     @CALL %1
+M Call(APV)     @PUSH %2     @PUSHII %3     @PUSHI %4     @CALL %1
+M Call(VAA)     @PUSHI %2     @PUSH %3     @PUSH %4     @CALL %1
+M Call(VAV)     @PUSHI %2     @PUSH %3     @PUSHI %4     @CALL %1
+M Call(VAP)     @PUSHI %2     @PUSH %3     @PUSHII %4     @CALL %1
+M Call(VVA)     @PUSHI %2     @PUSHI %3     @PUSH %4     @CALL %1
+M Call(VVV)     @PUSHI %2     @PUSHI %3     @PUSHI %4     @CALL %1
+M Call(VVP)     @PUSHI %2     @PUSHI %3     @PUSHII %4     @CALL %1
+M Call(VPA)     @PUSHI %2     @PUSHII %3     @PUSH %4     @CALL %1
+M Call(VPV)     @PUSHI %2     @PUSHII %3     @PUSHI %4     @CALL %1
+M Call(VPP)     @PUSHI %2     @PUSHII %3     @PUSHII %4     @CALL %1
+M Call(PAV)     @PUSHII %2     @PUSH %3     @PUSHI %4     @CALL %1
+M Call(PVA)     @PUSHII %2     @PUSHI %3     @PUSH %4     @CALL %1
+M Call(PVV)     @PUSHII %2     @PUSHI %3     @PUSHI %4     @CALL %1
+M Call(PVP)     @PUSHII %2     @PUSHI %3     @PUSHII %4     @CALL %1
+M Call(PPV)     @PUSHII %2     @PUSHII %3     @PUSHI %4     @CALL %1
+M Call(AV)     @PUSH %2     @PUSHI %3     @CALL %1
+M Call(VA)     @PUSHI %2     @PUSH %3     @CALL %1
+M Call(VV)     @PUSHI %2     @PUSHI %3     @CALL %1
+M Call(VP)     @PUSHI %2     @PUSHII %3     @CALL %1
+M Call(PV)     @PUSHII %2     @PUSHI %3     @CALL %1
+M Call(V)     @PUSHI %2     @CALL %1
+# Setup Functon headers for profile and Linking
+# Multi PUSHI/POPI helpers.
+# These do NOT compensate for stack reversal.
+# @PUSHI4 A B C D leaves D on top.
+# To restore the same logical order, use @POPI4 D C B A.
+# Nor do they allow PUSHing of constants or double indirect values like pointers.
+M POPI8 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5 @POPI %6 @POPI %7 @POPI %8
+M POPI7 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5 @POPI %6 @POPI %7
+M POPI6 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5 @POPI %6
+M POPI5 @POPI %1 @POPI %2 @POPI %3 @POPI %4 @POPI %5
+M POPI4 @POPI %1 @POPI %2 @POPI %3 @POPI %4
+M POPI3 @POPI %1 @POPI %2 @POPI %3
+M POPI2 @POPI %1 @POPI %2
+
+M PUSHI8 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6 @PUSHI %7 @PUSHI %8
+M PUSHI7 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6 @PUSHI %7
+M PUSHI6 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6
+M PUSHI5 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5
+M PUSHI4 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4
+M PUSHI3 @PUSHI %1 @PUSHI %2 @PUSHI %3
+M PUSHI2 @PUSHI %1 @PUSHI %2
+
+
+#--------------------------------------------------
+# Mode selection
+#--------------------------------------------------
+
+? USE_ONLY
+   M __EX716_USE_ONLY 1
+   P Enable USE_ONLY, all library functions must be specified.
+ENDBLOCK
+
+
+#--------------------------------------------------
+# Common helpers (mode-independent)
+#--------------------------------------------------
+
+M REQUIREDSTORE MF __STORE_%1
+M ISUSED        `?  __STORE_%1`
+
+# Default: nothing required unless overridden
+
+
+#--------------------------------------------------
+# Default mode (include everything)
+#--------------------------------------------------
+
+# Mark function as used (optional in this mode)
+M USE MF __USE_%1 %1
+
+# FUNCTION always emits
+M FUNCTION \
+   MF __FUNC_BEGIN_%1 1 \
+   MF __FUNC_LAST %1 \
+   :__FuncStart \
+   =__FUNC_START_%1 {__FuncStart}
+
+M ENDFUNCTION \
+   :__FuncEnd \
+   =__FUNC_END_{__FUNC_LAST} {__FuncEnd} \
+   MF __FUNC_END_{__FUNC_LAST} 1 \
+   =__FUNC_SIZE {__FuncEnd}-{__FuncStart} \
+   MF __FUNC_SIZE_{__FUNC_LAST} {__FUNC_SIZE} \
+   P Function: {__FUNC_LAST} Size {__FUNC_SIZE} Bytes
 
 # Size Reporting Macro - usefule durring assembling to see how much memory each library module consumes.
 M SIZESINCE :NewHereMem \
-             =SizeHereVar NewHereMem-OldHereVar \
-             =OldHereVar NewHereMem \
-             P StartAddress {SIZESINCECOMMENT} :Mem: {SizeHereVar} Bytes
-M SIZESINCECOMMENT common.mc             
-@SIZESINCE
+             =SizeHereVar {NewHereMem}-{OldHereVar} \
+             =OldHereVar {NewHereMem} \
+             P Module {SIZESINCECOMMENT} : Size {SizeHereVar} Bytes
 #
 # FOR NEXT WHILE and CASE logic structures can be found in this related file.
+#
 I structure.asm
+M SIZESINCECOMMENT common.mc
+@SIZESINCE
 ENDBLOCK

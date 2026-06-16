@@ -1,4 +1,7 @@
-! MUL_SEEN
+! __LIB_MUL_LOADED
+M __LIB_MUL_LOADED 1
+P Load mul.ld
+I mul.ref
 # ============================================================
 # mul.ld  -  Software Multiply Library for EX716
 #
@@ -20,17 +23,12 @@
 #   - MUL uses MULU and adjusts result for sign.
 # ============================================================
 
-M MUL_SEEN 1
-I common.mc
-L softstack.ld
+G MULU G MUL 
 M SIZESINCECOMMENT mul.ld
 
 M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @POPRETURN @RET
 
-
 # --- Public entry points ---
-G MULU
-G MUL
 
 # ============================================================
 # MULU(N, M) → Unsigned multiply
@@ -42,8 +40,8 @@ G MUL
 # Flags:
 #   Overflow flag set if high word of result ≠ 0
 # ============================================================
-
-
+P Before MULU
+@FUNCTION MULU
 :MULU
     @PUSHRETURN
     @LocalVar MM      01   # multiplier
@@ -75,19 +73,34 @@ G MUL
             @PUSHI NN @SHL
             @RETURN_RESULT
             @CBREAK
+        @CASE 3
+            @POPNULL
+            @PUSHI NN @DUP SHL @ADDS
+            @RETURN_RESULT
+            @CBREAK
         @CASE 4
             @POPNULL
             @PUSHI NN @SHL2
             @RETURN_RESULT
             @CBREAK
+        @CASE 5
+            @POPNULL
+            @PUSHI NN @DUP @SHL2 @ADDS
+            @RETURN_RESULT
+            @CBREAK            
         @CASE 6
             @POPNULL
-            @PUSHI NN @DUP @SHL2 @ADDS # (ADD NN*2, NN*4)
+            @PUSHI NN @SHL @DUP @DUP @ADDS @ADDS
             @RETURN_RESULT
             @CBREAK
+        @CASE 7
+            @POPNULL
+            @PUSHI NN @DUP @SHLN 3 @SWP @SUBS
+            @RETURN_RESULT
+            @CBREAK            
         @CASE 8
             @POPNULL
-            @PUSHI NN @SHLN 3   # 3 shifts (could macro SHL3 if defined)
+            @PUSHI NN @SHLN 3   # 3 shifts 
             @RETURN_RESULT
             @CBREAK
         @CASE 10
@@ -151,7 +164,7 @@ G MUL
 
     # --- Clean up ---
     @RETURN_RESULT
-
+@ENDFUNCTION
 
 # ============================================================
 # MUL(N, M) → Signed multiply
@@ -163,7 +176,7 @@ G MUL
 # Flags:
 #   Overflow flag set if high word not equal to sign extension
 # ============================================================
-
+@FUNCTION MUL
 :MUL
     @PUSHRETURN
     @LocalVar SIGN 01
@@ -226,6 +239,6 @@ G MUL
     @RestoreVar 01
     @POPRETURN
     @RET
-
+@ENDFUNCTION
 @SIZESINCE
 ENDBLOCK

@@ -1,0 +1,924 @@
+I common.mc
+:Main . Main
+@PRTLN "Starting EX716 Opcode Validation"
+
+@PRTLN "===== TEST NOP ====="
+@CALL ResetMem
+@CALL Pass
+@PRTLN "PASS NOP"
+
+@PRTLN "===== TEST PUSH ====="
+@CALL ResetMem
+@PUSH 123
+@PRTTOP
+@PUSH 123
+@CMPS
+@JMPZ PASS_PUSH
+@CALL Fail
+@PRTLN "FAIL PUSH"
+@JMP END_PUSH
+:PASS_PUSH
+@CALL Pass
+@PRTLN "PASS PUSH"
+:END_PUSH
+
+@PRTLN "===== TEST DUP ====="
+@CALL ResetMem
+@PUSH 55
+@DUP
+@PRTTOP
+@PUSH 55
+@CMPS
+@JMPZ PASS_DUP
+@CALL Fail
+@PRTLN "FAIL DUP"
+@JMP END_DUP
+:PASS_DUP
+@CALL Pass
+@PRTLN "PASS DUP"
+:END_DUP
+
+@PRTLN "===== TEST PUSHI ====="
+@CALL ResetMem
+# init direct vars
+@PUSH 111
+@POPI AVal
+@PUSH 222
+@POPI BVal
+
+# init pointed-to storage
+@PUSH 333
+@POPI StorageA
+@PUSH 444
+@POPI StorageB
+
+@MA2V StorageA APtr
+@MA2V StorageB BPtr
+
+@PUSHI AVal
+@PRTTOP
+@PUSH 111
+@CMPS
+@JMPZ PASS_PUSHI
+@CALL Fail
+@PRTLN "FAIL PUSHI"
+@JMP END_PUSHI
+:PASS_PUSHI
+@CALL Pass
+@PRTLN "PASS PUSHI"
+:END_PUSHI
+
+@PRTLN "===== TEST PUSHII ====="
+@CALL ResetMem
+# init direct vars
+@PUSH 111
+@POPI AVal
+@PUSH 222
+@POPI BVal
+
+# init pointed-to storage
+@PUSH 333
+@POPI StorageA
+@PUSH 444
+@POPI StorageB
+
+@MA2V StorageA APtr
+@MA2V StorageB BPtr
+
+@PUSHII APtr
+@PRTTOP
+@PUSH 333
+@CMPS
+@JMPZ PASS_PUSHII
+@CALL Fail
+@PRTLN "FAIL PUSHII"
+@JMP END_PUSHII
+:PASS_PUSHII
+@CALL Pass
+@PRTLN "PASS PUSHII"
+:END_PUSHII
+
+@PRTLN "===== TEST PUSHS ====="
+@CALL ResetMem
+@PUSH 777
+@PUSH StorageA
+@POPS
+@PUSH StorageA
+@PUSHS
+@PRTTOP
+@PUSH 777
+@CMPS
+@JMPZ PASS_PUSHS
+@CALL Fail
+@PRTLN "FAIL PUSHS"
+@JMP END_PUSHS
+:PASS_PUSHS
+@CALL Pass
+@PRTLN "PASS PUSHS"
+:END_PUSHS
+
+@PRTLN "===== TEST POPNULL ====="
+@CALL ResetMem
+@PUSH 55
+@PUSH 66
+@POPNULL
+@PRTTOP
+@PUSH 55
+@CMPS
+@JMPZ PASS_POPNULL
+@CALL Fail
+@PRTLN "FAIL POPNULL"
+@JMP END_POPNULL
+:PASS_POPNULL
+@CALL Pass
+@PRTLN "PASS POPNULL"
+:END_POPNULL
+
+@PRTLN "===== TEST SWP ====="
+@CALL ResetMem
+@PUSH 11
+@PUSH 22
+@SWP
+@PRTTOP
+@PUSH 11
+@CMPS
+@JMPZ PASS_SWP
+@CALL Fail
+@PRTLN "FAIL SWP"
+@JMP END_SWP
+:PASS_SWP
+@CALL Pass
+@PRTLN "PASS SWP"
+:END_SWP
+
+@PRTLN "===== TEST POPI ====="
+@CALL ResetMem
+@PUSH 777
+@POPI AVal
+@PUSHI AVal
+@PUSH 777
+@CMPS
+@JMPZ PASS_POPI
+@CALL Fail
+@PRTLN "FAIL POPI"
+@JMP END_POPI
+:PASS_POPI
+@CALL Pass
+@PRTLN "PASS POPI"
+:END_POPI
+
+@PRTLN "===== TEST POPII ====="
+@CALL ResetMem
+# init direct vars
+@PUSH 111
+@POPI AVal
+@PUSH 222
+@POPI BVal
+
+# init pointed-to storage
+@PUSH 333
+@POPI StorageA
+@PUSH 444
+@POPI StorageB
+
+@MA2V StorageA APtr
+@MA2V StorageB BPtr
+
+@PUSH 888
+@POPII APtr
+@PUSHII APtr
+@PUSH 888
+@CMPS
+@JMPZ PASS_POPII
+@CALL Fail
+@PRTLN "FAIL POPII"
+@JMP END_POPII
+:PASS_POPII
+@CALL Pass
+@PRTLN "PASS POPII"
+:END_POPII
+
+@PRTLN "===== TEST POPS ====="
+@CALL ResetMem
+@PUSH 999
+@PUSH StorageA
+@POPS
+@PUSHI StorageA
+@PRTTOP
+@PUSH 999
+@CMPS
+@JMPZ PASS_POPS
+@CALL Fail
+@PRTLN "FAIL POPS"
+@JMP END_POPS
+:PASS_POPS
+@CALL Pass
+@PRTLN "PASS POPS"
+:END_POPS
+
+@PRTLN "===== TEST CMP ====="
+@CALL ResetMem
+@PUSH 20
+@CMP 20
+@JMPZ PASS_CMP
+@CALL Fail
+@PRTLN "FAIL CMP"
+@JMP END_CMP
+:PASS_CMP
+@CALL Pass
+@PRTLN "PASS CMP"
+:END_CMP
+
+@PRTLN "===== TEST CMPS ====="
+@CALL ResetMem
+@PUSH 30
+@PUSH 30
+@CMPS
+@JMPZ PASS_CMPS
+@CALL Fail
+@PRTLN "FAIL CMPS"
+@JMP END_CMPS
+:PASS_CMPS
+@CALL Pass
+@PRTLN "PASS CMPS"
+:END_CMPS
+
+@PRTLN "===== TEST CMPI ====="
+@CALL ResetMem
+# init direct vars
+@PUSH 111
+@POPI AVal
+@PUSH 222
+@POPI BVal
+
+# init pointed-to storage
+@PUSH 333
+@POPI StorageA
+@PUSH 444
+@POPI StorageB
+
+@MA2V StorageA APtr
+@MA2V StorageB BPtr
+
+@PUSH 111
+@CMPI AVal
+@JMPZ PASS_CMPI
+@CALL Fail
+@PRTLN "FAIL CMPI"
+@JMP END_CMPI
+:PASS_CMPI
+@CALL Pass
+@PRTLN "PASS CMPI"
+:END_CMPI
+
+@PRTLN "===== TEST CMPII ====="
+@CALL ResetMem
+# init direct vars
+@PUSH 111
+@POPI AVal
+@PUSH 222
+@POPI BVal
+
+# init pointed-to storage
+@PUSH 333
+@POPI StorageA
+@PUSH 444
+@POPI StorageB
+
+@MA2V StorageA APtr
+@MA2V StorageB BPtr
+
+@PUSH 333
+@CMPII APtr
+@JMPZ PASS_CMPII
+@CALL Fail
+@PRTLN "FAIL CMPII"
+@JMP END_CMPII
+:PASS_CMPII
+@CALL Pass
+@PRTLN "PASS CMPII"
+:END_CMPII
+
+@PRTLN "===== TEST ADD ====="
+@CALL ResetMem
+@PUSH 10
+@ADD 20
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ADD
+@CALL Fail
+@PRTLN "FAIL ADD"
+@JMP END_ADD
+:PASS_ADD
+@CALL Pass
+@PRTLN "PASS ADD"
+:END_ADD
+
+@PRTLN "===== TEST ADDS ====="
+@CALL ResetMem
+@PUSH 10
+@PUSH 20
+@StackDump
+@ADDS
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ADDS
+@CALL Fail
+@PRTLN "FAIL ADDS"
+@JMP END_ADDS
+:PASS_ADDS
+@CALL Pass
+@PRTLN "PASS ADDS"
+:END_ADDS
+
+@PRTLN "===== TEST ADDI ====="
+@CALL ResetMem
+@PUSH 20
+@POPI AVal
+@PUSH 10
+@StackDump
+@ADDI AVal
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ADDI
+@CALL Fail
+@PRTLN "FAIL ADDI"
+@JMP END_ADDI
+:PASS_ADDI
+@CALL Pass
+@PRTLN "PASS ADDI"
+:END_ADDI
+
+@PRTLN "===== TEST ADDII ====="
+@CALL ResetMem
+@PUSH 20
+@POPI StorageA
+@MA2V StorageA APtr
+@PUSH 10
+@StackDump
+@ADDII APtr
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ADDII
+@CALL Fail
+@PRTLN "FAIL ADDII"
+@JMP END_ADDII
+:PASS_ADDII
+@CALL Pass
+@PRTLN "PASS ADDII"
+:END_ADDII
+
+@PRTLN "===== TEST SUB ====="
+@CALL ResetMem
+@PUSH 10
+@SUB 20
+@PRTTOP
+@PUSH 65526
+@CMPS
+@JMPZ PASS_SUB
+@CALL Fail
+@PRTLN "FAIL SUB"
+@JMP END_SUB
+:PASS_SUB
+@CALL Pass
+@PRTLN "PASS SUB"
+:END_SUB
+
+@PRTLN "===== TEST SUBS ====="
+@CALL ResetMem
+@PUSH 10
+@PUSH 20
+@StackDump
+@SUBS
+@StackDump
+@PRTTOP
+@PUSH 65526
+@CMPS
+@JMPZ PASS_SUBS
+@CALL Fail
+@PRTLN "FAIL SUBS"
+@JMP END_SUBS
+:PASS_SUBS
+@CALL Pass
+@PRTLN "PASS SUBS"
+:END_SUBS
+
+@PRTLN "===== TEST SUBI ====="
+@CALL ResetMem
+@PUSH 20
+@POPI AVal
+@PUSH 10
+@StackDump
+@SUBI AVal
+@StackDump
+@PRTTOP
+@PUSH 65526
+@CMPS
+@JMPZ PASS_SUBI
+@CALL Fail
+@PRTLN "FAIL SUBI"
+@JMP END_SUBI
+:PASS_SUBI
+@CALL Pass
+@PRTLN "PASS SUBI"
+:END_SUBI
+
+@PRTLN "===== TEST SUBII ====="
+@CALL ResetMem
+@PUSH 20
+@POPI StorageA
+@MA2V StorageA APtr
+@PUSH 10
+@StackDump
+@SUBII APtr
+@StackDump
+@PRTTOP
+@PUSH 65526
+@CMPS
+@JMPZ PASS_SUBII
+@CALL Fail
+@PRTLN "FAIL SUBII"
+@JMP END_SUBII
+:PASS_SUBII
+@CALL Pass
+@PRTLN "PASS SUBII"
+:END_SUBII
+
+@PRTLN "===== TEST OR ====="
+@CALL ResetMem
+@PUSH 10
+@OR 20
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_OR
+@CALL Fail
+@PRTLN "FAIL OR"
+@JMP END_OR
+:PASS_OR
+@CALL Pass
+@PRTLN "PASS OR"
+:END_OR
+
+@PRTLN "===== TEST ORS ====="
+@CALL ResetMem
+@PUSH 10
+@PUSH 20
+@StackDump
+@ORS
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ORS
+@CALL Fail
+@PRTLN "FAIL ORS"
+@JMP END_ORS
+:PASS_ORS
+@CALL Pass
+@PRTLN "PASS ORS"
+:END_ORS
+
+@PRTLN "===== TEST ORI ====="
+@CALL ResetMem
+@PUSH 20
+@POPI AVal
+@PUSH 10
+@StackDump
+@ORI AVal
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ORI
+@CALL Fail
+@PRTLN "FAIL ORI"
+@JMP END_ORI
+:PASS_ORI
+@CALL Pass
+@PRTLN "PASS ORI"
+:END_ORI
+
+@PRTLN "===== TEST ORII ====="
+@CALL ResetMem
+@PUSH 20
+@POPI StorageA
+@MA2V StorageA APtr
+@PUSH 10
+@StackDump
+@ORII APtr
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_ORII
+@CALL Fail
+@PRTLN "FAIL ORII"
+@JMP END_ORII
+:PASS_ORII
+@CALL Pass
+@PRTLN "PASS ORII"
+:END_ORII
+
+@PRTLN "===== TEST AND ====="
+@CALL ResetMem
+@PUSH 10
+@AND 20
+@PRTTOP
+@PUSH 0
+@CMPS
+@JMPZ PASS_AND
+@CALL Fail
+@PRTLN "FAIL AND"
+@JMP END_AND
+:PASS_AND
+@CALL Pass
+@PRTLN "PASS AND"
+:END_AND
+
+@PRTLN "===== TEST ANDS ====="
+@CALL ResetMem
+@PUSH 10
+@PUSH 20
+@StackDump
+@ANDS
+@StackDump
+@PRTTOP
+@PUSH 0
+@CMPS
+@JMPZ PASS_ANDS
+@CALL Fail
+@PRTLN "FAIL ANDS"
+@JMP END_ANDS
+:PASS_ANDS
+@CALL Pass
+@PRTLN "PASS ANDS"
+:END_ANDS
+
+@PRTLN "===== TEST ANDI ====="
+@CALL ResetMem
+@PUSH 20
+@POPI AVal
+@PUSH 10
+@StackDump
+@ANDI AVal
+@StackDump
+@PRTTOP
+@PUSH 0
+@CMPS
+@JMPZ PASS_ANDI
+@CALL Fail
+@PRTLN "FAIL ANDI"
+@JMP END_ANDI
+:PASS_ANDI
+@CALL Pass
+@PRTLN "PASS ANDI"
+:END_ANDI
+
+@PRTLN "===== TEST ANDII ====="
+@CALL ResetMem
+@PUSH 20
+@POPI StorageA
+@MA2V StorageA APtr
+@PUSH 10
+@StackDump
+@ANDII APtr
+@StackDump
+@PRTTOP
+@PUSH 0
+@CMPS
+@JMPZ PASS_ANDII
+@CALL Fail
+@PRTLN "FAIL ANDII"
+@JMP END_ANDII
+:PASS_ANDII
+@CALL Pass
+@PRTLN "PASS ANDII"
+:END_ANDII
+
+@PRTLN "===== TEST XOR ====="
+@CALL ResetMem
+@PUSH 10
+@XOR 20
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_XOR
+@CALL Fail
+@PRTLN "FAIL XOR"
+@JMP END_XOR
+:PASS_XOR
+@CALL Pass
+@PRTLN "PASS XOR"
+:END_XOR
+
+@PRTLN "===== TEST XORS ====="
+@CALL ResetMem
+@PUSH 10
+@PUSH 20
+@StackDump
+@XORS
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_XORS
+@CALL Fail
+@PRTLN "FAIL XORS"
+@JMP END_XORS
+:PASS_XORS
+@CALL Pass
+@PRTLN "PASS XORS"
+:END_XORS
+
+@PRTLN "===== TEST XORI ====="
+@CALL ResetMem
+@PUSH 20
+@POPI AVal
+@PUSH 10
+@StackDump
+@XORI AVal
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_XORI
+@CALL Fail
+@PRTLN "FAIL XORI"
+@JMP END_XORI
+:PASS_XORI
+@CALL Pass
+@PRTLN "PASS XORI"
+:END_XORI
+
+@PRTLN "===== TEST XORII ====="
+@CALL ResetMem
+@PUSH 20
+@POPI StorageA
+@MA2V StorageA APtr
+@PUSH 10
+@StackDump
+@XORII APtr
+@StackDump
+@PRTTOP
+@PUSH 30
+@CMPS
+@JMPZ PASS_XORII
+@CALL Fail
+@PRTLN "FAIL XORII"
+@JMP END_XORII
+:PASS_XORII
+@CALL Pass
+@PRTLN "PASS XORII"
+:END_XORII
+
+@PRTLN "===== TEST JMPZ ====="
+@CALL ResetMem
+@SETZ
+@JMPZ SUS_jmpz_1
+@CALL Fail
+@PRTLN "FAIL jmpz_forward"
+@JMP FAIL2_jmpz_1
+:SUS_jmpz_1
+@CLZ
+@JMPZ FAIL_jmpz_1
+@CALL Pass
+@PRTLN "PASS jmpz_forward"
+@JMP SKIP_jmpz_1
+:FAIL_jmpz_1
+@CALL Fail
+@PRTLN "FAIL jmpz_reverse"
+:FAIL2_jmpz_1
+:SKIP_jmpz_1
+
+@PRTLN "===== TEST JMPN ====="
+@CALL ResetMem
+@SETN
+@JMPN SUS_jmpn_1
+@CALL Fail
+@PRTLN "FAIL jmpn_forward"
+@JMP FAIL2_jmpn_1
+:SUS_jmpn_1
+@CLN
+@JMPN FAIL_jmpn_1
+@CALL Pass
+@PRTLN "PASS jmpn_forward"
+@JMP SKIP_jmpn_1
+:FAIL_jmpn_1
+@CALL Fail
+@PRTLN "FAIL jmpn_reverse"
+:FAIL2_jmpn_1
+:SKIP_jmpn_1
+
+@PRTLN "===== TEST JMPC ====="
+@CALL ResetMem
+@SETC
+@JMPC SUS_jmpc_1
+@CALL Fail
+@PRTLN "FAIL jmpc_forward"
+@JMP FAIL2_jmpc_1
+:SUS_jmpc_1
+@CLC
+@JMPC FAIL_jmpc_1
+@CALL Pass
+@PRTLN "PASS jmpc_forward"
+@JMP SKIP_jmpc_1
+:FAIL_jmpc_1
+@CALL Fail
+@PRTLN "FAIL jmpc_reverse"
+:FAIL2_jmpc_1
+:SKIP_jmpc_1
+
+@PRTLN "===== TEST JMPO ====="
+@CALL ResetMem
+@SETO
+@JMPO SUS_jmpo_1
+@CALL Fail
+@PRTLN "FAIL jmpo_forward"
+@JMP FAIL2_jmpo_1
+:SUS_jmpo_1
+@CLO
+@JMPO FAIL_jmpo_1
+@CALL Pass
+@PRTLN "PASS jmpo_forward"
+@JMP SKIP_jmpo_1
+:FAIL_jmpo_1
+@CALL Fail
+@PRTLN "FAIL jmpo_reverse"
+:FAIL2_jmpo_1
+:SKIP_jmpo_1
+
+@PRTLN "===== TEST JMP ====="
+@CALL ResetMem
+@JMP SUS_jmp_1
+@CALL Fail
+@PRTLN "FAIL jmp_forward"
+@JMP SKIP_jmp_1
+:SUS_jmp_1
+@CALL Pass
+@PRTLN "PASS jmp_forward"
+:SKIP_jmp_1
+
+@PRTLN "===== TEST JMPI ====="
+@CALL ResetMem
+@PUSH SUS_JMPI_1
+@POPI AVal
+@JMPI AVal
+@CALL Fail
+@PRTLN "FAIL jmpi_forward"
+@JMP SKIP_JMPI_1
+:SUS_JMPI_1
+@CALL Pass
+@PRTLN "PASS jmpi_forward"
+:SKIP_JMPI_1
+
+@PRTLN "===== TEST JMPS ====="
+@CALL ResetMem
+@PUSH SUS_JMPS_1
+@JMPS
+@CALL Fail
+@PRTLN "FAIL jmps_forward"
+@JMP SKIP_JMPS_1
+:SUS_JMPS_1
+@CALL Pass
+@PRTLN "PASS jmps_forward"
+:SKIP_JMPS_1
+
+@PRTLN "===== TEST SHR ====="
+@CALL ResetMem
+@PUSH 128
+@StackDump
+@SHR
+@StackDump
+@PRTTOP
+@PUSH 64
+@CMPS
+@JMPZ PASS_SHR
+@CALL Fail
+@PRTLN "FAIL SHR"
+@JMP END_SHR
+:PASS_SHR
+@CALL Pass
+@PRTLN "PASS SHR"
+:END_SHR
+
+@PRTLN "===== TEST SHL ====="
+@CALL ResetMem
+@PUSH 1
+@StackDump
+@SHL
+@StackDump
+@PRTTOP
+@PUSH 2
+@CMPS
+@JMPZ PASS_SHL
+@CALL Fail
+@PRTLN "FAIL SHL"
+@JMP END_SHL
+:PASS_SHL
+@CALL Pass
+@PRTLN "PASS SHL"
+:END_SHL
+
+@PRTLN "===== TEST INV ====="
+@CALL ResetMem
+@PUSH 240
+@StackDump
+@INV
+@StackDump
+@PRTTOP
+@PUSH 65295
+@CMPS
+@JMPZ PASS_INV
+@CALL Fail
+@PRTLN "FAIL INV"
+@JMP END_INV
+:PASS_INV
+@CALL Pass
+@PRTLN "PASS INV"
+:END_INV
+
+@PRTLN "===== TEST COMP2 ====="
+@CALL ResetMem
+@PUSH 1
+@StackDump
+@COMP2
+@StackDump
+@PRTTOP
+@PUSH 65535
+@CMPS
+@JMPZ PASS_COMP2
+@CALL Fail
+@PRTLN "FAIL COMP2"
+@JMP END_COMP2
+:PASS_COMP2
+@CALL Pass
+@PRTLN "PASS COMP2"
+:END_COMP2
+
+@PRTLN "===== TEST SUMMARY ====="
+@PRT "PASS COUNT: "
+@PUSHI PassCount
+@PRTI
+@PRT "FAIL COUNT: "
+@PUSHI FailCount
+@PRTI
+@END
+
+:Pass
+@POPI ReturnStore
+@PUSHI PassCount
+@ADD 1
+@POPI PassCount
+@PUSHI ReturnStore
+@RET
+
+:Fail
+@POPI ReturnStore
+@PUSHI FailCount
+@ADD 1
+@POPI FailCount
+@PUSHI ReturnStore
+@RET
+
+:ResetMem
+@POPI ReturnStore
+@PRTLN "---- RESET ----"
+@SCLR
+@FCLR
+@MA2V 0 AVal
+@MA2V 0 BVal
+@MA2V StorageA APtr
+@MA2V StorageB BPtr
+@PUSH 0
+@POPI StorageA
+@PUSH 0
+@POPI StorageB
+@PUSHI ReturnStore
+@RET
+
+:ReturnStore 0
+:PassCount 0
+:FailCount 0
+
+:AVal
+0
+:BVal
+0
+
+:APtr
+StorageA
+:BPtr
+StorageB
+
+:StorageA
+0 0 0 0
+:StorageB
+0 0 0 0
