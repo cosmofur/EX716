@@ -2,12 +2,6 @@
 M __LIB_EVENT_LOADED 1
 I event.ref
 
-? __EX716_EXPLICIT_LINK
-   M FUNCTION ? __%1_INUSE :_HERE%0 MF __DEFINE_%1 _HERE%0 MF __LastFunc %1
-   M ENDFUNCTION  MF __ENDOF %__LastFunc :_HERE%0 _HERE%0 ENDBLOCK
-   M FUNCTIONNEEDS ? __%1_INUSE
-ENDBLOCK
-
 #########################
 # These are the main public Functions.
 #
@@ -103,14 +97,15 @@ G ActiveEventTable
 @FUNCTION EventTableNew
 :EventTableNew
 @PUSHRETURN
-@LocalVar HeapID 01
+@Locals
+@Local HeapID
 @POPI HeapID
    @Call(vA) HeapNewObject HeapID EventRecordSize+ActiveEventTableHeaderSize
    @POPI ActiveEventTable
    @PUSH 1 @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @POPS   # Sets allocated rows in table
    @PUSHI HeapID @PUSHI ActiveEventTable @ADD EventBackupHeapOff @POPS  # Saves HeapID for later resizes.
    @PUSHI ActiveEventTable
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -119,7 +114,8 @@ ENDBLOCK
 @FUNCTION EventTableFree
 :EventTableFree
 @PUSHRETURN
-@LocalVar EventTableID 01
+@Locals
+@Local EventTableID
 @POPI EventID
    @IF_EQ_AV 0 EventTableID
       # Event table not setup, nothing to kill.
@@ -132,7 +128,7 @@ ENDBLOCK
       @ENDIF
    @ENDIF
    @MA2V 0 ActiveEventTable
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -211,18 +207,19 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @FUNCTION EventAdd
 :EventAdd
 @PUSHRETURN
-@LocalVar Type 01       # 1 = mouse, 2 = timer, 3 = Keyboard
-@LocalVar X1 02         # Mouse: X1, Timer: Max Seconds, Keyboard:StrPtr(In)
-@LocalVar Y1 03         # Mouse: Y1, Timer: 0|1 del:repeat
-@LocalVar X2 04         # Mouse: X2  Timer: NR, KeyBoard: NR
-@LocalVar Y2 05         # Mouse: Y2
-@LocalVar EventID 06
-@LocalVar Index1 07
-@LocalVar MAESize 08
-@LocalVar MAEMaxSize 09
-@LocalVar MTHeapID 10
-@LocalVar Index2 11
-@LocalVar InsertSpot 12
+@Locals
+@Local Type       # 1 = mouse, 2 = timer, 3 = Keyboard
+@Local X1         # Mouse: X1, Timer: Max Seconds, Keyboard:StrPtr(In)
+@Local Y1         # Mouse: Y1, Timer: 0|1 del:repeat
+@Local X2         # Mouse: X2  Timer: NR, KeyBoard: NR
+@Local Y2         # Mouse: Y2
+@Local EventID
+@Local Index1
+@Local MAESize
+@Local MAEMaxSize
+@Local MTHeapID
+@Local Index2
+@Local InsertSpot
 #
 @POPI EventID @POPI Y2 @POPI X2 @POPI Y1 @POPI X1 @POPI Type
     # Extract table header data
@@ -323,9 +320,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
       @CBREAK
    @ENDCASE
    @POPNULL
-@RestoreVar 12 @RestoreVar 11 @RestoreVar 10 @RestoreVar 09 @RestoreVar 08
-@RestoreVar 07 @RestoreVar 06 @RestoreVar 05 @RestoreVar 04 @RestoreVar 03
-@RestoreVar 02 @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -335,7 +330,8 @@ ENDBLOCK
 @FUNCTION ReadKeyTimeOut
 :ReadKeyTimeOut
 @PUSHRETURN
-@LocalVar CHin   01
+@Locals
+@Local CHin
    @PUSH 0
    @WHILE_LT_A 2
       @READCNW CHin
@@ -352,7 +348,7 @@ ENDBLOCK
       @POPNULL
       @PUSH 0
    @ENDIF
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -364,11 +360,12 @@ ENDBLOCK
 @FUNCTION KeyEnQueue
 :KeyEnQueue
 @PUSHRETURN
-@LocalVar Head 01
-@LocalVar Tail 02
-@LocalVar NextTail 03
-@LocalVar ChIN 04
-@LocalVar Address 05
+@Locals
+@Local Head
+@Local Tail
+@Local NextTail
+@Local ChIN
+@Local Address
 #
 @POPI ChIN
     @PUSHI QBufferHead @AND 0xff @POPI Head
@@ -388,11 +385,7 @@ ENDBLOCK
        @ORI NextTail
        @POPI QBufferTail
     @ENDIF
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -417,8 +410,9 @@ ENDBLOCK
 @FUNCTION KeyDeQueue
 :KeyDeQueue
 @PUSHRETURN
-@LocalVar Head 01
-@LocalVar Tail 02
+@Locals
+@Local Head
+@Local Tail
     @PUSHI QBufferHead @AND 0xff @POPI Head
     @PUSHI QBufferTail @AND 0xff @POPI Tail
     @IF_EQ_VV Head Tail
@@ -433,8 +427,7 @@ ENDBLOCK
        @ORS                           # Combine Head to low Byte
        @POPI QBufferHead
     @ENDIF
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -446,8 +439,9 @@ ENDBLOCK
 @FUNCTION KeyReadMouseSeq
 :KeyReadMouseSeq
 @PUSHRETURN
-@LocalVar ChIN 01
-@LocalVar CurVal 02
+@Locals
+@Local ChIN
+@Local CurVal
     @MA2V 0 LastMouseX
     @MA2V 0 LastMouseY
     @MA2V 0 CurVal
@@ -531,8 +525,7 @@ ENDBLOCK
 
     @PUSHI LastMouseX
     @PUSHI LastMouseY
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -559,16 +552,17 @@ M Between_U \
 @FUNCTION KeySearchMouse
 :KeySearchMouse
 @PUSHRETURN
-@LocalVar X1 01
-@LocalVar Y1 02
-@LocalVar MTSize 03
-@LocalVar Base 04
-@LocalVar Rec 05
-@LocalVar MinX 06
-@LocalVar MinY 07
-@LocalVar MaxX 08
-@LocalVar MaxY 09
-@LocalVar Result 10
+@Locals
+@Local X1
+@Local Y1
+@Local MTSize
+@Local Base
+@Local Rec
+@Local MinX
+@Local MinY
+@Local MaxX
+@Local MaxY
+@Local Result
 
 @POPI Y1
 @POPI X1
@@ -610,16 +604,7 @@ M Between_U \
    @ELSE
       @PUSHI Result
    @ENDIF
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -630,10 +615,11 @@ ENDBLOCK
 @FUNCTION FindCh
 :FindCh
 @PUSHRETURN
-@LocalVar Index1 01
-@LocalVar CharIn 02
-@LocalVar StringPtr 03
-@LocalVar Result 04
+@Locals
+@Local Index1
+@Local CharIn
+@Local StringPtr
+@Local Result
 @POPI CharIn
 @POPI StringPtr
    @MA2V 0 Result
@@ -651,10 +637,7 @@ ENDBLOCK
    @ENDWHILE
    @POPNULL
    @PUSHI Result
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -664,13 +647,14 @@ ENDBLOCK
 @FUNCTION KeySearchKeyBoard
 :KeySearchKeyBoard
 @PUSHRETURN
-@LocalVar CHR     01
-@LocalVar MTSize 02
-@LocalVar Base   03
-@LocalVar InPtr  04
-@LocalVar C      05
-@LocalVar Rec    06
-@LocalVar Result 07
+@Locals
+@Local CHR
+@Local MTSize
+@Local Base
+@Local InPtr
+@Local C
+@Local Rec
+@Local Result
 @POPI CHR
    @MA2V -1 Result
    @PUSHII ActiveEventTable @POPI MTSize
@@ -705,13 +689,7 @@ ENDBLOCK
    @ELSE
       @PUSHI Result
    @ENDIF
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -721,15 +699,16 @@ ENDBLOCK
 @FUNCTION KeySearchTimer
 :KeySearchTimer
 @PUSHRETURN
-@LocalVar MTSize 01
-@LocalVar Base   02
-@LocalVar Rec    03
-@LocalVar Start  04
-@LocalVar Dur    05
-@LocalVar Rep    06
-@LocalVar Now    07
-@LocalVar Elap   08
-@LocalVar Result 09
+@Locals
+@Local MTSize
+@Local Base
+@Local Rec
+@Local Start
+@Local Dur
+@Local Rep
+@Local Now
+@Local Elap
+@Local Result
    @MA2V -1 Result
    @PUSHI ActiveEventTable @PUSHS @POPI MTSize
    @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
@@ -806,15 +785,7 @@ ENDBLOCK
   @ELSE
      @PUSHI Result
   @ENDIF
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -826,7 +797,8 @@ ENDBLOCK
 @FUNCTION EventPoll
 :EventPoll
 @PUSHRETURN
-@LocalVar MouseXVal 01 @LocalVar MouseYVal 02 @LocalVar MouseEventCode 03
+@Locals
+@Local MouseXVal @LocalVar MouseYVal 02 @LocalVar MouseEventCode 03
    # Fast exit if there nothing in ActiveEventTable to search for.
    @MA2V 0 MouseEventCode
    @PUSHII ActiveEventTable   # Mouse table will be zero if never defined.
@@ -910,7 +882,7 @@ ENDBLOCK
          @ENDIF
       @ENDIF
    @ENDIF
- @RestoreVar 03  @RestoreVar 02  @RestoreVar 01
+ @EndLocals
  @POPRETURN
  @RET
  ENDBLOCK
@@ -919,15 +891,16 @@ ENDBLOCK
 @FUNCTION EventList
 :EventList
 @PUSHRETURN
-@LocalVar MTSize   01
-@LocalVar Index    02
-@LocalVar Base     03
-@LocalVar X1       04
-@LocalVar Y1       05
-@LocalVar X2       06
-@LocalVar Y2       07
-@LocalVar EventID  08
-@LocalVar Type     09
+@Locals
+@Local MTSize
+@Local Index
+@Local Base
+@Local X1
+@Local Y1
+@Local X2
+@Local Y2
+@Local EventID
+@Local Type
 
    # Load header values
    @PUSHI ActiveEventTable @PUSHS @POPI MTSize       # number of used entries
@@ -962,8 +935,7 @@ ENDBLOCK
       @PUSHI Base @ADD EventRecordSize @POPI Base
    @Next Index
 
-@RestoreVar 09 @RestoreVar 08 @RestoreVar 07 @RestoreVar 06
-@RestoreVar 05 @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK

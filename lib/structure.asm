@@ -114,7 +114,8 @@ M IF_NEQ_VV \
   @PUSHI %1 @PUSHI %2 \
   %S \
   @CMPS @POPNULL @POPNULL \
-  @JMPZ _%V_ENDIF \
+  @JMPZ _%V_ENDIF
+
 # If A == V1 True
 M IF_EQ_VA \
   @PUSHI %1 @PUSH %2 \
@@ -588,142 +589,202 @@ M UNTIL_ZERO \
   %P
 
 #
-# Switch/case.... is this possible?
-# Sort of but with some limits.
-# Unlike a 'C' switch case, each Case needs to be a block that ends with CBREAK
-# So the 'case' match can't 'fall though' to the cases bellow and will always jump to the ENDCASE line
-# So the SWITCH part is just a push of the test value and is always 16b numeric.
-# The CASE types include CASE, CASE_RANGE A B, CASE_I V, CDEFAULT
+# SWITCH / CASE structured macro set
 #
-# Main reason for switch is to prep the Macro Stack so ENDCASE has something to 'pop'
-# You need that so the ENDCASE will work.
+# This implements a simple 16-bit numeric switch/case construct.
+#
+# Usage pattern:
+#
+#   @PUSH value
+#   @SWITCH
+#      @CASE SOME_CONSTANT
+#         ... case body ...
+#         @CBREAK
+#
+#      @CASE_RANGE LOW HIGH
+#         ... case body ...
+#         @CBREAK
+#
+#      @CDEFAULT
+#         ... default body ...
+#         @CBREAK
+#   @ENDCASE
+#
+# Important rules:
+#
+#   1. The switch test value must already be on TOS before @SWITCH.
+#
+#   2. Each @CASE compares against that TOS value.
+#      The compare consumes/reuses the stack according to the CMP macro behavior,
+#      so each CASE macro uses %S to preserve the switch frame while testing.
+#
+#   3. CASE bodies do not intentionally fall through like C.
+#      A matching CASE body should end with @CBREAK, which jumps to @ENDCASE.
+#
+#   4. CASE_RANGE and CASE_URANGE test inclusive ranges.
+#      If the value is outside the range, they jump to the shared NextCase label.
+#      If the value is inside the range, execution falls through into the case body.
+#
+#   5. @CDEFAULT is required to provide the final NextCase label and to keep the
+#      macro stack balanced. Use it even when all values appear to be covered.
+#
+#   6. @ENDCASE closes the switch macro frame opened by @SWITCH.
+#
+# Label conventions:
+#
+#   %V refers to the current preserved switch/case macro frame.
+#   %W refers to the base switch frame used by @CBREAK to jump to EndCase.
+#   %0 is unique to the current macro invocation and should be used for labels
+#      local to a single CASE expansion.
+#
+# The normal CASE macro uses a unique %0-based DoCase label so multiple CASE
+# macros in the same SWITCH do not collide.
+#
 M SWITCH \
   =_%0_CaseCount 0 \
   =_%0_BreakCount 0 \
   %S
-#
-# Basic CASE takes 16b constant as test value against stack
-#    Worth Noting that we're using a mix of _%0 and _%V which a simple case like this
-#    are the same value, but for notation sense, use _%V when you mean the lable you
-#    are preserving on the stack, and plan to use again, and _%0 for lables that only
-#    have value inside this same macro.
-M CASE \
-  =_%V_CaseCount  {_%V_CaseCount+1} \
-  @CMP %1 \
-  %S \
-  @JMPZ _%V_DoCase1_%V \
-  @JMP _%V_NextCase \
-  :_%V_DoCase1_%V
 
-# Takes two constant params (low value then high value, can't be swaped)
-# So some of the complexity is to make sure we can use IF_GE for both the low and high
-# range tests in the CASE. Other wise we could miss the edge cases.
+M CASE \
+  =_%V_CaseCount  {_%V_CaseCount}+1 \
+  %S \
+  @CMP %1 \  
+  @JMPZ _%0_DoCase1 \
+  @JMP _%V_NextCase \
+  :_%0_DoCase1
+
+
 M CASE_RANGE_AA \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMP %1 \
   %S \
   @JLT _%V_NextCase \
   @CMP %2 \
-  @JGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JGT _%V_NextCase
+  # Fall Through True Case
+
 M CASE_RANGE @CASE_RANGE_AA %1 %2
 M CASE_RANGE_AV \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMP %1 \
   %S \
   @JLT _%V_NextCase \
   @CMPI %2 \
-  @JGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JGT _%V_NextCase
+  # Fall Through True Case
 M CASE_RANGE_VA \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMPI %1 \
   %S \
   @JLT _%V_NextCase \
   @CMP %2 \
-  @JGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JGT _%V_NextCase
+  # Fall Through True Case
 M CASE_RANGE_VV \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMPI %1 \
   %S \
   @JLT _%V_NextCase \
   @CMPI %2 \
-  @JGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JGT _%V_NextCase 
+  # Fall Through True Case
 
 
 # range tests in the Unsigned CASE. Other wise we could miss the edge cases.
 M CASE_URANGE_AA \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMP %1 \
   %S \
   @JULT _%V_NextCase \
   @CMP %2 \
-  @JUGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JUGT _%V_NextCase
+  # Fall Through True Case
 M CASE_URANGE @CASE_URANGE_AA %1 %2
 M CASE_URANGE_AV \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMP %1 \
   %S \
   @JULT _%V_NextCase \
   @CMPI %2 \
-  @JUGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JUGT _%V_NextCase
+  # Fall Through True Case
+
 M CASE_URANGE_VA \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMPI %1 \
   %S \
   @JULT _%V_NextCase \
   @CMP %2 \
-  @JUGT _%V_NextCase \
-  :_%V_InRange_%0
+  @JUGT _%V_NextCase
+  # Fall Through True Case
+  
 M CASE_URANGE_VV \
-  =_%V_CaseCount {_%V_CaseCount+1} \  
+  =_%V_CaseCount {_%V_CaseCount}+1 \  
   @CMPI %1 \
   %S \
   @JULT _%V_NextCase \
   @CMPI %2 \
-  @JUGT _%V_NextCase \
-  :_%V_InRange_%0
-
+  @JUGT _%V_NextCase
+  # Fall Through True Case  
 
 # Compares TOS with value at [%1] 
 M CASE_V \
-  =_%V_CaseCount {_%V_CaseCount+1} \
+  =_%V_CaseCount {_%V_CaseCount}+1 \
   %S \
   @CMPI %1 \
-  @JMPNZ _%V_NextCase \
-  :_DoCase_%V
-  
-
-# You Always need CDEFAULT is to balance the Macro Stack, which would underflow without.
-# So always include a CDEFAULT even if you alreay had CASE's for all the valid values.
+  @JMPNZ _%V_NextCase
+  # Fall Through True Case  
+#
+# @CDEFAULT starts the default body.
+#
+# It defines the shared NextCase label used by the final failed CASE test.
+# Since there is no comparison, execution reaches CDEFAULT only when no earlier
+# CASE matched, or when control explicitly falls through to the final default.
+#
+# @CDEFAULT also preserves the switch frame with %S so @CBREAK and @ENDCASE
+# can continue using the same stack convention as normal CASE bodies.
+#
 M CDEFAULT \
   :_%V_NextCase \
-  =_%V_CaseCount {_%V_CaseCount+1} \
+  =_%V_CaseCount {_%V_CaseCount}+1 \
   %S
-  
-# Call the CASES need a matching CBREAK main things it does is pop the MacroStack
-#    There seems to be some odd jumping here. Just to keep track CBreak provides
-#    Two entry points. One is the 'fall through' from the previous CASE which means
-#    we want to jump to the ENDCASE BUT we don't have the right _%V on the stack for that.
-#    We first have to deal with the top of stack _%V which is the entry point for the next
-#    CASE statement, so we first 'jump over' the entry for the next CASE and then we can
-#    POP the _%V stack, get the right _%V for the endcase and jmp there, lastly we prepare
-#    for the next CASE 
+ 
+
+#
+# @CBREAK ends the current CASE body.
+#
+# It emits two things:
+#
+#   1. A jump to the switch-level EndCase label, so a matched CASE does not
+#      continue into later CASE bodies.
+#
+#   2. The shared NextCase label for the previous failed CASE test.
+#
+# After defining NextCase, %P restores the macro stack back to the switch frame
+# so the next CASE/CDEFAULT/ENDCASE sees the correct %V/%W context.
+#
+# Every non-empty CASE body should normally end with @CBREAK.
+#
+
 M CBREAK \
   @JMP _%W_EndCase \                 # Jump the BASE frame's END_CASE
   :_%V_NextCase \
   %P \                               # Back to BASE frame
-  =_%V_BreakCount {_%V_BreakCount+1}  
+  =_%V_BreakCount {_%V_BreakCount}+1
+#
+# @CASE_FALLTHRU is an alternative to CBREAK
+# finish this case block, but resume testing/executing at the next case boundary instead of exiting the switch
+M CASE_FALLTHRU \
+  :_%V_NextCase \
+  %P \
+  =_%V_BreakCount {_%V_BreakCount}+1
 
 # End Case provides a target for, the %P is there to pop the %S from SWITCH
 
 M ENDCASE \
   :_%V_EndCase \
-  %P
+  %P 
+  
 #
 #
 # For Loops, We will continue to use notion A,B means constants and V means a variable

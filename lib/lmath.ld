@@ -2,10 +2,11 @@
 M __LIB_LMATH_LOADED 1
 P Loading lmath.ld
 I lmath.ref
-G strlen
+P Past Red
+L shift16.ld
+P Past Shift16
 L string.ld
 P Past string.ld load in lmath
-L shift16.ld
 M SIZESINCECOMMENT lmath.ld
 
 ########################
@@ -156,7 +157,12 @@ M Call32(P) @PUSHII %2 @PUSHI %2 @ADD 2 @PUSHS @CALL %1
 # Now the POP versions for simpifying POPing 2 word results into 32 bit variables
 #
 # POP32I(V) Pops right into a simple 32 bit variable stack High val on top
+P Defining POP32I
 M POP32I(V) @PUSH %1+2 @POPS @POPI %1
+M POP32I(VV) @PUSH %1+2 @POPS @POPI %1 @PUSH %2+2 @POPS @POPI %2
+#M POP32I(VVV) @PUSH %1+2 @POPS @POPI %1 @PUSH %2+2 @POPS @POPI %2 @PUSH %3+2 @POPS @POPI %3
+#
+# While VV and VVV make sense for simple POP32I, it gets too complex for double indirection.
 #
 # POP32II(V) Pops into PtrTo32bit (Note we're not using the 'P' term to stay consistent with POPII)
 M POP32II(V) @PUSHI %1 @ADD 2 @POPS @PUSHI %1 @POPS
@@ -167,6 +173,7 @@ M PUSH32II(V) PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS
 M PUSH32(A) @JMP _%0_Skip :_%0_Val %1 :_%0_Skip @PUSHI _%0_Val @PUSHI _%0_Val+2
 M M32A2V @PUSH32(A) %1 @POP32I(V) %2
 M M32V2V @PUSH32I(V) %1 @POP32I(V) %2
+M M32P2V `@PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POP32I(V) %2`
 M M32VTO16V @PUSHI %1 @POPI %2
 M M16VTO32V @PUSHI %1 @POPI %2 @PUSH 0 @POPI %2+2
 M PRT32HEXI @PRTHEXI %1+2 @PRTHEXI %1
@@ -183,14 +190,15 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @FUNCTION ADD32_BASE
 :ADD32_BASE
   @PUSHRETURN
-  @LocalVar SumLow 01
-  @LocalVar CarryAmt 02
-  @LocalVar A32_Low 03
-  @LocalVar A32_High 04
-  @LocalVar B32_Low 05
-  @LocalVar B32_High 06
-  @LocalVar R32_Low 07
-  @LocalVar R32_High 08  
+  @Locals
+  @Local SumLow
+  @Local CarryAmt
+  @Local A32_Low
+  @Local A32_High
+  @Local B32_Low
+  @Local B32_High
+  @Local R32_Low
+  @Local R32_High  
   
 
     @POP32I(V) B32_Low
@@ -221,17 +229,10 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @PUSHI SumLow
     @PUSHI R32_High
     @PUSHI CarryAmt
-  @RestoreVar 08
-  @RestoreVar 07
-  @RestoreVar 06
-  @RestoreVar 05
-  @RestoreVar 04
-  @RestoreVar 03
-  @RestoreVar 02
-  @RestoreVar 01
+  @EndLocals
   @POPRETURN
   @RET
-  ENDBLOCK
+  @ENDFUNCTION
 
 @FUNCTION ADD32
 :ADD32
@@ -239,7 +240,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @CALL ADD32S
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : ADD32S
 # Purpose  : Signed 32-bit addition with signed overflow flag
@@ -247,10 +248,11 @@ ENDBLOCK
 @FUNCTION ADD32S
 :ADD32S
   @PUSHRETURN
-  @LocalVar SumLow 01
-  @LocalVar R32_High 02
-  @LocalVar CarryAmt 03
-  @LocalVar OverFlow 04
+  @Locals
+  @Local SumLow
+  @Local R32_High
+  @Local CarryAmt
+  @Local OverFlow
 
     @CALL ADD32_BASE
     @POPI CarryAmt
@@ -283,13 +285,10 @@ ENDBLOCK
     @PUSHI SumLow
     @PUSHI R32_High
 
-  @RestoreVar 04
-  @RestoreVar 03
-  @RestoreVar 02
-  @RestoreVar 01
+  @EndLocals
   @POPRETURN
   @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : ADD32U
 # Purpose  : Unsigned 32-bit addition with carry flag
@@ -297,10 +296,11 @@ ENDBLOCK
 @FUNCTION ADD32U
 :ADD32U
   @PUSHRETURN
-  @LocalVar SumLow 01
-  @LocalVar R32_High 02
-  @LocalVar CarryAmt 03
-  @LocalVar OverFlow 04
+  @Locals
+  @Local SumLow
+  @Local R32_High
+  @Local CarryAmt
+  @Local OverFlow
 
     @CALL ADD32_BASE
     @POPI CarryAmt
@@ -320,13 +320,10 @@ ENDBLOCK
     @PUSHI SumLow
     @PUSHI R32_High
 
-  @RestoreVar 04
-  @RestoreVar 03
-  @RestoreVar 02
-  @RestoreVar 01
+  @EndLocals
   @POPRETURN
   @RET
-  ENDBLOCK
+  @ENDFUNCTION
 
 
 # ===========================================================
@@ -343,13 +340,14 @@ ENDBLOCK
 :SUB32
 :SUB32S
 @PUSHRETURN
-    @LocalVar BorrowFlag 01
-    @LocalVar A32_Low 02
-    @LocalVar A32_High 03
-    @LocalVar B32_Low 04
-    @LocalVar B32_High 05
-    @LocalVar R32_Low 06
-    @LocalVar R32_High 07
+@Locals
+    @Local BorrowFlag
+    @Local A32_Low
+    @Local A32_High
+    @Local B32_Low
+    @Local B32_High
+    @Local R32_Low
+    @Local R32_High
     
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
@@ -360,7 +358,7 @@ ENDBLOCK
     @POPI  R32_Low
 
     # --- Adjust high word if borrow occurred ---
-    @IF_NOTCARRY           # Carry → borrow
+    @IF_CARRY           # Carry → borrow
         @MA2V 1 BorrowFlag
     @ELSE
         @MA2V 0 BorrowFlag
@@ -382,16 +380,10 @@ ENDBLOCK
     # --- Push result back (low first, then high) ---
     @PUSH32I(V) R32_Low
     
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 04
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : SUB32U
@@ -406,13 +398,14 @@ ENDBLOCK
 @FUNCTION SUB32U
 :SUB32U
 @PUSHRETURN
-@LocalVar UCA_Low  01
-@LocalVar UCA_High 02
-@LocalVar UCB_Low  03
-@LocalVar UCB_High 04
-@LocalVar UCR_Low  05
-@LocalVar UCR_High 06
-@LocalVar BorrowFlag 07
+@Locals
+@Local UCA_Low
+@Local UCA_High
+@Local UCB_Low
+@Local UCB_High
+@Local UCR_Low
+@Local UCR_High
+@Local BorrowFlag
 =UCA UCA_Low
 =UCB UCB_Low
     @POP32I(V) UCB
@@ -451,16 +444,10 @@ ENDBLOCK
     # --- Push result (Low then High) ---
     @PUSH32I(V) UCR_Low
 
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : CMP32S
@@ -475,19 +462,20 @@ ENDBLOCK
 :CMP32
 :CMP32S
 @PUSHRETURN
-@LocalVar LowBorrowTmp    01   # borrow from low word (used for CF)
-@LocalVar HighBorrowTmp   02   # borrow from high word
-@LocalVar BorrowTmp       03   # final CF (unsigned borrow)
-@LocalVar OverflowTmp     04   # signed overflow flag
-@LocalVar AVar_Low        05
-@LocalVar AVar_High       06
-@LocalVar BVar_Low        07
-@LocalVar BVar_High       08
-@LocalVar RVar_Low        09
-@LocalVar RVar_High       10
-@LocalVar TmpA            11
-@LocalVar TmpB            12
-@LocalVar TmpR            13
+@Locals
+@Local LowBorrowTmp   # borrow from low word (used for CF)
+@Local HighBorrowTmp   # borrow from high word
+@Local BorrowTmp   # final CF (unsigned borrow)
+@Local OverflowTmp   # signed overflow flag
+@Local AVar_Low
+@Local AVar_High
+@Local BVar_Low
+@Local BVar_High
+@Local RVar_Low
+@Local RVar_High
+@Local TmpA
+@Local TmpB
+@Local TmpR
 =AVar AVar_Low
 =BVar BVar_Low
 
@@ -590,22 +578,10 @@ ENDBLOCK
     @ENDIF
     @POPNULL
 
-@RestoreVar 13
-@RestoreVar 12
-@RestoreVar 11
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -621,14 +597,15 @@ ENDBLOCK
 @FUNCTION CMP32U
 :CMP32U
 @PUSHRETURN
-  @LocalVar LowBorrowTmp   01
-  @LocalVar HighBorrowTmp  02
-  @LocalVar A_L            03
-  @LocalVar A_H            04
-  @LocalVar B_L            05
-  @LocalVar B_H            06
-  @LocalVar R_L            07
-  @LocalVar R_H            08
+@Locals
+  @Local LowBorrowTmp
+  @Local HighBorrowTmp
+  @Local A_L
+  @Local A_H
+  @Local B_L
+  @Local B_H
+  @Local R_L
+  @Local R_H
 
   @POP32I(V) B_L
   @POP32I(V) A_L
@@ -674,17 +651,10 @@ ENDBLOCK
 
 :CMP32Ucmp_done
 
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : AND32
@@ -696,12 +666,13 @@ ENDBLOCK
 :AND32
 @PUSHRETURN
 
-    @LocalVar A32_Low 01
-    @LocalVar A32_High 02
-    @LocalVar B32_Low 03
-    @LocalVar B32_High 04
-    @LocalVar R32_Low 05
-    @LocalVar R32_High 06
+@Locals
+    @Local A32_Low
+    @Local A32_High
+    @Local B32_Low
+    @Local B32_High
+    @Local R32_Low
+    @Local R32_High
     
 
     @POP32I(V) B32_Low
@@ -725,15 +696,10 @@ ENDBLOCK
     @PUSHI R32_Low
     @PUSHI R32_High
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01    
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : OR32
 # Purpose  : Bitwise OR of two 32-bit values on the stack
@@ -744,12 +710,13 @@ ENDBLOCK
 @FUNCTION OR32
 :OR32
 @PUSHRETURN
-    @LocalVar A32_Low 01
-    @LocalVar A32_High 02
-    @LocalVar B32_Low 03
-    @LocalVar B32_High 04
-    @LocalVar R32_Low 05
-    @LocalVar R32_High 06
+@Locals
+    @Local A32_Low
+    @Local A32_High
+    @Local B32_Low
+    @Local B32_High
+    @Local R32_Low
+    @Local R32_High
 
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
@@ -771,15 +738,10 @@ ENDBLOCK
     @PUSHI R32_Low
     @PUSHI R32_High
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01        
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : XOR32
 # Purpose  : Bitwise XOR of two 32-bit values on the stack
@@ -790,12 +752,13 @@ ENDBLOCK
 @FUNCTION XOR32
 :XOR32
 @PUSHRETURN
-    @LocalVar A32_Low 01
-    @LocalVar A32_High 02
-    @LocalVar B32_Low 03
-    @LocalVar B32_High 04
-    @LocalVar R32_Low 05
-    @LocalVar R32_High 06
+@Locals
+    @Local A32_Low
+    @Local A32_High
+    @Local B32_Low
+    @Local B32_High
+    @Local R32_Low
+    @Local R32_High
 
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
@@ -816,15 +779,10 @@ ENDBLOCK
     @PUSHI R32_Low
     @PUSHI R32_High
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01    
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : INV32
 # Purpose  : Bitwise INV/NOT of a 32-bit value on the stack
@@ -835,10 +793,11 @@ ENDBLOCK
 @FUNCTION INV32
 :INV32
 @PUSHRETURN
-    @LocalVar A32_Low 01
-    @LocalVar A32_High 02
-    @LocalVar B32_Low 03
-    @LocalVar B32_High 04
+@Locals
+    @Local A32_Low
+    @Local A32_High
+    @Local B32_Low
+    @Local B32_High
     
     @POP32I(V) A32_Low
 
@@ -859,13 +818,10 @@ ENDBLOCK
     @PUSHI R32_Low
     @PUSHI R32_High
     
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01        
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : COMP232
 # Purpose  : Take the 2's compliment of 32-bit value on stack
@@ -876,10 +832,11 @@ ENDBLOCK
 @FUNCTION COMP232
 :COMP232
 @PUSHRETURN
-@LocalVar AVar_Low 01
-@LocalVar AVar_High 02
-@LocalVar RVar_Low 03
-@LocalVar RVar_High 04
+@Locals
+@Local AVar_Low
+@Local AVar_High
+@Local RVar_Low
+@Local RVar_High
     @POP32I(V) AVar_Low
 
     # Invert both words
@@ -898,19 +855,16 @@ ENDBLOCK
     @IF_CARRY
        @INCI RVar_High    
     @ENDIF
+    # --- SetFlags ---
+    @Call32(AV) CMP32S $$$0 RVar_Low
 
     @PUSHI RVar_Low
     @PUSHI RVar_High
 
-    # --- SetFlags ---
-    @Call32(AV) CMP32S $$$0 RVar_Low
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -922,12 +876,13 @@ ENDBLOCK
 @FUNCTION SetFlags32
 :SetFlags32
 @PUSHRETURN
-    @LocalVar RLow     01
-    @LocalVar RHigh    02
-    @LocalVar Mode     03
-    @LocalVar CarryIn  04
-    @LocalVar OverflowIn 05
-    @LocalVar IsZero   06
+@Locals
+    @Local RLow
+    @Local RHigh
+    @Local Mode
+    @Local CarryIn
+    @Local OverflowIn
+    @Local IsZero
 
     @POPI OverflowIn
     @POPI CarryIn
@@ -940,7 +895,7 @@ ENDBLOCK
     @PUSHI RLow
     @ORI RHigh
     @POPI IsZero
-    @IF_EQ_VA IsZero, 0
+    @IF_EQ_VA IsZero 0
         @PUSHI Flags32 @OR Z32Flag @POPI Flags32
     @ELSE
         @PUSHI Z32Flag @INV @ANDI Flags32 @POPI Flags32    
@@ -988,15 +943,10 @@ ENDBLOCK
     @ENDIF
 
     # Clean up
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #===========================================================
 # Function : SHL32_8
 # Purpose  : Shifts 32 bit value left by 8 bits for efficency
@@ -1006,8 +956,9 @@ ENDBLOCK
 @FUNCTION SHL32_8
 :SHL32_8     # ( NUM{LowWord,HighWord} -- )   Modify 32-bit value in place
 @PUSHRETURN
-  @LocalVar NUM 02    # We will be testing NUM-1 we must make sure NUM address != 0
-  @LocalVar Num_High 03
+@Locals
+  @Local NUM    # We will be testing NUM-1 we must make sure NUM address != 0
+  @Local Num_High
   
 
   @POP32I(V) NUM        # NUM = base address of the 32-bit value
@@ -1018,11 +969,10 @@ ENDBLOCK
   @PUSH NUM @POPS
 
   @PUSH32I(V) NUM
-  @RestoreVar 03
-  @RestoreVar 02
+  @EndLocals
   @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #===========================================================
 # Function : SHR32_8
@@ -1033,8 +983,9 @@ ENDBLOCK
 @FUNCTION SHR32_8
 :SHR32_8     # ( NUM{LowWord,HighWord} -- )
 @PUSHRETURN
-  @LocalVar NUM 02      # We will be testing NUM-1 we must make sure NUM address != 0
-  @LocalVar NUM_High 03
+@Locals
+  @Local NUM      # We will be testing NUM-1 we must make sure NUM address != 0
+  @Local NUM_High
 
   @POP32I(V) NUM     # NUM = base address of 32-bit value
 
@@ -1050,11 +1001,10 @@ ENDBLOCK
 
   @PUSH32I(V) NUM
 
-  @RestoreVar 03
-  @RestoreVar 02
+  @EndLocals
   @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -1066,13 +1016,14 @@ ENDBLOCK
 @FUNCTION SHL32
 :SHL32
 @PUSHRETURN
-    @LocalVar Low      01
-    @LocalVar High     02
-    @LocalVar Count    03
-    @LocalVar CarryOut 04
-    @LocalVar C8       05
-    @LocalVar C1       06
-    @LocalVar _I       07
+@Locals
+    @Local Low
+    @Local High
+    @Local Count
+    @Local CarryOut
+    @Local C8
+    @Local C1
+    @Local _I
 
     # Read args
     @POPI Count
@@ -1162,16 +1113,10 @@ ENDBLOCK
 :SHL32_End
     @PUSH32I(V) Low
 
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05    
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : SHL32_small
@@ -1182,19 +1127,18 @@ ENDBLOCK
 @FUNCTION SHL32_small
 :SHL32_small
 @PUSHRETURN
-    @LocalVar Low      01
-    @LocalVar High     02
-    @LocalVar Count    03
-    @LocalVar CarryOut 04
-    @LocalVar Bit15    05
-    @LocalVar i        06
+@Locals
+    @Local Low
+    @Local High
+    @Local Count
+    @Local CarryOut
+    @Local Bit15
+    @Local i
 
     
-#    @PRT "SHL32_small stack before POPing arguments:" @StackDump
     @POPI Count
     @POPI High
     @POPI Low
-#    @PRT "SHL32_small(" @PRT32HEXI Low @PRT "," @PRTI Count @PRT ")="
     @MA2V 0 CarryOut
 
     @ForIA2V i 0 Count
@@ -1255,17 +1199,11 @@ ENDBLOCK
     @PUSHI High
     @PUSHI CarryOut
     
-#    @PRT32HEXI Low @PRT " Carry:" @PRTI CarryOut @PRTNL
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -1289,7 +1227,7 @@ ENDBLOCK
 #    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : SHR32
 # Purpose  : Shift 32-bit value right by N bits (unsigned)
@@ -1299,13 +1237,14 @@ ENDBLOCK
 @FUNCTION SHR32
 :SHR32
 @PUSHRETURN
-    @LocalVar Low      01
-    @LocalVar High     02
-    @LocalVar Count    03
-    @LocalVar CarryOut 04
-    @LocalVar C8       05
-    @LocalVar C1       06
-    @LocalVar _I       07
+@Locals
+    @Local Low
+    @Local High
+    @Local Count
+    @Local CarryOut
+    @Local C8
+    @Local C1
+    @Local _I
 
     @POPI Count
     @POP32I(V) Low
@@ -1393,16 +1332,10 @@ ENDBLOCK
     @PUSH32I(V) Low
     
 
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ===========================================================
 # Function : SHR32_small
 # Purpose  : Shift 32-bit value right by 1..7 bits (unsigned)
@@ -1412,12 +1345,13 @@ ENDBLOCK
 @FUNCTION SHR32_small
 :SHR32_small
 @PUSHRETURN
-    @LocalVar Low      01
-    @LocalVar High     02
-    @LocalVar Count    03
-    @LocalVar CarryOut 04
-    @LocalVar Bit0     05
-    @LocalVar i        06
+@Locals
+    @Local Low
+    @Local High
+    @Local Count
+    @Local CarryOut
+    @Local Bit0
+    @Local i
 
     @POPI Count
     @POP32I(V) Low
@@ -1466,15 +1400,10 @@ ENDBLOCK
     @PUSHI High
     @PUSHI CarryOut
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : SHR32_1
@@ -1486,19 +1415,20 @@ ENDBLOCK
 @FUNCTION SHR32_1
 :SHR32_1
 @PUSHRETURN
-    @LocalVar Low 01
-    @LocalVar High 02
+@Locals
+    @Local Low
+    @Local High
 
     @POP32I(V) Low   # Pop Low and High from stack
     @PUSH32I(V) Low
     @PUSH 1
     @CALL SHL32
-    @RestoreVar 02
-    @RestoreVar 01
+
+@EndLocals
 
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : MUL32U
@@ -1511,32 +1441,26 @@ ENDBLOCK
 @FUNCTION MUL32U
 :MUL32U
 @PUSHRETURN
-    @LocalVar A_Low     01
-    @LocalVar A_High    02
-    @LocalVar B_Low     03
-    @LocalVar B_High    04
-    @LocalVar P0_Low    05
-    @LocalVar P0_High   06
-    @LocalVar P1_Low    07
-    @LocalVar P1_High   08
-    @LocalVar P2_Low    09
-    @LocalVar P2_High   10
-    @LocalVar P3_Low    11
-    @LocalVar P3_High   12
-    @LocalVar Sum_Low   13
-    @LocalVar Sum_High  14
-    @LocalVar Carry     15
+@Locals
+    @Local A_Low
+    @Local A_High
+    @Local B_Low
+    @Local B_High
+    @Local P0_Low
+    @Local P0_High
+    @Local P1_Low
+    @Local P1_High
+    @Local P2_Low
+    @Local P2_High
+    @Local P3_Low
+    @Local P3_High
+    @Local Sum_Low
+    @Local Sum_High
+    @Local Carry
 
     # Pop operands
     @POP32I(V) B_Low
     @POP32I(V) A_Low
-
-    ? DebugFlag
-       @PRT "\nUnsigned Multiply: "
-       @PRTHEXI A_High @PRTHEXI A_Low @PRT ":" @PRT32I A_Low  @PRT " X "
-       @PRTHEXI B_High @PRTHEXI B_Low @PRT ":"  @PRT32I B_Low @PRTNL       
-   ENDBLOCK
-       
 
     # Zero out the upper 32 bits for the 64 bit overflow.
     @MA2V 0 OVF32
@@ -1563,15 +1487,6 @@ ENDBLOCK
     @POPI P3_High
     @POPI P3_Low
 
-    ? DebugFlag
-      @PRT "Partial Products are:\n"
-      @PRT "PO: " @PRTHEXI P0_Low @PRTHEXI P0_High @PRTSP @PRT32I P0_Low @PRTNL
-      @PRT "P1: " @PRTHEXI P1_Low @PRTHEXI P1_High @PRTSP @PRT32I P1_Low @PRTNL
-      @PRT "P2: " @PRTHEXI P2_Low @PRTHEXI P2_High @PRTSP @PRT32I P2_Low @PRTNL
-      @PRT "P3: " @PRTHEXI P3_Low @PRTHEXI P3_High @PRTSP @PRT32I P3_Low @PRTNL
-    ENDBLOCK
-    
-    
 
     # ---- Combine partial products ----
     # Low 32 bits: P0 + ((P1 + P2) << 16)
@@ -1582,43 +1497,24 @@ ENDBLOCK
     @POPI Sum_High    # carry out (0/1)
     @POPI Sum_Low
 
-    ? DebugFlag
-      @PRT "    # Step 1: Sum (P1_Low + P2_Low)\n"
-      @PRT "Su(1)m=" @PRTHEXI Sum_High @PRTHEXI Sum_Low @PRT ":" @PRT32I Sum_Low @PRTNL
-    ENDBLOCK
-
     # Step 2: Add ((Sum_Low << 16) + P0)
     # Simulate 32-bit addition
     @Call(AVVV) ADD32U 0 Sum_Low P0_Low P0_High
     @POPI Sum_High
     @POPI Sum_Low
 
-    ? DebugFlag
-      @PRT "    # Step 2: Add ((Sum_Low << 16) + P0)\n"
-      @PRT "Sum(2)=" @PRTHEXI Sum_High @PRTHEXI Sum_Low @PRT ":"  @PRT32I Sum_Low @PRTNL
-    ENDBLOCK
     # Step 3: Compute upper 32 bits (for overflow / mantissa)
     # OVF32 = P3 + P1_High + P2_High + carry
     @Call(VV) ADD16U P3_Low P1_High    
     @POPI Carry
     @POPI P3_Low
 
-    ? DebugFlag
-      @PRT "    # Step 3: Compute upper 32 bits (for overflow / mantissa)\n"
-      @PRT "Carry = " @PRTHEXI Carry @PRTNL
-      @PRT "P3_Low = " @PRTHEXI P3_Low @PRTNL
-    ENDBLOCK
     
     @PUSHI Carry         # Save First Carry
     @Call(VV) ADD16U P3_Low P2_High
     @POPI Carry
     @POPI P3_Low
     @ADDI Carry          # First Carry + 2nd Carry
-
-    ? DebugFlag
-      @PRT "     # Step P3_Low + P2+High + Carry\n"
-      @PRT "Result = :" @PRTHEXTOP @PRTNL
-    ENDBLOCK
 
     @Call(VV) ADD16U  P2_High P3_Low
     @POPI Carry
@@ -1627,35 +1523,16 @@ ENDBLOCK
     @ADDI P3_Low
     @POPI P3_Low         # IF there should be another carry here, that could be capture for 128bit math? Naaa
 
-    ? DebugFlag
-      @PRT "     # Step Add P2_High + P3_Low + Carry"
-      @PRT "Result = " @PRTHEXI P3_Low @PRTNL
-    ENDBLOCK
-
     @MV2V P3_Low OVF32   # global register
     @MV2V Carry OVF32+2  # High part of overflow.
 
     # ---- Return result ----
     @PUSHI Sum_Low
     @PUSHI Sum_High
-    @RestoreVar 15
-    @RestoreVar 14
-    @RestoreVar 13
-    @RestoreVar 12
-    @RestoreVar 11
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : MUL16x32U
@@ -1670,19 +1547,20 @@ ENDBLOCK
 @FUNCTION MUL16x32U
 :MUL16x32U
 @PUSHRETURN
-    @LocalVar A16       01
-    @LocalVar B16       02
-    @LocalVar R_Low     03
-    @LocalVar R_High    04
-    @LocalVar Bit       05
-    @LocalVar Mask      06
-    @LocalVar AShifter_L  07
-    @LocalVar AShifter_H  08    
-    @LocalVar Carry1     09
-    @LocalVar TempSum   10
-    @LocalVar Carry2    11
-    @LocalVar Carry3    12
-    @LocalVar TempSum_H  13
+@Locals
+    @Local A16
+    @Local B16
+    @Local R_Low
+    @Local R_High
+    @Local Bit
+    @Local Mask
+    @Local AShifter_L
+    @Local AShifter_H    
+    @Local Carry1
+    @Local TempSum
+    @Local Carry2
+    @Local Carry3
+    @Local TempSum_H
 
 
     @POPI B16
@@ -1741,22 +1619,10 @@ ENDBLOCK
     @PUSHI R_High
     
 
-    @RestoreVar 13
-    @RestoreVar 12
-    @RestoreVar 11
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : ADD16U
@@ -1770,10 +1636,11 @@ ENDBLOCK
 @FUNCTION ADD16U
 :ADD16U
 @PUSHRETURN
-    @LocalVar A16    01
-    @LocalVar B16    02
-    @LocalVar R16    03
-    @LocalVar Carry  04
+@Locals
+    @Local A16
+    @Local B16
+    @Local R16
+    @Local Carry
 
     @POPI B16
     @POPI A16
@@ -1791,13 +1658,10 @@ ENDBLOCK
     @PUSHI R16
     @PUSHI Carry
 
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -1817,11 +1681,12 @@ ENDBLOCK
 @FUNCTION SHL16x32
 :SHL16x32
 @PUSHRETURN
-    @LocalVar ShiftCount 01
-    @LocalVar Value 02
-    @LocalVar PR_Low 03
-    @LocalVar PR_High 04
-    @LocalVar Index 05
+@Locals
+    @Local ShiftCount
+    @Local Value
+    @Local PR_Low
+    @Local PR_High
+    @Local Index
     
 
     @POPI ShiftCount
@@ -1838,14 +1703,10 @@ ENDBLOCK
     @PUSHI PR_Low
     @PUSHI PR_High
 
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ===========================================================
 # Function : SHR16x32
@@ -1862,11 +1723,12 @@ ENDBLOCK
 @FUNCTION SHR16x32
 :SHR16x32
 @PUSHRETURN
-    @LocalVar ShiftCount 01
-    @LocalVar Value      02
-    @LocalVar R_Low      03
-    @LocalVar R_High     04
-    @LocalVar Index      05
+@Locals
+    @Local ShiftCount
+    @Local Value
+    @Local R_Low
+    @Local R_High
+    @Local Index
 
     @POPI ShiftCount
     @POPI Value
@@ -1882,14 +1744,10 @@ ENDBLOCK
     @PUSHI R_Low
     @PUSHI R_High
 
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -1903,14 +1761,15 @@ ENDBLOCK
 @FUNCTION MUL32S
 :MUL32S
 @PUSHRETURN
-    @LocalVar A_Low 01
-    @LocalVar A_High 02
-    @LocalVar B_Low 03
-    @LocalVar B_High 04
-    @LocalVar SignA 05
-    @LocalVar SignB 06
-    @LocalVar R_Low 07
-    @LocalVar R_High 08
+@Locals
+    @Local A_Low
+    @Local A_High
+    @Local B_Low
+    @Local B_High
+    @Local SignA
+    @Local SignB
+    @Local R_Low
+    @Local R_High
 
     # Pop inputs (stack: [ ... A_Low A_High B_Low B_High ])
     @POP32I(V) B_Low
@@ -1959,17 +1818,10 @@ ENDBLOCK
     # Push final result
     @PUSH32I(V) R_Low
 
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ############################################################
 # DIV32U  -  Unsigned 32-bit divide A/B
 # Inputs:  ( A_L A_H B_L B_H )
@@ -1983,15 +1835,16 @@ ENDBLOCK
 @FUNCTION DIV32U
 :DIV32U
 @PUSHRETURN
-    @LocalVar A_L      01
-    @LocalVar A_H      02
-    @LocalVar B_L      03
-    @LocalVar B_H      04
-    @LocalVar R_L      05
-    @LocalVar R_H      06
-    @LocalVar Q_L      07
-    @LocalVar Q_H      08
-    @LocalVar BitIndex 09
+@Locals
+    @Local A_L
+    @Local A_H
+    @Local B_L
+    @Local B_H
+    @Local R_L
+    @Local R_H
+    @Local Q_L
+    @Local Q_H
+    @Local BitIndex
 
     ########################################################
     # Load inputs
@@ -2070,19 +1923,10 @@ ENDBLOCK
     ########################################################
     @PUSH32I(V) R_L
     @PUSH32I(V) Q_L
-
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -2098,20 +1942,21 @@ ENDBLOCK
 @FUNCTION DIV32S
 :DIV32S
 @PUSHRETURN
-    @LocalVar A_Low 01
-    @LocalVar A_High 02
-    @LocalVar B_Low 03
-    @LocalVar B_High 04
-    @LocalVar SignA 05
-    @LocalVar SignB 06
-    @LocalVar R_Low 07
-    @LocalVar R_High 08
-    @LocalVar Rem_Low 09
-    @LocalVar Rem_High 10
-    @LocalVar AB_A_Low 11
-    @LocalVar AB_A_High 12
-    @LocalVar AB_B_Low 13
-    @LocalVar AB_B_High 14
+@Locals
+    @Local A_Low
+    @Local A_High
+    @Local B_Low
+    @Local B_High
+    @Local SignA
+    @Local SignB
+    @Local R_Low
+    @Local R_High
+    @Local Rem_Low
+    @Local Rem_High
+    @Local AB_A_Low
+    @Local AB_A_High
+    @Local AB_B_Low
+    @Local AB_B_High
 
     # Pop inputs (stack: [ ... A_Low A_High B_Low B_High ])
     @POP32I(V) B_Low
@@ -2157,10 +2002,10 @@ ENDBLOCK
        @ENDIF       
     @ENDIF    
     @POPNULL
-   
     @Call32(VV) DIV32U AB_A_Low AB_B_Low
-    @POP32I(V) Rem_Low
     @POP32I(V) R_Low
+    @POP32I(V) Rem_Low
+
 
     @IF_NEQ_VV SignA SignB
       @Call32(V) COMP232 R_Low
@@ -2172,29 +2017,16 @@ ENDBLOCK
     @ENDIF
     :DoneDIV32S
     # -------------------------------------------------------
-    @PUSH32I(V) R_Low
     @PUSH32I(V) Rem_Low
+    @PUSH32I(V) R_Low
 
     # -------------------------------------------------------
     # Restore locals and return
     # -------------------------------------------------------
-    @RestoreVar 14
-    @RestoreVar 13
-    @RestoreVar 12
-    @RestoreVar 11
-    @RestoreVar 10    
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 
@@ -2207,12 +2039,13 @@ ENDBLOCK
 @FUNCTION SHL3264
 :SHL3264
 @PUSHRETURN
-    @LocalVar In_Low 01
-    @LocalVar In_High 02
-    @LocalVar In_Count 03
-    @LocalVar Over_Low 04
-    @LocalVar Over_High 05
-    @LocalVar Index1 06
+@Locals
+    @Local In_Low
+    @Local In_High
+    @Local In_Count
+    @Local Over_Low
+    @Local Over_High
+    @Local Index1
 
     @POPI In_Count
     @POP32I(V) In_Low
@@ -2238,15 +2071,10 @@ ENDBLOCK
     @PUSH32I(V) Over_Low
     @PUSH32I(V) In_Low
     
-    @RestoreVar 06    
-    @RestoreVar 05
-    @RestoreVar 04    
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
      
 ############################################################
 # SetBit32
@@ -2259,10 +2087,11 @@ ENDBLOCK
 @FUNCTION SetBit32
 :SetBit32
 @PUSHRETURN
-    @LocalVar ValL 01
-    @LocalVar ValH 02
-    @LocalVar Bit  03
-    @LocalVar Mask 04
+@Locals
+    @Local ValL
+    @Local ValH
+    @Local Bit
+    @Local Mask
 
     # Pop arguments
     @POPI Bit
@@ -2308,14 +2137,12 @@ ENDBLOCK
     @PUSHI ValH
 
     # cleanup
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+
+@EndLocals
 
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ===========================================================
@@ -2327,11 +2154,12 @@ ENDBLOCK
 @FUNCTION ClearBit32
 :ClearBit32
 @PUSHRETURN
-    @LocalVar ValL 01
-    @LocalVar ValH 02
-    @LocalVar Bit  03
-    @LocalVar BitMask_L 04
-    @LocalVar BitMask_H 05
+@Locals
+    @Local ValL
+    @Local ValH
+    @Local Bit
+    @Local BitMask_L
+    @Local BitMask_H
 
     @POPI Bit
     @POPI ValH
@@ -2355,14 +2183,10 @@ ENDBLOCK
 
     @PUSH32I(V) ValL
     
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ============================================================
 # Function : DIV10_32U
 # Purpose  : 'quick' divide by ten (When later optimized)
@@ -2376,7 +2200,7 @@ ENDBLOCK
    @CALL DIV32U
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ============================================================
 # Some Later time to optimied with multiplicative inverse
 # This will require 64 bit multiple, so do later.
@@ -2391,15 +2215,16 @@ ENDBLOCK
 @FUNCTION i32tos
 :i32tos
 @PUSHRETURN
-   @LocalVar StrPtr 01
-   @LocalVar In_Low 02
-   @LocalVar In_High 03
-   @LocalVar InBase 04
-   @LocalVar InBase_High 05
-   @LocalVar NegFlag 06
-   @LocalVar RevIndex 07
-   @LocalVar Rem_Low 08
-   @LocalVar Rem_High 09
+@Locals
+   @Local StrPtr
+   @Local In_Low
+   @Local In_High
+   @Local InBase
+   @Local InBase_High
+   @Local NegFlag
+   @Local RevIndex
+   @Local Rem_Low
+   @Local Rem_High
    
    @IF_GT_A 16            # Limit to max of base 16
       @POPNULL
@@ -2442,8 +2267,8 @@ ENDBLOCK
    @DO_NOTZERO
       @POPNULL
       @Call32(VV) DIV32U In_Low InBase    # In = In/Base, remainder on stack
-      @POP32I(V) Rem_Low    # While 32 bit, low value will always in range 0-base
-      @POP32I(V) In_Low
+      @POP32I(V) In_Low        # quotient
+      @POP32I(V) Rem_Low       # remainder/digit
       @PUSHI Rem_Low
       @AND 0xf          # Bases larger than 16 not supported
       @ADD 0x30         # Convert to ascii
@@ -2472,18 +2297,10 @@ ENDBLOCK
    @ENDWHILE
    @POPNULL
 :Endi32tos
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   @EndLocals
    @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 :WorkBuff "00000000000" $$0   # 11 bytes for max length int32 string.
 # ============================================================
@@ -2496,18 +2313,19 @@ ENDBLOCK
 @FUNCTION stoi32
 :stoi32
 @PUSHRETURN
-    @LocalVar StrPtr 01
-    @LocalVar NegFlag 02
-    @LocalVar Base 03
-    @LocalVar Base_High 04
-    @LocalVar InValue_Low 05
-    @LocalVar InValue_High 06
-    @LocalVar Mult_Low 07
-    @LocalVar Mult_High 08
-    @LocalVar Length 09
-    @LocalVar Digit 10
-    @LocalVar Digit_High 11
-    @LocalVar Temp_Low 12
+@Locals
+    @Local StrPtr
+    @Local NegFlag
+    @Local Base
+    @Local Base_High
+    @Local InValue_Low
+    @Local InValue_High
+    @Local Mult_Low
+    @Local Mult_High
+    @Local Length
+    @Local Digit
+    @Local Digit_High
+    @Local Temp_Low
 
     # --- Initialize ---
     @POPI StrPtr
@@ -2609,21 +2427,10 @@ ENDBLOCK
 
     # --- Return ---
     @PUSH32I(V) InValue_Low
-    @RestoreVar 12    
-    @RestoreVar 11
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 

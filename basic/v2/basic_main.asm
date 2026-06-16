@@ -2,14 +2,17 @@ M USE_ONLY 1
 I common.mc
 I basic_common.h
 L softstack.ld
-L hexdump.ld
-L diskos.ld
-L string.ld
-L lmath.ld
-L mul.ld
-L div.ld
 L heapmgr.ld
-
+L hexdump.ld
+L mul.ld
+P Past Mul
+L div.ld
+P Past Div
+L string.ld
+P Past String
+P STRSETI set to {STRSETI}
+L diskos.ld
+L lmath.ld
 I basic_header.asm
 I basic_storage.asm
 I basic_support.asm
@@ -38,7 +41,11 @@ I basic_eval.asm
     @CALL ProgramInit
 
 :MainLoop
-    @StackDump
+    @SRTP
+    @IF_NOTZERO
+       @StackDump
+    @ENDIF
+    @POPNULL
     @PRT "> "
 
     # Read a full line (device handles editing & termination)
@@ -905,7 +912,7 @@ I basic_eval.asm
                @Call(VVV) EmitByte OutPtr TokenCode OutSize @POPI OutSize @POPI OutPtr
             @ELSE
                @POPNULL
-               @Call(VAV) EmitByte ( OutPtr VAR_TOKEN OutSize ) @POPI OutSize @POPI OutPtr
+               @Call(VAV) EmitByte OutPtr VAR_TOKEN OutSize @POPI OutSize @POPI OutPtr
                @Call(VVV) EmitByte OutPtr Length OutSize @POPI OutSize @POPI OutPtr
                @Call(VVVV) EmitBlock OutPtr StartPtr Length OutSize @POPI OutSize @POPI OutPtr
             @ENDIF
@@ -1094,7 +1101,6 @@ I basic_eval.asm
       @POPNULL
       @RestoreVar 01
    @ENDIF
-   @StackDump
    @POPNULL
 
    @PUSHI BreakFlag
@@ -1111,6 +1117,6 @@ I basic_eval.asm
 # --------------------------------------------------
 # Program entry point
 # --------------------------------------------------
-. BasicMain
+.ORG BasicMain
 M SIZESINCECOMMENT basic_main.h
 @SIZESINCE  

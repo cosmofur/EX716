@@ -109,6 +109,11 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =SCLR 54
 =SRTP 55
 
+M TRUE 1
+=TRUE 1
+M FALSE 0
+=FALSE 0
+
 # Cast and Poll Codes
 =CastPrintStr 1
 =CastPrintInt 2
@@ -323,28 +328,73 @@ M LOADBI \
       @PUSHI %1 @AND 0xff
 #
 
-M JMPNZ @JMPZ %0_SKIP @JMP %1 :%0_SKIP        # A != B
-M JMPNZI @JMPZ %0 @JMPI %1 :%0_SKIP
-M JMPZI @JMPNZ %0_SKIP @JMPI %1 :%0_SKIP
-M JMPNC @JMPC %0_SKIP @JMP %1 :%0_SKIP   # No Carry
-M JMPNO @JMPO %0_SKIP @JMP %1 :%0_SKIP        # No Overflow
-M JMPNN @JMPO %0_SKIP @JMP %1 :%0_SKIP   # Not Negative
-#  For this group, remeber the flags are based on the B-A
-#  Example PUSH A20 PUSH B30 CMPS, flag would  be N as 20 < 30 
-#          PUSH A40 PUSH B20 CMPS, FLAG would be !N as 40 > 20
-# ---------------------------------------------------------------
-# Signed Jump Helpers (for use after CMP/CMPI)
-# ---------------------------------------------------------------
-# Signed Logic Tables
-#    NF          OF       ZF           Means
-#    0           0        0             >
-#    0           0        1            ==
-#    0           1        0             <
-#    1           0        0             <
-#    1           1        0             >
-#    -           -        1            ==
+
+# CMP evaluates:
 #
-# LT = (NF=1, OF=0) OR (NF=0, OF=1)   (Xor NF and OF)
+#        TOS - Operand
+#
+# For:
+#
+#        PUSH A
+#        CMP B
+#
+# the flags describe A-B.
+#
+# ---------------------------------------------------------------
+# Normal non-overflow examples
+# ---------------------------------------------------------------
+#
+# Signed and unsigned agree when both values have the same sign
+# and no signed overflow occurs.
+#
+#----A------B------A-B------ZF----NF----CF----OF----Signed----Unsigned
+#----10-----10------0--------1-----0-----0-----0------==--------==
+#----10-----11----- -1-------0-----1-----1-----0------<---------<
+#----10------9------ 1-------0-----0-----0-----0------>--------->
+#--- -10--- -10------0-------1-----0-----0-----0------==--------==
+#--- -10--- -11------1-------0-----0-----0-----0------>--------->
+#--- -10---- -9----- -1------0-----1-----1-----0------<---------<
+#
+# ---------------------------------------------------------------
+# Signed vs unsigned disagreement examples
+# ---------------------------------------------------------------
+#
+# These differ because the same 16-bit bit-patterns have different
+# signed and unsigned interpretations.
+#
+#----A------B------A-B------ZF----NF----CF----OF----Signed----Unsigned
+#----10---- -10-----20-------0-----0-----1-----0------>---------<
+#--- -10----10----- -20------0-----1-----0-----0------<--------->
+#
+# ---------------------------------------------------------------
+# Derived comparison logic
+# ---------------------------------------------------------------
+#
+# Equality:
+#
+#        A == B       ZF == 1
+#        A != B       ZF == 0
+#
+# Unsigned comparison:
+#
+#        A <  B       CF == 1
+#        A >= B       CF == 0
+#        A >  B       CF == 0 AND ZF == 0
+#        A <= B       CF == 1 OR  ZF == 1
+#
+# Signed comparison:
+#
+#        A <  B       NF XOR OF
+#        A >= B       NOT (NF XOR OF)
+#        A >  B       ZF == 0 AND NOT (NF XOR OF)
+#        A <= B       ZF == 1 OR  (NF XOR OF)
+#
+M JMPNZ @JMPZ %0_SKIP @JMP %1 :%0_SKIP        # A != B
+M JMPNZI @JMPZ %0_SKIP @JMPI %1 :%0_SKIP      # Indirect Jmp When A !=B
+M JMPZI @JMPNZ %0_SKIP @JMPI %1 :%0_SKIP      # Indirect Jmp when A==B
+M JMPNC @JMPC %0_SKIP @JMP %1 :%0_SKIP        # No Carry
+M JMPNO @JMPO %0_SKIP @JMP %1 :%0_SKIP        # No Overflow
+M JMPNN @JMPN %0_SKIP @JMP %1 :%0_SKIP        # Not Negative
 M CheckSignedLess \
   @JMPN %0_Test1 \ # If NF=1 -> Check OF next
   @JMPO %1        \ # NF=0,O=0 -> Skip else fall though
@@ -1113,54 +1163,24 @@ M ISUSED        `?  __STORE_%1`
 #--------------------------------------------------
 # Default mode (include everything)
 #--------------------------------------------------
-M TRUE 1
 
-   # Mark function as used (optional in this mode)
-   M USE MF __USE_%1 %1
+# Mark function as used (optional in this mode)
+M USE MF __USE_%1 %1
 
-   # FUNCTION always emits
-   M FUNCTION \
-      ? TRUE \
-      :_HERE%0 \
-      MF __DEFINE_%1 _HERE%0 \
-      MF __LastFunc %1 \
-      G %1
+# FUNCTION always emits
+M FUNCTION \
+   MF __FUNC_BEGIN_%1 1 \
+   MF __FUNC_LAST %1 \
+   :__FuncStart \
+   =__FUNC_START_%1 {__FuncStart}
 
-   M ENDFUNCTION \
-      :_HERE%0 \
-      MF __ENDOF __LastFunc _HERE%0 \
-      ENDBLOCK
-   M FUNCTIONNEEDS `? __EX716_NEVER  ENDBLOCK`
-      
-
-#--------------------------------------------------
-# USE_ONLY mode (explicit inclusion)
-#--------------------------------------------------
-
-? __EX716_USE_ONLY
-#   P Assemble with USE_ONLY Enabled.
-   # FUNCTION only emits if explicitly used
-   M FUNCTION \
-      ` ? __USE_%1 \
-      :_HERE%0 \
-      MF __DEFINE_%1 _HERE%0 \
-      MF __LastFunc %1 \
-      G %1 # P Defined %1 ` ;
-
-   M ENDFUNCTION \
-      `:_HERE%0 \
-      MF __ENDOF _HERE%0 \
-      ENDBLOCK`
-
-   # Dependency declaration hook
-   M FUNCTIONNEEDS `? __USE_%1` # P "USEing " %1 ;
-
-   M USE MF __USE_%1 %1 G %1 #  P Mark for Use %1 ;
-
-ENDBLOCK
-
-
-
+M ENDFUNCTION \
+   :__FuncEnd \
+   =__FUNC_END_{__FUNC_LAST} {__FuncEnd} \
+   MF __FUNC_END_{__FUNC_LAST} 1 \
+   =__FUNC_SIZE {__FuncEnd}-{__FuncStart} \
+   MF __FUNC_SIZE_{__FUNC_LAST} {__FUNC_SIZE} \
+   P Function: {__FUNC_LAST} Size {__FUNC_SIZE} Bytes
 
 # Size Reporting Macro - usefule durring assembling to see how much memory each library module consumes.
 M SIZESINCE :NewHereMem \

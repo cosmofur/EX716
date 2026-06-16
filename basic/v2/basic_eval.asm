@@ -7,19 +7,25 @@ M Call_ApplyOpt \
    @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5 @PUSHI %6 \
    @CALL ApplyOpt \
    @POPI %9 @POPI %8 @POPI %7
+# Macro String Cleanup Helper @FreeIfString ( Type, Address )
+@FreeIfString @IF_EQ_AV STRING_TYPE %1 \
+    @Call(VV) HeapDeleteObjecct RunTimeHeap %2
+#    
 #-----------------------------
 # Basic Run Loop.
 #-----------------------------
 :BasicRun
 @PUSHRETURN
-   @LocalVar Ptr 01
+@Locals
+   @Local Ptr
    
    @CALL RunTimeInit
    @MV2V LineTableBase BPC
    @MA2V 0 BreakFlag        # Reset Break Flag of start of all RUNs
    
    @WHILE_NEQ_AV 0 BPC
-       @CALL BasicCheckBreak
+#       @CALL BasicCheckBreak
+       @PUSH 1
        @IF_NOTZERO
          @POPNULL       
          @MV2V BPC LRL
@@ -40,7 +46,8 @@ M Call_ApplyOpt \
          @MA2V 0 BPC         
        @ENDIF         
    @ENDWHILE
-   @RestoreVar 01
+   
+@EndLocals
 @POPRETURN
 @RET
 
@@ -49,7 +56,8 @@ M Call_ApplyOpt \
 #----------------------------------
 :NextLine
 @PUSHRETURN
-    @LocalVar LinePtr 01
+@Locals
+    @Local LinePtr
     
     @POPI LinePtr
     
@@ -61,7 +69,8 @@ M Call_ApplyOpt \
         @PUSH 0
     @ENDIF
 
-    @RestoreVar 01
+    
+@EndLocals
 @POPRETURN
 @RET
 
@@ -70,10 +79,13 @@ M Call_ApplyOpt \
 #-------------------------------
 :ExecuteLine
 @PUSHRETURN
-    @LocalVar Ptr 01
-    @LocalVar NewLineNum 02
-    @LocalVar NewBPC 03
-    @LocalVar NoVal 04
+@Locals
+    @Local Ptr
+    @Local NewLineNum
+    @Local NewBPC
+    @Local NoVal
+    @Local CondLow
+    @Local CondHigh
     
     @ADD 2               # Tokenized Line starts at address at 2nd word
     @PUSHS
@@ -140,7 +152,47 @@ M Call_ApplyOpt \
              @ELSE
                 @MV2V NewBPC BPC
              @ENDIF
-             @CBREAK             
+             @CBREAK
+          @CASE IF_CODE
+             @POPNULL
+             @INCI Ptr
+             
+             @Call(V) BasicEval Ptr
+             @POPI4 Ptr CondHigh CondLow NoVal
+
+             @PUSHII Ptr @AND 0xff
+             @IF_NEQ_A THEN_CODE
+                @Call(AA) BasicRaiseError ERR_SYNTAX 0
+             @ENDIF
+             @POPNULL
+             @INCI Ptr             
+
+             @PUSHI CondHigh
+             @PUSHI CondLow
+             @ORS
+             @IF_ZERO
+                @POPNULL   # False Case just goto next line. Later we'll deal with commands
+                @Call(V) SkipToEOL Ptr
+                @POPI Ptr
+             @ELSE
+                # True Case
+                @POPNULL
+
+                @Call(V) BasicEval Ptr
+                @POPI4 Ptr NoVal NewLineNum NoVal
+                
+                @Call(V) FindLine NewLineNum
+                @POPI NewBPC
+                @IF_EQ_AV 0 NewBPC
+                   @PRT "Undefined Line Number: " @PRTI NewLineNum @PRTNL
+                   @Call(AA) BasicRaiseError ERR_UNDEF_LINE 0
+                @ELSE
+                   @MV2V NewBPC BPC
+                   @Call(V) SkipToEOL Ptr
+                   @POPI Ptr
+                @ENDIF
+             @ENDIF
+             @CBREAK
           @CDEFAULT
              @POPNULL
              @Call(AA) BasicRaiseError ERR_SYNTAX 0
@@ -154,10 +206,30 @@ M Call_ApplyOpt \
       @ENDWHILE
       @POPNULL
     @ENDIF
-    @RestoreVar 04    
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# SkipToEOL(Ptr):Ptr
+#----------------------------------------
+:SkipToEOL
+@PUSHRETURN
+@Locals
+    @Local Ptr
+
+    @POPI Ptr
+
+    @PUSHII Ptr @AND 0xff
+    @WHILE_NEQ_A EOL_TOKEN
+        @POPNULL
+        @INCI Ptr
+        @PUSHII Ptr @AND 0xff
+    @ENDWHILE
+    @POPNULL
+
+    @PUSHI Ptr
+
+@EndLocals
 @POPRETURN
 @RET
 #-----------------------------------------
@@ -165,11 +237,12 @@ M Call_ApplyOpt \
 #-----------------------------------------
 :PrintCommand
 @PUSHRETURN
-    @LocalVar Ptr 01
-    @LocalVar EvalLow 02
-    @LocalVar EvalHigh 03
-    @LocalVar EvalType 04
-    @LocalVar NoNewLine 05
+@Locals
+    @Local Ptr
+    @Local EvalLow
+    @Local EvalHigh
+    @Local EvalType
+    @Local NoNewLine
 
     @ADD 1
     @POPI Ptr
@@ -228,11 +301,12 @@ M Call_ApplyOpt \
       @PRTNL
    @ENDIF
    @PUSHI Ptr
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+   
+@EndLocals
 @POPRETURN
 @RET
 
@@ -242,7 +316,8 @@ M Call_ApplyOpt \
 #----------------------------------------
 :VarTypeCharCheck
 @PUSHRETURN
-    @LocalVar Chr 01
+@Locals
+    @Local Chr
 
     @POPI Chr
 
@@ -270,8 +345,9 @@ M Call_ApplyOpt \
        @CBREAK
     @ENDCASE
 
-    @RestoreVar 01
- @POPRETURN
+    
+@EndLocals
+@POPRETURN
  @RET
  
        
@@ -282,9 +358,10 @@ M Call_ApplyOpt \
 #----------------------------------------
 :ParseVal
 @PUSHRETURN
-   @LocalVar PtrIn 01
-   @LocalVar StrLen 02
-   @LocalVar VarType 03
+@Locals
+   @Local PtrIn
+   @Local StrLen
+   @Local VarType
 
    @POPI PtrIn
 
@@ -334,9 +411,10 @@ M Call_ApplyOpt \
    @ENDIF
 
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseVal: " @StackDump @ENDIF
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+@EndLocals
 @POPRETURN
 @RET
 #----------------------------------------
@@ -359,13 +437,14 @@ M Call_PromoteType \
 #----------------------------------------
 :PromoteType
 @PUSHRETURN
-   @LocalVar A_Type      01
-   @LocalVar B_Type      02
-   @LocalVar A_Low       03
-   @LocalVar A_High      04
-   @LocalVar B_Low       05
-   @LocalVar B_High      06
-   @LocalVar ResultType  07
+@Locals
+   @Local A_Type
+   @Local B_Type
+   @Local A_Low
+   @Local A_High
+   @Local B_Low
+   @Local B_High
+   @Local ResultType
 
    @POPI6 B_High B_Low B_Type A_High A_Low A_Type
 
@@ -397,14 +476,15 @@ M Call_PromoteType \
 
    @PUSHI5 ResultType  A_Low A_High B_Low B_High
 
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
    
+   
+   
+   
+   
+   
+   
+   
+@EndLocals
 @POPRETURN
 @RET
 
@@ -415,10 +495,11 @@ M Call_PromoteType \
 #-----------------------------------------
 :CoerceType
 @PUSHRETURN
-   @LocalVar TargetType 01
-   @LocalVar SourceType 02
-   @LocalVar LowWord    03
-   @LocalVar HighWord   04
+@Locals
+   @Local TargetType
+   @Local SourceType
+   @Local LowWord
+   @Local HighWord
 
    @POPI4 HighWord LowWord SourceType TargetType
    
@@ -473,10 +554,11 @@ M Call_PromoteType \
 #
    @PUSHI3 LowWord HighWord TargetType
 
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+@EndLocals
 @POPRETURN
 @RET
          
@@ -487,15 +569,16 @@ M Call_PromoteType \
 #-----------------------------------------
 :ParseLET
 @PUSHRETURN
-   @LocalVar PtrIn      01
-   @LocalVar VarPtr     02
-   @LocalVar IndexVal   03
-   @LocalVar HasIndex   04
-   @LocalVar EvalLow    05
-   @LocalVar EvalHigh   06
-   @LocalVar EvalType   07
-   @LocalVar VarType    08
-   @LocalVar FinalType  09
+@Locals
+   @Local PtrIn
+   @Local VarPtr
+   @Local IndexVal
+   @Local HasIndex
+   @Local EvalLow
+   @Local EvalHigh
+   @Local EvalType
+   @Local VarType
+   @Local FinalType
 
    @POPI PtrIn
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Top ParseLet PtrIn:" @PUSHI PtrIn @AND 0xff @PRTHEXTOP @POPNULL @PUSHI PtrIn @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL @ENDIF
@@ -589,15 +672,16 @@ M Call_PromoteType \
    # Return updated pointer
    #-------------------------
    @PUSHI PtrIn
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+   
+   
+   
+   
+   
+@EndLocals
 @POPRETURN
 @RET
 
@@ -609,14 +693,15 @@ M Call_PromoteType \
 # ----------------------------------------
 :ParseDIM
 @PUSHRETURN
-   @LocalVar PtrIn     01
-   @LocalVar DimSize   02
-   @LocalVar VarPtr    03
-   @LocalVar VarType   04
-   @LocalVar VarName   05
-   @LocalVar EvalType  06
-   @LocalVar HighWord  07
-   @LocalVar StrLen    08
+@Locals
+   @Local PtrIn
+   @Local DimSize
+   @Local VarPtr
+   @Local VarType
+   @Local VarName
+   @Local EvalType
+   @Local HighWord
+   @Local StrLen
 
    @POPI PtrIn
 
@@ -691,14 +776,8 @@ M Call_PromoteType \
 
    # Return updated pointer
    @PUSHI PtrIn
-   @RestoreVar 08   
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+@EndLocals
 @POPRETURN
 @RET
 #------------------------------------------------
@@ -706,11 +785,12 @@ M Call_PromoteType \
 #------------------------------------------------
 :BasicEval
 @PUSHRETURN
-   @LocalVar InPtr       01
-   @LocalVar TypeVal     02
-   @LocalVar CurrentType 03
-   @LocalVar LowWord     04
-   @LocalVar HighWord    05
+@Locals
+   @Local InPtr
+   @Local TypeVal
+   @Local CurrentType
+   @Local LowWord
+   @Local HighWord
 
     
    @POPI InPtr
@@ -728,11 +808,12 @@ M Call_PromoteType \
    @PUSHI InPtr
 
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return BasicEval: " @StackDump @ENDIF
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+   
+@EndLocals
 @POPRETURN
 @RET
    
@@ -744,15 +825,19 @@ M Call_PromoteType \
 #------------------------------------------------
 :ParseFactor
 @PUSHRETURN
-   @LocalVar InPtr     01
-   @LocalVar FieldLen  02
-   @LocalVar LowWord   03
-   @LocalVar HighWord  04
-   @LocalVar OutType   05
-   @LocalVar VarPtr    06
-   @LocalVar NewIndex  07
-   @LocalVar StoreEnd  08
-   @LocalVar EndPtr    09
+@Locals
+   @Local InPtr
+   @Local FieldLen
+   @Local LowWord
+   @Local HighWord
+   @Local OutType
+   @Local VarPtr
+   @Local NewIndex
+   @Local StoreEnd
+   @Local EndPtr
+   @Local NullSpot
+   @Local Selected
+   @Local ArgCount
 
    @POPI InPtr
 
@@ -791,6 +876,16 @@ M Call_PromoteType \
       @ENDCASE
       @POPNULL
       @CBREAK
+   @CASE_RANGE FIRST_FUNC_CODE LAST_FUNC_CODE
+      @POPI Selected
+      @INCI InPtr
+      @Call(V) ParseFunctionArgs InPtr
+      @POPI ArgCount
+      @POPI InPtr
+      @Call(VV) EvalFunctionCall ArgCount Selected
+      @POPI3 HighWord LowWord OutType
+      @PUSH 0                 # Fill for POPNULL
+      @CBREAK      
    @CASE NOT_TOKEN
       @INCI InPtr
       @Call(V) ParseFactor InPtr
@@ -914,22 +1009,18 @@ M Call_PromoteType \
    #-------------------------
    @CASE STRING_TOKEN
       @INCI InPtr
-      @PUSHII InPtr @AND 0xff
-      @POPI FieldLen
-      @INCI InPtr
 
-      @Call(VV) HeapNewObject RunTimeHeap FieldLen
-      @IF_ULT_A 100
-         @Call(AA) BasicRaiseError ERR_MEMORY 0
-      @ENDIF
+      @Call(V) StrBasicToC InPtr
 
-      @POPI LowWord
+      @POPI2 StrLen LowWord
+
       @MA2V 0 HighWord
-      @Call(VVV) memcpy LowWord InPtr FieldLen
-
+      
       @PUSHI InPtr
-      @ADDI FieldLen
+      @ADDI StrLen
+      @ADD 1
       @POPI InPtr
+
       @MA2V STRING_TYPE OutType
       @CBREAK
 
@@ -965,10 +1056,7 @@ M Call_PromoteType \
          @Call(V) BasicEval InPtr
 
          # Pop in correct order
-         @POPI InPtr
-         @POPI OutType
-         @POPI HighWord
-         @POPI LowWord
+         @POPI4 InPtr HighWord LowWord OutType
 
          # Index must be INT
          @IF_NEQ_AV INT_TYPE OutType
@@ -1027,17 +1115,8 @@ M Call_PromoteType \
    #---------------------------------
    @PUSHI4 OutType LowWord HighWord InPtr
 
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
-
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseFactor: " @StackDump @ENDIF
+@EndLocals
 @POPRETURN
 @RET
 
@@ -1046,15 +1125,16 @@ M Call_PromoteType \
 #------------------------------
 :ParseTerm
 @PUSHRETURN
-   @LocalVar LeftLow    01
-   @LocalVar LeftHigh   02
-   @LocalVar LeftType   03
-   @LocalVar RightLow   04
-   @LocalVar RightHigh  05
-   @LocalVar RightType  06
-   @LocalVar InPtr      07
-   @LocalVar Operation  08
-   @LocalVar ResultType 09
+@Locals
+   @Local LeftLow
+   @Local LeftHigh
+   @Local LeftType
+   @Local RightLow
+   @Local RightHigh
+   @Local RightType
+   @Local InPtr
+   @Local Operation
+   @Local ResultType
 
    @POPI InPtr
        @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseTerm(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
@@ -1090,17 +1170,18 @@ M Call_PromoteType \
    @POPNULL
    @PUSHI4  LeftType LeftLow LeftHigh InPtr
 
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+   
+   
+   
+   
+   
 
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
+@EndLocals
 @POPRETURN
 @RET
 #---------------------------------------
@@ -1108,12 +1189,13 @@ M Call_PromoteType \
 #---------------------------------------
 :ApplyOpt
 @PUSHRETURN
-    @LocalVar OptCode    01
-    @LocalVar TypeCode   02
-    @LocalVar AVarLow    03
-    @LocalVar AVarHigh   04
-    @LocalVar BVarLow    05
-    @LocalVar BVarHigh   06
+@Locals
+    @Local OptCode
+    @Local TypeCode
+    @Local AVarLow
+    @Local AVarHigh
+    @Local BVarLow
+    @Local BVarHigh
 
     @POPI6 BVarHigh BVarLow AVarHigh AVarLow TypeCode OptCode
 
@@ -1429,12 +1511,13 @@ M Call_PromoteType \
 
        @IF_NEQ_AV 0 Debug_Mode    @PRT "Return ApplyOpt: " @StackDump @ENDIF
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+    
+    
+    
+    
+    
+    
+@EndLocals
 @POPRETURN
 @RET
 #-----------------------------------------------
@@ -1442,22 +1525,23 @@ M Call_PromoteType \
 #-----------------------------------------------
 :ParseExpr
 @PUSHRETURN
-    @LocalVar InPtr     01
-    @LocalVar LeftLow   02
-    @LocalVar LeftHigh  03
-    @LocalVar LeftType  04
-    @LocalVar RightLow  05
-    @LocalVar RightHigh 06
-    @LocalVar RightType 07
-    @LocalVar ResultType 08
-    @LocalVar Operation 09
+@Locals
+    @Local InPtr
+    @Local LeftLow
+    @Local LeftHigh
+    @Local LeftType
+    @Local RightLow
+    @Local RightHigh
+    @Local RightType
+    @Local ResultType
+    @Local Operation
 
     
     @POPI InPtr
 
        @IF_NEQ_AV 0 Debug_Mode    @PRT "ParseExpr(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
-    @Call(V) ParseTerm (InPtr)
+    @Call(V) ParseTerm InPtr
     @POPI4 InPtr LeftHigh LeftLow LeftType
 
     @MV2V LeftType ResultType
@@ -1491,18 +1575,19 @@ M Call_PromoteType \
 
    @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+   
+   
+   
+   
+   
 
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseExpr: " @StackDump @ENDIF
 
+@EndLocals
 @POPRETURN
 @RET
 
@@ -1511,15 +1596,16 @@ M Call_PromoteType \
 #------------------------------
 :ParseRelation
 @PUSHRETURN
-   @LocalVar LeftLow    01
-   @LocalVar LeftHigh   02
-   @LocalVar LeftType   03
-   @LocalVar RightLow   04
-   @LocalVar RightHigh  05
-   @LocalVar RightType  06
-   @LocalVar InPtr      07
-   @LocalVar Operation  08
-   @LocalVar ResultType 09
+@Locals
+   @Local LeftLow
+   @Local LeftHigh
+   @Local LeftType
+   @Local RightLow
+   @Local RightHigh
+   @Local RightType
+   @Local InPtr
+   @Local Operation
+   @Local ResultType
 
    @POPI InPtr
        @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseReleation(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
@@ -1564,17 +1650,18 @@ M Call_PromoteType \
    @POPNULL
    @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+   
+   
+   
+   
+   
+   
+   
+   
+   
 
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
+@EndLocals
 @POPRETURN
 @RET
 
@@ -1583,15 +1670,16 @@ M Call_PromoteType \
 #------------------------------
 :ParseLogical
 @PUSHRETURN
-   @LocalVar LeftLow    01
-   @LocalVar LeftHigh   02
-   @LocalVar LeftType   03
-   @LocalVar RightLow   04
-   @LocalVar RightHigh  05
-   @LocalVar RightType  06
-   @LocalVar InPtr      07
-   @LocalVar Operation  08
-   @LocalVar ResultType 09
+@Locals
+   @Local LeftLow
+   @Local LeftHigh
+   @Local LeftType
+   @Local RightLow
+   @Local RightHigh
+   @Local RightType
+   @Local InPtr
+   @Local Operation
+   @Local ResultType
 
    @POPI InPtr
        @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseLogical(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
@@ -1626,19 +1714,143 @@ M Call_PromoteType \
    @POPNULL
    @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
-
        @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
+@EndLocals
 @POPRETURN
 @RET
+
+#---------------------------------
+# ParseFunctionArgs(InPtr):[Type Low High Flag [Type Low High Flag .. ] InPtr Count ]
+:ParseFunctionArgs
+@PUSHRETURN
+@Locals
+   @Local Count
+   @Local HighVal
+   @Local LowVal
+   @Local Flag
+   @Local TypeVal
+   @Local InPtr
+   @Local Index
+   
+   @POPI InPtr
+
+   # Expect "("
+   @PUSHII InPtr @AND 0xff
+   @IF_NEQ_A "(\0"
+      @Call(AA) BasicRaiseError ERR_SYNTAX 0
+   @ENDIF
+   @POPNULL
+   @INCI InPtr
+
+   @MA2V 0 Count
+   @PUSHII InPtr @AND 0xff
+   @WHILE_NEQ_A ")\0"
+      @POPNULL
+      @INCI Count
+      @Call(V) BasicEval InPtr
+      @POPI4 InPtr HighVal LowVal TypeVal
+      @PUSHI TypeVal @PUSHI LowVal @PUSHI HighVal
+      @IF_EQ_AV STRING_TYPE TypeVal
+         @PUSH FLAG_HEAP
+      @ELSE
+         @PUSH FLAG_VAL
+      @ENDIF
+      @PUSHII InPtr @AND 0xff
+      @IF_EQ_A ",\0"
+         @POPNULL
+         @INCI InPtr
+         @PUSHI InPtr
+      @ELSE
+         @IF_NEQ_A ")\0"
+            @Call(AA) BasicRaiseError ERR_SYNTAX 0
+        @ENDIF
+      @ENDIF
+   @ENDWHILE
+@POPNULL
+@INCI InPtr
+@PUSHI InPtr
+@PUSHI Count
+@EndLocals
+@POPRETURN
+@RET
+#---------------------------------
+# EvalFunctionCall(ArgCount Selected .. [ arg values ]):()
+#---------------------------------
+:EvalFunctionCall
+@PUSHRETURN
+@Locals
+   @Local Count
+   @Local Selected
+   @Local TypeCode
+   @Local HighWord
+   @Local LowWord
+   @Local FlagVal
+
+   @POPI2 Selected Count
+
+   @PUSHI Selected
+   @SWITCH
+   @CASE ABS_CODE
+      @POPNULL
+      @IF_NEQ_AV 1 Count
+         # Not valid number arguments for ABS
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+
+     @POPI4 FlagVal HighWord LowWord TypeCode
+     @PUSHI TypeCode
+     @SWITCH
+     @CASE INT_TYPE
+        @POPNULL
+        @PUSHI LowWord
+        @AND 0x8000
+        @IF_NOTZERO
+           @POPNULL
+           @PUSHI LowWord
+           @COMP2
+           @POPI LowWord
+        @ELSE
+           @POPNULL
+        @ENDIF
+        @MA2V 0 HighWord
+        @PUSH INT_TYPE
+        @PUSHI LowWord
+        @PUSHI HighWord
+        @CBREAK
+     @CASE LONG_TYPE
+        @POPNULL
+        @PUSHI HighWord
+        @AND 0x8000            
+        @IF_NOTZERO
+           @POPNULL
+           @Call(VV) COMP232 LowWord HighWord
+           @POPI2 HighWord LowWord
+        @ELSE
+           @POPNULL
+        @ENDIF
+        @PUSH LONG_TYPE
+        @PUSHI LowWord
+        @PUSHI HighWord
+        @CBREAK
+     @CDEFAULT
+        # Not a valid type fo ABS
+        @POPNULL
+        @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+        @CBREAK
+     @ENDCASE
+     @CBREAK
+   @CDEFAULT
+      # Unknown Function
+      @POPNULL
+      @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @CBREAK
+   @ENDCASE
+@EndLocals
+@POPRETURN
+@RET
+
+         
+         
 
 M SIZESINCECOMMENT basic_eval.h
 @SIZESINCE  

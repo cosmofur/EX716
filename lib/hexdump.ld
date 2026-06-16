@@ -1,12 +1,13 @@
 ! __LIB_HEXDUMP_LOADED
 M __LIB_HEXDUMP_LOADED 1
-
+P Load hexdump.ld
 :HexBuf 0 0
 :ASCIIBuf 0 0 0 0 0 0 0 0 0 0
 I hexdump.ref
 
 G HexDump
 G NibbleToHexChar
+G ByteToHexStr
 
 #--------------------------------------------------
 # HexDump(MemStart, MemLength, Mode)
@@ -15,12 +16,13 @@ G NibbleToHexChar
 @FUNCTION HexDump
 :HexDump
 @PUSHRETURN
-@LocalVar Index1    01
-@LocalVar MemStart  02
-@LocalVar MemLength 03
-@LocalVar Column    04
-@LocalVar MemStop   05
-@LocalVar Mode      06
+@Locals
+@Local Index1
+@Local MemStart
+@Local MemLength
+@Local Column
+@Local MemStop
+@Local Mode
 
    #--------------------------------------------
    # Load parameters
@@ -127,15 +129,10 @@ G NibbleToHexChar
    @PRTS ASCIIBuf
    @PRTNL
 
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #--------------------------------------------
 # NibbleToHexChar(nibble) -> ASCII in TOS
@@ -151,15 +148,16 @@ ENDBLOCK
    @ENDIF
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------
 # ByteToHexStr(Byte, StrPtr)
 #--------------------------------------------
 @FUNCTION ByteToHexStr
 :ByteToHexStr
 @PUSHRETURN
-@LocalVar Byte   01
-@LocalVar StrPtr 02
+@Locals
+@Local Byte
+@Local StrPtr
 
    @POPI StrPtr
    @POPI Byte
@@ -181,11 +179,11 @@ ENDBLOCK
    @PUSHI 0
    @PUSHI StrPtr @ADD 2 @POPS
 
-   @RestoreVar 02
-   @RestoreVar 01
+   
+@EndLocals
    
 
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ENDBLOCK

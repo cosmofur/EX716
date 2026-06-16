@@ -1,6 +1,7 @@
 ! __LIB_DISKOS_LOADED
 M __LIB_DISKOS_LOADED 1
 I diskos.ref
+=REFCOUNT 0
 # ================================================================
 # diskos.asm
 #
@@ -201,6 +202,7 @@ I diskos.ref
 #====================================================
 #Storage
 #====================================================
+P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 G DiskHeap
 G SetDiskHeap
 G DiskNewBuffer
@@ -342,6 +344,8 @@ G MODE_RW        # Read Write
 G MODE_WP        # Write Append
 G MODE_AP        # Open RW Append
 
+P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
+
 =MODE_RO 0x6f72 # "ro"
 =MODE_WO 0x6f77 # "wo"
 =MODE_RW 0x7772 # "rw"
@@ -403,6 +407,7 @@ G FSReservedID
 =FSHeaderFlagsID    10
 =FSFileBitMapID     12
 =FSReservedID       76
+P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 
 #====================================================
 #ArgTable Helper Macros
@@ -411,6 +416,7 @@ G FSReservedID
 M FILL_AT_A @PUSH %3  @PUSHI %1 @ADD %2 @POPS
 M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 
+P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 
 #====================================================
 #Internal Storage (DiskOS state)
@@ -492,7 +498,7 @@ G LINE_EOF
    @POPI DiskHeap
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # Low Level Disk IO
@@ -502,42 +508,43 @@ ENDBLOCK
 @FUNCTION DiskReadSector
 :DiskReadSector
 @PUSHRETURN
-    @LocalVar Sector 01
-    @LocalVar BufPtr 02
+@Locals
+    @Local Sector
+    @Local BufPtr
     @POPI BufPtr
     @POPI Sector
     @DISKSEEKI Sector
     @DISKREADI BufPtr
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------------
 # DiskWriteSector(Sector, *Buffer)
 #--------------------------------------------------
 @FUNCTION DiskWriteSector
 :DiskWriteSector
 @PUSHRETURN
-    @LocalVar Sector 01
-    @LocalVar BufPtr 02
+@Locals
+    @Local Sector
+    @Local BufPtr
     @POPI BufPtr
     @POPI Sector
 
     @DISKSEEKI Sector
     @DISKWRITEI BufPtr
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #---------------------------------------------
 @FUNCTION  DataBlockFirstSector
 # DataBlockFirstSector(FileNum):(Sector)
 #---------------------------------------------
 :DataBlockFirstSector
 @PUSHRETURN
-    @LocalVar FileNum 01
+@Locals
+    @Local FileNum
     @IF_ULT_A 512
        @POPI FileNum
        @PUSHI FileNum
@@ -548,10 +555,10 @@ ENDBLOCK
        @POPNULL
        @PUSH -1       # -1 as error code
     @ENDIF
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #---------------------------------------------
 @FUNCTION  DirLocate
 # DirLocate(FileNum):(Sector, Offset)
@@ -559,10 +566,11 @@ ENDBLOCK
 #---------------------------------------------
 :DirLocate
 @PUSHRETURN
-   @LocalVar FileNum 01
-   @LocalVar ByteOffset 02
-   @LocalVar Sector 03
-   @LocalVar OffSet 04
+@Locals
+   @Local FileNum
+   @Local ByteOffset
+   @Local Sector
+   @Local OffSet
 
    # Directory Entry N always corresponds to data in Block N where block is 64K sequentual blocks on the disk.
     @IF_ULT_A 512
@@ -589,13 +597,10 @@ ENDBLOCK
        @PUSH -1       # -1 as error code
        @PUSH -1       # -1 as error code
    @ENDIF
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #------------------------------------------
 @FUNCTION  DirEntryPtr
@@ -604,18 +609,18 @@ ENDBLOCK
 #------------------------------------------
 :DirEntryPtr
 @PUSHRETURN
-   @LocalVar BuffPtr 01
-   @LocalVar OffSet 02
+@Locals
+   @Local BuffPtr
+   @Local OffSet
 
    @POPI OffSet
    @POPI BuffPtr
 
    @PUSHI BuffPtr @ADDI OffSet
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #
 #------------------------------------------
@@ -625,9 +630,10 @@ ENDBLOCK
 #------------------------------------------
 :DirEntryToArgTable
 @PUSHRETURN
-   @LocalVar DirEntry 01
-   @LocalVar ArgTable 02
-   @LocalVar _I 03
+@Locals
+   @Local DirEntry
+   @Local ArgTable
+   @Local _I
 
    @POPI ArgTable
    @POPI DirEntry
@@ -639,12 +645,10 @@ ENDBLOCK
       @INC2I ArgTable
    @NextBy _I 2
 
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #------------------------------------------------
 # DirClearArgTable(*ArgTable)
 # Clears the ArgTable, does not yet rewrite new entry to Disk
@@ -652,8 +656,9 @@ ENDBLOCK
 @FUNCTION DirClearArgTable
 :DirClearArgTable
 @PUSHRETURN
-   @LocalVar ArgTable 01
-   @LocalVar _I 02
+@Locals
+   @Local ArgTable
+   @Local _I
 
    @POPI ArgTable
 
@@ -664,11 +669,10 @@ ENDBLOCK
       @ADDI _I
       @POPS
    @NextBy _I 2
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #--------------------------------------------
 # DirArgTableToDirEntry(*DirEntry,*ArgTable)
@@ -677,9 +681,10 @@ ENDBLOCK
 @FUNCTION DirArgTableToEntry
 :DirArgTableToEntry
 @PUSHRETURN
-   @LocalVar DirEntry 01
-   @LocalVar ArgTable 02
-   @LocalVar _I 03
+@Locals
+   @Local DirEntry
+   @Local ArgTable
+   @Local _I
 
    @POPI ArgTable
    @POPI DirEntry
@@ -692,12 +697,10 @@ ENDBLOCK
       @INC2I ArgTable
    @NextBy _I 2
 
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #----------------------------------------
 # DirWriteEntry(FileNum, *ArgTable, *DiskBuffer)
@@ -706,13 +709,14 @@ ENDBLOCK
 @FUNCTION DirWriteEntry
 :DirWriteEntry
 @PUSHRETURN
-    @LocalVar FileNum    01
-    @LocalVar ArgTable   02
-    @LocalVar Sector     03
-    @LocalVar Offset     04
-    @LocalVar DiskBuffer 05
-    @LocalVar EntryPtr   06
-    @LocalVar Result     07
+@Locals
+    @Local FileNum
+    @Local ArgTable
+    @Local Sector
+    @Local Offset
+    @Local DiskBuffer
+    @Local EntryPtr
+    @Local Result
 
     @POPI DiskBuffer
     @POPI ArgTable
@@ -764,16 +768,10 @@ ENDBLOCK
     :DWE_Exit
     
     @PUSHI Result
-    @RestoreVar 07    
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #--------------------------------------
 @FUNCTION  DirReadEntry
@@ -782,12 +780,13 @@ ENDBLOCK
 #--------------------------------------
 :DirReadEntry
 @PUSHRETURN
-    @LocalVar FileNum  01
-    @LocalVar ArgTable 02
-    @LocalVar Offset   03
-    @LocalVar Sector   04
-    @LocalVar EntryPtr 05
-    @LocalVar DiskBuff   06
+@Locals
+    @Local FileNum
+    @Local ArgTable
+    @Local Offset
+    @Local Sector
+    @Local EntryPtr
+    @Local DiskBuff
 
     @POPI DiskBuff
     @POPI ArgTable
@@ -814,15 +813,10 @@ ENDBLOCK
        @Call(VV) DirEntryToArgTable EntryPtr ArgTable
        @PUSH 1          # Successs
     @ENDIF
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-----------------------------------------
 # DirNewArgTable
 # Returns a new ArgTable pointer.
@@ -839,7 +833,7 @@ ENDBLOCK
    @ENDIF
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #-----------------------------------------
 @FUNCTION  DiskNewBuffer
@@ -856,7 +850,7 @@ ENDBLOCK
    @ENDIF
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-----------------------------------------
 # DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer)
 # Writes ByteCount bytes from memory starting at MemPtr into consecutive disk sectors starting at Sector.
@@ -867,14 +861,15 @@ ENDBLOCK
 @FUNCTION DiskWriteBlock
 :DiskWriteBlock
 @PUSHRETURN
-    @LocalVar Sector 01
-    @LocalVar MemPtr 02
-    @LocalVar ByteCount 03
-    @LocalVar StartOffset 04
-    @LocalVar DiskBuffer 05
-    @LocalVar InBuffPtr 06
-    @LocalVar TotalSectors 07
-    @LocalVar _I 08
+@Locals
+    @Local Sector
+    @Local MemPtr
+    @Local ByteCount
+    @Local StartOffset
+    @Local DiskBuffer
+    @Local InBuffPtr
+    @Local TotalSectors
+    @Local _I
 
 
     @POPI DiskBuffer
@@ -957,17 +952,10 @@ ENDBLOCK
     @ENDWHILE
 
 :DWBExit
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #---------------------------------------
 @FUNCTION  DiskReadBlock
@@ -976,14 +964,15 @@ ENDBLOCK
 #---------------------------------------
 :DiskReadBlock
 @PUSHRETURN
-    @LocalVar Sector       01  #
-    @LocalVar MemPtr       02  #
-    @LocalVar ByteCount    03  #
-    @LocalVar StartOffset  04  #
-    @LocalVar DiskBuffer   05  #
-    @LocalVar InBuffPtr    06  #
-    @LocalVar SectRemain   07  #
-    @LocalVar OrigCount    08  #
+@Locals
+    @Local Sector  #
+    @Local MemPtr  #
+    @Local ByteCount  #
+    @Local StartOffset  #
+    @Local DiskBuffer  #
+    @Local InBuffPtr  #
+    @Local SectRemain  #
+    @Local OrigCount  #
 
     @POPI DiskBuffer
     @POPI StartOffset
@@ -1050,17 +1039,10 @@ ENDBLOCK
     @PUSHI OrigCount
     @SUBI ByteCount      # How many bytes were acutually read.
 :DRBExit
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #---------------------------------------
 # DiskOpen(FileNum,Mode)
@@ -1069,12 +1051,13 @@ ENDBLOCK
 @FUNCTION DiskOpen
 :DiskOpen
 @PUSHRETURN
-    @LocalVar FileNum   01
-    @LocalVar Mode      02
-    @LocalVar ArgTable  03
-    @LocalVar FilePtr   04
-    @LocalVar DoCreateFlag 05
-    @LocalVar DiskBuffer 06
+@Locals
+    @Local FileNum
+    @Local Mode
+    @Local ArgTable
+    @Local FilePtr
+    @Local DoCreateFlag
+    @Local DiskBuffer
 
 
     @POPI Mode
@@ -1219,15 +1202,10 @@ ENDBLOCK
     @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 :Do_Op_EXIT_NH
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 #-----------------------------------------
@@ -1237,19 +1215,20 @@ ENDBLOCK
 @FUNCTION DiskFileWrite
 :DiskFileWrite
 @PUSHRETURN
-    @LocalVar FilePtr     01
-    @LocalVar MemPtr      02
-    @LocalVar ByteCount   03
-    @LocalVar Mode        04
-    @LocalVar Cursor      05
-    @LocalVar CursorHW    06    # 32-but uses 05-06
-    @LocalVar FileSize    07    # 32-bit (uses 07,08)
-    @LocalVar FileSizeHW  08    # Need to name 08 but don't have to use the name.
-    @LocalVar SectorBase  09
-    @LocalVar Sector      10
-    @LocalVar StartOffset 11
-    @LocalVar DiskBuffer  12
-    @LocalVar MaxWrite    13
+@Locals
+    @Local FilePtr
+    @Local MemPtr
+    @Local ByteCount
+    @Local Mode
+    @Local Cursor
+    @Local CursorHW    # 32-but uses 05-06
+    @Local FileSize    # 32-bit (uses 07,08)
+    @Local FileSizeHW    # Need to name 08 but don't have to use the name.
+    @Local SectorBase
+    @Local Sector
+    @Local StartOffset
+    @Local DiskBuffer
+    @Local MaxWrite
 
     @POPI ByteCount
     @POPI MemPtr
@@ -1357,22 +1336,10 @@ ENDBLOCK
     @PUSHI ByteCount
 
 :DFW_EXIT
-    @RestoreVar 13
-    @RestoreVar 12
-    @RestoreVar 11
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #-----------------------------------------------------
 @FUNCTION  DiskClose
@@ -1381,11 +1348,12 @@ ENDBLOCK
 #-----------------------------------------------------
 :DiskClose
 @PUSHRETURN
-    @LocalVar FilePtr    01
-    @LocalVar Mode       02
-    @LocalVar FileNum    03
-    @LocalVar ArgTable   04
-    @LocalVar DiskBuffer 05
+@Locals
+    @Local FilePtr
+    @Local Mode
+    @Local FileNum
+    @Local ArgTable
+    @Local DiskBuffer
 
     @POPI FilePtr
 
@@ -1460,14 +1428,10 @@ ENDBLOCK
     @ENDIF
     @PUSH 0
 :DC_EXIT
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #---------------------------------------------------------
 # DiskFileRead(FilePtr, MemPtr, ByteCount)
 #
@@ -1495,20 +1459,21 @@ ENDBLOCK
 @FUNCTION DiskFileRead
 :DiskFileRead
 @PUSHRETURN
-    @LocalVar FilePtr     01
-    @LocalVar MemPtr      02
-    @LocalVar ByteCount   03
-    @LocalVar Mode        04
-    @LocalVar Cursor      05
-    @LocalVar CursorHW    06
-    @LocalVar FileSize    07        # 32-bit (07,08)
-    @LocalVar FileSizeHW  08
-    @LocalVar BytesLeft   09
-    @LocalVar SectorBase  10
-    @LocalVar SectorOff   11
-    @LocalVar Sector      12
-    @LocalVar StartOffset 13
-    @LocalVar DiskBuffer  14
+@Locals
+    @Local FilePtr
+    @Local MemPtr
+    @Local ByteCount
+    @Local Mode
+    @Local Cursor
+    @Local CursorHW
+    @Local FileSize        # 32-bit (07,08)
+    @Local FileSizeHW
+    @Local BytesLeft
+    @Local SectorBase
+    @Local SectorOff
+    @Local Sector
+    @Local StartOffset
+    @Local DiskBuffer
 
     @POPI ByteCount
     @POPI MemPtr
@@ -1634,23 +1599,10 @@ ENDBLOCK
     @PUSHI ByteCount
 
 :DFR_EXIT
-    @RestoreVar 14
-    @RestoreVar 13
-    @RestoreVar 12
-    @RestoreVar 11
-    @RestoreVar 10
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-------------------------------------------------
 @FUNCTION  WildCardMatch
 # WildCardMatch(pattern,text):1|0
@@ -1659,13 +1611,14 @@ ENDBLOCK
 #-------------------------------------------------
 :WildCardMatch
 @PUSHRETURN
-    @LocalVar pattern 01
-    @LocalVar text 02
-    @LocalVar star 03
-    @LocalVar Result 04
-    @LocalVar head_len 05
-    @LocalVar tail_len 06
-    @LocalVar text_len 07
+@Locals
+    @Local pattern
+    @Local text
+    @Local star
+    @Local Result
+    @Local head_len
+    @Local tail_len
+    @Local text_len
 
 
     @POPI text
@@ -1743,16 +1696,10 @@ ENDBLOCK
 :WCM_Exit
     @PUSHI Result
 
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------
 @FUNCTION  DirFindFile
 # DirFindFile(Pattern, StartPoint):FileNum | 0
@@ -1762,12 +1709,13 @@ ENDBLOCK
 #--------------------------------------------
 :DirFindFile
 @PUSHRETURN
-    @LocalVar Pattern 01
-    @LocalVar Result 02
-    @LocalVar StartPoint 03
-    @LocalVar DiskBuffer 04
-    @LocalVar CurFileNum 05
-    @LocalVar ArgTable 06
+@Locals
+    @Local Pattern
+    @Local Result
+    @Local StartPoint
+    @Local DiskBuffer
+    @Local CurFileNum
+    @Local ArgTable
 
     @POPI StartPoint
     @POPI Pattern
@@ -1832,15 +1780,10 @@ ENDBLOCK
     @Call(VV) HeapDeleteObject DiskHeap ArgTable
     @POPNULL
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-------------------------------------------
 @FUNCTION  DirFindFree
 # DirFindFree():FileNum | 0
@@ -1848,10 +1791,11 @@ ENDBLOCK
 #-------------------------------------------
 :DirFindFree
 @PUSHRETURN
-   @LocalVar DiskBuffer 01
-   @LocalVar ArgTable   02
-   @LocalVar CurFileNum 03
-   @LocalVar Result     04
+@Locals
+   @Local DiskBuffer
+   @Local ArgTable
+   @Local CurFileNum
+   @Local Result
 
    @MA2V 0 Result
    @CALL DiskNewBuffer
@@ -1896,13 +1840,10 @@ ENDBLOCK
    @Call(VV) HeapDeleteObject DiskHeap ArgTable
    @POPNULL
 
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+ @EndLocals
  @POPRETURN
  @RET
- ENDBLOCK
+ @ENDFUNCTION
 
 
 
@@ -1912,12 +1853,13 @@ ENDBLOCK
 #--------------------------------------------
 :file_open
 @PUSHRETURN
-    @LocalVar FileName   01
-    @LocalVar Mode       02
-    @LocalVar FileNum    03
-    @LocalVar NewFlag    04
-    @LocalVar FileSize   05
-    @LocalVar FilePointer 06
+@Locals
+    @Local FileName
+    @Local Mode
+    @Local FileNum
+    @Local NewFlag
+    @Local FileSize
+    @Local FilePointer
 
     @POPI Mode
     @POPI FileName
@@ -2035,15 +1977,10 @@ ENDBLOCK
 :FO_Exit
     @PUSHI FilePointer
 
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #---------------------------------------------------------
 # Series of API to modify/access DIR header data.
@@ -2056,8 +1993,9 @@ ENDBLOCK
 @FUNCTION DiskFileSetLineCount
 :DiskFileSetLineCount
 @PUSHRETURN
-    @LocalVar FilePtr 01
-    @LocalVar LineCount    02
+@Locals
+    @Local FilePtr
+    @Local LineCount
 
     @POPI LineCount
     @POPI FilePtr
@@ -2065,11 +2003,10 @@ ENDBLOCK
     @PUSHI LineCount     # Push lowest in stack for argument to SetLine_Mod
     @Call(VA) DiskWithDirEntry FilePtr _DF_SetLine_Mod # @DEP: _DF_SetLine_Mod modifier
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #----------------------------------
 # _DF_SetLine_Mod
 # Modifies ArgTable LineNumer Field
@@ -2077,8 +2014,9 @@ ENDBLOCK
 @FUNCTION _DF_SetLine_Mod
 :_DF_SetLine_Mod
 @PUSHRETURN
-    @LocalVar ArgTable 01
-    @LocalVar LineCount     02
+@Locals
+    @Local ArgTable
+    @Local LineCount
 
     @POPI ArgTable
     @POPI LineCount
@@ -2088,29 +2026,28 @@ ENDBLOCK
     @ADD DIR_AT_LINECOUNT
     @POPS
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-----------------------------------
 @FUNCTION  DiskGetLineCount
 # DiskGetLineCount(FilePtr):LineCount
 #-----------------------------------
 :DiskGetLineCount
 @PUSHRETURN
-    @LocalVar FilePtr 01
-    @LocalVar LineCount    02
+@Locals
+    @Local FilePtr
+    @Local LineCount
 
     @POPI FilePtr
 
     @Call(VA) DiskWithDirEntry FilePtr _DF_GetLine_Mod  # @DEP: _DF_GetLine_Mod modifier
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #----------------------------------
 # _DF_GetLine_Mod
 # Modifies ArgTable LineNumer Field
@@ -2118,7 +2055,8 @@ ENDBLOCK
 @FUNCTION _DF_GetLine_Mod
 :_DF_GetLine_Mod
 @PUSHRETURN
-    @LocalVar ArgTable 01
+@Locals
+    @Local ArgTable
 
     @POPI ArgTable
 
@@ -2126,19 +2064,19 @@ ENDBLOCK
     @ADD DIR_AT_LINECOUNT
     @PUSHS
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-----------------------------------
 # DiskSetFileType(FilePtr, TypeWord)
 #-----------------------------------
 @FUNCTION DiskFileSetType
 :DiskFileSetType
 @PUSHRETURN
-    @LocalVar FilePtr 01
-    @LocalVar Type    02
+@Locals
+    @Local FilePtr
+    @Local Type
 
     @POPI Type
     @POPI FilePtr
@@ -2146,11 +2084,10 @@ ENDBLOCK
     @PUSHI Type       # Push lowest in stack argument to SetType_Mod funciton
     @Call(VA)  DiskWithDirEntry FilePtr _DF_SetType_Mod
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #----------------------------------
 # _DF_SetType_Mod
 # Modifies ArgTable SetType Field
@@ -2158,8 +2095,9 @@ ENDBLOCK
 @FUNCTION _DF_SetType_Mod
 :_DF_SetType_Mod
 @PUSHRETURN
-    @LocalVar ArgTable 01
-    @LocalVar Type     02
+@Locals
+    @Local ArgTable
+    @Local Type
 
     @POPI ArgTable
     @POPI Type
@@ -2169,29 +2107,28 @@ ENDBLOCK
     @ADD DIR_AT_FILETYPE
     @POPS
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #-----------------------------------
 @FUNCTION  DiskGetFileType
 # DiskGetFileType(FilePtr):TypeWord
 #-----------------------------------
 :DiskFileGetType
 @PUSHRETURN
-    @LocalVar FilePtr 01
-    @LocalVar Type    02
+@Locals
+    @Local FilePtr
+    @Local Type
 
     @POPI FilePtr
 
     @Call(VA) DiskWithDirEntry FilePtr _DF_GetType_Mod # @DEP: _DF_GetType_Mod modifier
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #----------------------------------
 # _DF_GetType_Mod
 # Modifies ArgTable SetType Field
@@ -2199,8 +2136,9 @@ ENDBLOCK
 @FUNCTION _DF_GetType_Mod
 :_DF_GetType_Mod
 @PUSHRETURN
-    @LocalVar ArgTable 01
-    @LocalVar Type     02
+@Locals
+    @Local ArgTable
+    @Local Type
 
     @POPI ArgTable
 
@@ -2208,39 +2146,39 @@ ENDBLOCK
     @ADD DIR_AT_FILETYPE
     @PUSHS
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #------------------------------------
 # DiskFileName
 #------------------------------------
 @FUNCTION DiskFileName
 :DiskFileName
 @PUSHRETURN
-    @LocalVar FilePtr 01
-    @LocalVar StrPtr  02
+@Locals
+    @Local FilePtr
+    @Local StrPtr
 
     @POPI StrPtr
     @POPI FilePtr
     @PUSHI StrPtr
     @Call(VA) DiskWithDirEntry FilePtr _DFN_Mod   # @DEP: _DFN_Mod modifier
 
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #------------------------------
 # DiskFileName Modifier function.
 #------------------------------
 @FUNCTION _DFN_Mod
 :_DFN_Mod
 @PUSHRETURN
-    @LocalVar ArgTable 01
-    @LocalVar StrPtr   02
-    @LocalVar Len      03
+@Locals
+    @Local ArgTable
+    @Local StrPtr
+    @Local Len
 
     @POPI ArgTable
     @POPI StrPtr
@@ -2255,12 +2193,10 @@ ENDBLOCK
     @POPI Len
 
     @Call(VVV) strncpy ArgTable StrPtr Len
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 #-----------------------------------------
@@ -2272,11 +2208,12 @@ ENDBLOCK
 @FUNCTION DiskWithDirEntry
 :DiskWithDirEntry
 @PUSHRETURN
-    @LocalVar FilePtr     01
-    @LocalVar ModFn       02
-    @LocalVar ArgTable    03
-    @LocalVar DiskBuffer  04
-    @LocalVar FileNum     05
+@Locals
+    @Local FilePtr
+    @Local ModFn
+    @Local ArgTable
+    @Local DiskBuffer
+    @Local FileNum
 
     @POPI ModFn
     @POPI FilePtr
@@ -2330,23 +2267,20 @@ ENDBLOCK
         @POPNULL
     @ENDIF
 
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------
 @FUNCTION  FSReadHeader
 # FSReadHeader(DISK_NUMBER):1|0 # Reads filesystem superblock (FS header) and establishes FS context
 #--------------------------------
 :FSReadHeader
 @PUSHRETURN
-    @LocalVar DiskBuffer 01
-    @LocalVar _I 02
-    @LocalVar DISKNUM 03
+@Locals
+    @Local DiskBuffer
+    @Local _I
+    @Local DISKNUM
 
     @POPI DISKNUM
     @MV2V DISKNUM FSDiskNumStore      # We keep this so WriteHeader does not require param.
@@ -2391,21 +2325,20 @@ ENDBLOCK
    # Always delete DiskBuffer
    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO @POPNULL  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
    :FSRH_Exit
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #----------------------------------------
 # FSWriteHeader() Stores current FS Disk meta data back to disk.
 #----------------------------------------
 @FUNCTION FSWriteHeader
 :FSWriteHeader
 @PUSHRETURN
-    @LocalVar DiskBuffer 01
-    @LocalVar _I 02
-    @LocalVar TestVal 03
+@Locals
+    @Local DiskBuffer
+    @Local _I
+    @Local TestVal
 
     # First do some test for valid disks
 
@@ -2464,12 +2397,10 @@ ENDBLOCK
     # Always delete DiskBuffer
     @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @POPNULL @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #---------------------------------
 @FUNCTION  FSIsFileUsed
@@ -2477,11 +2408,12 @@ ENDBLOCK
 #---------------------------------
 :FSIsFileUsed
 @PUSHRETURN
-   @LocalVar FileNum 01
-   @LocalVar _I 02
-   @LocalVar ByteOffset 03
-   @LocalVar BitIndex 04
-   @LocalVar Mask 05
+@Locals
+   @Local FileNum
+   @Local _I
+   @Local ByteOffset
+   @Local BitIndex
+   @Local Mask
 
    @AND 0x1ff       # Make sure FileNum in valid range.
    @IF_UGE_A 4
@@ -2510,25 +2442,22 @@ ENDBLOCK
    @ELSE
       @PUSH 0             # send if FileNum <4
    @ENDIF
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #---------------------------------
 # FSSetFileUsed(FileNum) Sets BitMap At FileNum spot
 #---------------------------------
 @FUNCTION FSSetFileUsed
 :FSSetFileUsed
 @PUSHRETURN
-   @LocalVar FileNum 01
-   @LocalVar _I 02
-   @LocalVar ByteOffset 03
-   @LocalVar BitIndex 04
-   @LocalVar Mask 05
+@Locals
+   @Local FileNum
+   @Local _I
+   @Local ByteOffset
+   @Local BitIndex
+   @Local Mask
 
    @AND 0x1ff       # Make sure FileNum in valid range.
    @IF_UGE_A 4
@@ -2565,25 +2494,22 @@ ENDBLOCK
    @ELSE
       @PUSH 0   # Invalid range
    @ENDIF
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #---------------------------------
 # FSClearFileUsed(FileNum) Cleats BitMap at FileNum spot
 #---------------------------------
 @FUNCTION FSClearFileUsed
 :FSClearFileUsed
 @PUSHRETURN
-   @LocalVar FileNum 01
-   @LocalVar _I 02
-   @LocalVar ByteOffset 03
-   @LocalVar BitIndex 04
-   @LocalVar Mask 05
+@Locals
+   @Local FileNum
+   @Local _I
+   @Local ByteOffset
+   @Local BitIndex
+   @Local Mask
 
    @AND 0x1ff       # Make sure FileNum in valid range.
    @IF_UGE_A 4
@@ -2622,21 +2548,18 @@ ENDBLOCK
    @ELSE
       @PUSH 0   # Not valid range
    @ENDIF
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------
 @FUNCTION  FSFindFreeFile
 # FSFindFreeFile():FileNum|0
 #--------------------------------------
 :FSFindFreeFile
 @PUSHRETURN
-    @LocalVar _I       01
+@Locals
+    @Local _I
 
     @MA2V 4 _I
     @PUSHI _I
@@ -2673,10 +2596,10 @@ ENDBLOCK
     @POPNULL
     @PUSH 0
 :FSFFF_EXIT
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------
 # FSFormat(DiskID, DiskNum)
 # Format DiskNum and applies DiskID
@@ -2684,10 +2607,11 @@ ENDBLOCK
 @FUNCTION FSFormat
 :FSFormat
 @PUSHRETURN
-    @LocalVar DiskBuffer 01
-    @LocalVar _I 02
-    @LocalVar DiskID 03
-    @LocalVar DiskNum 04
+@Locals
+    @Local DiskBuffer
+    @Local _I
+    @Local DiskID
+    @Local DiskNum
 
     @POPI DiskNum
     @POPI DiskID
@@ -2737,13 +2661,10 @@ ENDBLOCK
     # Always cleanup DiskBuffer
     @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
     #
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #-----------------------------------
 @FUNCTION  FSNextUsedFile
@@ -2752,8 +2673,9 @@ ENDBLOCK
 #-----------------------------------
 :FSNextUsedFile
 @PUSHRETURN
-    @LocalVar _I 01
-    @LocalVar Word 02
+@Locals
+    @Local _I
+    @Local Word
 
     @IF_ULT_A 4
         @POPNULL
@@ -2799,11 +2721,10 @@ ENDBLOCK
     @PUSH 0
 
 :FSNUF_Exit
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------
 @FUNCTION  FSFindFile
 # FSFindFile(Pattern, StartPoint): FileNum | 0
@@ -2811,11 +2732,12 @@ ENDBLOCK
 #--------------------------------------------
 :FSFindFile
 @PUSHRETURN
-    @LocalVar Pattern     01
-    @LocalVar StartPoint  02
-    @LocalVar FileNum     03
-    @LocalVar DiskBuffer  04
-    @LocalVar ArgTable    05
+@Locals
+    @Local Pattern
+    @Local StartPoint
+    @Local FileNum
+    @Local DiskBuffer
+    @Local ArgTable
 
     @POPI StartPoint
     @POPI Pattern
@@ -2878,14 +2800,10 @@ ENDBLOCK
     @Call(VV) HeapDeleteObject DiskHeap ArgTable
     @POPNULL
 
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #--------------------------------------------
 @FUNCTION  DiskFileReadLine
@@ -2914,13 +2832,14 @@ ENDBLOCK
 #--------------------------------------------
 :DiskFileReadLine
 @PUSHRETURN
-    @LocalVar FilePtr       01
-    @LocalVar MemPtr        02
-    @LocalVar Consumed      03
-    @LocalVar MaxLen        04
-    @LocalVar PayloadLimit  05
-    @LocalVar StatusLen     06
-    @LocalVar Continue      07
+@Locals
+    @Local FilePtr
+    @Local MemPtr
+    @Local Consumed
+    @Local MaxLen
+    @Local PayloadLimit
+    @Local StatusLen
+    @Local Continue
 
     @POPI MaxLen
     @POPI MemPtr
@@ -3040,17 +2959,11 @@ ENDBLOCK
 
     @PUSHI StatusLen
 
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
-ENDBLOCK
+@ENDFUNCTION
 
 
 

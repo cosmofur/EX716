@@ -2,8 +2,8 @@
 # Requires common.mc
 ! __LIB_DIV_LOADED
 M __LIB_DIV_LOADED 1
+P Load div.ld
 I div.ref
-
 G DIVU G DIV
 # Function DIVU unsigned Divide.
 @FUNCTION DIVU
@@ -68,7 +68,7 @@ G DIVU G DIV
 @POPLOCAL A_VAL
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function DIV, this version knows about Signs, but uses the DIVU version to do the main work.
 @FUNCTION DIV
@@ -120,7 +120,8 @@ ENDBLOCK
    @POPLOCAL A_VAL
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 M SIZESINCECOMMENT div.ld
 @SIZESINCE
 ENDBLOCK
+

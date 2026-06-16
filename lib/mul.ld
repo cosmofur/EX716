@@ -1,5 +1,6 @@
 ! __LIB_MUL_LOADED
 M __LIB_MUL_LOADED 1
+P Load mul.ld
 I mul.ref
 # ============================================================
 # mul.ld  -  Software Multiply Library for EX716
@@ -163,7 +164,7 @@ P Before MULU
 
     # --- Clean up ---
     @RETURN_RESULT
-ENDBLOCK
+@ENDFUNCTION
 
 # ============================================================
 # MUL(N, M) → Signed multiply
@@ -238,6 +239,6 @@ ENDBLOCK
     @RestoreVar 01
     @POPRETURN
     @RET
-ENDBLOCK
+@ENDFUNCTION
 @SIZESINCE
 ENDBLOCK

@@ -2025,6 +2025,7 @@ class microcpu:
                 # --- detect HALT or stop condition ---
                 halted = (rcC == 0 or rcPy == 0)  # adjust condition to your return codes
         elif context.Fast:
+            safeprint("Fast Mode:")
             return self._evalpc_c(context, dosteps)
         else:
             return self._evalpc_py(context, dosteps)
@@ -3020,7 +3021,20 @@ def substitute_macro_stack_opts(line, filename, context, CPU):
 
     return "".join(out)
 
-def expand_percent_functions(line, filename, context, CPU):
+def expand_percent_functions(line, filename, context, CPU, scan_mode=False):
+    saved_LastMLen = None
+    if scan_mode:
+        saved_LastMLen = list(LastMLen)
+
+    try:
+        return _expand_percent_functions(
+            line, filename, context, CPU, scan_mode=scan_mode
+        )
+    finally:
+        if scan_mode:
+            LastMLen[:] = saved_LastMLen
+
+def _expand_percent_functions(line, filename, context, CPU, scan_mode=False):
     i = 0
     out = []
     inquote = False
@@ -3052,8 +3066,10 @@ def expand_percent_functions(line, filename, context, CPU):
             i += 1
             continue
 
+        if i >= len(line):
+            out.append("%")
+            break
         i += 1  # consume %
-
         if line[i:i+6] == "STRLEN":
             i += 6
             while i < len(line) and line[i].isspace():
@@ -3288,7 +3304,7 @@ def find_matching_percent_paren(text, start):
         returns len(text)
     """
     if text[start:start+2] != "%(":
-        raise ValueError("find_matching_percent_paren called at non-%( position")
+        cpu.raiseerror("find_matching_percent_paren called at non-%( position")
 
     depth = 1
     i = start + 2
@@ -3586,7 +3602,7 @@ def FinalSymbolReport(context):
     # Missing symbols (likely missing @USE)
     # -----------------------------------------
     if missing_symbols:
-        print("\n=== Missing Symbols (likely missing @USE) ===")
+        print("\n=== Missing Symbols ===")
 
         for sym in missing_symbols:
 
@@ -3604,8 +3620,6 @@ def FinalSymbolReport(context):
 
             if len(refs) > 5:
                 print(f"     ... {len(refs) - 5} more")
-
-            print(f"     suggestion: @USE {sym}")
 
     # -----------------------------------------
     # Summary
@@ -3643,7 +3657,7 @@ def is_macro_word_at(s, i, word):
     return before_ok and after_ok
 
 
-def expand_macro_control(line, filename, context, CPU):
+def expand_macro_control(line, filename, context, CPU, scan_mode=False):
     i = 0
     out = []
     inquote = False
@@ -3692,7 +3706,7 @@ def expand_macro_control(line, filename, context, CPU):
         body = line[body_start:endr_start]
 
         # Expand nested %REPEAT inside the body.
-        body = expand_macro_control(body, filename, context, CPU)
+        body = expand_macro_control(body, filename, context, CPU, scan_mode=scan_mode)
 
         for _ in range(count):
             out.append(body)
@@ -3756,8 +3770,11 @@ def handle_skipped_command(line, key, size, context, CPU):
         return line[size:].strip()
 
     if key in MACRO_CONDITIONAL:
+        _result, consumed = context.evaluate_condition(
+            key, line, context.ActiveFile, CPU
+            )
         context.push_block(executing=False, block_type=key)
-        return line[size:].strip()
+        return line[consumed:].strip()
     
     # A skipped label may have ENDBLOCK after it:
     #   :_U_xxx_ENDIF ENDBLOCK
@@ -3831,7 +3848,6 @@ def expand_unquoted_text(body, filename, context, CPU):
                 context,
                 CPU,
                 append_rest=False)
-
             consumed = consumed_one_source_command(rest, context, CPU)
             out.append(expanded)
             i += consumed
@@ -3851,16 +3867,17 @@ def expand_unquoted_text(body, filename, context, CPU):
     return "".join(out).strip()            
 
 
-def expand_macro_invocation(cmd, context, CPU):
+def expand_macro_invocation(cmd, context, CPU, scan_mode=False):
     return expand_macro_invocation_text(
         removecomments(cmd.text).strip(),
         cmd.filename,
         context,
         CPU,
+        scan_mode=scan_mode,
     )
 
 
-def expand_macro_invocation_text(line, filename, context, CPU, append_rest=True):
+def expand_macro_invocation_text(line, filename, context, CPU, append_rest=True, scan_mode=False):
     key, used = next_macro_name_token(line)
     if not key.startswith("@"):
         CPU.raiseerror(f"Expected macro invocation, got {key!r}")
@@ -3913,11 +3930,11 @@ def expand_macro_invocation_text(line, filename, context, CPU, append_rest=True)
         # 2. Percent functions are invocation-time/template-time features.
         #    Be careful: functions that depend on mutable macro symbols should not
         #    force brace expansion across the whole body.
-        expanded = expand_percent_functions(expanded, filename, context, CPU)
+        expanded = expand_percent_functions(expanded, filename, context, CPU, scan_mode=scan_mode)
         # 3. Macro control expansion, e.g. %REPEAT/%ENDR.
         #    This may duplicate text, but should preserve {name} references inside
         #    each repeated command so they resolve when each command is executed.
-        expanded = expand_macro_control(expanded, filename, context, CPU)
+        expanded = expand_macro_control(expanded, filename, context, CPU, scan_mode=scan_mode)
     finally:
         context.varbaseSP = old_varbaseSP
         context.varbaseNext = old_varbaseNext
@@ -3935,7 +3952,7 @@ def read_backquoted_body(text):
     Double-quoted strings are preserved and may contain backquotes.
     """
     if not text.startswith("`"):
-        raise ValueError("read_backquoted_body called on non-backquoted text")
+        CPU.raiseerror("read_backquoted_body called on non-backquoted text")
 
     out = []
     i = 1
@@ -3969,7 +3986,7 @@ def read_backquoted_body(text):
         out.append(c)
         i += 1
 
-    raise ValueError(f"Unterminated backquoted macro body: {text!r}")
+    CPU.raiseerror(f"Unterminated backquoted macro body: {text!r}")
 
 def read_next_source_command(infile, filename, wfilename, context, CPU):
     """
@@ -4044,7 +4061,7 @@ def parse_macro_definition_command(line, key, size, cmdq=None):
 
     macro_name, used = next_macro_name_token(rest)
     if not macro_name:
-        raise ValueError(f"{key} missing macro name: {line!r}")
+        CPU.raiseerror(f"{key} missing macro name: {line!r}")
     
     rest = rest[used:].lstrip()
     bt = -1
@@ -4142,10 +4159,14 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                 # 1. Skipped conditional body.
                 # Still parse only control structure commands so nesting stays balanced.
                 if not context.is_executing():
+                    if key.startswith("@"):
+                        expanded = expand_macro_invocation(cmd, context, CPU, scan_mode=True)
+                        enqueue_front(cmdq, cmd, expanded, context, origin="macro-scan")
+                        continue
+
                     rest = handle_skipped_command(line, key, size, context, CPU)
                     enqueue_front(cmdq, cmd, rest, context)
                     continue
-
                 # 2. Conditional close.
                 if key == "ENDBLOCK":
                     context.pop_block()
@@ -4467,8 +4488,50 @@ def execute_assembler_command(cmd, CPU, context):
 
         trailing = expanded_expr[expr_used:].strip()
         return trailing
+    elif (key == ".") and context.Entry == 0:
+        if not rest:
+            CPU.raiseerror(f"Missing address for {key} {filename}:{context.FileLineNum}")
 
-    elif (key == ".") or (key.upper() == ".ORG"):
+        value, used = FirstPassVal(
+            rest,
+            context,
+            filename=filename,
+            allow_braces=True
+        )
+
+        trailing = rest[used:].lstrip()
+        if trailing:
+            CPU.raiseerror(
+                f"Unexpected trailing text after {key}: {trailing!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+
+        context.address = Str2Word(value)
+        context.Entry = context.address
+        return
+
+    elif (key == ".") and context.Entry != 0:
+        if not rest:
+            CPU.raiseerror(f"Missing address for {key} {filename}:{context.FileLineNum}")
+
+        value, used = FirstPassVal(
+            rest,
+            context,
+            filename=filename,
+            allow_braces=True
+        )
+
+        trailing = rest[used:].lstrip()
+        if trailing:
+            CPU.raiseerror(
+                f"Unexpected trailing text after {key}: {trailing!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+
+        context.address = Str2Word(value)
+        return
+    
+    elif key.upper() == ".ORG":
         if not rest:
             CPU.raiseerror(f"Missing address for {key} {filename}:{context.FileLineNum}")
 
@@ -4990,206 +5053,230 @@ def debugger(passline, context: AssemblerContext):
                 safeprint("ERR: Need to specify what Range print")
             continue
         if cmdword == "p":
-           if argcnt > 0:
-               # For each argument, print that address independently.
-               for arg in arglist:
-                   try:
-                       if isinstance(arg, int):
-                           v = int(arg)
-                       else:
-                           v = int(arg, 0)    # string with base auto-detect
-                   except Exception as e:
-                       safeprint(f"ERR: Invalid address: {arg} ({e})")
-                       continue
+            if argcnt > 0:
+                # For each argument, print that address independently.
+                for arg in arglist:
+                    try:
+                        if isinstance(arg, int):
+                            v = int(arg)
+                        else:
+                            v = int(arg, 0)    # string with base auto-detect
+                    except Exception as e:
+                        safeprint(f"ERR: Invalid address: {arg} ({e})")
+                        continue
 
-                   # Build the print string (existing logic preserved)
-                   SInfo = "%04x:" % v
-                   w1 = CPU.getwordat(v)
-                   w2 = CPU.getwordat(w1)
+                    # Build the print string (existing logic preserved)
+                    SInfo = "%04x:" % v
+                    w1 = CPU.getwordat(v)
+                    w2 = CPU.getwordat(w1)
 
-                   SInfo += "[%02x]" % w1
-                   SInfo += "[[%02x]]" % w2
-                   SInfo += "  "
+                    SInfo += "[%02x]" % w1
+                    SInfo += "[[%02x]]" % w2
+                    SInfo += "  "
 
-                   # Use your original char-display logic
-                   char_items = (
-                       "'", v & 0xff, (v >> 8) & 0xff, "'",
-                       "[",
-                       "'", w1 & 0xff, (w1 >> 8) & 0xff, "'", "]",
-                       "[",
-                       "[", "'", w2 & 0xff, (w2 >> 8) & 0xff, "'", "]", "]"
-                   )
+                    # Use your original char-display logic
+                    char_items = (
+                        "'", v & 0xff, (v >> 8) & 0xff, "'",
+                        "[",
+                        "'", w1 & 0xff, (w1 >> 8) & 0xff, "'", "]",
+                        "[",
+                        "[", "'", w2 & 0xff, (w2 >> 8) & 0xff, "'", "]", "]"
+                    )
 
-                   for ci in char_items:
-                       if isinstance(ci, int):
-                           c = ci
-                       else:
-                           c = ord(ci)
+                    for ci in char_items:
+                        if isinstance(ci, int):
+                            c = ci
+                        else:
+                            c = ord(ci)
 
-                       # Your printable-char detection
-                       if ((c != 0x7f) & (((c & 0xc0) == 0x40) |
-                                          ((c & 0xe0) == 0x20))):
-                           SInfo += "%c" % c
-                       else:
-                           SInfo += "_"
+                        # Your printable-char detection
+                        if ((c != 0x7f) & (((c & 0xc0) == 0x40) |
+                                           ((c & 0xe0) == 0x20))):
+                            SInfo += "%c" % c
+                        else:
+                            SInfo += "_"
 
-                   safeprint(SInfo)
+                    safeprint(SInfo)
 
-               continue
+                continue
 
-           # no args
-           safeprint("ERR: Need to specify one or more addresses")
-           continue
+            # no args
+            safeprint("ERR: Need to specify one or more addresses")
+            continue
+        if cmdword == "pm":
+            matches = []
+
+            for key, body in context.MacroData.items():
+                body_str = str(body)
+                argc = context.MacroPCount.get(key, 0)
+
+                if not rawlist or any(
+                        re.search(pattern, key) or re.search(pattern, body_str)
+                    for pattern in rawlist
+                ):
+                    matches.append((key, argc, body_str))
+
+            if not matches:
+                safeprint("No matching macros.\n")
+                continue
+
+            for key, argc, body in matches:
+                safeprint(f"{key}({argc})")
+                safeprint("Body: ",end="")
+                safeprint(body)
+
+            continue
+
         if cmdword == "pa":
-           # Filter labels
-           filtered_labels = {
-               key: value for key, value in context.FileLabels.items()
-               if not key.startswith("__")
-               and not key.startswith("F.")
-               and not key.startswith("M.")
-           }
+            # Filter labels
+            filtered_labels = {
+                key: value for key, value in context.FileLabels.items()
+                if not IsCompilerGenerated(key) 
+                and not key.startswith("F.")
+                and not key.startswith("M.")
+            }
 
-           rows = []
+            rows = []
 
-           for key, value in filtered_labels.items():
-               value_str = str(value)
-               if not rawlist or any(
-                   re.search(pattern, key) or re.search(pattern, value_str)
-                   for pattern in rawlist
-               ):
-                   active = "Y" if IsLabelActive(key, CPU.pc) else "N"
-                   rows.append((key, f"{int(value):04x}", active))
+            for key, value in filtered_labels.items():
+                value_str = str(value)
+                if not rawlist or any(
+                        re.search(pattern, key) or re.search(pattern, value_str)
+                    for pattern in rawlist
+                ):
+                    active = "Y" if IsLabelActive(key, CPU.pc) else "N"
+                    rows.append((key, f"{int(value):04x}", active))
 
-           # Determine column widths
-           name_width  = max(len("Name"),  max(len(k) for k, _, _ in rows)) if rows else len("Name")
-           value_width = max(len("Value"), max(len(v) for _, v, _ in rows)) if rows else len("Value")
-           act_width   = len("Active")
+            # Determine column widths
+            name_width  = max(len("Name"),  max(len(k) for k, _, _ in rows)) if rows else len("Name")
+            value_width = max(len("Value"), max(len(v) for _, v, _ in rows)) if rows else len("Value")
+            act_width   = len("Active")
 
-           # Build the table
-           table = (
-               f"| {'Name'.ljust(name_width)} | "
-               f"{'Value'.ljust(value_width)} | "
-               f"{'Active'.ljust(act_width)} |\n"
-           )
-           table += (
-               f"|{'-'*(name_width+2)}|"
-               f"{'-'*(value_width+2)}|"
-               f"{'-'*(act_width+2)}|\n"
-           )
+            # Build the table
+            table = (
+                f"| {'Name'.ljust(name_width)} | "
+                f"{'Value'.ljust(value_width)} | "
+                f"{'Active'.ljust(act_width)} |\n"
+            )
+            table += (
+                f"|{'-'*(name_width+2)}|"
+                f"{'-'*(value_width+2)}|"
+                f"{'-'*(act_width+2)}|\n"
+            )
 
-           for k, v, a in rows:
-               table += (
-                   f"| {k.ljust(name_width)} | "
-                   f"{v.ljust(value_width)} | "
-                   f"{a.ljust(act_width)} |\n"
-               )
+            for k, v, a in rows:
+                table += (
+                    f"| {k.ljust(name_width)} | "
+                    f"{v.ljust(value_width)} | "
+                    f"{a.ljust(act_width)} |\n"
+                )
 
-           safeprint(table)
-           continue
+            safeprint(table)
+            continue
 
         if cmdword == "m":
-            if argcnt >= 1:
-                maddr = arglist[0]
-                if argcnt >= 2:
-                    # This is case where 'm' command was followed by an address and
-                    # a series of 1 or more word integers on same line.
-                    for iad in arglist[1:]:
-                        mvalue = Str2Byte(iad)
-                        CPU.insertbyte(maddr, mvalue & 0xff, context)
-                        mvalue = int(iad) >> 8
-                        CPU.insertbyte(maddr, mvalue & 0xff, context)                        
-                        maddr += 2
-                        DissAsm(int(arglist[0]), 1, CPU)
-                else:
-                    # Start sub-command mode
-                    cmdline = "NONE"
-                    sys.stdout.write("Key: ")
-                    sys.stdout.write("### is decimal 0-9 ")
-                    sys.stdout.write(
-                        "Prepend 0x, 0o or 0b for hex, octal or binary format\n")
-                    sys.stdout.write(
-                        "By default 16 bit integer, prepend $$ for 8 bit bytes or $$$ for 32 bit words\n")
-                    sys.stdout.write(
-                        "8 bit ascii codes can be entered using double quotes\n")
-                    sys.stdout.write(
-                        "Use '.' on line byself to exit back to main mode.\n\n")
-                    while cmdline != "BREAK":
-                        sys.stdout.write("%04x[b%02x,b%02x]: " % (
-                            maddr, CPU.memspace[maddr], CPU.memspace[(maddr+1) & 0xffff]))
-                        sys.stdout.flush()
-#                  cmdline = sys.stdin.readline(256)
-                        cmdline = input()
-                        cmdline = removecomments(cmdline).strip()
-                        L=nextword(cmdline)
-                        while len(cmdline) > 0 and cmdline != "BREAK":
-                            L=nextword(cmdline)
-                            if L[0] == "":
-                                # empty command means just move forward one byte
-                                maddr += 1
-                                cmdline=""
-                                L=("",0)
-                                continue
-                            if cmdline != ".":
-                                if (L[0][0:1] == '"'):
-                                    (quotesize, quotetext) = GetQuoted(cmdline)
-                                    for iii in range(0, len(quotetext)):
-                                        CPU.insertbyte(maddr, ord(quotetext[iii]) & 0xff , context)
-                                        maddr += 1
-                                    cmdline=cmdline[L[1]:]
-                                    L=("",0)
-                                    continue
-                                if len(L[0]) == 1 and L[0][0:1] >= "0" and L[0][0:1] <= "9":
-                                    newval = int(L[0])
-                                    # Single digit number must be b10
-                                    CPU.insertbyte(maddr, newval &0xff , context)
-                                    maddr += 1
-                                    # high byte has to be zero
-                                    CPU.insertbyte(maddr, 0 , context)                                    
-                                    maddr += 1
-                                    cmdline=cmdline[L[1]:]
-                                    L=("",L[1])
-                                    continue
-                                else:
-                                    startnum = 0
-                                    expectsize = 2       # Number of bytes in value
-                                    if L[0][0:3] == "$$$":
-                                        expectsize = 4
-                                        startnum = 3
-                                if L[0][0:2] == "$$":
-                                    expectsize = 1
-                                    startnum = 2
-                                elif L[0][0:1] == "$":
-                                    startnum = 1
-                                try:
-                                    if expectsize != 4:
-                                        cmdline=cmdline[L[1]:]
-                                        L=nextword(L[0][startnum:])
-                                        if (L[0] in context.FileLabels.keys()):
-                                            newval = Str2Word(
-                                                context.FileLabels[L[0]])
-                                        else:
-                                            newval = Str2Word(
-                                                L[0])
-                                    else:
-                                        newval = int(L[0][startnum:])
-                                    for iii in range(0, expectsize):
-                                        CPU.insertbyte(maddr, newval & 0xff, context)
-                                        newval = newval >> 8
-                                        maddr += 1
-                                    cmdline=cmdline[L[1]:]
-                                    L=("",0)
-                                    continue
-                                except:
-                                    safeprint("Input %s not valid" % cmdline)
-                                    cmdline=""
-                                L=("",0)
-                                continue
-                            else:
-                                cmdline = "BREAK"
-                                cmdword = ""
-                                L=("",0)
-                                safeprint("End Modify")
-                                break
+             if argcnt >= 1:
+                 maddr = arglist[0]
+                 if argcnt >= 2:
+                     # This is case where 'm' command was followed by an address and
+                     # a series of 1 or more word integers on same line.
+                     for iad in arglist[1:]:
+                         mvalue = Str2Byte(iad)
+                         CPU.insertbyte(maddr, mvalue & 0xff, context)
+                         mvalue = int(iad) >> 8
+                         CPU.insertbyte(maddr, mvalue & 0xff, context)                        
+                         maddr += 2
+                         DissAsm(int(arglist[0]), 1, CPU)
+                 else:
+                     # Start sub-command mode
+                     cmdline = "NONE"
+                     sys.stdout.write("Key: ")
+                     sys.stdout.write("### is decimal 0-9 ")
+                     sys.stdout.write(
+                         "Prepend 0x, 0o or 0b for hex, octal or binary format\n")
+                     sys.stdout.write(
+                         "By default 16 bit integer, prepend $$ for 8 bit bytes or $$$ for 32 bit words\n")
+                     sys.stdout.write(
+                         "8 bit ascii codes can be entered using double quotes\n")
+                     sys.stdout.write(
+                         "Use '.' on line byself to exit back to main mode.\n\n")
+                     while cmdline != "BREAK":
+                         sys.stdout.write("%04x[b%02x,b%02x]: " % (
+                             maddr, CPU.memspace[maddr], CPU.memspace[(maddr+1) & 0xffff]))
+                         sys.stdout.flush()
+ #                  cmdline = sys.stdin.readline(256)
+                         cmdline = input()
+                         cmdline = removecomments(cmdline).strip()
+                         L=nextword(cmdline)
+                         while len(cmdline) > 0 and cmdline != "BREAK":
+                             L=nextword(cmdline)
+                             if L[0] == "":
+                                 # empty command means just move forward one byte
+                                 maddr += 1
+                                 cmdline=""
+                                 L=("",0)
+                                 continue
+                             if cmdline != ".":
+                                 if (L[0][0:1] == '"'):
+                                     (quotesize, quotetext) = GetQuoted(cmdline)
+                                     for iii in range(0, len(quotetext)):
+                                         CPU.insertbyte(maddr, ord(quotetext[iii]) & 0xff , context)
+                                         maddr += 1
+                                     cmdline=cmdline[L[1]:]
+                                     L=("",0)
+                                     continue
+                                 if len(L[0]) == 1 and L[0][0:1] >= "0" and L[0][0:1] <= "9":
+                                     newval = int(L[0])
+                                     # Single digit number must be b10
+                                     CPU.insertbyte(maddr, newval &0xff , context)
+                                     maddr += 1
+                                     # high byte has to be zero
+                                     CPU.insertbyte(maddr, 0 , context)                                    
+                                     maddr += 1
+                                     cmdline=cmdline[L[1]:]
+                                     L=("",L[1])
+                                     continue
+                                 else:
+                                     startnum = 0
+                                     expectsize = 2       # Number of bytes in value
+                                     if L[0][0:3] == "$$$":
+                                         expectsize = 4
+                                         startnum = 3
+                                 if L[0][0:2] == "$$":
+                                     expectsize = 1
+                                     startnum = 2
+                                 elif L[0][0:1] == "$":
+                                     startnum = 1
+                                 try:
+                                     if expectsize != 4:
+                                         cmdline=cmdline[L[1]:]
+                                         L=nextword(L[0][startnum:])
+                                         if (L[0] in context.FileLabels.keys()):
+                                             newval = Str2Word(
+                                                 context.FileLabels[L[0]])
+                                         else:
+                                             newval = Str2Word(
+                                                 L[0])
+                                     else:
+                                         newval = int(L[0][startnum:])
+                                     for iii in range(0, expectsize):
+                                         CPU.insertbyte(maddr, newval & 0xff, context)
+                                         newval = newval >> 8
+                                         maddr += 1
+                                     cmdline=cmdline[L[1]:]
+                                     L=("",0)
+                                     continue
+                                 except:
+                                     safeprint("Input %s not valid" % cmdline)
+                                     cmdline=""
+                                 L=("",0)
+                                 continue
+                             else:
+                                 cmdline = "BREAK"
+                                 cmdword = ""
+                                 L=("",0)
+                                 safeprint("End Modify")
+                                 break
         if cmdword == "l":
             startaddr = None
             stopaddr = None
@@ -5338,7 +5425,7 @@ def debugger(passline, context: AssemblerContext):
             stoprange = 0
             DissAsm(CPU.pc, 1, CPU)
             AtLeastOne = 1
-            while CPU.pc <= 0xffff:
+            while CPU.pc <= 0xfffe:
                 if watchbreaks:
                     for addr1, (value1, oper1) in watchbreaks.items():
                         if OPS[oper1](CPU.getwordat(addr1), value1):

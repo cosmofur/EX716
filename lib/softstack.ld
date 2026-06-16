@@ -155,7 +155,7 @@ M EndLocals `\
 @POPII __SS_SP
 
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 #M POPRETURN @CALL __MOVE_SS_HW @PRT "End Function: SS_SP:"  @PRTHEXI __SS_SP @StackDump
@@ -176,7 +176,7 @@ ENDBLOCK
 @INC2I __SS_SP
 @SWP
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function
 # Sets the Stack storage to a new range of memory.
@@ -192,7 +192,7 @@ ENDBLOCK
 @MV2V __SS_TOP __SS_SP
 @INC2I __SS_SP
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function
 # SaveSSStack(IDStore)
@@ -219,7 +219,7 @@ ENDBLOCK
 @POPS
 # [return]
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function
 # RestoreSSStack(IDStore)
@@ -243,7 +243,7 @@ ENDBLOCK
 @POPI __SS_SP
 # [return]
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # The Following macros are to make the Stack manipulation functions follow I and A rules.
 #
 # 1) @SetSStackAB Lable1(Highval) Label2(LowVal)
@@ -274,4 +274,5 @@ M RestoreSSStackI @PUSHI %1 @CALL RestoreSSStack
 M SIZESINCECOMMENT softstack.ld
 @SIZESINCE
 ENDBLOCK
+
 

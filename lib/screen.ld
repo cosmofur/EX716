@@ -143,18 +143,19 @@ ENDBLOCK
 @FUNCTION WinPlot
 :WinPlot
 @PUSHRETURN
-@LocalVar StrPtr 01
-@LocalVar X0 02
-@LocalVar X1 03
-@LocalVar Y0 04
-@LocalVar Y1 05
-@LocalVar DX 06
-@LocalVar DY 07
-@LocalVar SX 08
-@LocalVar SY 09
-@LocalVar ERR 10
-@LocalVar E2 11
-@LocalVar Direct 12
+@Locals
+@Local StrPtr
+@Local X0
+@Local X1
+@Local Y0
+@Local Y1
+@Local DX
+@Local DY
+@Local SX
+@Local SY
+@Local ERR
+@Local E2
+@Local Direct
 @POPI StrPtr
 @POPI Y1 @POPI X1 @POPI Y0 @POPI X0
 #@PUSHI X0 @SHL @SHL @SHR @POPI X0
@@ -211,18 +212,7 @@ ENDBLOCK
    :WPEndLoop
 @ENDWHILE
 @POPNULL
-@RestoreVar 12
-@RestoreVar 11
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -251,8 +241,8 @@ ENDBLOCK
 #
 # Windows Resize queries Terminal for it's size
 ! DEBUGSCREEN
-@LocalVar TIBChar 01
-@LocalVar CurVal 02
+@Local TIBChar
+@Local CurVal
 @TTYRAW
 @PRTLN "------------Initilizing....<Hit Enter>"
 @PRTS CSICODE @PRT "s"
@@ -505,8 +495,9 @@ ENDBLOCK
 @FUNCTION WinScrollRegion
 :WinScrollRegion
 @PUSHRETURN
-@LocalVar TopRow 01
-@LocalVar BottomRot 02
+@Locals
+@Local TopRow
+@Local BottomRot
 #
 # Setting region CSICODE toprow# ; bottomrow# r
    @POPI BottomRow
@@ -518,8 +509,7 @@ ENDBLOCK
    @PRTI BottomRow
    @PRT "r"
    @PUSHI TopRow @PUSH 1 @CALL WinCursor
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -544,12 +534,13 @@ ENDBLOCK
 @FUNCTION WinScrollUp
 :WinScrollUp
 @PUSHRETURN
-@LocalVar NumLines 01
+@Locals
+@Local NumLines
     @POPI NumLines
     @PRTS CSICODE
     @PRTI NumLines
     @PRT "S"
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -590,12 +581,13 @@ ENDBLOCK
 @FUNCTION WinScrollDown
 :WinScrollDown
 @PUSHRETURN
-@LocalVar NumLines 01
+@Locals
+@Local NumLines
    @POPI NumLines
    @PRTS CSICODE
    @PRTI NumLines
    @PRT "T"
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -615,8 +607,9 @@ ENDBLOCK
 @FUNCTION WinScrollRight
 :WinScrollRight
 @PUSHRETURN
-@LocalVar NumLines 01
-@LocalVar Index 02
+@Locals
+@Local NumLines
+@Local Index
    @POPI NumLines
    @ForIV2V Index TopRow BottomRow
       @PUSHI WinWidth
@@ -626,8 +619,7 @@ ENDBLOCK
       @PRTI NumLines
       @PRT "@"
    @Next Index
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -646,8 +638,9 @@ ENDBLOCK
 @FUNCTION WinScrollRight
 :WinScrollRight
 @PUSHRETURN
-@LocalVar NumLines 01
-@LocalVar Index 02
+@Locals
+@Local NumLines
+@Local Index
    @POPI NumLines
    @ForIV2V Index TopRow BottomRow
       @PUSH 1
@@ -657,8 +650,7 @@ ENDBLOCK
       @PRTI NumLines
       @PRT "P"
    @Next Index
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK
@@ -756,8 +748,9 @@ ENDBLOCK
 @FUNCTION WinBox
 :WinBox
 @PUSHRETURN
-@LocalVar X1 01 @LocalVar Y1 02 @LocalVar X2 03 @LocalVar Y2 04
-@LocalVar Index 05
+@Locals
+@Local X1 @LocalVar Y1 02 @LocalVar X2 03 @LocalVar Y2 04
+@Local Index
 @POPI Y2 @POPI X2 @POPI Y1 @POPI X1
 
 @PUSHI X1 @PUSHI Y1 @CALL WinCursor
@@ -777,11 +770,7 @@ ENDBLOCK
 @PUSHI X2 @PUSHI Y1 @CALL WinCursor @PRT "+"
 @PUSHI X1 @PUSHI Y2 @CALL WinCursor @PRT "+"
 @PUSHI X2 @PUSHI Y2 @CALL WinCursor @PRT "+"
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ENDBLOCK

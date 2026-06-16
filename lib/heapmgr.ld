@@ -1,7 +1,6 @@
 ! __LIB_HEAPMGR_LOADED
 M __LIB_HEAPMGR_LOADED 1
 I heapmgr.ref
-L softstack.ld
 P Loading heapmgr.ld
 
 
@@ -97,7 +96,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function HeapNewObject(HeapId, Size)
 @FUNCTION HeapNewObject
@@ -242,7 +241,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #
 # Function HeapResizeObject(HeapID,ObjectID,NewSize)
@@ -311,7 +310,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # Function HeapDeleteObject(HeapID,ObjectID)
@@ -336,7 +335,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # Function HeapDefrag(HeapID)
@@ -412,7 +411,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # Function HeapListMap(HeapID)
 @FUNCTION HeapListMap
@@ -469,7 +468,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK   
+@ENDFUNCTION   
    
 
 
@@ -507,7 +506,7 @@ ENDBLOCK
    @RestoreVar 01   
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ##################################################################
 # Function HeapAppend(HeapID,Object1,Object2,Offset):Object1_(new?)
 # Appends Object2 to Object1 and growns
@@ -570,7 +569,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # Function HeapValidate(HeapID)
@@ -594,7 +593,7 @@ ENDBLOCK
    # Compute heap end = HeapID + heap_size
    @PUSHI HeapID
    @PUSHI HeapID @ADD HEAP_SIZE_LOC @PUSHS
-   @ADD
+   @ADDS
    @POPI HeapEnd
 
    # Load first object
@@ -657,7 +656,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 M SIZESINCECOMMENT heapmgr.ld
 @SIZESINCE
 ENDBLOCK

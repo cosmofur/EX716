@@ -6,6 +6,8 @@ M BASIC_COMMONFLAG 1
 =ARG_TYPE_STR 1
 =ARG_TYPE_WORD 3
 =ARG_WORDS  3
+=FLAG_VAL 0  
+=FLAG_HEAP 1
 =RUNCODE 0xd0
 =LISTCODE 0xd1
 =LOADCODE 0xd2
@@ -57,9 +59,10 @@ M BASIC_COMMONFLAG 1
 =COLORBG_CODE   0xb5
 =CURSOR_CODE    0xb6
 # Math / Functions
+=FIRST_FUNC_CODE 0xc0
 =SIN_CODE     0xc0
 =COS_CODE     0xc1
-=TAB_CODE     0xc2
+=TAN_CODE     0xc2
 =ATAN_CODE    0xc3
 =ABS_CODE     0xc4
 =SGN_CODE     0xc5
@@ -68,6 +71,10 @@ M BASIC_COMMONFLAG 1
 =LEN_CODE     0xc8
 =VAL_CODE     0xc9
 =STR_CODE     0xca
+=STR_LEFT     0xcb
+=STR_RIGHT    0xcc
+=STR_MID      0xcd
+=LAST_FUNC_CODE 0xcd
 
 # Logic
 =AND_TOKEN    0xd0
@@ -92,6 +99,7 @@ M BASIC_COMMONFLAG 1
 # KeywordTable MUST be sorted by descending string length.
 # This ensures longest-match-first semantics (e.g. PRINTF before PRINT).
 # New keywords MUST be inserted in the correct order.
+  @PRTLN "ERROR Ran into memory" @StackDump @END
 
 :KeyWordTable
 :CommandTable
@@ -140,8 +148,11 @@ $$3 "RND" RND_CODE
 $$3 "INT" INT_CODE
 $$3 "SGN" SGN_CODE
 $$3 "ABS" ABS_CODE
-$$3 "TAB" TAB_CODE
+$$3 "TAN" TAN_CODE
 $$3 "COS" COS_CODE
+$$5 "LEFT$" STR_LEFT
+$$6 "RIGHT$" STR_RIGHT
+$$4 "MID$" STR_MID
 $$3 "SIN" SIN_CODE
 $$3 "CLS" CLS_CODE
 $$3 "EOF" EOF_CODE
@@ -266,9 +277,10 @@ $$1 "^" "^\0"
 @USE  strncmp
 @USE  strncpy
 
+G BasicPanic
 
-ENDBLOCK
 M SIZESINCECOMMENT basic_common.h
 @SIZESINCE  
+ENDBLOCK
 
   

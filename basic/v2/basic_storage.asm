@@ -1271,17 +1271,36 @@ M ZeroOutVar @MA2V 0 %1
           @POPII TargetPtr          
        @ENDIF
     @ELSE
-       @POPNULL
-       #Not an Array Case
-       @PUSHI VarPtr       
+       # Not an Array Case
+       @PUSHI VarPtr
        @ADD VAROFF_Pay1
-       @POPI TargetPtr       
-       @PUSHI ValLow
-       @POPII TargetPtr
-       @IF_NEQ_AV INT_TYPE ActualType
-          @INC2I TargetPtr
-          @PUSHI ValHigh
+       @POPI TargetPtr
+
+       @IF_EQ_AV STRING_TYPE ActualType
+          # Delete old scalar string if present
+          @PUSHII TargetPtr
+          @IF_NOTZERO
+             @POPNULL
+             @PUSHI RunTimeHeap
+             @PUSHII TargetPtr
+             @CALL HeapDeleteObject
+             @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+             @POPNULL
+          @ELSE
+             @POPNULL
+          @ENDIF
+
+          # Adopt new string heap object
+          @PUSHI ValLow
           @POPII TargetPtr
+       @ELSE
+          @PUSHI ValLow
+          @POPII TargetPtr
+          @IF_NEQ_AV INT_TYPE ActualType
+             @INC2I TargetPtr
+             @PUSHI ValHigh
+             @POPII TargetPtr
+          @ENDIF
        @ENDIF
     @ENDIF
     @PUSHI VarPtr
@@ -1431,6 +1450,47 @@ M ZeroOutVar @MA2V 0 %1
    @RestoreVar 01
 @POPRETURN
 @RET
+
+#-----------------------------------
+# StrBasicToC(BasicPtr):(C_Heap_Ptr, Size)
+#-----------------------------------
+:StrBasicToC
+@PUSHRETURN
+@Locals
+   @Local InPtr
+   @Local OutObject
+   @Local StrLen
+   @Local AllocLen
+   @Local NullSpot
+
+   @POPI InPtr
+
+   @PUSHII InPtr @AND 0xff
+   @POPI StrLen
+
+   @INCI InPtr
+
+   @MV2V StrLen AllocLen
+   @INC2I AllocLen
+
+   @Call(VV) HeapNewObject RunTimeHeap AllocLen
+   @IF_ULT_A 100
+      @Call(AA) BasicRaiseError ERR_MEMORY 0
+   @ENDIF
+   @POPI OutObject
+
+   @Call(VVV) memcpy OutObject InPtr StrLen
+
+   @PUSH 0
+   @PUSHI OutObject
+   @ADDI StrLen
+   @POPS
+   @PUSHI OutObject
+   @PUSHI StrLen
+@EndLocals
+@POPRETURN
+@RET
+   
 
 M SIZESINCECOMMENT basic_storage.h
 @SIZESINCE  

@@ -1,6 +1,6 @@
 ! __LIB_SHIFT16_LOADED
 M __LIB_SHIFT16_LOADED 1
-I shift16.ld
+I shift16.ref
 
 ############################################################
 # shift16.ld — 16-bit shifting and bit-twiddling primitives
@@ -17,7 +17,7 @@ I shift16.ld
 #
 # All functions expect 16-bit values and preserve stack order.
 ############################################################
-
+G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N G BITMASK16
 
 ############################################################
 # SHL16_BY_N
@@ -76,7 +76,7 @@ I shift16.ld
     @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 ############################################################
@@ -127,7 +127,7 @@ ENDBLOCK
     @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 ############################################################
@@ -203,7 +203,7 @@ ENDBLOCK
     @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 ############################################################
@@ -222,7 +222,7 @@ ENDBLOCK
     @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 ############################################################
@@ -243,7 +243,7 @@ ENDBLOCK
     @ANDI A
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 
@@ -264,7 +264,7 @@ ENDBLOCK
 
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 ############################################################
@@ -285,5 +285,5 @@ ENDBLOCK
 
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ENDBLOCK

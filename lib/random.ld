@@ -71,10 +71,10 @@ G frndint
 @FUNCTION rnd16
 :rnd16
     # --- Allocate locals for 32-bit scratch space ---
-    @LocalVar Scratch32A   01   # low word
-    @LocalVar Scratch32AHW 02   # high word
-    @LocalVar Scratch32B   03   # low word
-    @LocalVar Scratch32BHW 04   # high word
+    @Local Scratch32A   # low word
+    @Local Scratch32AHW   # high word
+    @Local Scratch32B   # low word
+    @Local Scratch32BHW   # high word
 
     # --- Multiply Seed32A * Modulus32 (32-bit multiply) ---
     @Call32(VV) MUL32U Seed32A Modulus32
@@ -168,7 +168,8 @@ ENDBLOCK
 @FUNCTION rndint
 :rndint
     @PUSHRETURN
-    @LocalVar Range1 01
+    @Locals
+    @Local Range1
 
     # --- Store argument ---
     @POPI Range1
@@ -200,7 +201,7 @@ ENDBLOCK
     @ENDCASE
 
     # --- Restore locals and return result ---
-    @RestoreVar 01
+    @EndLocals
     @POPRETURN
     @RET
 ENDBLOCK
@@ -222,7 +223,8 @@ ENDBLOCK
 @FUNCTION frndint
 :frndint
     @PUSHRETURN
-    @LocalVar RIRange 01
+    @Locals
+    @Local RIRange
 
     # --- Store argument ---
     @POPI RIRange
@@ -254,7 +256,7 @@ ENDBLOCK
     @ENDCASE
 
     # --- Restore locals and return result ---
-    @RestoreVar 01
+    @EndLocals
     @POPRETURN
     @RET
 ENDBLOCK
@@ -278,7 +280,8 @@ ENDBLOCK
 @FUNCTION frnd16
 :frnd16 
     @PUSHRETURN
-    @LocalVar S1Seed 01
+    @Locals
+    @Local S1Seed
 
     # --- Copy Seed into local working variable ---
     @MV2V Seed S1Seed
@@ -305,7 +308,7 @@ ENDBLOCK
     @XORI S1Seed @POPI Seed
 
     # --- Clean up ---
-    @RestoreVar 01
+    @EndLocals
     @POPRETURN
     @RET
 ENDBLOCK

@@ -1,7 +1,7 @@
 # String Functions Generation two
 ! __LIB_STRING_LOADED
 M __LIB_STRING_LOADED 1
-
+P Load string.ld
 I string.ref
 
 # --- External dependencies (not defined in this file) ---
@@ -143,7 +143,7 @@ M SafeMove(VVV) \
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # Function strcat(strA,strB)
@@ -174,13 +174,12 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # function strncat(StrA,StrB,maxlen)
 # Appends StrB to StrA up to either end of StrB or max of maxlen.
 #         StrA must still have sufficent space for combined length of both strings.
-
 @FUNCTION strncat
 :strncat
 @PUSHRETURN
@@ -222,8 +221,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
-
+@ENDFUNCTION
 #
 # Function strncpy(dest, src, length) Copies from src[0:length] to dest[0:length]
 # if length>len(src) then it will only copy upto length of src.
@@ -269,7 +267,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function(StrA, StrB) 
 # strcpy without the 'n' just copies all of StrB into StrA
@@ -296,7 +294,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # strncmp(StrA,StrB,MaxChars)  compairs two string and returns -1,0 or 1
 # based on their relationship. -1 if str1 lexicongraphically < str2
@@ -379,7 +377,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # 
 # itos is an Integer to String function
@@ -460,7 +458,7 @@ ENDBLOCK
 
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # stoi, reverse of itos, takes text version of number and returns integer.
 # Function stoi(string)
@@ -559,7 +557,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # Function stoifirst(strptr) is very  much like stoi but does not require the string to terminat on a null
@@ -664,7 +662,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 #
 # Function strcmp is just an alternative for strncmp with a super sized 'n'
@@ -675,7 +673,7 @@ ENDBLOCK
    @CALL strncmp
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # Function memcpy(dest,src,size) Copies size bytes from src to dest
 #
@@ -743,7 +741,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # strchr(string,word) finds character (lower 8 bits) from word in string, returns pointer to occurance, 0 is not found
 @FUNCTION strchr
@@ -777,7 +775,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # strrchr(string,word) Returns pointer to 'last' instance of character in string, null it not found.
 @FUNCTION strrchr
@@ -814,7 +812,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # strstr(string,substring) Return pointer in string, where substring can be found. NULL if no match
 # Extra Local Variables
@@ -886,7 +884,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 ###########
 #
@@ -919,7 +917,7 @@ ENDBLOCK
 @POPRETURN
 @RET
 #
-ENDBLOCK
+@ENDFUNCTION
 # Function IsAlpha(string):T|F
 # Return T|F if first char in string is in set [A-Za-z]
 @FUNCTION ISAlpha
@@ -942,7 +940,7 @@ ENDBLOCK
    @POPNULL
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #
 # Function ISNumeric(String):T|F
@@ -964,7 +962,7 @@ ENDBLOCK
    @POPNULL
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # strfndc searchs string for single character returns ptr to that character
 # (strstr but with character constant on stack)
@@ -979,7 +977,7 @@ ENDBLOCK
    @CALL strstr
    @PUSHI sfReturn
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # strtok(InString, Delim) searchs string and replaces delim(s) with null
 # keeps an internal pointer so when string is null it will continue from
@@ -1052,7 +1050,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #
 # This string split returns from an input string a HeapManager array of strings
 # Function splitstr(instring,splitlist,heapid):(heaparray,size_array)
@@ -1172,7 +1170,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ###############################################
 # Function SplitDeltete(object,heapid)
 # Deletes the object which is a list created by splitstr
@@ -1210,7 +1208,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ###################################################
 # Function strUpCase(instring)
 # Changes all lowercase letters instring to uppercase
@@ -1242,7 +1240,7 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ###################################################
 # Function strLowCase(instring)
 # Changes all Uppercase letters instring to lowercase
@@ -1274,9 +1272,11 @@ ENDBLOCK
    @RestoreVar 01
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 M SIZESINCECOMMENT string.ld
 @SIZESINCE
+
 ENDBLOCK
+
