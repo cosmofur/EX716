@@ -70,11 +70,13 @@ M BASIC_COMMONFLAG 1
 =RND_CODE     0xc7
 =LEN_CODE     0xc8
 =VAL_CODE     0xc9
-=STR_CODE     0xca
+=STR_STR      0xca
 =STR_LEFT     0xcb
 =STR_RIGHT    0xcc
 =STR_MID      0xcd
-=LAST_FUNC_CODE 0xcd
+=STR_CHR      0xce
+=STR_ASC      0xcf
+=LAST_FUNC_CODE 0xcf
 
 # Logic
 =AND_TOKEN    0xd0
@@ -99,7 +101,7 @@ M BASIC_COMMONFLAG 1
 # KeywordTable MUST be sorted by descending string length.
 # This ensures longest-match-first semantics (e.g. PRINTF before PRINT).
 # New keywords MUST be inserted in the correct order.
-  @PRTLN "ERROR Ran into memory" @StackDump @END
+  @PRTLN "ERROR Illegal Jump to low memory" @StackDump @END
 
 :KeyWordTable
 :CommandTable
@@ -141,7 +143,9 @@ $$4 "NEXT" NEXT_CODE
 $$4 "STEP" STEP_CODE
 $$4 "ELSE" ELSE_CODE
 $$4 "THEN" THEN_CODE
-$$3 "STR" STR_CODE
+$$4 "STR$" STR_STR
+$$3 "ASC" STR_ASC
+$$4 "CHR$" STR_CHR
 $$3 "VAL" VAL_CODE
 $$3 "LEN" LEN_CODE
 $$3 "RND" RND_CODE
@@ -236,46 +240,56 @@ $$1 "^" "^\0"
 #
 =MaxVarNameLen 10
 
-@USE  ADD32S
-@USE  AND32
-@USE  CMP32S
-@USE  CMP32U
-@USE  COMP232
-@USE  DIV
-@USE  DIV32S
-@USE  DiskClose
-@USE  DiskFileReadLine
-@USE  DiskFileWrite
-@USE  DiskOpen
-@USE  DirReadEntry
-@USE  FSFindFile
-@USE  FSReadHeader
-@USE  file_open
-@USE  HeapDefineMemory
-@USE  HeapDeleteObject
-@USE  HeapListMap
-@USE  HeapNewObject
-@USE  HeapResizeObject
-@USE  HexDump
-@USE  ISAlphaNum
-@USE  ISNumeric
-@USE  MODE
-@USE  MUL
-@USE  MULU
-@USE  MUL32S
-@USE  OR32
-@USE  SUB32S
-@USE  SetDiskHeap
-@USE  SetSSStack
-@USE  file
-@USE  itos
-@USE  memcpy
-@USE  stoi32
-@USE  stoifirst
-@USE  strcpy
-@USE  strlen
-@USE  strncmp
-@USE  strncpy
+#USE  ADD32S
+#USE  AND32
+#USE  CMP32S
+#USE  CMP32U
+#USE  COMP232
+#USE  DIV32S
+#USE  ADD32U
+#USE  ADD32_BASE
+#USE  DIV32U
+#USE  MUL32S
+#USE  i32tos
+#USE  SUB32S
+
+#USE HeapDefineMemory
+#USE HeapDeleteObjecct
+#USE HeapDeleteObject
+#USE HeapListMap
+#USE HeapNewObject
+#USE HeapResizeObject
+
+  
+#USE DirReadEntry
+#USE DiskClose
+#USE DiskFileReadLine
+#USE DiskFileWrite
+#USE DiskNewBuffer
+#USE FSFindFile
+#USE FSReadHeader
+#USE FSClearFileUsed
+#USE SetDiskHeap
+#USE file_open
+#USE strncpy
+#USE strcmp
+#USE strfndc
+#USE strstr
+  
+
+P Starting to define the #USE for string.ld
+#USE  itos
+#USE  memcpy
+#USE  stoi32
+#USE  stoifirst
+#USE  strcpy
+#USE  strlen
+#USE  strncmp
+#USE  strncpyw
+#USE  ISAlphaNum
+#USE  ISNumeric
+#USE  stoi
+P end ofdefinintions of #USE for string.ld  
 
 G BasicPanic
 

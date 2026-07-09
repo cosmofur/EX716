@@ -1,18 +1,14 @@
-M USE_ONLY 1
 I common.mc
 I basic_common.h
 L softstack.ld
-L heapmgr.ld
+D heapmgr.ld
 L hexdump.ld
 L mul.ld
-P Past Mul
 L div.ld
-P Past Div
-L string.ld
-P Past String
-P STRSETI set to {STRSETI}
-L diskos.ld
-L lmath.ld
+D string.ld
+#L diskos_stub.ld
+D diskos.ld
+D lmath.ld
 I basic_header.asm
 I basic_storage.asm
 I basic_support.asm
@@ -43,9 +39,11 @@ I basic_eval.asm
 :MainLoop
     @SRTP
     @IF_NOTZERO
+       @POPNULL
        @StackDump
+    @ELSE
+       @POPNULL
     @ENDIF
-    @POPNULL
     @PRT "> "
 
     # Read a full line (device handles editing & termination)
@@ -349,7 +347,10 @@ I basic_eval.asm
               @AND 0xff                 # Want just byte, but also get null term for free
               @PUSHI FileData @ADDI Index1
               @POPS
-          @Next Index1          
+          @Next Index1
+          @PUSHI FileData @ADDI StrLength @PUSHS
+          @AND 0xff00
+          @PUSHI FileData @ADDI StrLength @POPS
           # Call Save
           @Call(V) SAVEMEM FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -427,6 +428,8 @@ I basic_eval.asm
               # No pattern given, use wildcard as default
               @STRSETI "*\0" FileData          
           @ELSE
+              @Call(VA) ParseQuotedArgument BufPtr 
+              @POPNULL
               @INCI BufPtr          # Move to string len
               @LOADBII BufPtr                # Get Length
               @POPI StrLength
@@ -435,15 +438,47 @@ I basic_eval.asm
                  # FileData[I]=BufPtr[I]&0xff
                  @PUSHI BufPtr @ADDI Index1
                  @PUSHS
-                 @AND 0xff                 # Want just byte, but also get null term for free
+                 @AND 0xff
                  @PUSHI FileData @ADDI Index1
                  @POPS
              @Next Index1
+             @PUSH 0
+             @PUSHI FileData @ADDI StrLength
+             @POPS
          @ENDIF
          @POPNULL
          @Call(V)  DIRDISK FileData
          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
          @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
+         @JMP PCExit
+         @CBREAK
+       @CASE DELETECODE
+         @POPNULL
+         @PUSHII BufPtr @AND 0xff
+         @IF_NEQ_A STRING_TOKEN
+             @PRTLN "DELETE requires filename."
+             @JMP PCExit
+         @ENDIF
+         @POPNULL
+         @Call(VA) HeapNewObject RunTimeHeap 33
+         @POPI FileData
+         @INCI BufPtr
+         @PUSHII BufPtr @AND 0xff
+         @POPI StrLength
+         @INCI BufPtr
+         @ForIA2V Index1 0 StrLength
+            @PUSHI BufPtr @ADDI Index1
+            @PUSHS @AND 0xff
+            @PUSHI FileData @ADDI Index1
+            @POPS
+         @Next Index1
+
+         @Call(V) ERASEDISK FileData
+         @Call(VV) HeapDeleteObject RunTimeHeap FileData
+         @IF_GT_A 0
+            @Call(AA) BasicRaiseError ERR_MEMORY 0
+         @ENDIF
+         @POPNULL
          @JMP PCExit
          @CBREAK
        @CASE MEM_CODE

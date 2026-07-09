@@ -108,6 +108,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
    @LocalVar NewNextObject 04
    @LocalVar ContinueLoop 05
    @LocalVar OldNextObject 06
+#USE GetObjectRealSize
 
    @POPI SizeInBytes
    @POPI HeapID
@@ -255,7 +256,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
    @LocalVar IndexX 04
    @LocalVar IndexY 05
    @LocalVar NewObject 06
-
+#USE GetObjectRealSize
    #
    @POPI NewSizeInBytes
    @POPI ObjectID
@@ -317,6 +318,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
 @FUNCTION HeapDeleteObject
 :HeapDeleteObject
 @PUSHRETURN
+#USE HeapDefrag
    @LocalVar HeapID 01
    @LocalVar ObjectID 02
 
@@ -419,7 +421,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
 @PUSHRETURN
    @LocalVar HeapID 01
    @LocalVar ObjectID 02
-
+#USE GetObjectRealSize
    #
    @POPI HeapID
    @PUSHII HeapID
@@ -521,6 +523,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
    @LocalVar Object1Size 06
    @LocalVar Object2Size 07
    @LocalVar Object2 08
+#USE GetObjectRealSize
    #
    @POPI Offset
    @POPI Object2

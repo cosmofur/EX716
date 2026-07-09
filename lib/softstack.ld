@@ -70,8 +70,8 @@ G __SS_StackError
 G SaveSSStack
 G RestoreSSStack
 
-@USE __MOVE_HW_SS
-@USE __MOVE_SS_HW
+# USE __MOVE_HW_SS
+# USE __MOVE_SS_HW
 
 :__SS_TOP 0xfff0   # Default stack is top of mem 0xff00 to 0xfff0 about 240 bytes
 :__SS_SP 0xfff2    # The First time we push, we dec SP to TOP

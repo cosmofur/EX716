@@ -2,6 +2,7 @@
 M __LIB_DISKOS_LOADED 1
 I diskos.ref
 =REFCOUNT 0
+# USE DebugFP
 # ================================================================
 # diskos.asm
 #
@@ -152,9 +153,14 @@ I diskos.ref
 #          Clears ArgTable to default values, void function
 #   DirReadEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
 #          For given FileNum Reads DIR's Sector into provided Buffer and fills ArgTable
+#   DirWriteRawEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
+#     Low-level physical write.
+#     Writes ArgTable exactly as supplied into the directory entry slot.
+#     Does not alter timestamps, flags, filesize, type, or bitmap state.
 #   DirWriteEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
-#          For given FileNum insert FileNum into DIR entry, use SectorBuffer as scratch space.
-#   DirNewArgTable():( *ArgTable |0) 0=failure.
+#     Normal metadata write.
+#     Applies filesystem policy: create-time/update-time/status flags.
+#     Calls DirWriteRawEntry for the final sector write.
 #
 # File-level API:
 #   DiskOpen(FileNum, Mode):FilePointer|0
@@ -184,7 +190,7 @@ I diskos.ref
 #   FSWriteHeader():(0|1) 1=success
 #   FSIsFileUsed(FileNum):(0|1)  boolean
 #   FSSetFileUsed(FileNum):(0|1) 1=success 0=invalid filenum
-#   FSClearFileUsed(FileNum):(0|1) 1=success 0=invalid filenum
+#   fsclearfileused(FileNum):(0|1) 1=success 0=invalid filenum
 #   FSFindFreeFile():FileNum|0  0=failure
 #   FSFindFile(StrPattern, StartFileNum): FileNum | 0 0=no more matching files found.
 #   FSFormat(DiskID, DiskNum):void   Format DiskNum with DiskID
@@ -226,6 +232,7 @@ G DirEntryToArgTable
 G DirArgTableToEntry
 G DirClearArgTable
 G DirReadEntry
+G DirWriteRawEntry
 G DirWriteEntry
 G DirNewArgTable
 G DirFindFile
@@ -632,18 +639,12 @@ G LINE_EOF
 @PUSHRETURN
 @Locals
    @Local DirEntry
-   @Local ArgTable
-   @Local _I
+   @Local ArgTable   
 
    @POPI ArgTable
    @POPI DirEntry
 
-   @ForIA2B _I 0 DIR_AT_SIZE
-      @PUSHII DirEntry
-      @POPII ArgTable
-      @INC2I DirEntry
-      @INC2I ArgTable
-   @NextBy _I 2
+   @Call(VVA) memcpy ArgTable DirEntry DIR_AT_SIZE
 
 @EndLocals
 @POPRETURN
@@ -675,7 +676,7 @@ G LINE_EOF
 @ENDFUNCTION
 
 #--------------------------------------------
-# DirArgTableToDirEntry(*DirEntry,*ArgTable)
+# DirArgTableToEntry(*DirEntry,*ArgTable)
 # Copies the formated ArgTable to the in memory image of DIR sector.
 #--------------------------------------------
 @FUNCTION DirArgTableToEntry
@@ -684,90 +685,120 @@ G LINE_EOF
 @Locals
    @Local DirEntry
    @Local ArgTable
-   @Local _I
 
    @POPI ArgTable
    @POPI DirEntry
 
-
-   @ForIA2B _I 0 DIR_AT_SIZE
-      @PUSHII ArgTable
-      @POPII DirEntry
-      @INC2I DirEntry
-      @INC2I ArgTable
-   @NextBy _I 2
+   @Call(VVA) memcpy DirEntry ArgTable DIR_AT_SIZE
 
 @EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
-
 #----------------------------------------
-# DirWriteEntry(FileNum, *ArgTable, *DiskBuffer)
-# Writes the in memory image of the DIR sector to disk.
+# DirWriteRawEntry(FileNum, *ArgTable, *Diskbuff)
 #----------------------------------------
-@FUNCTION DirWriteEntry
-:DirWriteEntry
+@FUNCTION DirWriteRawEntry
+:DirWriteRawEntry
 @PUSHRETURN
 @Locals
+#USE DirEntryPtr,DirLocate,DirArgTableToEntry
     @Local FileNum
     @Local ArgTable
-    @Local Sector
-    @Local Offset
-    @Local DiskBuffer
-    @Local EntryPtr
+    @Local Diskbuff
     @Local Result
-
-    @POPI DiskBuffer
+    @Local Offset
+    @Local Sector
+    @Local EntryPtr
+    
+    @POPI Diskbuff
     @POPI ArgTable
     @POPI FileNum
     @MA2V 0 Result
-    # Find Sector-Offset where DIR entry is.
+    # Find Sector-Offset where Dir entry is.
     @Call(V) DirLocate FileNum
     @IF_EQ_A -1
        @PRT "Error Writing DIR Entry:" @PRTI FileNum @PRTNL
     @ELSE
        @POPI Offset
        @POPI Sector
+       @Call(VV) DiskReadSector Sector Diskbuff
+       @Call(VV) DirEntryPtr Offset Diskbuff
+       @POPI EntryPtr
+       @Call(VV) DirArgTableToEntry EntryPtr ArgTable
+       @Call(VV) DiskWriteSector Sector Diskbuff
+       @MA2V 1 Result
+    @ENDIF
+    @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 
-       @Call(VV) DiskReadSector Sector DiskBuffer
        
 
-       @Call(VV) DirEntryPtr DiskBuffer Offset
-       @POPI EntryPtr
+#----------------------------------------
+# DirWriteEntry(FileNum, *ArgTable, *Diskbuff)
+# Writes the in memory image of the DIR sector to disk.
+#----------------------------------------
+@FUNCTION DirWriteEntry
+:DirWriteEntry
+@PUSHRETURN
+@Locals
+#USE DirNewArgTable,DirReadEntry,HeapDeleteObject,DirWriteRawEntry
 
-       @PUSHI EntryPtr @ADD DIR_FLAGS @PUSHS
-       @AND FLAG_INUSE
+    @Local FileNum
+    @Local ArgTable
+    @Local Diskbuff
+    @Local Result
+    @Local OldArgTable
+    
+
+    @POPI Diskbuff
+    @POPI ArgTable
+    @POPI FileNum
+    @MA2V 0 Result
+
+    @CALL DirNewArgTable
+    @IF_ZERO
+       @POPNULL
+       @PRT "DIR Memroy Error:" @PRTI FileNum @PRTNL
+    @ELSE
+       @POPI OldArgTable
+       @Call(VVV) DirReadEntry FileNum OldArgTable Diskbuff
        @IF_ZERO
-          # File is NEW so set create time, and set as 'inuse'
           @POPNULL
-          
-          @GETTIME        # Saves 32 bit 'unix' time to stack as two words SFT=Low-word TOS=high-word
-          @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS @POPS  # Created Time is 1st 32 bit word in field.
-          @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+2 @POPS
-          # Now Set INUSE Flag
-          @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
-          @OR FLAG_INUSE
-          @PUSHI ArgTable @ADD DIR_AT_FLAGS @POPS
+          @PRT "DIR Read Error: " @PRTI FileNum @PRTNL
        @ELSE
           @POPNULL
-          
+          @PUSHI OldArgTable @ADD DIR_AT_FLAGS @PUSHS
+          @AND FLAG_INUSE
+          @IF_ZERO
+             # File is New so create time and set as inuse
+             @POPNULL
+             @GETTIME        # Saves 32 bit 'unix' time to stack as two words SFT=Low-word TOS=high-word
+             @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS @POPS  # Created Time is 1st 32 bit word in field.
+             @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+2 @POPS
+             # Now Set INUSE Flag
+             @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
+             @OR FLAG_INUSE
+             @PUSHI ArgTable @ADD DIR_AT_FLAGS @POPS
+          @ELSE
+             @POPNULL
+          @ENDIF
+          # No longer need OldArgTable so delete it.
+          # Always Change the Modify time to 'now' on writes.
+          @GETTIME        # Saves 32 bit 'unix' time to stack as two words SFT=Low-word TOS=high-word
+          @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+4 @POPS  # Modified Time is 2nd 32 bit word in field.
+          @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+6 @POPS
+
+          @Call(VVV) DirWriteRawEntry FileNum ArgTable Diskbuff
+          @POPI Result
        @ENDIF
-       # Always Change the Modify time to 'now' on writes.
-       @GETTIME        # Saves 32 bit 'unix' time to stack as two words SFT=Low-word TOS=high-word
-       @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+4 @POPS  # Modified Time is 2nd 32 bit word in field.
-       @PUSHI ArgTable @ADD DIR_AT_TIMESTAMPS+6 @POPS
-
-       @Call(VV) DirArgTableToEntry EntryPtr ArgTable
-
-
-       @Call(VV) DiskWriteSector Sector DiskBuffer
-       
+       @Call(VV) HeapDeleteObject DiskHeap OldArgTable  @IF_NOTZERO  @PRT "Memory Error:" @POPNULL @END @ELSE @POPNULL @ENDIF
     @ENDIF
-    @MA2V 1 Result
-    :DWE_Exit
-    
     @PUSHI Result
+
 @EndLocals
 @POPRETURN
 @RET
@@ -781,6 +812,7 @@ G LINE_EOF
 :DirReadEntry
 @PUSHRETURN
 @Locals
+#USE DirClearArgTable,DirEntryToArgTable,DirLocate
     @Local FileNum
     @Local ArgTable
     @Local Offset
@@ -811,7 +843,7 @@ G LINE_EOF
 
        @Call(V) DirClearArgTable ArgTable
        @Call(VV) DirEntryToArgTable EntryPtr ArgTable
-       @PUSH 1          # Successs
+       @PUSH 1
     @ENDIF
 @EndLocals
 @POPRETURN
@@ -824,13 +856,24 @@ G LINE_EOF
 @FUNCTION DirNewArgTable
 :DirNewArgTable
 @PUSHRETURN
+@Locals
+   @Local I1
+   @Local Limit
+   @Local ArgTable
    @IF_EQ_AV -1 DiskHeap
       # Heap Must be defined before it can be used.
       @PRT "DISK Error, no Heap defined."
       @PUSH 0
    @ELSE
       @Call(VA) HeapNewObject DiskHeap ARGTABLE_SIZE
+      @POPI ArgTable
+      @PUSHI ArgTable @ADD ARGTABLE_SIZE @SUB 1 @POPI Limit
+      @ForIV2V I1 ArgTable Limit
+         @PUSH 0 @POPII I1
+      @Next I1
+      @PUSHI ArgTable
    @ENDIF
+@EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
@@ -852,7 +895,7 @@ G LINE_EOF
 @RET
 @ENDFUNCTION
 #-----------------------------------------
-# DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer)
+# DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, Diskbuff)
 # Writes ByteCount bytes from memory starting at MemPtr into consecutive disk sectors starting at Sector.
 # Memory is treated as word-addressable (ByteCount rounded up to even).
 # Final sector is zero-filled beyond ByteCount.
@@ -866,13 +909,13 @@ G LINE_EOF
     @Local MemPtr
     @Local ByteCount
     @Local StartOffset
-    @Local DiskBuffer
+    @Local Diskbuff
     @Local InBuffPtr
     @Local TotalSectors
     @Local _I
 
 
-    @POPI DiskBuffer
+    @POPI Diskbuff
     @POPI StartOffset
     @POPI ByteCount
     @POPI MemPtr
@@ -913,13 +956,13 @@ G LINE_EOF
     @ENDIF
     @POPNULL
     @IF_NEQ_AV 0 StartOffset
-        # If StartOffset != 0, the preload the first sector into DiskBuffer to preserve parts not overwriten
-        @Call(VV) DiskReadSector Sector DiskBuffer
+        # If StartOffset != 0, the preload the first sector into Diskbuff to preserve parts not overwriten
+        @Call(VV) DiskReadSector Sector Diskbuff
     @ENDIF
     @PUSHI ByteCount
     @WHILE_UGT_A 0
         @POPNULL
-        @PUSHI DiskBuffer
+        @PUSHI Diskbuff
         @ADDI StartOffset
         @POPI InBuffPtr
         @DECI TotalSectors
@@ -946,7 +989,7 @@ G LINE_EOF
         @ENDWHILE
         @POPNULL
         @MA2V 0 StartOffset
-        @Call(VV) DiskWriteSector Sector DiskBuffer
+        @Call(VV) DiskWriteSector Sector Diskbuff
         @INCI Sector
         @PUSHI ByteCount
     @ENDWHILE
@@ -959,7 +1002,7 @@ G LINE_EOF
 
 #---------------------------------------
 @FUNCTION  DiskReadBlock
-# DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, DiskBuffer):Bytes Read
+# DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, Diskbuff):Bytes Read
 # Reads a sequence of Sectors into a memory.
 #---------------------------------------
 :DiskReadBlock
@@ -969,12 +1012,12 @@ G LINE_EOF
     @Local MemPtr  #
     @Local ByteCount  #
     @Local StartOffset  #
-    @Local DiskBuffer  #
+    @Local Diskbuff  #
     @Local InBuffPtr  #
     @Local SectRemain  #
     @Local OrigCount  #
 
-    @POPI DiskBuffer
+    @POPI Diskbuff
     @POPI StartOffset
     @POPI ByteCount
     @POPI MemPtr
@@ -1002,8 +1045,8 @@ G LINE_EOF
     @WHILE_UGT_A 0
        @POPNULL
     :Break02
-       @Call(VV) DiskReadSector Sector DiskBuffer
-       @PUSHI DiskBuffer @ADDI StartOffset
+       @Call(VV) DiskReadSector Sector Diskbuff
+       @PUSHI Diskbuff @ADDI StartOffset
        @POPI InBuffPtr
        @PUSH SECTOR_SIZE @SUBI StartOffset
        @POPI SectRemain
@@ -1052,13 +1095,13 @@ G LINE_EOF
 :DiskOpen
 @PUSHRETURN
 @Locals
+#USE DirNewArgTable,DirWriteEntry,DataBlockFirstSector
     @Local FileNum
     @Local Mode
     @Local ArgTable
     @Local FilePtr
     @Local DoCreateFlag
-    @Local DiskBuffer
-
+    @Local Diskbuff
 
     @POPI Mode
     @POPI FileNum
@@ -1087,16 +1130,14 @@ G LINE_EOF
 
     @POPI ArgTable
     @CALL DiskNewBuffer
-    @POPI DiskBuffer
-
-    @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer
+    @POPI Diskbuff
+    @Call(VVV) DirReadEntry FileNum ArgTable Diskbuff
     @IF_ZERO
         @POPNULL
         # Error in DirReadEntry, jump fast exit, skip heap management.
         @JMP Do_Op_EXIT
     @ENDIF
     @POPNULL
-    
     @MA2V 0 DoCreateFlag
 
     @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
@@ -1133,7 +1174,7 @@ G LINE_EOF
        @FILL_AT_A ArgTable DIR_AT_FILESIZE+2 0       
        @FILL_AT_V ArgTable DIR_AT_FIRSTBLOCK FileNum
        @FILL_AT_A ArgTable DIR_AT_BLOCKCOUNT 1
-       @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Writer error" @END @ELSE @POPNULL @ENDIF
+       @Call(VVV) DirWriteEntry FileNum ArgTable Diskbuff @IF_ZERO @PRT "Disk Writer error" @END @ELSE @POPNULL @ENDIF
     @ENDIF
     # Create new File Pointer structure.
 
@@ -1196,8 +1237,8 @@ G LINE_EOF
 
     @PUSHI FilePtr
 :Do_Op_EXIT
-    # If we get here then DiskBuffer needs to be destroyed.
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+    # If we get here then Diskbuff needs to be destroyed.
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
     # If we get here then ArgTable needs to be destroyed.
     @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 :Do_Op_EXIT_NH
@@ -1216,6 +1257,7 @@ G LINE_EOF
 :DiskFileWrite
 @PUSHRETURN
 @Locals
+#USE DiskWriteBlock
     @Local FilePtr
     @Local MemPtr
     @Local ByteCount
@@ -1227,9 +1269,8 @@ G LINE_EOF
     @Local SectorBase
     @Local Sector
     @Local StartOffset
-    @Local DiskBuffer
+    @Local Diskbuff
     @Local MaxWrite
-
     @POPI ByteCount
     @POPI MemPtr
     @POPI FilePtr
@@ -1296,20 +1337,20 @@ G LINE_EOF
     # Allocate disk buffer
     #-------------------------------------------------
     @CALL DiskNewBuffer
-    @POPI DiskBuffer
+    @POPI Diskbuff
 
     #-------------------------------------------------
     # Perform write
     #-------------------------------------------------
     @PUSHI Sector       # Do to limit of Macros, have to manually push arguments > 4
-    @Call(VVVV) DiskWriteBlock MemPtr ByteCount StartOffset DiskBuffer
+    @Call(VVVV) DiskWriteBlock MemPtr ByteCount StartOffset Diskbuff
     @POPNULL
 
 
     #-------------------------------------------------
     # Free disk buffer
     #-------------------------------------------------
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
     @POPNULL
     #-------------------------------------------------
     # Update cursor
@@ -1349,11 +1390,12 @@ G LINE_EOF
 :DiskClose
 @PUSHRETURN
 @Locals
+#USE DirNewArgTable,DirWriteEntry
     @Local FilePtr
     @Local Mode
     @Local FileNum
     @Local ArgTable
-    @Local DiskBuffer
+    @Local Diskbuff
 
     @POPI FilePtr
 
@@ -1364,7 +1406,7 @@ G LINE_EOF
     @PUSHI Mode @AND FP_OPEN_WRITE
     @IF_NOTZERO
        @POPNULL
-       # Get an ArgTable an DiskBuffer for DIR Sectors
+       # Get an ArgTable an Diskbuff for DIR Sectors
        @CALL DirNewArgTable  @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
        @POPI ArgTable
        @IF_EQ_AV -1 ArgTable
@@ -1372,16 +1414,16 @@ G LINE_EOF
            @JMP DC_ERROR
        @ENDIF
        @CALL DiskNewBuffer
-       @POPI DiskBuffer
-       @IF_EQ_AV -1 DiskBuffer
-           @PRT "DiskClose: DiskBuffer Alloc Failed.\n"
+       @POPI Diskbuff
+       @IF_EQ_AV -1 Diskbuff
+           @PRT "DiskClose: Diskbuff Alloc Failed.\n"
            @JMP DC_ERROR
        @ENDIF
        # Recover Filenum
        @PUSHI FilePtr @ADD FPTR_FILENUM @PUSHS
        @POPI FileNum
        # Read DIR entry
-       @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer
+       @Call(VVV) DirReadEntry FileNum ArgTable Diskbuff
        @IF_ZERO
           @POPNULL
           @PRT "DiskClose: DirReadEntry Failed\n"
@@ -1396,11 +1438,11 @@ G LINE_EOF
        @PUSHI ArgTable @ADD DIR_AT_FILESIZE+2
        @POPS
        # Write DIR Entry
-       @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Write Error" @END @ELSE @POPNULL @ENDIF
+       @Call(VVV) DirWriteEntry FileNum ArgTable Diskbuff @IF_ZERO @PRT "Disk Write Error" @END @ELSE @POPNULL @ENDIF
        #
        # Clean up new temp objects
        #
-       @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+       @Call(VV) HeapDeleteObject DiskHeap Diskbuff
        @POPNULL
        @Call(VV) HeapDeleteObject DiskHeap ArgTable
        @POPNULL
@@ -1414,8 +1456,8 @@ G LINE_EOF
     @POPNULL
     @JMP DC_EXIT
 :DC_ERROR
-    @IF_NEQ_AV 0 DiskBuffer
-        @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+    @IF_NEQ_AV 0 Diskbuff
+        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
         @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 ArgTable
@@ -1460,6 +1502,7 @@ G LINE_EOF
 :DiskFileRead
 @PUSHRETURN
 @Locals
+#USE DiskReadBlock
     @Local FilePtr
     @Local MemPtr
     @Local ByteCount
@@ -1473,8 +1516,7 @@ G LINE_EOF
     @Local SectorOff
     @Local Sector
     @Local StartOffset
-    @Local DiskBuffer
-
+    @Local Diskbuff
     @POPI ByteCount
     @POPI MemPtr
     @POPI FilePtr
@@ -1568,18 +1610,18 @@ G LINE_EOF
     # Allocate disk buffer
     #-------------------------------------------------
     @CALL DiskNewBuffer
-    @POPI DiskBuffer
+    @POPI Diskbuff
     #-------------------------------------------------
     # Read data block
     #-------------------------------------------------
     @PUSHI Sector              # Have to push Sector first as we don't have VVVVV Call
     :Break01
-    @Call(VVVV) DiskReadBlock MemPtr ByteCount StartOffset DiskBuffer
+    @Call(VVVV) DiskReadBlock MemPtr ByteCount StartOffset Diskbuff
     @POPNULL
     #-------------------------------------------------
     # Free disk buffer
     #-------------------------------------------------
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
     @POPNULL
 
     #-------------------------------------------------
@@ -1612,6 +1654,7 @@ G LINE_EOF
 :WildCardMatch
 @PUSHRETURN
 @Locals
+#USE strcmp,strfndc,strncmp
     @Local pattern
     @Local text
     @Local star
@@ -1619,7 +1662,6 @@ G LINE_EOF
     @Local head_len
     @Local tail_len
     @Local text_len
-
 
     @POPI text
     @POPI pattern
@@ -1710,10 +1752,11 @@ G LINE_EOF
 :DirFindFile
 @PUSHRETURN
 @Locals
+#USE DirNewArgTable,WildCardMatch
     @Local Pattern
     @Local Result
     @Local StartPoint
-    @Local DiskBuffer
+    @Local Diskbuff
     @Local CurFileNum
     @Local ArgTable
 
@@ -1723,7 +1766,7 @@ G LINE_EOF
     @MA2V 0 Result       # Default result is 'not found'
 
     @CALL DiskNewBuffer
-    @POPI DiskBuffer
+    @POPI Diskbuff
 
     @CALL DirNewArgTable  @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
     @POPI ArgTable
@@ -1740,7 +1783,7 @@ G LINE_EOF
     @PUSHI StartPoint
     @WHILE_LT_A DIREntryCount     # in practice 512
        @POPI CurFileNum
-       @Call(VVV) DirReadEntry CurFileNum ArgTable DiskBuffer
+       @Call(VVV) DirReadEntry CurFileNum ArgTable Diskbuff
        @IF_ZERO
           @POPNULL
           @PRT "Error Reading Filename"
@@ -1775,7 +1818,7 @@ G LINE_EOF
 :WCMExit
     @PUSHI Result
     # Free Space
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
     @POPNULL
     @Call(VV) HeapDeleteObject DiskHeap ArgTable
     @POPNULL
@@ -1792,25 +1835,24 @@ G LINE_EOF
 :DirFindFree
 @PUSHRETURN
 @Locals
-   @Local DiskBuffer
+#USE DirNewArgTable
+   @Local Diskbuff
    @Local ArgTable
    @Local CurFileNum
    @Local Result
-
    @MA2V 0 Result
    @CALL DiskNewBuffer
-   @POPI DiskBuffer
+   @POPI Diskbuff
 
    @CALL DirNewArgTable @IF_ZERO @PRT "Error Allocating Argtable" @END @ENDIF
    @POPI ArgTable
-
    # We start search as 4 as 0-3 are reserved for OS
    @MA2V 4 CurFileNum
 
    @PUSHI CurFileNum
    @WHILE_LT_A DIREntryCount
       @POPNULL
-      @Call(VVV) DirReadEntry CurFileNum ArgTable DiskBuffer
+      @Call(VVV) DirReadEntry CurFileNum ArgTable Diskbuff
       @IF_ZERO
          @POPNULL
          @PRT "Error Failed to read directory."
@@ -1835,7 +1877,7 @@ G LINE_EOF
 :DFF_Exit
    @PUSHI Result
    # Free Space
-   @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+   @Call(VV) HeapDeleteObject DiskHeap Diskbuff
    @POPNULL
    @Call(VV) HeapDeleteObject DiskHeap ArgTable
    @POPNULL
@@ -1854,13 +1896,13 @@ G LINE_EOF
 :file_open
 @PUSHRETURN
 @Locals
+#USE DirFindFree,DiskFileName,DiskOpen,FSSetFileUsed,FSWriteHeader
     @Local FileName
     @Local Mode
     @Local FileNum
     @Local NewFlag
     @Local FileSize
     @Local FilePointer
-
     @POPI Mode
     @POPI FileName
     @MA2V 0 NewFlag
@@ -2157,6 +2199,7 @@ G LINE_EOF
 :DiskFileName
 @PUSHRETURN
 @Locals
+#USE DiskWithDirEntry,_DFN_Mod
     @Local FilePtr
     @Local StrPtr
 
@@ -2191,7 +2234,7 @@ G LINE_EOF
         @Call(V) strlen StrPtr
     @ENDIF
     @POPI Len
-
+    @INCI Len   # Copy the Null as well.
     @Call(VVV) strncpy ArgTable StrPtr Len
 @EndLocals
 @POPRETURN
@@ -2209,10 +2252,11 @@ G LINE_EOF
 :DiskWithDirEntry
 @PUSHRETURN
 @Locals
+#USE DirNewArgTable,DirWriteEntry
     @Local FilePtr
     @Local ModFn
     @Local ArgTable
-    @Local DiskBuffer
+    @Local Diskbuff
     @Local FileNum
 
     @POPI ModFn
@@ -2226,11 +2270,11 @@ G LINE_EOF
         @JMP DWDE_EXIT
     @ENDIF
 
-    # Allocate DiskBuffer
+    # Allocate Diskbuff
     @CALL DiskNewBuffer
-    @POPI DiskBuffer
-    @IF_EQ_AV -1 DiskBuffer
-        @PRT "DiskWithDirEntry: DiskBuffer alloc failed\n"
+    @POPI Diskbuff
+    @IF_EQ_AV -1 Diskbuff
+        @PRT "DiskWithDirEntry: Diskbuff alloc failed\n"
         @JMP DWDE_EXIT
     @ENDIF
 
@@ -2241,7 +2285,7 @@ G LINE_EOF
     @POPI FileNum
 
     # Read DIR entry
-    @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer
+    @Call(VVV) DirReadEntry FileNum ArgTable Diskbuff
     @IF_ZERO
         @POPNULL
         @PRT "DiskWithDirEntry: DirReadEntry failed\n"
@@ -2254,11 +2298,11 @@ G LINE_EOF
     @CALLI ModFn
 
     # Write DIR entry
-    @Call(VVV) DirWriteEntry FileNum ArgTable DiskBuffer @IF_ZERO @PRT "Disk Writer Error" @END @ELSE @POPNULL @ENDIF
+    @Call(VVV) DirWriteEntry FileNum ArgTable Diskbuff @IF_ZERO @PRT "Disk Writer Error" @END @ELSE @POPNULL @ENDIF
 
 :DWDE_EXIT
-    @IF_NEQ_AV -1 DiskBuffer
-        @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+    @IF_NEQ_AV -1 Diskbuff
+        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
         @POPNULL
     @ENDIF
 
@@ -2278,21 +2322,21 @@ G LINE_EOF
 :FSReadHeader
 @PUSHRETURN
 @Locals
-    @Local DiskBuffer
+#USE DiskReadSector
+    @Local Diskbuff
     @Local _I
     @Local DISKNUM
-
     @POPI DISKNUM
     @MV2V DISKNUM FSDiskNumStore      # We keep this so WriteHeader does not require param.
 
     @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
-    @POPI DiskBuffer
+    @POPI Diskbuff
 
     @DISKSELI DISKNUM                 # Reading Disk Header is really the only time to select DISKID
-    @Call(AV) DiskReadSector 0 DiskBuffer
+    @Call(AV) DiskReadSector 0 Diskbuff
 
 
-    @PUSHII DiskBuffer
+    @PUSHII Diskbuff
     @IF_NEQ_A 0x3044
        # FSMagicID = 'D0' (0x44,0x30) little-endian word 0x3044
        @POPNULL
@@ -2303,27 +2347,27 @@ G LINE_EOF
        @JMP FSRH_Exit
     @ELSE
        @POPNULL
-       @PUSHI DiskBuffer @ADD FSDiskID @PUSHS @POPI FSDiskIDStore
-       @PUSHI DiskBuffer @ADD FSCreateTimeID
+       @PUSHI Diskbuff @ADD FSDiskID @PUSHS @POPI FSDiskIDStore
+       @PUSHI Diskbuff @ADD FSCreateTimeID
        @DUP
        @PUSHS @POPI FSCreateTimeStore
        @ADD 2 @PUSHS @POPI FSCreateTimeStore+2
-       @PUSHI DiskBuffer @ADD FSActiveFilesID @PUSHS @POPI FSActiveFilesStore
-       @PUSHI DiskBuffer @ADD FSHeaderFlagsID @PUSHS @POPI FSHeaderFlagStore
-       @PUSHI DiskBuffer @ADD FSFileBitMapID
+       @PUSHI Diskbuff @ADD FSActiveFilesID @PUSHS @POPI FSActiveFilesStore
+       @PUSHI Diskbuff @ADD FSHeaderFlagsID @PUSHS @POPI FSHeaderFlagStore
+       @PUSHI Diskbuff @ADD FSFileBitMapID
        @ForIA2B _I 0 64
-          @DUP                       # Copy of DiskBuffer start address
+          @DUP                       # Copy of Diskbuff start address
           @ADDI _I
           @PUSHS                     # Get Value of at offset
           @PUSH FSFileBitMapStore @ADDI _I  # Location to put it.
           @POPS
        @NextBy _I 2
-       @POPNULL                      # Get rid of base DiskBuffer offset
+       @POPNULL                      # Get rid of base Diskbuff offset
        @MA2V 1 FSHeadValidStore    # Mark disk data as valid
    @ENDIF
    @PUSHI FSHeadValidStore
-   # Always delete DiskBuffer
-   @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO @POPNULL  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   # Always delete Diskbuff
+   @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO @POPNULL  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
    :FSRH_Exit
 @EndLocals
 @POPRETURN
@@ -2336,10 +2380,10 @@ G LINE_EOF
 :FSWriteHeader
 @PUSHRETURN
 @Locals
-    @Local DiskBuffer
+#USE DiskReadSector,DiskWriteSector
+    @Local Diskbuff
     @Local _I
     @Local TestVal
-
     # First do some test for valid disks
 
     @MA2V 1 TestVal       # All tests must pass anyone sets val to 0 fails
@@ -2355,16 +2399,16 @@ G LINE_EOF
     # Now test to make sure Disk wasn't swapped.
     @DISKSELI FSDiskNumStore
     @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
-    @POPI DiskBuffer
-    @Call(AV) DiskReadSector 0 DiskBuffer
+    @POPI Diskbuff
+    @Call(AV) DiskReadSector 0 Diskbuff
     #
-    @PUSHI DiskBuffer @ADD FSDiskID @PUSHS
+    @PUSHI Diskbuff @ADD FSDiskID @PUSHS
     @IF_NEQ_V FSDiskIDStore
        # Disk does not have matching ID
        @MA2V 0 TestVal
     @ENDIF
     @POPNULL
-    @PUSHII DiskBuffer
+    @PUSHII Diskbuff
     @IF_NEQ_A 0x3044
        @MA2V 0 TestVal       # Is magic number fails, disk is swapped.
     @ENDIF
@@ -2375,27 +2419,27 @@ G LINE_EOF
       # While we grab all the fields, we do not allow this functio to rewrite fixed value fields
       # like DISKID or Magic Number or create time. A format command would do all that.
       @PUSHI FSActiveFilesStore
-      @PUSHI DiskBuffer @ADD FSActiveFilesID  @POPS
+      @PUSHI Diskbuff @ADD FSActiveFilesID  @POPS
       #
       @PUSH FSFileBitMapStore
       @ForIA2B _I 0 64
          @DUP
          @ADDI _I
          @PUSHS
-         @PUSHI DiskBuffer @ADD FSFileBitMapID
+         @PUSHI Diskbuff @ADD FSFileBitMapID
          @ADDI _I
          @POPS
       @NextBy _I 2
       @POPNULL # Drop Original FSFileBitMapID offset.
       #
       # Save results to Disk
-      @Call(AV) DiskWriteSector 0 DiskBuffer
+      @Call(AV) DiskWriteSector 0 Diskbuff
       @PUSH 1   # Success
     @ELSE
       @PUSH 0   # Failed tests
     @ENDIF
-    # Always delete DiskBuffer
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @POPNULL @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+    # Always delete Diskbuff
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO  @POPNULL @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
 
 @EndLocals
 @POPRETURN
@@ -2559,6 +2603,7 @@ G LINE_EOF
 :FSFindFreeFile
 @PUSHRETURN
 @Locals
+#USE FSIsFileUsed
     @Local _I
 
     @MA2V 4 _I
@@ -2608,25 +2653,25 @@ G LINE_EOF
 :FSFormat
 @PUSHRETURN
 @Locals
-    @Local DiskBuffer
+#USE DiskReadSector,DiskWriteSector
+    @Local Diskbuff
     @Local _I
     @Local DiskID
     @Local DiskNum
-
     @POPI DiskNum
     @POPI DiskID
 
     @DISKSELI DiskNum
     # Setup Storage
     @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
-    @POPI DiskBuffer
+    @POPI Diskbuff
     #
-    @Call(AV) DiskReadSector 0 DiskBuffer
+    @Call(AV) DiskReadSector 0 Diskbuff
     #
     # First zero whole sector out to remove old data.
     @ForIA2B _I 0 510
        @PUSH 0
-       @PUSHI DiskBuffer
+       @PUSHI Diskbuff
        @ADDI _I
        @POPS
     @NextBy _I 2
@@ -2634,32 +2679,32 @@ G LINE_EOF
     # Now Fill in fixed fields
     #
     @PUSH 0x3044
-    @PUSHI DiskBuffer @ADD FSMagicID
+    @PUSHI Diskbuff @ADD FSMagicID
     @POPS
     #
     @PUSHI DiskID
-    @PUSHI DiskBuffer @ADD FSDiskID
+    @PUSHI Diskbuff @ADD FSDiskID
     @POPS
     #
     @GETTIME     # 32 value
-    @PUSHI DiskBuffer @ADD FSCreateTimeID
+    @PUSHI Diskbuff @ADD FSCreateTimeID
     @POPS
-    @PUSHI DiskBuffer @ADD FSCreateTimeID+2
+    @PUSHI Diskbuff @ADD FSCreateTimeID+2
     @POPS
     #
     @PUSH 4             # 4 covers the 4 reserved files.
-    @PUSHI DiskBuffer @ADD FSActiveFilesID
+    @PUSHI Diskbuff @ADD FSActiveFilesID
     @POPS
     #
     # First 4 blocks are reserved mark them as in use
     @PUSH 0b1111
-    @PUSHI DiskBuffer @ADD FSFileBitMapID
+    @PUSHI Diskbuff @ADD FSFileBitMapID
     @POPS
     #
-    # Now save the DiskBuffer Back
-    @Call(AV) DiskWriteSector 0 DiskBuffer
-    # Always cleanup DiskBuffer
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+    # Now save the Diskbuff Back
+    @Call(AV) DiskWriteSector 0 Diskbuff
+    # Always cleanup Diskbuff
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
     #
 @EndLocals
 @POPRETURN
@@ -2674,9 +2719,9 @@ G LINE_EOF
 :FSNextUsedFile
 @PUSHRETURN
 @Locals
+#USE FSIsFileUsed
     @Local _I
     @Local Word
-
     @IF_ULT_A 4
         @POPNULL
         @MA2V 4 _I
@@ -2733,10 +2778,11 @@ G LINE_EOF
 :FSFindFile
 @PUSHRETURN
 @Locals
+#USE DirNewArgTable,FSNextUsedFile,WildCardMatch
     @Local Pattern
     @Local StartPoint
     @Local FileNum
-    @Local DiskBuffer
+    @Local Diskbuff
     @Local ArgTable
 
     @POPI StartPoint
@@ -2744,7 +2790,7 @@ G LINE_EOF
 
     # Allocate working buffers
     @CALL DiskNewBuffer
-    @POPI DiskBuffer
+    @POPI Diskbuff
 
     @CALL DirNewArgTable @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
     @POPI ArgTable
@@ -2769,7 +2815,7 @@ G LINE_EOF
     @ENDIF
 
     # Read directory entry
-    @Call(VVV) DirReadEntry FileNum ArgTable DiskBuffer
+    @Call(VVV) DirReadEntry FileNum ArgTable Diskbuff
     @IF_ZERO
         # DIR read failure — skip but continue search
         @POPNULL
@@ -2795,7 +2841,7 @@ G LINE_EOF
 
 :FSFF_Exit
     # Cleanup
-    @Call(VV) HeapDeleteObject DiskHeap DiskBuffer
+    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
     @POPNULL
     @Call(VV) HeapDeleteObject DiskHeap ArgTable
     @POPNULL
@@ -2833,6 +2879,7 @@ G LINE_EOF
 :DiskFileReadLine
 @PUSHRETURN
 @Locals
+#USE DiskFileRead
     @Local FilePtr
     @Local MemPtr
     @Local Consumed
@@ -2840,7 +2887,7 @@ G LINE_EOF
     @Local PayloadLimit
     @Local StatusLen
     @Local Continue
-
+    
     @POPI MaxLen
     @POPI MemPtr
     @POPI FilePtr
@@ -2965,7 +3012,29 @@ G LINE_EOF
 
 @ENDFUNCTION
 
-
+# DebugFP(ArgTable)
+:DebugFP
+@PRT "Called from: " @PRTHEXTOP    @StackDump   
+@PRTNL
+@PUSHRETURN
+@Locals
+   @Local ArgTable
+   @POPI ArgTable
+   @PRT "| FILENAME: "
+   @PRTSI ArgTable    @PRT "\t\T|\n"
+   @PRT "| Flags: " @PUSHI ArgTable @ADD DIR_FLAGS @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\T|\n"
+   @PRT "| FileNum: " @PUSHI ArgTable @ADD DIR_FILENUM @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\T|\n"
+   @PRT "| FileSize: " @PUSHI ArgTable @ADD DIR_FILESIZE @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t|\n"
+   @PRT "| FirstBlock " @PUSHI ArgTable @ADD DIR_FIRSTBLOCK @PUSHS @PRTHEXTOP @POPNULL  @PRT "\t\t|\n"
+   @PRT "| BlockCount " @PUSHI ArgTable @ADD DIR_BLOCKCOUNT @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t|\n"
+   @PRT "| TimeStamp " @PUSHI ArgTable @ADD DIR_TIMESTAMPS @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t|\n"
+   @PRTNL
+   @PRTLN "ArgTable Raw:"
+   @Call(VAA) HexDump ArgTable DIR_SIZE 1
+   @StackDump
+@EndLocals
+@POPRETURN
+@RET
 
 M SIZESINCECOMMENT diskos.ld
 @SIZESINCE

@@ -14,12 +14,19 @@ import json
 import atexit
 import readline
 import readchar
-#import pstats
-#import io
 import time
 import bisect
+import tempfile
 from collections import deque
+from dataclasses import dataclass, field
 
+@dataclass
+class DynFunction:
+    name: str
+    body: list[str] = field(default_factory=list)
+    uses: set[str] = field(default_factory=set)
+    source_file: str = ""
+    start_line: int = 0
 
 from collections import defaultdict
 
@@ -123,6 +130,7 @@ COMMAND_SPEC = {
     "IF_GT": {"arity":2,"arg_kind":["word","word"]},
     "I": {"arity":1,"arg_kind":["word"]},
     "L": {"arity":1,"arg_kind":["word"]},
+    "D": {"arity":1,"arg_kind":["word"]},    
     "G": {"arity":1,"arg_kind":["word"]},
     "MF": {"arity":2,"arg_kind":["word","macro_token"]},
     "MA": {"arity":2,"arg_kind":["word"]},
@@ -232,8 +240,26 @@ class SourceCommand:
     origin: str="file"
     segments: list[str] | None = None
 
+@dataclass
+class ForwardRef:
+    symbol: str
+    address: int
+    delta: int = 0
+    file: str=""
+    line:int | None=None
     
 
+def record_symbol_use(context, sym, addr, file=None, line=None):
+    file = file or getattr(context, "CurrentSourceFile", "") or getattr(context, "ActiveFile", "")
+    line = line or getattr(context, "CurrentSourceLine", 0) or getattr(context, "FileLineNum", None)
+
+    context.UsedSymbols[sym] = context.UsedSymbols.get(sym, 0) + 1
+
+    if not hasattr(context, "MissingSymbols"):
+        context.MissingSymbols = {}
+
+    entry = context.MissingSymbols.setdefault(sym, {"refs": []})
+    entry["refs"].append((file, line, addr))
 
 
 class AssemblerContext:
@@ -251,6 +277,7 @@ class AssemblerContext:
         self.CrossCheck = False
         self.DeviceHandle = None
         self.LoadDepth = 0
+        
 
 
         # Labels and variables
@@ -264,7 +291,9 @@ class AssemblerContext:
         self.GlobalDeclarations=set()
         self.GlobalDeclInfo={}
         self.StructStack = []
-
+        self.UseRequested = set()
+        
+        self.KeepDynamicLibraries = True
         
 
         # Macro state
@@ -664,7 +693,47 @@ def UpdateVarHistory(varname, value, address):
     })
     dprint(DBG_INTERNAL,f"HIST {varname} value={value} address={address}")
 
+
 def FindHistoricVal(varname, testaddress, context=None):
+    global LocVarHist
+
+    testaddress = int(testaddress)
+
+    def in_range(entry):
+        start = entry["start"]
+        end = entry["end"]
+        if testaddress < start:
+            return False
+        if end is not None and testaddress > end:
+            return False
+        return True
+
+    # 1) Exact-name lookup, but active/in-range only.
+    history = LocVarHist.get(varname)
+    if history:
+        candidates = [e for e in history if in_range(e)]
+        if candidates:
+            best = max(candidates, key=lambda e: e["start"])
+            return best["value"]
+
+    # 2) Prefix/scoped lookup.
+    prefix = f"{varname}__"
+    candidates = []
+
+    for name, history2 in LocVarHist.items():
+        if name.startswith(prefix):
+            for entry in history2:
+                if in_range(entry):
+                    candidates.append(entry)
+
+    if candidates:
+        best = max(candidates, key=lambda e: e["start"])
+        return best["value"]
+
+    # 3) No valid active symbol found.
+    return None
+
+def FindHistoricVal_OLD(varname, testaddress, context=None):
     global LocVarHist
 
     testaddress = int(testaddress)
@@ -691,8 +760,8 @@ def FindHistoricVal(varname, testaddress, context=None):
             best = max(candidates, key=lambda e: e["start"])
             return best["value"]
         # Fallback if nothing in range return most recent definition
-        best = max(history, key=lambda e: e["start"])
-        return best["value"]
+#        best = max(history, key=lambda e: e["start"])
+#        return best["value"]
 
     # ------------------------------------------------------------
     # 2) Prefix-based lookup (varname__)
@@ -713,7 +782,9 @@ def FindHistoricVal(varname, testaddress, context=None):
     # ------------------------------------------------------------
     # 3) No valid historical entry found
     # ------------------------------------------------------------
-#    safeprint(f"Error: {varname} not recognized at address {testaddress:04x}.")
+    if history:
+        best = max(history, key=lambda e: e["start"])
+        return best["value"]
     return None
 
 
@@ -3470,7 +3541,16 @@ def DecodeStr(instr, curaddress, CPU, JUSTRESULT, context: AssemblerContext):
     
             # Store for second pass (symbol, address, delta)
 
-            context.FWORDLIST.append((resolved_label, curaddress, delta))
+            context.FWORDLIST.append(
+                ForwardRef(
+                    symbol=resolved_label,
+                    address=curaddress,
+                    delta=delta,
+                    file=context.ActiveFile,
+                    line=context.FileLineNum,
+                )
+            )
+            
             dprint(DBG_ASM,f"REF {resolved_label} at addr {curaddress:04x} with delta {delta} from {context.ActiveFile}:{context.FileLineNum}")
             
 
@@ -3597,7 +3677,6 @@ def FinalSymbolReport(context):
             if hasattr(context, "GlobalDeclInfo") and sym in context.GlobalDeclInfo:
                 file, line = context.GlobalDeclInfo[sym]
                 print(f"     declared at {file}:{line}")
-
     # -----------------------------------------
     # Missing symbols (likely missing @USE)
     # -----------------------------------------
@@ -3605,21 +3684,26 @@ def FinalSymbolReport(context):
         print("\n=== Missing Symbols ===")
 
         for sym in missing_symbols:
-
             count = context.UsedSymbols.get(sym, 0)
+            refs = context.MissingSymbols.get(sym, {}).get("refs", [])
 
             print(f"\n  {sym}  (used {count} times)")
 
-            refs = context.MissingSymbols.get(sym, {}).get("refs", [])
+            if not refs:
+                print("     no reference locations recorded")
+                continue
 
-            for (file, line, addr) in refs[:5]:
-                if line is not None:
-                    print(f"     at {file}:{line} (addr {addr:#04x})")
-                else:
-                    print(f"     at {file} (addr {addr:#04x})")
+            print("     References:")
+            print("       #   Address  Source")
+            print("       --  -------  ------------------------------")
+
+            for idx, (file, line, addr) in enumerate(refs[:5], start=1):
+                loc = f"{file}:{line}" if line is not None else str(file)
+                print(f"       {idx:<2}  {addr:#06x}   {loc}")
 
             if len(refs) > 5:
-                print(f"     ... {len(refs) - 5} more")
+                print(f"       ... {len(refs) - 5} more")
+
 
     # -----------------------------------------
     # Summary
@@ -4026,6 +4110,10 @@ def read_next_source_command(infile, filename, wfilename, context, CPU):
         line = raw.rstrip("\n\r")
 
         # Strip comments before continuation handling.
+        directive, dargs = ParseDynDirective(line)
+        if directive == "USE":
+            context.UseRequested.update(ParseUseList(dargs))
+            line=None
         line = removecomments(line).rstrip()
 
         if not line:
@@ -4575,6 +4663,41 @@ def execute_assembler_command(cmd, CPU, context):
         context.DataSegment = value
         context.dataaddress = value
         return ""
+    elif key == "D":
+        origfilename, used = nextword(rest)
+        if not origfilename:
+            CPU.raiseerror(f"Missing filename for D directive {filename}:{context.FileLineNum}")
+
+        newfilename = None
+
+        hold_file = context.ActiveFile
+        hold_resolved = context.ActiveResolvedFile
+        hold_line = context.FileLineNum
+
+        try:
+            newfilename = FilterLibrary(origfilename, context)
+        
+            new_local_id = f"{context.UniqueLineNum}:{newfilename}"
+
+            context.highaddress = context.address = loadfile(
+                newfilename,
+                context.address,
+                CPU,
+                LOCALFLAG,
+                new_local_id,
+                context,
+            )
+        finally:
+            if newfilename:
+                FilterLibraryCleanUp(newfilename, context)
+        
+            context.ActiveFile = hold_file
+            context.ActiveResolvedFile = hold_resolved
+            context.FileLineNum = hold_line
+        
+        return rest[used:].lstrip()
+
+        
 
     elif key == "L":
         newfilename, used = nextword(rest)
@@ -4823,9 +4946,9 @@ def resolve_all_forward_references(context, CPU):
     # Resolve forward references
     # --------------------------------------------------
 
-    for store in context.FWORDLIST:
-        key = store[0]
-        vaddress = store[1]
+    for ref in context.FWORDLIST:
+        key = ref.symbol
+        vaddress = ref.address
 
         found = key in context.GlobeLabels
         val = context.GlobeLabels[key] if found else None
@@ -4833,7 +4956,7 @@ def resolve_all_forward_references(context, CPU):
 
             # Track usage
         if not IsCompilerGenerated(key):
-            context.UsedSymbols[key] += 1
+            record_symbol_use(context, key, vaddress, file=ref.file, line=ref.line)
 
         resolved = False
 
@@ -4854,14 +4977,11 @@ def resolve_all_forward_references(context, CPU):
         # --------------------------------------------------
         # If resolved, write to memory
         # --------------------------------------------------
-        if vaddress == 0x7f4b:
-            dprint(DBG_INTERNAL,f"[CHECK] addr={vaddress:04x} symbol={key} resolved={resolved}")
-
         if resolved:
-            context.ResolvedSymbols.add(key)   # <-- ADD THIS LINE ONLY
+            context.ResolvedSymbols.add(key) 
 
-            if len(store) > 2 and store[2] != 0:
-                v = v + Str2Word(store[2])
+            if ref.delta:
+                v = v + Str2Word(ref.delta)
             CPU.insertbyte(int(vaddress), CPU.lowbyte(v), context)
             CPU.insertbyte(int(vaddress+1), CPU.highbyte(v), context)                            
 
@@ -5423,7 +5543,7 @@ def debugger(passline, context: AssemblerContext):
 
         if cmdword == "c":
             stoprange = 0
-            DissAsm(CPU.pc, 1, CPU)
+#            DissAsm(CPU.pc, 1, CPU)
             AtLeastOne = 1
             while CPU.pc <= 0xfffe:
                 if watchbreaks:
@@ -5675,8 +5795,179 @@ def IsLabelActive(name, pc):
             return True
 
     return False
+#    context.UseRequested = []
+def ResolveUses(functions, root_uses):
+    selected = set()
+    pending = list(root_uses)
 
-    
+    while pending:
+        name = pending.pop()
+
+        if name in selected:
+            continue
+
+        func = functions.get(name)
+        if func is None:
+            continue
+
+        selected.add(name)
+
+        for dep in func.uses:
+            if dep not in selected:
+                pending.append(dep)
+
+    return selected
+def ParseDynDirective(line):
+    s = line.strip()
+
+    if not s:
+        return None, ""
+
+    if s.startswith("#"):
+        s = s[1:].lstrip()
+        parts = s.split(None, 1)
+        key = parts[0].upper() if parts else ""
+        argstr = parts[1] if len(parts) > 1 else ""
+
+        if key == "USE":
+            return "USE", argstr
+
+        return None, ""
+
+    if s.startswith("@"):
+        parts = s.split(None, 1)
+        key = parts[0].upper()
+        argstr = parts[1] if len(parts) > 1 else ""
+
+        if key in ("@FUNCTION", "@ENDFUNCTION"):
+            return key[1:], argstr   # return FUNCTION / ENDFUNCTION
+
+    return None, ""
+
+def ParseUseList(argstr):
+    result = []
+
+    for part in argstr.replace(",", " ").split():
+        name = part.strip()
+        if name:
+            result.append(name)
+
+    return result
+
+# Scan file for UseRequested rules and create new temp file based filtered rules
+# Returns new filename thats result of filtering input filename.
+
+def FilterLibrary(origfilename, context):
+    functions = {}
+    function_order = []
+    global_body = []
+    chunks = []
+    global_chunk = []
+
+    def flush_global():
+        nonlocal global_chunk
+        if global_chunk:
+            chunks.append(("global", global_chunk))
+            global_chunk = []
+        
+
+
+    newfilename = CreateTempFilename(origfilename)  
+
+    current = None
+
+    wfilename = fileonpath(origfilename)
+
+    with open(wfilename) as f:
+        for lineno, line in enumerate(f, start=1):
+            directive, args = ParseDynDirective(line)
+
+            if directive == "FUNCTION":
+                name = args.split()[0]
+                flush_global()                
+
+                current = DynFunction(
+                    name=name,
+                    source_file=wfilename,
+                    start_line=lineno,
+                )
+
+                functions[name] = current
+                function_order.append(name)
+                chunks.append(("function",name))                
+                current.body.append(line)
+                continue
+
+            if directive == "ENDFUNCTION":
+                if current is not None:
+                    current.body.append(line)
+                    current = None
+                else:
+                    global_body.append(line)
+                continue
+
+            if directive == "USE":
+                names = ParseUseList(args)
+
+                if current is None:
+                    context.UseRequested.update(names)
+                else:
+                    current.uses.update(names)
+
+                continue
+
+            if current is not None:
+                current.body.append(line)
+            else:
+                global_chunk.append(line)
+
+
+    flush_global()
+
+    selected = ResolveUses(functions, context.UseRequested)
+    with open(newfilename, "w") as out:
+        out.write(f"# Dynamic library generated from {origfilename}\n")
+        for kind, data in chunks:
+            if kind == "global":
+                out.writelines(data)
+            elif kind == "function":
+                name = data
+                if name in selected:
+                    func = functions[name]
+                    out.write(f"\n# DYNAMIC FUNCTION {name} from {func.source_file}:{func.start_line}\n")
+                    out.writelines(func.body)
+                    out.write(f"# END DYNAMIC FUNCTION {name}\n")
+
+    return newfilename        
+
+def FilterLibraryCleanUp(filename, context):
+    if not filename:
+        return
+
+    # Optional debug escape hatch
+    if getattr(context, "KeepDynamicLibraries", False):
+        return
+
+    try:
+        os.remove(filename)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        print(f"Warning: could not remove dynamic library temp file {filename}: {e}")
+
+
+def CreateTempFilename(origfilename):
+    base = os.path.basename(origfilename)
+
+    fd, path = tempfile.mkstemp(
+        prefix=f"dynlib_{base}_",
+        suffix=".ld",
+        text=True,
+    )
+
+    os.close(fd)
+    return path
+
 def main():
     global CPU,  DebugOut, current_context
 

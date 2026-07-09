@@ -4,7 +4,7 @@ P Load hexdump.ld
 :HexBuf 0 0
 :ASCIIBuf 0 0 0 0 0 0 0 0 0 0
 I hexdump.ref
-
+M SIZESINCECOMMENT hexdump.ld
 G HexDump
 G NibbleToHexChar
 G ByteToHexStr
@@ -186,4 +186,5 @@ G ByteToHexStr
 @POPRETURN
 @RET
 @ENDFUNCTION
+@SIZESINCE
 ENDBLOCK

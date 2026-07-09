@@ -559,19 +559,109 @@ L string.ld
     @RestoreVar 01
  @POPRETURN
  @RET
+#-------------------------------------
+# ERASEDISK(Filepattern)
+#-------------------------------------
+:ERASEDISK
+@PUSHRETURN
+@Locals
+    @Local Pattern
+    @Local StartPoint
+    @Local FileNum
+    @Local DiskBuff
+    @Local ArgTable
+    @Local StrPtr
+    @Local PromptStr   # We are using READC which only reads 1 byte so safe to use normal word for prompt string.
+
+    @POPI Pattern
+
+
+    @MA2V 4 StartPoint
+    @MA2V 0 FileNum
+
+    @CALL DirNewArgTable @IF_ZERO @PRT "Error allocating ArgTable" @END @ENDIF
+    @POPI ArgTable
+    @CALL DiskNewBuffer
+    @POPI DiskBuff
+
+    @WHEN
+       @Call(VV) FSFindFile Pattern StartPoint
+    @DO_NOTZERO
+       @POPI FileNum
+       @Call(VVV) DirReadEntry FileNum ArgTable DiskBuff
+       @IF_ZERO
+           @PRT "Disk Error:"
+           @JMP DD_Exit
+       @ENDIF
+       @POPNULL
+       @PUSHI ArgTable @ADD DIR_AT_FILENAME
+       @POPI StrPtr
+       @PRTSI StrPtr
+       @PRT "\t (Erase Y/N)"
+       @READC PromptStr
+       @PUSHI PromptStr @AND 0xff
+       @IF_GT_A "Z\0"
+          @SUB 32   # Change to uppercase
+       @ENDIF
+       @IF_EQ_A "Y\0"
+          @POPNULL
+          # Erase file by changing FLAG field from INUSE to DELETED
+          @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
+          @PUSH DIR_FLAGS
+          @INV
+          @ANDS
+          @OR FLAG_DELETED
+          @PUSHI ArgTable @ADD DIR_AT_FLAGS @POPS
+          @Call(VVV) DirWriteRawEntry FileNum ArgTable DiskBuff
+          @IF_ZERO
+             @POPNULL
+             @PRT "DIR Write Error:" @PRTI FileNum @PRTNL
+             @Call(AA) BasicRaiseError  ERR_FILE_WRITE_FAIL 0 
+          @ENDIF
+          @POPNULL
+          @Call(V) FSClearFileUsed FileNum
+          @IF_ZERO
+             @POPNULL
+             @PRT "FS Bitmap Error:" @PRTI FileNum @PRTNL
+             @Call(AA) BasicRaiseError  ERR_FILE_WRITE_FAIL 0 
+          @ENDIF
+          @POPNULL
+          @CALL FSWriteHeader
+          @IF_ZERO
+             @PRT "Failed to write FS data to disk:" @PRTI FileNum @PRTNL
+             @Call(AA) BasicRaiseError  ERR_FILE_WRITE_FAIL 0 
+          @ENDIF
+          @POPNULL
+       @ELSE
+          @POPNULL       
+       @ENDIF
+       @MV2V FileNum StartPoint
+       @INCI StartPoint
+   @ENDWHEN
+   @POPNULL
+
+   @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @EndLocals
+@POPRETURN
+@RET
+
+   
+
 
 #-------------------------------------
 # DIRDISK(Filepattern)
 #-------------------------------------
 :DIRDISK
 @PUSHRETURN
-    @LocalVar Pattern     01
-    @LocalVar StartPoint  02
-    @LocalVar FileNum     03
-    @LocalVar Count       04
-    @LocalVar DiskBuff    05
-    @LocalVar ArgTable    06
-    @LocalVar StrPtr      07
+@Locals
+    @Local Pattern
+    @Local StartPoint
+    @Local FileNum
+    @Local Count
+    @Local DiskBuff
+    @Local ArgTable
+    @Local StrPtr
 
     @POPI Pattern
 
@@ -593,7 +683,6 @@ L string.ld
        @POPI FileNum
        @INCI Count
        @Call(VVV) DirReadEntry FileNum ArgTable DiskBuff
-#       @Call(VAA) HexDump ArgTable ARGTABLE_SIZE 1
        @IF_ZERO
            @PRT "Disk Error:"
            @JMP DD_Exit
@@ -623,14 +712,7 @@ L string.ld
 :DD_Exit
    @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
    @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
-
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+   @EndLocals
 @POPRETURN
 @RET
 #-----------------------------------
@@ -681,8 +763,69 @@ L string.ld
     @RestoreVar 01
 @POPRETURN
 @RET
- 
-   
+#-------------------------------------------------
+# ParseQuotedArgument(BuffPtr, MaxLen):(StringPtr, NewBufPtr, Status)
+#-------------------------------------------------
+:ParseQuotedArgument
+@PUSHRETURN
+@Locals
+   @Local BufPtr
+   @Local InMaxLen
+   @Local FileData
+   @Local Status
+   @Local StrLength
+   @Local Index1
+
+   @POPI2 InMaxLen BufPtr
+
+   @MA2V 0 Status
+   @MA2V 0 FileData
+
+   @LOADBII BufPtr
+   @IF_NEQ_A STRING_TOKEN
+      @PRTLN "Argument must be a quoted filename"
+      @POPNULL
+      @JMP PQAExit
+   @ENDIF
+   @POPNULL
+   @INCI BufPtr
+   @LOADBII BufPtr
+   @POPI StrLength
+   @INCI StrLength         # Add one spot for null term
+   @DECI StrLength         # Return to real size
+   @INCI BufPtr            # Move to first character of string.
+   @PUSHI StrLength
+   @IF_GT_V InMaxLen
+      @PRT "Filename is not valid"
+      @POPNULL
+      @JMP PQAExit
+   @ENDIF
+   @POPNULL
+   @Call(VV) HeapNewObject RunTimeHeap StrLength
+   @IF_ULT_A 100
+      @PRT "Memory Error"
+      @POPNULL
+      @JMP BasicPanic
+   @ENDIF
+   @POPI FileData   
+   @MA2V 1 Status          # If nothing goes wrong return 1 as success
+   @ForIA2V Index1 0 StrLength
+       @PUSHII BufPtr
+       @AND 0xff           # ALso makes sure null follows last character.
+       @PUSHI FileData @ADDI Index1
+       @POPS
+       @INCI BufPtr
+   @Next Index1
+
+   :PQAExit
+   @PUSHI FileData
+   @PUSHI BufPtr
+   @PUSHI Status
+@EndLocals
+@POPRETURN
+@RET
+
+
 M SIZESINCECOMMENT basic_support.h
 @SIZESINCE  
 

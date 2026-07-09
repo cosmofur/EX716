@@ -8,7 +8,7 @@ M Call_ApplyOpt \
    @CALL ApplyOpt \
    @POPI %9 @POPI %8 @POPI %7
 # Macro String Cleanup Helper @FreeIfString ( Type, Address )
-@FreeIfString @IF_EQ_AV STRING_TYPE %1 \
+M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
     @Call(VV) HeapDeleteObjecct RunTimeHeap %2
 #    
 #-----------------------------
@@ -354,9 +354,9 @@ M Call_ApplyOpt \
     
 
 #----------------------------------------
-# ParseVal(Ptr):((VarPtr,Updated_Ptr)|(0 0))
+# ParseVarName(Ptr):((VarPtr,Updated_Ptr)|(0 0))
 #----------------------------------------
-:ParseVal
+:ParseVarName
 @PUSHRETURN
 @Locals
    @Local PtrIn
@@ -364,8 +364,6 @@ M Call_ApplyOpt \
    @Local VarType
 
    @POPI PtrIn
-
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseVal(" @PRTHEXI PtrIn @PRT ")\n" @ENDIF
 
    @PUSHII PtrIn @AND 0xff
    @IF_EQ_A VAR_TOKEN
@@ -410,9 +408,6 @@ M Call_ApplyOpt \
       @PUSHI PtrIn @ADDI StrLen
    @ENDIF
 
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseVal: " @StackDump @ENDIF
-   
-   
    
 @EndLocals
 @POPRETURN
@@ -553,10 +548,6 @@ M Call_PromoteType \
    @POPNULL
 #
    @PUSHI3 LowWord HighWord TargetType
-
-   
-   
-   
    
 @EndLocals
 @POPRETURN
@@ -564,7 +555,6 @@ M Call_PromoteType \
          
   
 
-#-----------------------------------------
 # ParseLET(Ptr):(Ptr)
 #-----------------------------------------
 :ParseLET
@@ -581,13 +571,12 @@ M Call_PromoteType \
    @Local FinalType
 
    @POPI PtrIn
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Top ParseLet PtrIn:" @PUSHI PtrIn @AND 0xff @PRTHEXTOP @POPNULL @PUSHI PtrIn @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL @ENDIF
    
    @MA2V 0 HasIndex
    #-------------------------
    # Parse Variable
    #-------------------------
-   @Call(V) ParseVal PtrIn
+   @Call(V) ParseVarName PtrIn
    @IF_ZERO
       @Call(AA) BasicRaiseError ERR_SYNTAX 0
    @ENDIF
@@ -607,7 +596,6 @@ M Call_PromoteType \
       @POPNULL
 
       @INCI PtrIn
-       @IF_NEQ_AV 0 Debug_Mode      @PRT "Inbound PtrIn:" @PUSHI PtrIn @AND 0xff @PRTHEXTOP @POPNULL @PUSHI PtrIn @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL @ENDIF
       @Call(V) BasicEval PtrIn
       @POPI4 PtrIn EvalHigh EvalLow EvalType
 
@@ -643,6 +631,7 @@ M Call_PromoteType \
    @Call(V) BasicEval PtrIn
    @POPI4 PtrIn EvalHigh EvalLow EvalType
 
+
    #-------------------------
    # Get Variable Type
    #-------------------------
@@ -666,20 +655,16 @@ M Call_PromoteType \
    @ELSE
       @Call(VAVVV) SetVarVal VarPtr 0 EvalLow EvalHigh FinalType
    @ENDIF
+   @IF_EQ_AV STRING_TYPE FinalType
+      @Call(VV) HeapDeleteObject RunTimeHeap EvalLow @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+      @POPNULL
+   @ENDIF
    @POPNULL          # future error return code, now all errors to to raiseerrror
 
    #-------------------------
    # Return updated pointer
    #-------------------------
    @PUSHI PtrIn
-   
-   
-   
-   
-   
-   
-   
-   
    
 @EndLocals
 @POPRETURN
@@ -708,7 +693,7 @@ M Call_PromoteType \
    #-------------------------
    # Parse Variable
    #-------------------------
-   @Call(V) ParseVal PtrIn
+   @Call(V) ParseVarName PtrIn
    @IF_ZERO
       @Call(AA) BasicRaiseError ERR_SYNTAX 0
    @ENDIF
@@ -794,7 +779,6 @@ M Call_PromoteType \
 
     
    @POPI InPtr
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "BasicEval(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
    
    @Call(V) ParseLogical InPtr
    @POPI InPtr
@@ -807,12 +791,6 @@ M Call_PromoteType \
    @PUSHI HighWord
    @PUSHI InPtr
 
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return BasicEval: " @StackDump @ENDIF
-   
-   
-   
-   
-   
 @EndLocals
 @POPRETURN
 @RET
@@ -840,8 +818,6 @@ M Call_PromoteType \
    @Local ArgCount
 
    @POPI InPtr
-
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseFactor("@PRTHEXI InPtr @PRT ")\n" @ENDIF
 
    @MA2V INT_TYPE OutType   # default
 
@@ -921,12 +897,9 @@ M Call_PromoteType \
    # Parenthese
    #-------------------------
    @CASE "(\0"
-#      @PRT "Open (: Before INCI:" @PRTHEXI InPtr @PRTNL
       @INCI InPtr
-#      @PRT "In ( InPtr:" @PUSHI InPtr @AND 0xff @PRTHEXTOP @POPNULL @PUSHI InPtr @SHRN 8 @PRTHEXTOP @POPNULL @PRTNL
       
       @Call(V) BasicEval InPtr
-#      @PRT "Returned from Recursive Basic Eval with results: " @StackDump
       @POPI InPtr
       @POPI HighWord
       @POPI LowWord
@@ -1076,6 +1049,14 @@ M Call_PromoteType \
          @AND 0xf
          @POPI OutType
 
+         # Handle the String Case
+         @IF_EQ_AV STRING_TYPE OutType
+            @Call(V) StrDupHeap LowWord
+            @POPI LowWord
+            @MA2V 0 HighWord
+         @ENDIF
+            
+
          # Expect closing ')'
          @PUSHII InPtr @AND 0xff
          @IF_NEQ_A ")\0"
@@ -1096,7 +1077,13 @@ M Call_PromoteType \
          @PUSHI VarPtr @ADD VAROFF_TypeID
          @PUSHS
          @AND 0xf
-         @POPI OutType
+         @POPI OutType        
+         @IF_EQ_AV STRING_TYPE OutType
+            @Call(V) StrDupHeap LowWord
+            @POPI LowWord
+            @MA2V 0 HighWord         
+         @ENDIF
+         
       @ENDIF
 
       @CBREAK
@@ -1137,8 +1124,6 @@ M Call_PromoteType \
    @Local ResultType
 
    @POPI InPtr
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseTerm(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
-
    @Call(V) ParseFactor InPtr
    @POPI4  InPtr LeftHigh LeftLow LeftType
 
@@ -1169,18 +1154,7 @@ M Call_PromoteType \
    @ENDWHEN
    @POPNULL
    @PUSHI4  LeftType LeftLow LeftHigh InPtr
-
    
-   
-   
-   
-   
-   
-   
-   
-   
-
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
 @EndLocals
 @POPRETURN
 @RET
@@ -1198,9 +1172,6 @@ M Call_PromoteType \
     @Local BVarHigh
 
     @POPI6 BVarHigh BVarLow AVarHigh AVarLow TypeCode OptCode
-
-       @IF_NEQ_AV 0 Debug_Mode    @PRT "ApplyOpt(" @PRTHEXI OptCode @PRT ", " @PRTHEXI TypeCode @PRT ", " @PRTHEXI AVarLow
-           @PRT ", " @PRTHEXI AVarHigh @PRT ", " @PRTHEXI BVarLow @PRT ", " @PRTHEXI BVarHigh @PRT ")\n" @ENDIF
 
     @PUSHI OptCode
     @SWITCH
@@ -1509,13 +1480,6 @@ M Call_PromoteType \
 
     @PUSHI3 TypeCode AVarLow AVarHigh
 
-       @IF_NEQ_AV 0 Debug_Mode    @PRT "Return ApplyOpt: " @StackDump @ENDIF
-
-    
-    
-    
-    
-    
     
 @EndLocals
 @POPRETURN
@@ -1535,16 +1499,19 @@ M Call_PromoteType \
     @Local RightType
     @Local ResultType
     @Local Operation
+    @Local NewStrVal
+    @Local LeftStrLen
+    @Local RightStrLen
+    @Local ReusultType
+    @Local ResultLow
+    @Local ResultHigh
 
-    
     @POPI InPtr
-
-       @IF_NEQ_AV 0 Debug_Mode    @PRT "ParseExpr(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
     @Call(V) ParseTerm InPtr
     @POPI4 InPtr LeftHigh LeftLow LeftType
 
-    @MV2V LeftType ResultType
+    @MV2V LeftType ResultType    
     @WHEN
        @PUSHII InPtr @AND 0xff
        @SWITCH
@@ -1566,27 +1533,55 @@ M Call_PromoteType \
        @INCI InPtr
        @Call(V) ParseTerm InPtr
        @POPI4 InPtr RightHigh RightLow RightType
-       
-       @Call_PromoteType LeftType LeftLow LeftHigh RightType RightLow RightHigh ResultType
-       @Call_ApplyOpt Operation ResultType LeftLow LeftHigh RightLow RightHigh LeftType LeftLow LeftHigh
-       @MV2V LeftType ResultType
-   @ENDWHEN
+       @IF_EQ_AV STRING_TYPE LeftType
+           @IF_NEQ_AV "+\0" Operation
+              # Not valid operation for string.
+              @Call(AA) BasicRaiseError  ERR_SYNTAX 0
+           @ENDIF              
+           @IF_NEQ_AV STRING_TYPE RightType 
+               # No Auto conversion of int to string, so type must match
+               @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+           @ENDIF
+           # Create a new Heap Object = the LEN of Left and Right +1
+           @Call(V) strlen LeftLow
+           @POPI LeftStrLen
+           @Call(V) strlen RightLow
+           @POPI RightStrLen
+           @PUSHI RightStrLen
+           @ADDI LeftStrLen
+           @ADD 1
+           @POPI NewStrVal
+           @Call(VV) HeapNewObject RunTimeHeap NewStrVal
+           @POPI ResultLow
+           @MA2V 0 ResultHigh
+           @MA2V STRING_TYPE ResultType
+           @Call(VVV) memcpy ResultLow LeftLow LeftStrLen
+           @PUSHI ResultLow @ADDI LeftStrLen @POPI NewStrVal  # Ptr to where RightStr Starts in result
+           @Call(VVV) memcpy NewStrVal RightLow RightStrLen
+           @PUSHI ResultLow @ADDI LeftStrLen @ADDI RightStrLen @POPI NewStrVal
+           @Call(VAA) EmitByte NewStrVal  0 1
+           @POPNULL @POPNULL
+           #
+           # Now clean up both Right and Left strings
+           @Call(VV) HeapDeleteObject RunTimeHeap RightLow @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+           @POPNULL
+           @Call(VV) HeapDeleteObject RunTimeHeap LeftLow @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+           @POPNULL
+           # Now move all result to LEFT which is what the common return block uses.
+           @MA2V 0 LeftHigh
+           @MV2V ResultLow LeftLow
+           @MA2V STRING_TYPE LeftType
+       @ELSE
+           @Call_PromoteType LeftType LeftLow LeftHigh RightType RightLow RightHigh ResultType
+           @Call_ApplyOpt Operation ResultType LeftLow LeftHigh RightLow RightHigh LeftType LeftLow LeftHigh
+           @MV2V LeftType ResultType
+       @ENDIF
+       @ENDWHEN
    @POPNULL
-
    @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
    
    
-   
-   
-   
-   
-   
-   
-   
-
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseExpr: " @StackDump @ENDIF
-
 @EndLocals
 @POPRETURN
 @RET
@@ -1608,7 +1603,6 @@ M Call_PromoteType \
    @Local ResultType
 
    @POPI InPtr
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseReleation(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
    @Call(V) ParseExpr InPtr
    @POPI4 InPtr LeftHigh LeftLow LeftType
@@ -1651,16 +1645,6 @@ M Call_PromoteType \
    @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
    
-   
-   
-   
-   
-   
-   
-   
-   
-
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
 @EndLocals
 @POPRETURN
 @RET
@@ -1681,8 +1665,8 @@ M Call_PromoteType \
    @Local Operation
    @Local ResultType
 
+
    @POPI InPtr
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "ParseLogical(" @PRTHEXI InPtr @PRT ")\n" @ENDIF
 
    @Call(V) ParseRelation InPtr
    @POPI4 InPtr LeftHigh LeftLow LeftType
@@ -1714,7 +1698,6 @@ M Call_PromoteType \
    @POPNULL
    @PUSHI4 LeftType LeftLow LeftHigh InPtr
 
-       @IF_NEQ_AV 0 Debug_Mode   @PRT "Return ParseTerm: " @StackDump @ENDIF
 @EndLocals
 @POPRETURN
 @RET
@@ -1731,7 +1714,7 @@ M Call_PromoteType \
    @Local TypeVal
    @Local InPtr
    @Local Index
-   
+
    @POPI InPtr
 
    # Expect "("
@@ -1785,6 +1768,11 @@ M Call_PromoteType \
    @Local HighWord
    @Local LowWord
    @Local FlagVal
+   @Local TempStr
+   @Local Position
+   @Local LengthStr
+   @Local NewPosition
+   @Local OrigTempStr
 
    @POPI2 Selected Count
 
@@ -1796,62 +1784,451 @@ M Call_PromoteType \
          # Not valid number arguments for ABS
          @Call(AA) BasicRaiseError ERR_SYNTAX 0
       @ENDIF
-
-     @POPI4 FlagVal HighWord LowWord TypeCode
-     @PUSHI TypeCode
-     @SWITCH
-     @CASE INT_TYPE
-        @POPNULL
-        @PUSHI LowWord
-        @AND 0x8000
-        @IF_NOTZERO
-           @POPNULL
-           @PUSHI LowWord
-           @COMP2
-           @POPI LowWord
-        @ELSE
-           @POPNULL
-        @ENDIF
-        @MA2V 0 HighWord
-        @PUSH INT_TYPE
-        @PUSHI LowWord
-        @PUSHI HighWord
-        @CBREAK
-     @CASE LONG_TYPE
-        @POPNULL
-        @PUSHI HighWord
-        @AND 0x8000            
-        @IF_NOTZERO
-           @POPNULL
-           @Call(VV) COMP232 LowWord HighWord
-           @POPI2 HighWord LowWord
-        @ELSE
-           @POPNULL
-        @ENDIF
-        @PUSH LONG_TYPE
-        @PUSHI LowWord
-        @PUSHI HighWord
-        @CBREAK
-     @CDEFAULT
-        # Not a valid type fo ABS
-        @POPNULL
-        @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
-        @CBREAK
-     @ENDCASE
+     JMP EFC_ABS_CODE
      @CBREAK
+   @CASE STR_LEFT
+     @POPNULL
+     @IF_NEQ_AV 2 Count
+         # Not valid number arguments for LEFT
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_LEFT_CODE
+      @CBREAK
+   @CASE STR_RIGHT
+      @POPNULL
+      @IF_NEQ_AV 2 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_RIGHT_CODE
+      @CBREAK
+   @CASE STR_MID
+      @POPNULL
+      @IF_NEQ_AV 3 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_MID_CODE
+      @CBREAK
+   @CASE LEN_CODE
+      @POPNULL
+      @IF_NEQ_AV 1 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_LEN_CODE
+      @CBREAK      
+   @CASE VAL_CODE
+      @POPNULL
+      @IF_NEQ_AV 1 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_VAL_CODE
+      @CBREAK
+   @CASE STR_STR
+      @POPNULL
+      @IF_NEQ_AV 1 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_STR_CODE
+      @CBREAK
+   @CASE STR_CHR
+      @POPNULL
+      @IF_NEQ_AV 1 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_CHR_CODE
+      @CBREAK
+   @CASE STR_ASC
+      @POPNULL
+      @IF_NEQ_AV 1 Count
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @JMP EFC_ASC_CODE
+      @CBREAK   
    @CDEFAULT
       # Unknown Function
       @POPNULL
       @Call(AA) BasicRaiseError ERR_SYNTAX 0
       @CBREAK
    @ENDCASE
+   :EFCReturn
 @EndLocals
 @POPRETURN
 @RET
+#-------------------------------
+# Child Blocks for Function dispatch
+#-------------------------------
+         
+######### ABS
+:EFC_ABS_CODE
+    @POPI4 FlagVal HighWord LowWord TypeCode
+    @PUSHI TypeCode
+    @SWITCH
+    @CASE INT_TYPE
+       @POPNULL
+       @PUSHI LowWord
+       @AND 0x8000
+       @IF_NOTZERO
+          @POPNULL
+          @PUSHI LowWord
+          @COMP2
+          @POPI LowWord
+       @ELSE
+          @POPNULL
+       @ENDIF
+       @MA2V 0 HighWord
+       @PUSH INT_TYPE
+       @PUSHI LowWord
+       @PUSHI HighWord
+       @CBREAK
+    @CASE LONG_TYPE
+       @POPNULL
+       @PUSHI HighWord
+       @AND 0x8000            
+       @IF_NOTZERO
+          @POPNULL
+          @Call(VV) COMP232 LowWord HighWord
+          @POPI2 HighWord LowWord
+       @ELSE
+          @POPNULL
+       @ENDIF
+       @PUSH LONG_TYPE
+       @PUSHI LowWord
+       @PUSHI HighWord
+       @CBREAK
+    @CDEFAULT
+       # Not a valid type fo ABS
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+       @CBREAK
+    @ENDCASE
+@JMP EFCReturn
+########### LEFT
 
-         
-         
+:EFC_LEFT_CODE
+    # Pop length argument
+    @POPI4 FlagVal HighWord Position TypeCode
+    @IF_NEQ_AV INT_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    # Pop string argument
+    @POPI4 FlagVal HighWord TempStr TypeCode
+    @IF_NEQ_AV STRING_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    # Reject negative lengths
+    @PUSHI Position
+    @AND 0x8000
+    @IF_NOTZERO
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ELSE
+       @POPNULL
+    @ENDIF
+
+    # Alloc length = Position + 1
+    @PUSHI Position
+    @ADD 1
+    @POPI LowWord        # reuse LowWord as AllocLen temporarily
+    @PUSHI LowWord
+    @IF_INRANGE_AB 1 254
+       @POPNULL
+       @Call(VV) HeapNewObject RunTimeHeap LowWord @IF_ULT_A 100 @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+       @POPI LowWord     # LowWord = new string ptr
+
+       @Call(VVV) memcpy LowWord TempStr Position
+
+       @PUSHI LowWord
+       @ADDI Position
+       @POPI HighWord    # temp address for terminator
+
+       @Call(VAA) EmitByte HighWord 0 1
+
+       @POPNULL @POPNULL
+          
+       @Call(VV) HeapDeleteObject RunTimeHeap TempStr @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+       @POPNULL
+
+       @MA2V 0 HighWord
+       @PUSH STRING_TYPE
+       @PUSHI LowWord
+       @PUSHI HighWord
+    @ELSE
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+@JMP EFCReturn
+
+
+############ RIGHT$
+:EFC_RIGHT_CODE
+    # Pop length argument: Type, Low, High, Flag
+    @POPI4 FlagVal HighWord LengthStr TypeCode
+    @IF_NEQ_AV INT_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    # Pop string argument: Type, Low, High, Flag
+    @POPI4 FlagVal HighWord TempStr TypeCode
+    @IF_NEQ_AV STRING_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    # Preserve original source pointer for possible deletion.
+    @MV2V TempStr OrigTempStr
+
+    # Reject negative lengths.
+    @PUSHI LengthStr
+    @AND 0x8000
+    @IF_NOTZERO
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+    @ELSE
+       @POPNULL
+    @ENDIF
+
+    # Position = strlen(source)
+    @Call(V) strlen TempStr
+    @POPI Position
+
+    # LengthStr = min(requested length, source length)
+    @PUSHI LengthStr
+    @IF_GT_V Position
+       @MV2V Position LengthStr
+    @ENDIF
+    @POPNULL    
+
+    # NewPosition = source length - copy length
+    @PUSHI Position
+    @SUBI LengthStr
+    @POPI NewPosition
+
+    # Allocate result: copy length + null
+    @PUSHI LengthStr
+    @ADD 1
+    @POPI LowWord              # LowWord temporarily holds allocation size
+
+    @PUSHI LowWord
+    @IF_INRANGE_AB 1 255
+       @POPNULL
+    @ELSE
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+    @ENDIF
+
+    @Call(VV) HeapNewObject RunTimeHeap LowWord
+    @IF_ULT_A 100
+       @Call(AA) BasicRaiseError ERR_MEMORY 0
+    @ENDIF
+    @POPI LowWord              # LowWord now holds destination pointer
+
+    # TempStr = source + NewPosition
+    @PUSHI TempStr
+    @ADDI NewPosition
+    @POPI TempStr
+
+    # Copy LengthStr bytes.
+    @Call(VVV) memcpy LowWord TempStr LengthStr
+
+    # Null terminate at LowWord + LengthStr.
+    @PUSHI LowWord
+    @ADDI LengthStr
+    @POPI HighWord             # HighWord temporarily holds null address
+    @Call(VAA) EmitByte HighWord 0 1
+    @POPNULL @POPNULL
+
+    @Call(VV) HeapDeleteObject RunTimeHeap OrigTempStr
+    @IF_NOTZERO
+        @Call(AA) BasicRaiseError ERR_MEMORY 0
+    @ENDIF
+    @POPNULL
+    # Return STRING_TYPE, result ptr, high=0, flag=temp heap
+    @MA2V 0 HighWord
+    @PUSH STRING_TYPE
+    @PUSHI LowWord
+    @PUSHI HighWord
+
+@JMP EFCReturn
+################# MID$
+:EFC_MID_CODE
+    # Pop length argument: Type, Low, High, Flag
+    @POPI4 FlagVal HighWord LengthStr TypeCode
+    @IF_NEQ_AV INT_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    # Pop Postion argument: Type, Low, High, Flag
+    @POPI4 FlagVal HighWord Position TypeCode
+    @IF_NEQ_AV INT_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    # Pop string argument: Type, Low, High, Flag
+    @POPI4 FlagVal HighWord TempStr TypeCode
+    @IF_NEQ_AV STRING_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    @MV2V TempStr OrigTempStr
+
+    # Neigther postion or length can be negative.
+    @PUSHI LengthStr
+    @AND 0x8000
+    @IF_NOTZERO
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+    @ELSE
+       @POPNULL
+    @ENDIF
+    @PUSH Position
+    @AND 0x8000
+    @IF_NOTZERO
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+    @ELSE
+       @POPNULL
+    @ENDIF    
+#
+    # Now test if ranges makes sense.
+    @Call(V) strlen TempStr
+    @POPI HighWord                 # High Word will be input string length
+
+    # First is Position larger than string length?
+    @PUSHI Position
+    @IF_GT_V HighWord
+         @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+    @ENDIF
+    # Next handle case if Postion+LengthStr > String_Length
+    @ADDI LengthStr
+    @IF_GT_V HighWord
+        # Don't error just truncate LengthStr to real length
+        @POPNULL
+        @PUSHI HighWord
+        @SUBI LengthStr
+        @POPI LengthStr
+    @ELSE
+        @POPNULL
+    @ENDIF
+    #
+    # Now Create new string LengthStr+1
+    @PUSHI LengthStr
+    @ADD 1
+    @POPI LowWord              # LowWord temp hold size+null bytes
+    @Call(VV) HeapNewObject RunTimeHeap LowWord
+    @IF_ULT_A 100
+       @Call(AA) BasicRaiseError ERR_MEMORY 0
+    @ENDIF
+    @POPI LowWord
+
+    # TempStr = Source + Position
+    @PUSHI TempStr
+    @ADDI Position
+    @SUB 1
+    @POPI TempStr
+    #
+    # Copy LengthStr bytes
+    @Call(VVV) memcpy LowWord TempStr LengthStr
+    #
+    # Null end byte
+    @PUSHI LowWord
+    @ADDI LengthStr
+    @POPI HighWord           # Temp holds null address
+    @Call(VAA) EmitByte HighWord 0 1
+    @POPNULL @POPNULL
+    @Call(VV) HeapDeleteObject RunTimeHeap OrigTempStr
+    @IF_NOTZERO
+        @Call(AA) BasicRaiseError ERR_MEMORY 0
+    @ENDIF
+    @POPNULL
+    @MA2V 0 HighWord
+    @PUSH STRING_TYPE
+    @PUSHI LowWord
+    @PUSHI HighWord
+@JMP EFCReturn
+########################### LEN
+:EFC_LEN_CODE
+    # Pop String argument: Type
+    @POPI4 FlagVal HighWord LowWord TypeCode
+    @IF_NEQ_AV STRING_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    @Call(V) strlen LowWord
+    @POPI LowWord
+    @MA2V 0 HighWord
+    @PUSH INT_TYPE
+    @PUSHI LowWord
+    @PUSHI HighWord
+@JMP EFCReturn
+############################ VAL  (INT only for now)
+:EFC_VAL_CODE
+    # Pop String argument: Type
+    @POPI4 FlagVal HighWord LowWord TypeCode
+    @IF_NEQ_AV STRING_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    @Call(V) stoi32 LowWord
+    @Call(VV) HeapDeleteObject RunTimeHeap LowVal
+    @IF_NOTZERO  @Call(AA) BasicRaiseError ERR_MEMORY 0 @ELSE POPNULL @ENDIF
+    @POP32I(V) LowWord
+    @PUSH LONG_TYPE
+    @PUSHI LowWord
+    @PUSHI HighWord
+@JMP EFCReturn
+############################ CHR$
+:EFC_CHR_CODE
+    # Pop String argument: Type
+    @POPI4 FlagVal HighWord LowWord TypeCode
+    @IF_NEQ_AV INT_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    # Char is 2 character long string, ascii code + null
+    @Call(VA) HeapNewObject RunTimeHeap 2 @IF_ULT_A 100 @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+    @POPI TempStr
+    @PUSHI LowWord @AND 0xff # We only support 8 bit ascii, this will be equal to char and null
+    @POPII TempStr
+    @PUSH STRING_TYPE
+    @PUSHI TempStr
+    @PUSH 0    
+@JMP EFCReturn
+############################ STR$
+:EFC_STR_CODE
+    # Pop String argument: Type
+    @POPI4 FlagVal HighWord LowWord TypeCode
+    @IF_NEQ_AV INT_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF    
+    # Max length of Numeric string will be 12 characters (with null)
+    @Call(VA) HeapNewObject RunTimeHeap 12 @IF_ULT_A 100 @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+    @POPI TempStr
+    # Only support base 10
+    @PUSHI TempStr
+    @PUSH32I(V) LowWord
+    @PUSH 10
+    @CALL i32tos # Do to mixed types need to use older call style
+    @PUSH STRING_TYPE
+    @PUSHI TempStr
+    @PUSH  0    
+@JMP EFCReturn
+############################# ASC
+:EFC_ASC_CODE
+    # Pop String argument: Type
+    @POPI4 FlagVal HighWord LowWord TypeCode
+    @IF_NEQ_AV STRING_TYPE TypeCode
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    @PUSHII LowWord @AND 0xff
+    @Call(VV) HeapDeleteObject RunTimeHeap LowWord
+    @IF_NOTZERO  @Call(AA) BasicRaiseError ERR_MEMORY 0 @ELSE POPNULL @ENDIF
+    @POPI LowWord
+    @PUSH INT_TYPE
+    @PUSHI LowWord
+    @PUSH 0
+@JMP EFCReturn
+    
+    
+
+    
+    
+
 
 M SIZESINCECOMMENT basic_eval.h
 @SIZESINCE  
-
