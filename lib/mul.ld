@@ -40,7 +40,6 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
 # Flags:
 #   Overflow flag set if high word of result ≠ 0
 # ============================================================
-P Before MULU
 :NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @FUNCTION MULU
 :MULU

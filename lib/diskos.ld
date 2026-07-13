@@ -149,8 +149,6 @@ I diskos.ref
 #          Copies Directrory Entry into provided ArgTable, void function
 #   DirArgTableToEntry(*DirEntry, *ArgTable)
 #          Copies ArgTable to provided Dir Entry Pointer, void funciton
-#   DirClearArgTable(*ArgTable)
-#          Clears ArgTable to default values, void function
 #   DirReadEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
 #          For given FileNum Reads DIR's Sector into provided Buffer and fills ArgTable
 #   DirWriteRawEntry(FileNum, *ArgTable, *SectorBuffer):(0|1)
@@ -208,7 +206,6 @@ I diskos.ref
 #====================================================
 #Storage
 #====================================================
-P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 G DiskHeap
 G SetDiskHeap
 G DiskNewBuffer
@@ -230,13 +227,10 @@ G DirLocate
 G DirEntryPtr
 G DirEntryToArgTable
 G DirArgTableToEntry
-G DirClearArgTable
 G DirReadEntry
 G DirWriteRawEntry
 G DirWriteEntry
 G DirNewArgTable
-G DirFindFile
-G DirFindFree
 G WildCardMatch
 #====================================================
 #Public API — File-Level Operations
@@ -289,6 +283,9 @@ G DIR_SIZE
 =DIR_SIZE          0x80
 
 =DIREntryCount     512
+=DIR_FN_SIZE       0x1f   # Max Filename size
+G DIR_FN_SIZE
+
 
 
 #====================================================
@@ -351,7 +348,6 @@ G MODE_RW        # Read Write
 G MODE_WP        # Write Append
 G MODE_AP        # Open RW Append
 
-P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 
 =MODE_RO 0x6f72 # "ro"
 =MODE_WO 0x6f77 # "wo"
@@ -414,7 +410,6 @@ G FSReservedID
 =FSHeaderFlagsID    10
 =FSFileBitMapID     12
 =FSReservedID       76
-P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 
 #====================================================
 #ArgTable Helper Macros
@@ -423,7 +418,6 @@ P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 M FILL_AT_A @PUSH %3  @PUSHI %1 @ADD %2 @POPS
 M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 
-P diskos {REFCOUNT} ; =REFCOUNT {REFCOUNT}+1
 
 #====================================================
 #Internal Storage (DiskOS state)
@@ -478,7 +472,6 @@ G LINE_EOF
 # --- External dependencies (not defined in this file) ---
 #  DataBlockFirstSector
 #  DirArgTableToEntry
-#  DirClearArgTable
 #  DirEntryPtr
 #  DirEntryToArgTable
 #  DirLocate
@@ -650,31 +643,6 @@ G LINE_EOF
 @POPRETURN
 @RET
 @ENDFUNCTION
-#------------------------------------------------
-# DirClearArgTable(*ArgTable)
-# Clears the ArgTable, does not yet rewrite new entry to Disk
-#------------------------------------------------
-@FUNCTION DirClearArgTable
-:DirClearArgTable
-@PUSHRETURN
-@Locals
-   @Local ArgTable
-   @Local _I
-
-   @POPI ArgTable
-
-# Zero out with 0 words ArgTable from 0 to RESERVE stepping by 2 bytes per word
-   @ForIA2B _I 0 DIR_AT_SIZE
-      @PUSH 0
-      @PUSHI ArgTable
-      @ADDI _I
-      @POPS
-   @NextBy _I 2
-@EndLocals
-@POPRETURN
-@RET
-@ENDFUNCTION
-
 #--------------------------------------------
 # DirArgTableToEntry(*DirEntry,*ArgTable)
 # Copies the formated ArgTable to the in memory image of DIR sector.
@@ -812,7 +780,7 @@ G LINE_EOF
 :DirReadEntry
 @PUSHRETURN
 @Locals
-#USE DirClearArgTable,DirEntryToArgTable,DirLocate
+#USE DirEntryToArgTable,DirLocate
     @Local FileNum
     @Local ArgTable
     @Local Offset
@@ -841,7 +809,6 @@ G LINE_EOF
        @Call(VV) DirEntryPtr DiskBuff Offset
        @POPI EntryPtr
 
-       @Call(V) DirClearArgTable ArgTable
        @Call(VV) DirEntryToArgTable EntryPtr ArgTable
        @PUSH 1
     @ENDIF
@@ -894,12 +861,13 @@ G LINE_EOF
 @POPRETURN
 @RET
 @ENDFUNCTION
+
 #-----------------------------------------
 # DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, Diskbuff)
-# Writes ByteCount bytes from memory starting at MemPtr into consecutive disk sectors starting at Sector.
-# Memory is treated as word-addressable (ByteCount rounded up to even).
-# Final sector is zero-filled beyond ByteCount.
-# Does not clear sectors beyond the last written sector.
+# Writes exactly ByteCount bytes from memory beginning at MemPtr
+# into consecutive disk sectors beginning at Sector and StartOffset.
+# Existing bytes outside the written range in partial sectors are preserved.
+# Sectors beyond the written range are not modified.
 #-----------------------------------------
 @FUNCTION DiskWriteBlock
 :DiskWriteBlock
@@ -911,7 +879,6 @@ G LINE_EOF
     @Local StartOffset
     @Local Diskbuff
     @Local InBuffPtr
-    @Local TotalSectors
     @Local _I
 
 
@@ -939,13 +906,6 @@ G LINE_EOF
     @ENDIF
 
 
-    # Calculate number of Sectors ByteCount takes up. (Round up by adding 511)
-    @PUSHI ByteCount
-    @ADDI StartOffset
-    @ADD 511
-    @SHRN 9
-    @POPI TotalSectors
-
     # Make sure StartOffset is in valid range
     @PUSHI StartOffset
     @IF_UGT_A 511
@@ -955,53 +915,80 @@ G LINE_EOF
        @JMP DWBExit
     @ENDIF
     @POPNULL
-    @IF_NEQ_AV 0 StartOffset
-        # If StartOffset != 0, the preload the first sector into Diskbuff to preserve parts not overwriten
-        @Call(VV) DiskReadSector Sector Diskbuff
-    @ENDIF
+
     @PUSHI ByteCount
     @WHILE_UGT_A 0
         @POPNULL
+
+        # A sector must be preloaded when either:
+        #
+        # 1. StartOffset is nonzero, because bytes before the write
+        #    must be preserved.
+        #
+        # 2. StartOffset is zero and ByteCount is less than one
+        #    complete sector, because bytes after the write must
+        #    be preserved.
+
+        @IF_NEQ_AV 0 StartOffset
+            @POPNULL
+            @Call(VV) DiskReadSector Sector Diskbuff
+        @ELSE
+            @POPNULL
+
+            @PUSH 512
+            @IF_UGT_V ByteCount
+                @POPNULL
+                @Call(VV) DiskReadSector Sector Diskbuff
+            @ELSE
+                @POPNULL
+            @ENDIF
+        @ENDIF
+
         @PUSHI Diskbuff
         @ADDI StartOffset
         @POPI InBuffPtr
-        @DECI TotalSectors
+
         @MV2V StartOffset _I
         @PUSHI _I
-        # Replace previous FOR loop with WHILE for more control.
+
         @WHILE_ULT_A 512
-           @POPNULL
-           # On last Sector zero out remaining data of sector.
-           @IF_EQ_AV 0 ByteCount
-              @PUSH 0
-           @ELSE
-              @PUSHII MemPtr  @AND 0xff     # Doing it byte at a time.
-              @DECI ByteCount
-           @ENDIF
-           @PUSHII InBuffPtr
-           @AND 0xff00         # Preserve High Byte
-           @ORS                # Or new
-           @POPII InBuffPtr
-           @INCI MemPtr
-           @INCI InBuffPtr
-           @INCI _I
-           @PUSHI _I
+            @POPNULL
+
+            @IF_EQ_AV 0 ByteCount
+                @WHILEBREAK
+            @ENDIF
+
+            @PUSHII MemPtr
+            @AND 0xff
+
+            @PUSHII InBuffPtr
+            @AND 0xff00
+            @ORS
+            @POPII InBuffPtr
+
+            @INCI MemPtr
+            @INCI InBuffPtr
+            @DECI ByteCount
+            @INCI _I
+
+            @PUSHI _I
         @ENDWHILE
         @POPNULL
-        @MA2V 0 StartOffset
+
         @Call(VV) DiskWriteSector Sector Diskbuff
         @INCI Sector
+        @MA2V 0 StartOffset
+
         @PUSHI ByteCount
     @ENDWHILE
-
 :DWBExit
 @EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
 
-#---------------------------------------
 @FUNCTION  DiskReadBlock
+#---------------------------------------
 # DiskReadBlock(Sector, MemPtr, ByteCount, StartOffset, Diskbuff):Bytes Read
 # Reads a sequence of Sectors into a memory.
 #---------------------------------------
@@ -1026,6 +1013,7 @@ G LINE_EOF
     @PUSHI StartOffset
     @IF_UGE_A SECTOR_SIZE
        @POPNULL
+       @PUSH 0        # Return zero on this error
        @JMP DRBExit
     @ENDIF
     @POPNULL
@@ -1033,18 +1021,19 @@ G LINE_EOF
     @PUSHI ByteCount
     @ADDI MemPtr
     @IF_ULT_V MemPtr
-       @PUSH 0xfffe @SUBI MemPtr
+       @PUSH 0xfffe
+       @SUBI MemPtr
        @POPI ByteCount
     @ENDIF
     @POPNULL
     @MV2V ByteCount OrigCount
     @IF_EQ_AV 0 ByteCount
+       @PUSH 0      # Return zero if no bytecount
        @JMP DRBExit
     @ENDIF
     @PUSHI ByteCount
     @WHILE_UGT_A 0
        @POPNULL
-    :Break02
        @Call(VV) DiskReadSector Sector Diskbuff
        @PUSHI Diskbuff @ADDI StartOffset
        @POPI InBuffPtr
@@ -1074,11 +1063,10 @@ G LINE_EOF
           @DECI ByteCount
        @ENDWHEN
        @POPNULL
+       @INCI Sector       
        @PUSHI ByteCount
     @ENDWHILE
     @POPNULL
-    @MA2V 0 StartOffset
-    @INCI Sector
     @PUSHI OrigCount
     @SUBI ByteCount      # How many bytes were acutually read.
 :DRBExit
@@ -1742,152 +1730,6 @@ G LINE_EOF
 @POPRETURN
 @RET
 @ENDFUNCTION
-#--------------------------------------------
-@FUNCTION  DirFindFile
-# DirFindFile(Pattern, StartPoint):FileNum | 0
-# Searches DIR, starting at StartPoint for filenames that match Pattern
-# StartPoint is in terms of FileNum so by calling repeatily you can find
-# all files that match a pattern.
-#--------------------------------------------
-:DirFindFile
-@PUSHRETURN
-@Locals
-#USE DirNewArgTable,WildCardMatch
-    @Local Pattern
-    @Local Result
-    @Local StartPoint
-    @Local Diskbuff
-    @Local CurFileNum
-    @Local ArgTable
-
-    @POPI StartPoint
-    @POPI Pattern
-
-    @MA2V 0 Result       # Default result is 'not found'
-
-    @CALL DiskNewBuffer
-    @POPI Diskbuff
-
-    @CALL DirNewArgTable  @IF_ZERO @PRT "Error Allocating ArgTable" @END @ENDIF
-    @POPI ArgTable
-
-    # We reserve the first 4 Files (0-3) for 'os' and support. So start the search at 4
-    @PUSHI StartPoint
-    @IF_ULT_A 4
-       @POPNULL
-       @PUSH 4
-    @ENDIF
-    @POPI StartPoint
-
-    # Search loop continues until we find a match or reach end of DIR
-    @PUSHI StartPoint
-    @WHILE_LT_A DIREntryCount     # in practice 512
-       @POPI CurFileNum
-       @Call(VVV) DirReadEntry CurFileNum ArgTable Diskbuff
-       @IF_ZERO
-          @POPNULL
-          @PRT "Error Reading Filename"
-          @JMP WCMExit
-       @ENDIF
-       @POPNULL
-       # Skip DIR entries that are not active.
-       @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
-       @AND FLAG_INUSE
-       @IF_NOTZERO
-          # FileNum is tagged as INUSE
-          @POPNULL
-          @PUSHI Pattern
-          @PUSHI ArgTable @ADD DIR_AT_FILENAME   # We waisting a few cycles here, DIR_AT_FILENAME=0
-          @CALL WildCardMatch
-
-          @IF_NOTZERO
-             # Pattern Matched, return current FileNum
-             @POPNULL
-             @MV2V CurFileNum Result
-             @JMP WCMExit
-          @ELSE
-             @POPNULL
-          @ENDIF
-       @ELSE
-          @POPNULL
-       @ENDIF
-       @INCI CurFileNum
-       @PUSHI CurFileNum
-    @ENDWHILE
-    @POPNULL
-:WCMExit
-    @PUSHI Result
-    # Free Space
-    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
-    @POPNULL
-    @Call(VV) HeapDeleteObject DiskHeap ArgTable
-    @POPNULL
-
-@EndLocals
-@POPRETURN
-@RET
-@ENDFUNCTION
-#-------------------------------------------
-@FUNCTION  DirFindFree
-# DirFindFree():FileNum | 0
-# Searches for a free Director entry, 0 if none found.
-#-------------------------------------------
-:DirFindFree
-@PUSHRETURN
-@Locals
-#USE DirNewArgTable
-   @Local Diskbuff
-   @Local ArgTable
-   @Local CurFileNum
-   @Local Result
-   @MA2V 0 Result
-   @CALL DiskNewBuffer
-   @POPI Diskbuff
-
-   @CALL DirNewArgTable @IF_ZERO @PRT "Error Allocating Argtable" @END @ENDIF
-   @POPI ArgTable
-   # We start search as 4 as 0-3 are reserved for OS
-   @MA2V 4 CurFileNum
-
-   @PUSHI CurFileNum
-   @WHILE_LT_A DIREntryCount
-      @POPNULL
-      @Call(VVV) DirReadEntry CurFileNum ArgTable Diskbuff
-      @IF_ZERO
-         @POPNULL
-         @PRT "Error Failed to read directory."
-         @MA2V 0 Result
-         @JMP DFF_Exit
-      @ENDIF
-      @POPNULL
-      # Skip DIR entries that are not active.
-      @PUSHI ArgTable @ADD DIR_AT_FLAGS @PUSHS
-      @AND FLAG_INUSE
-      @IF_ZERO
-         @POPNULL
-         # FileNum is not marked as INUSE, select this one and return.
-         @MV2V CurFileNum Result
-         @JMP DFF_Exit
-      @ENDIF
-      @POPNULL
-      @INCI CurFileNum
-      @PUSHI CurFileNum
-   @ENDWHILE
-   # If we fall though here Result will still be zero
-:DFF_Exit
-   @PUSHI Result
-   # Free Space
-   @Call(VV) HeapDeleteObject DiskHeap Diskbuff
-   @POPNULL
-   @Call(VV) HeapDeleteObject DiskHeap ArgTable
-   @POPNULL
-
- @EndLocals
- @POPRETURN
- @RET
- @ENDFUNCTION
-
-
 
 #--------------------------------------------
 @FUNCTION  file_open
@@ -1896,7 +1738,7 @@ G LINE_EOF
 :file_open
 @PUSHRETURN
 @Locals
-#USE DirFindFree,DiskFileName,DiskOpen,FSSetFileUsed,FSWriteHeader
+#USE FSFindFreeFile,DiskFileName,DiskOpen,DiskClose,FSSetFileUsed,FSWriteHeader
     @Local FileName
     @Local Mode
     @Local FileNum
@@ -1922,19 +1764,28 @@ G LINE_EOF
         @CBREAK
     @CASE  MODE_RW
         @POPNULL
-        @PUSH FP_OPEN_READ @PUSH FP_OPEN_WRITE
+        @PUSH FP_OPEN_READ
+        @PUSH FP_OPEN_WRITE
         @ORS
         @POPI NewFlag
         @CBREAK
     @CASE MODE_WP
         @POPNULL
-        @PUSH FP_OPEN_WRITE @PUSH FP_OPEN_APPEND
+        @PUSH FP_OPEN_WRITE
+        @PUSH FP_OPEN_CREATE
+        @ORS
+        @PUSH FP_OPEN_APPEND
         @ORS
         @POPI NewFlag
         @CBREAK
     @CASE MODE_AP
         @POPNULL
-        @PUSH FP_OPEN_WRITE @PUSH FP_OPEN_APPEND
+        @PUSH FP_OPEN_READ
+        @PUSH FP_OPEN_WRITE
+        @ORS
+        @PUSH FP_OPEN_CREATE
+        @ORS
+        @PUSH FP_OPEN_APPEND
         @ORS
         @POPI NewFlag
         @CBREAK
@@ -1964,8 +1815,8 @@ G LINE_EOF
 #   state changes (create/delete).
 #   DiskOpen / DiskClose do not modify FS metadata.
        @POPNULL
-       
-       @CALL DirFindFree       # Searches Disk for free DIR entry.
+
+       @CALL FSFindFreeFile
        @IF_NOTZERO
           # Create New Disk entry, give it filename and then reclose it to prepare FS
           @POPI FileNum
@@ -2001,20 +1852,6 @@ G LINE_EOF
     # Open File and return FilePointer to caller
     @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "Failed to open file" @END @ENDIF
     @POPI FilePointer
-
-    # Now set cursor based on if in an APPEND mode or not.
-    @PUSHI NewFlag @AND FP_OPEN_APPEND
-    @IF_NOTZERO
-       @POPNULL
-       @PUSHI FilePointer @ADD FPTR_FILESIZE @PUSHS   # Get Current FileSize low word
-       @PUSHI FilePointer @ADD FPTR_CURSOR @POPS      # Save Low Word as Cursor
-       @PUSHI FilePointer @ADD FPTR_FILESIZE+2 @PUSHS # Get Current FileSize High word
-       @PUSHI FilePointer @ADD FPTR_CURSOR+2 @POPS    # Save High Word as Cursor
-    @ELSE
-       @POPNULL
-       @PUSH 0 @PUSHI FilePointer @ADD FPTR_CURSOR @POPS   # Low word Cursor
-       @PUSH 0 @PUSHI FilePointer @ADD FPTR_CURSOR+2 @POPS # High word Cursor
-    @ENDIF
 
 :FO_Exit
     @PUSHI FilePointer
@@ -3012,29 +2849,6 @@ G LINE_EOF
 
 @ENDFUNCTION
 
-# DebugFP(ArgTable)
-:DebugFP
-@PRT "Called from: " @PRTHEXTOP    @StackDump   
-@PRTNL
-@PUSHRETURN
-@Locals
-   @Local ArgTable
-   @POPI ArgTable
-   @PRT "| FILENAME: "
-   @PRTSI ArgTable    @PRT "\t\T|\n"
-   @PRT "| Flags: " @PUSHI ArgTable @ADD DIR_FLAGS @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\T|\n"
-   @PRT "| FileNum: " @PUSHI ArgTable @ADD DIR_FILENUM @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t\T|\n"
-   @PRT "| FileSize: " @PUSHI ArgTable @ADD DIR_FILESIZE @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t|\n"
-   @PRT "| FirstBlock " @PUSHI ArgTable @ADD DIR_FIRSTBLOCK @PUSHS @PRTHEXTOP @POPNULL  @PRT "\t\t|\n"
-   @PRT "| BlockCount " @PUSHI ArgTable @ADD DIR_BLOCKCOUNT @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t|\n"
-   @PRT "| TimeStamp " @PUSHI ArgTable @ADD DIR_TIMESTAMPS @PUSHS @PRTHEXTOP @POPNULL @PRT "\t\t|\n"
-   @PRTNL
-   @PRTLN "ArgTable Raw:"
-   @Call(VAA) HexDump ArgTable DIR_SIZE 1
-   @StackDump
-@EndLocals
-@POPRETURN
-@RET
 
 M SIZESINCECOMMENT diskos.ld
 @SIZESINCE

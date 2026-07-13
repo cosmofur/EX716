@@ -3,6 +3,8 @@
 M __LIB_STRING_LOADED 1
 P Load string.ld
 I string.ref
+L mul.ld
+L div.ld
 
 # --- External dependencies (not defined in this file) ---
 #  DIV

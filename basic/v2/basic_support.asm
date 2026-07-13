@@ -791,8 +791,6 @@ L string.ld
    @INCI BufPtr
    @LOADBII BufPtr
    @POPI StrLength
-   @INCI StrLength         # Add one spot for null term
-   @DECI StrLength         # Return to real size
    @INCI BufPtr            # Move to first character of string.
    @PUSHI StrLength
    @IF_GT_V InMaxLen
@@ -801,7 +799,9 @@ L string.ld
       @JMP PQAExit
    @ENDIF
    @POPNULL
+   @INCI StrLength         # Add one spot for null term   
    @Call(VV) HeapNewObject RunTimeHeap StrLength
+   @DECI StrLength         # Return to real size   
    @IF_ULT_A 100
       @PRT "Memory Error"
       @POPNULL
