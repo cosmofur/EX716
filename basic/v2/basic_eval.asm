@@ -772,11 +772,11 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
 :VarTypeCharCheck
 @PUSHRETURN
 @Locals
-    @Local Chr
+    @Local Ch
 
-    @POPI Chr
+    @POPI Ch
 
-    @PUSHI Chr @AND 0xff
+    @PUSHI Ch @AND 0xff
     @SWITCH
     @CASE "%\0"
        @POPNULL
@@ -1011,13 +1011,155 @@ M Call_PromoteType \
   
 
 
+# InputPrintPromptString(Ptr):(Ptr)
+# Ptr points at STRING_TOKEN. Prints the tokenized string and returns Ptr after it.
+#-----------------------------------------
+:InputPrintPromptString
+@PUSHRETURN
+@Locals
+   @Local PtrIn
+   @Local Len
+   @Local Ch
+
+   @POPI PtrIn
+   @PUSHII PtrIn @AND 0xff
+   @IF_NEQ_A STRING_TOKEN
+      @Call(AA) BasicRaiseError ERR_SYNTAX 0
+   @ENDIF
+   @POPNULL
+   @INCI PtrIn
+   @PUSHII PtrIn @AND 0xff
+   @POPI Len
+   @INCI PtrIn
+
+   @PUSHI Len
+   @WHILE_GT_A 0
+      @POPNULL
+      @PUSHII PtrIn @AND 0xff
+      @POPI Ch
+      @PUSHI Ch
+      @PRTCHS
+      @POPNULL
+      @INCI PtrIn
+      @DECI Len
+      @PUSHI Len
+   @ENDWHILE
+   @POPNULL
+
+   @PUSHI PtrIn
+@EndLocals
+@POPRETURN
+@RET
+
+# InputNextRawSegment(InPtr):(SegmentPtr, NextPtr, HasMore)
+# Splits InputBuf-style raw text at comma. Leading spaces are skipped. The comma
+# is replaced with NUL so SetVarVal can copy a simple string segment.
+#-----------------------------------------
+:InputNextRawSegment
+@PUSHRETURN
+@Locals
+   @Local PtrIn
+   @Local SegmentPtr
+   @Local ScanPtr
+   @Local Ch
+   @Local HasMore
+
+   @POPI PtrIn
+
+   @PUSHII PtrIn @AND 0xff
+   @WHILE_EQ_A " \0"
+      @POPNULL
+      @INCI PtrIn
+      @PUSHII PtrIn @AND 0xff
+   @ENDWHILE
+   @POPNULL
+
+   @MV2V PtrIn SegmentPtr
+   @MV2V PtrIn ScanPtr
+   @MA2V 0 HasMore
+
+   @PUSH 1
+   @WHILE_NOTZERO
+      @POPNULL
+      @PUSHII ScanPtr @AND 0xff
+      @POPI Ch
+      @IF_EQ_AV 0 Ch
+         @PUSH 0
+      @ELSE
+         @IF_EQ_AV ",\0" Ch
+            @PUSH 0
+            @PUSHI ScanPtr
+            @POPS
+            @INCI ScanPtr
+            @MA2V 1 HasMore
+            @PUSH 0
+         @ELSE
+            @INCI ScanPtr
+            @PUSH 1
+         @ENDIF
+      @ENDIF
+   @ENDWHILE
+   @POPNULL
+
+   @PUSHI3 SegmentPtr ScanPtr HasMore
+@EndLocals
+@POPRETURN
+@RET
+
+# InputSkipTokenSegment(Ptr):(Ptr)
+# Advances token pointer to just after the next comma, or leaves it at EOL.
+# Used when raw string input consumes text outside BasicEval.
+#-----------------------------------------
+:InputSkipTokenSegment
+@PUSHRETURN
+@Locals
+   @Local PtrIn
+   @Local Tok
+   @Local Len
+
+   @POPI PtrIn
+   @PUSH 1
+   @WHILE_NOTZERO
+      @POPNULL
+      @PUSHII PtrIn @AND 0xff
+      @POPI Tok
+      @IF_EQ_AV EOL_TOKEN Tok
+         @PUSH 0
+      @ELSE
+         @IF_EQ_AV ",\0" Tok
+            @INCI PtrIn
+            @PUSH 0
+         @ELSE
+            @PUSHI Tok
+            @IF_INRANGE_AB STRING_TOKEN LONG_TOKEN
+               @POPNULL
+               @INCI PtrIn
+               @PUSHII PtrIn @AND 0xff
+               @POPI Len
+               @INCI PtrIn
+               @PUSHI PtrIn @ADDI Len @POPI PtrIn
+            @ELSE
+               @POPNULL
+               @INCI PtrIn
+            @ENDIF
+            @PUSH 1
+         @ENDIF
+      @ENDIF
+   @ENDWHILE
+   @POPNULL
+   @PUSHI PtrIn
+@EndLocals
+@POPRETURN
+@RET
+
 # ParseINPUT(Ptr):(Ptr)
-# First pass INPUT support:
+# Console INPUT support:
 #   INPUT A
 #   INPUT A$
 #   INPUT A, B, C$
-# Each target reads one full line. Numeric targets tokenize/evaluate InputBuf
-# through WorkBuf; string targets assign the raw InputBuf contents.
+#   INPUT "Prompt"; A
+#   INPUT "Prompt", A
+# Future file input is reserved as: INPUT #expr, vars...
 #-----------------------------------------
 :ParseINPUT
 @PUSHRETURN
@@ -1033,15 +1175,65 @@ M Call_PromoteType \
    @Local VarType
    @Local FinalType
    @Local WorkBuf
+   @Local ValuePtr
+   @Local RawValuePtr
+   @Local SegmentPtr
+   @Local HasMoreInput
+   @Local NeedPrompt
    @Local Tok
 
    @POPI PtrIn
+   @MA2V 1 NeedPrompt
 
-   @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE
+   # Reserve INPUT #... for later file/device input handling.
+   @PUSHII PtrIn @AND 0xff
+   @IF_EQ_A "#\0"
+      @Call(AA) BasicRaiseError ERR_SYNTAX 0
+   @ENDIF
+   @POPNULL
+
+   # Optional prompt string. Semicolon keeps the traditional '? ' prompt;
+   # comma prints only the supplied prompt text.
+   @PUSHII PtrIn @AND 0xff
+   @IF_EQ_A STRING_TOKEN
+      @POPNULL
+      @Call(V) InputPrintPromptString PtrIn
+      @POPI PtrIn
+
+      @PUSHII PtrIn @AND 0xff
+      @POPI Tok
+      @IF_EQ_AV ";\0" Tok
+         @INCI PtrIn
+         @MA2V 1 NeedPrompt
+      @ELSE
+         @IF_EQ_AV ",\0" Tok
+            @INCI PtrIn
+            @MA2V 0 NeedPrompt
+         @ELSE
+            @Call(AA) BasicRaiseError ERR_SYNTAX 0
+         @ENDIF
+      @ENDIF
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE
    @IF_ULT_A 100
       @Call(AA) BasicRaiseError ERR_MEMORY 0
    @ENDIF
    @POPI WorkBuf
+
+   @IF_NEQ_AV 0 NeedPrompt
+      @PRT "? "
+   @ENDIF
+   @READSI InputBuf
+   @PRTNL
+
+   @Call(V) FixUpCaseCmd InputBuf
+   @Call(VVAA) TokenizeStr InputBuf WorkBuf INPUTBUF_SIZE KeyWordTable
+   @POPNULL
+   @MV2V WorkBuf ValuePtr
+   @MV2V InputBuf RawValuePtr
 
    @PUSH 1
    @WHILE_NOTZERO
@@ -1091,21 +1283,29 @@ M Call_PromoteType \
       @AND 0xf
       @POPI VarType
 
-      # Read one input line for this variable.
-      @PRT "? "
-      @READSI InputBuf
-      @PRTNL
-
       @IF_EQ_AV STRING_TYPE VarType
-         @MV2V InputBuf EvalLow
-         @MA2V 0 EvalHigh
-         @MA2V STRING_TYPE EvalType
+         # Quoted string input can use the expression parser; otherwise use a raw
+         # comma-delimited segment for classic unquoted string input.
+         @PUSHII ValuePtr @AND 0xff
+         @IF_EQ_A STRING_TOKEN
+            @POPNULL
+            @Call(V) BasicEval ValuePtr
+            @POPI4 ValuePtr EvalHigh EvalLow EvalType
+            @Call(V) InputNextRawSegment RawValuePtr
+            @POPI3 HasMoreInput RawValuePtr SegmentPtr
+         @ELSE
+            @POPNULL
+            @Call(V) InputNextRawSegment RawValuePtr
+            @POPI3 HasMoreInput RawValuePtr SegmentPtr
+            @Call(V) InputSkipTokenSegment ValuePtr
+            @POPI ValuePtr
+            @MV2V SegmentPtr EvalLow
+            @MA2V 0 EvalHigh
+            @MA2V STRING_TYPE EvalType
+         @ENDIF
       @ELSE
-         @Call(V) FixUpCaseCmd InputBuf
-         @Call(VVAA) TokenizeStr InputBuf WorkBuf TOLKBUF_SIZE KeyWordTable
-         @POPNULL
-         @Call(V) BasicEval WorkBuf
-         @POPI4 EvalPtr EvalHigh EvalLow EvalType
+         @Call(V) BasicEval ValuePtr
+         @POPI4 ValuePtr EvalHigh EvalLow EvalType
       @ENDIF
 
       @Call(VVVV) CoerceType VarType EvalType EvalLow EvalHigh
@@ -1123,6 +1323,13 @@ M Call_PromoteType \
       @POPI Tok
       @IF_EQ_AV ",\0" Tok
          @INCI PtrIn
+         @PUSHII ValuePtr @AND 0xff
+         @IF_EQ_A ",\0"
+            @POPNULL
+            @INCI ValuePtr
+         @ELSE
+            @POPNULL
+         @ENDIF
          @PUSH 1
       @ELSE
          @IF_EQ_AV EOL_TOKEN Tok
