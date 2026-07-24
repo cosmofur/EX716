@@ -456,6 +456,15 @@ I basic_eval.asm
              @POPI BufPtr
           @ENDIF
           @CBREAK
+       @CASE INPUT_CODE
+          @POPNULL
+          @Call(V) ParseINPUT BufPtr
+          @IF_ULT_A 100
+             @Call(AA) BasicRaiseError ERR_SYNTAX 0
+          @ELSE
+             @POPI BufPtr
+          @ENDIF
+          @CBREAK
        @CASE LET_CODE
           @POPNULL
           @Call(V) ParseLET BufPtr

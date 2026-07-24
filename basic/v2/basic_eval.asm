@@ -125,6 +125,16 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
                 @POPI Ptr
              @ENDIF
              @CBREAK
+          @CASE INPUT_CODE
+             @POPNULL
+             @INCI Ptr
+             @Call(V) ParseINPUT Ptr
+             @IF_ULT_A 100
+                @Call(AA) BasicRaiseError ERR_SYNTAX 0
+             @ELSE
+                @POPI Ptr
+             @ENDIF
+             @CBREAK
           @CASE END_CODE
              @POPNULL
              @MA2V RET_EOP RET_CODE
@@ -999,6 +1009,141 @@ M Call_PromoteType \
 @RET
          
   
+
+
+# ParseINPUT(Ptr):(Ptr)
+# First pass INPUT support:
+#   INPUT A
+#   INPUT A$
+#   INPUT A, B, C$
+# Each target reads one full line. Numeric targets tokenize/evaluate InputBuf
+# through WorkBuf; string targets assign the raw InputBuf contents.
+#-----------------------------------------
+:ParseINPUT
+@PUSHRETURN
+@Locals
+   @Local PtrIn
+   @Local VarPtr
+   @Local IndexVal
+   @Local HasIndex
+   @Local EvalLow
+   @Local EvalHigh
+   @Local EvalType
+   @Local EvalPtr
+   @Local VarType
+   @Local FinalType
+   @Local WorkBuf
+   @Local Tok
+
+   @POPI PtrIn
+
+   @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE
+   @IF_ULT_A 100
+      @Call(AA) BasicRaiseError ERR_MEMORY 0
+   @ENDIF
+   @POPI WorkBuf
+
+   @PUSH 1
+   @WHILE_NOTZERO
+      @POPNULL
+      @MA2V 0 HasIndex
+      @MA2V 0 IndexVal
+
+      # Parse target variable.
+      @Call(V) ParseVarName PtrIn
+      @IF_ZERO
+         @Call(AA) BasicRaiseError ERR_SYNTAX 0
+      @ENDIF
+      @POPI PtrIn
+      @POPI VarPtr
+
+      @IF_EQ_AV 0 VarPtr
+         @Call(AA) BasicRaiseError ERR_UNDEF_VAR 0
+      @ENDIF
+
+      # Optional array index.
+      @PUSHII PtrIn @AND 0xff
+      @IF_EQ_A "(\0"
+         @POPNULL
+         @INCI PtrIn
+         @Call(V) BasicEval PtrIn
+         @POPI4 PtrIn EvalHigh EvalLow EvalType
+
+         @IF_NEQ_AV INT_TYPE EvalType
+            @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+         @ENDIF
+         @MV2V EvalLow IndexVal
+         @MA2V 1 HasIndex
+
+         @PUSHII PtrIn @AND 0xff
+         @IF_NEQ_A ")\0"
+            @Call(AA) BasicRaiseError ERR_SYNTAX 0
+         @ENDIF
+         @POPNULL
+         @INCI PtrIn
+      @ELSE
+         @POPNULL
+      @ENDIF
+
+      # Get target variable type.
+      @PUSHI VarPtr @ADD VAROFF_TypeID
+      @PUSHS
+      @AND 0xf
+      @POPI VarType
+
+      # Read one input line for this variable.
+      @PRT "? "
+      @READSI InputBuf
+      @PRTNL
+
+      @IF_EQ_AV STRING_TYPE VarType
+         @MV2V InputBuf EvalLow
+         @MA2V 0 EvalHigh
+         @MA2V STRING_TYPE EvalType
+      @ELSE
+         @Call(V) FixUpCaseCmd InputBuf
+         @Call(VVAA) TokenizeStr InputBuf WorkBuf TOLKBUF_SIZE KeyWordTable
+         @POPNULL
+         @Call(V) BasicEval WorkBuf
+         @POPI4 EvalPtr EvalHigh EvalLow EvalType
+      @ENDIF
+
+      @Call(VVVV) CoerceType VarType EvalType EvalLow EvalHigh
+      @POPI3 FinalType EvalHigh EvalLow
+
+      @IF_NEQ_AV 0 HasIndex
+         @Call(VVVVV) SetVarVal VarPtr IndexVal EvalLow EvalHigh FinalType
+      @ELSE
+         @Call(VAVVV) SetVarVal VarPtr 0 EvalLow EvalHigh FinalType
+      @ENDIF
+      @POPNULL
+
+      # Continue on comma, stop on EOL.
+      @PUSHII PtrIn @AND 0xff
+      @POPI Tok
+      @IF_EQ_AV ",\0" Tok
+         @INCI PtrIn
+         @PUSH 1
+      @ELSE
+         @IF_EQ_AV EOL_TOKEN Tok
+            @PUSH 0
+         @ELSE
+            @Call(AA) BasicRaiseError ERR_SYNTAX 0
+         @ENDIF
+      @ENDIF
+   @ENDWHILE
+   @POPNULL
+
+   @Call(VV) HeapDeleteObject RunTimeHeap WorkBuf
+   @IF_NOTZERO
+      @Call(AA) BasicRaiseError ERR_MEMORY 0
+   @ENDIF
+   @POPNULL
+
+   @PUSHI PtrIn
+@EndLocals
+@POPRETURN
+@RET
 
 # ParseLET(Ptr):(Ptr)
 #-----------------------------------------
