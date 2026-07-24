@@ -58,6 +58,8 @@ G RunTimeHeap
 :RUN_ACTIVE   0
 :Debug_Mode   0
 :InputBuf     0
+:LogicStackBase 0
+:LogicStackTop  0
 #  Break Logic Control
 G BreakPollMask
 :BreakPollMask 0xf
@@ -113,6 +115,11 @@ G InputBuf
     # Setup in the InputBuf
     @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
     @POPI InputBuf
+
+    # BASIC control-flow stack. This is separate from interpreter call/soft stacks.
+    @Call(VA) HeapNewObject RunTimeHeap LOGIC_STACK_BYTES @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
+    @POPI LogicStackBase
+    @MA2V 0 LogicStackTop
 
     #
     # Allocate the Basic 100 line LineTableBase  or 4*100
@@ -231,6 +238,7 @@ M ZeroOutVar @MA2V 0 %1
     @ZeroOutVar RET_ERRDOM
     @ZeroOutVar RET_ERRINFO
     @MA2V True RUN_ACTIVE
+    @MA2V 0 LogicStackTop
 
 @POPRETURN
 @RET
@@ -504,11 +512,6 @@ M ZeroOutVar @MA2V 0 %1
     @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
     @POPNULL
 
-# We already create a copy of the original line before calling replaceline.
-#    @Call(VV) HeapNewObject RunTimeHeap TextLen @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
-#    @POPI NewText
-#    @Call(VVV) strncpy NewText TextPtr TextLen
-    
     @PUSHI TextPtr
     @PUSHI CurPtr @ADD 2 @POPS
 
@@ -677,8 +680,12 @@ M ZeroOutVar @MA2V 0 %1
    @ENDIF
 
    @POPI FileName
-   @Call(VA) file_open FileName 0x6f77   # "wo"
+   @Call(VA) file_open FileName MODE_WP
    @POPI FilePtr
+   @IF_EQ_AV 0 FilePtr
+      @PRTLN "SAVE failed to open file."
+      @JMP SM_EXIT
+   @ENDIF
    # Allocate temp ASCII buffer
    @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
    @IF_ULT_A 100
@@ -713,6 +720,7 @@ M ZeroOutVar @MA2V 0 %1
       @POPNULL      
       @PUSHI Ptr @ADD 4 @POPI Ptr
       @MV2V OutBufHead OutBuf
+      @PUSHI EndPtr
    @ENDWHILE
    @POPNULL
    # Free buffer
@@ -766,7 +774,6 @@ M ZeroOutVar @MA2V 0 %1
     @ENDIF
 
     @Call(VVA) DiskFileReadLine  FilePtr InputBuf INPUTBUF_SIZE
-  @PRT "Read Line: " @PRTSI InputBuf @StackDump    
     @DUP
     @AND LINE_STATE_MASK
     @POPI LineStatus
@@ -799,7 +806,6 @@ M ZeroOutVar @MA2V 0 %1
             @ENDIF
         @ENDIF
         @Call(VVA) DiskFileReadLine  FilePtr InputBuf INPUTBUF_SIZE
-       @PRT "Read Line: " @PRTSI InputBuf @StackDump
         
         @DUP
         @AND LINE_STATE_MASK
@@ -827,6 +833,166 @@ M ZeroOutVar @MA2V 0 %1
 # Support Tolkenize functions
 ####
 #--------------------------------------
+:SetVarVal
+@PUSHRETURN
+@Locals
+    @Local VarPtr
+    @Local ValLow
+    @Local ValHigh
+    @Local VarIndex
+    @Local VarTypeIn
+    @Local ActualType
+    @Local ArrayPtr
+    @Local Offset
+    @Local TargetPtr
+    @Local NewObj
+    @Local ObjSize
+
+    @POPI VarTypeIn
+    @POPI ValHigh
+    @POPI ValLow
+    @POPI VarIndex    
+    @POPI VarPtr
+
+    @PUSHI VarPtr @ADD VAROFF_TypeID @PUSHS
+    @DUP
+    @AND 0xf
+    @POPI ActualType
+
+    @IF_NEQ_VV ActualType VarTypeIn
+       @POPNULL
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    @AND 0x80
+    @IF_NOTZERO
+       @POPNULL
+       # Array Case
+       @PUSHI VarPtr @ADD VAROFF_Pay1 @PUSHS
+       @POPI ArrayPtr
+       @PUSHII ArrayPtr
+       @IF_ULE_V VarIndex
+          @POPNULL
+          @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
+       @ENDIF
+       @POPNULL
+       #
+       # Compute offset
+       @PUSHI VarIndex
+       @SHL
+       @POPI Offset
+       @IF_EQ_AV LONG_TYPE ActualType
+           @PUSHI Offset @SHL @POPI Offset
+       @ELSE
+          @IF_EQ_AV FLOAT_TYPE ActualType
+              @PUSHI Offset @SHL @POPI Offset
+          @ENDIF
+       @ENDIF
+       # Final Pointer
+       @PUSHI Offset
+       @ADD 2       # Skip Array Size field
+       @ADDI ArrayPtr
+       @POPI TargetPtr
+       #
+       @IF_NEQ_AV STRING_TYPE ActualType
+          @PUSHI ValLow
+          @POPII TargetPtr
+          @IF_NEQ_AV INT_TYPE ActualType
+             @INC2I TargetPtr
+             @PUSHI ValHigh
+             @POPII TargetPtr
+          @ENDIF
+       @ELSE
+          # Stringe Case          
+          @PUSHII TargetPtr
+          @IF_NOTZERO
+             @POPNULL
+             @Call(V) strlen ValLow
+             @ADD 1
+             @POPI ObjSize
+             @Call(VV) HeapNewObject RunTimeHeap ObjSize
+             @IF_ULT_A 100
+                 @Call(AA) BasicRaiseError ERR_MEMORY 0
+             @ENDIF
+             @POPI NewObj
+             @DECI ObjSize
+             @Call(VVV) memcpy NewObj ValLow ObjSize
+             #Null last byte
+             @PUSHI ObjSize @ADDI NewObj
+             @POPI ObjSize
+             @Call(VAA) EmitByte ObjSize 0 1
+             @POPNULL @POPNULL
+             
+             # Delete old String
+             @PUSHI RunTimeHeap
+             @SWP
+             @CALL HeapDeleteObject
+             @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+             @POPNULL
+             @MV2V NewObj ValLow
+          @ELSE
+             @POPNULL
+          @ENDIF
+          @PUSHI ValLow
+          @POPII TargetPtr          
+       @ENDIF
+    @ELSE
+       # Not an Array Case
+       @POPNULL
+       @PUSHI VarPtr
+       @ADD VAROFF_Pay1
+       @POPI TargetPtr
+
+       @IF_EQ_AV STRING_TYPE ActualType
+          # Create a new string of the correct size
+
+          @Call(V) strlen ValLow
+          @ADD 1
+          @POPI ObjSize
+          @Call(VV) HeapNewObject RunTimeHeap ObjSize
+          @IF_ULT_A 100
+              @Call(AA) BasicRaiseError ERR_MEMORY 0
+          @ENDIF
+          @POPI NewObj
+          @DECI ObjSize
+          @Call(VVV) memcpy NewObj ValLow ObjSize
+          # Null last byte
+          @PUSHI ObjSize @ADDI NewObj
+          @POPI ObjSize
+          @Call(VAA) EmitByte ObjSize 0 1
+          @POPNULL @POPNULL
+          
+          # Delete old scalar string if present
+          @PUSHII TargetPtr
+          @IF_NOTZERO
+             @POPNULL
+             @PUSHI RunTimeHeap
+             @PUSHII TargetPtr
+             @CALL HeapDeleteObject
+             @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
+             @POPNULL
+          @ELSE
+             @POPNULL
+          @ENDIF
+          # Adopt new string heap object
+          @PUSHI NewObj
+          @POPII TargetPtr
+       @ELSE
+          @PUSHI ValLow
+          @POPII TargetPtr
+          @IF_NEQ_AV INT_TYPE ActualType
+             @INC2I TargetPtr
+             @PUSHI ValHigh
+             @POPII TargetPtr
+          @ENDIF
+       @ENDIF
+    @ENDIF
+    @PUSHI VarPtr
+
+@EndLocals
+@POPRETURN
+@RET
+
 # EmitByte(DataPtr,ByteValue,Size):(DataPtr,Size)
 #--------------------------------------
 :EmitByte
@@ -1185,19 +1351,87 @@ M ZeroOutVar @MA2V 0 %1
  @RET
  #
  #-------------------------------------------------
+@FUNCTION memcpy
+:memcpy
+@PUSHRETURN
+   @LocalVar DstPtr 01
+   @LocalVar SrcPtr 02
+   @LocalVar Length 03
+   @LocalVar Index01 04
+   #
+   @POPI Length
+   @POPI SrcPtr
+   @POPI DstPtr
+
+   # Default is to copy from 0 to length
+   # but if DstPtr falls in range srcptr to srcptr+length, then use reverse copy.
+   @IF_EQ_AV 0 Length
+      # zero length? Just exit.
+   @ELSE
+      @IF_EQ_VV SrcPtr DstPtr
+          # Src == Dst, just exit.
+      @ELSE
+          # And logic test requires nesting two IF blocks
+          @PUSH 1     # Default is loop forward
+          @PUSHI DstPtr
+          @IF_GT_V SrcPtr
+             # dstptr > strptr
+             @PUSHI SrcPtr
+             @ADDI Length
+             @IF_LT_S
+                # AND dstptr < (srcptr+length)
+                @POPNULL @POPNULL @POPNULL
+                @PUSH 0   # Reverse Order
+             @ELSE
+                @POPNULL @POPNULL
+             @ENDIF
+          @ELSE
+             @POPNULL
+          @ENDIF
+          #
+          @IF_NOTZERO
+            @ForIA2V Index01 0 Length
+                @PUSHI DstPtr @ADDI Index01 @PUSHS @AND 0xff00
+                @PUSHI SrcPtr @ADDI Index01 @PUSHS @AND 0xff
+                @ORS
+                @PUSHI DstPtr @ADDI Index01 @POPS
+            @Next Index01
+            @POPNULL
+          @ELSE
+            # Reverse order.
+            @ForIV2A Index01 Length 0
+                @PUSHI DstPtr @ADDI Index01 @PUSHS @AND 0xff00
+                @PUSHI SrcPtr @ADDI Index01 @PUSHS @AND 0xff
+                @ORS
+                @PUSHI DstPtr @ADDI Index01 @POPS
+            @NextBy Index01 -1
+            @POPNULL
+          @ENDIF
+      @ENDIF
+   @ENDIF
+   @RestoreVar 04
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+@ENDFUNCTION
  # SetVarVal(VarPtr,ValueLow,ValueHigh,Index, VarType):(0|1)
  #--------------------------------------------------
 :SetVarVal
 @PUSHRETURN
-    @LocalVar VarPtr     01
-    @LocalVar ValLow     02
-    @LocalVar ValHigh    03
-    @LocalVar VarIndex   04
-    @LocalVar VarTypeIn  05
-    @LocalVar ActualType 06
-    @LocalVar ArrayPtr   07
-    @LocalVar Offset     08
-    @LocalVar TargetPtr  09
+@Locals
+    @Local VarPtr
+    @Local ValLow
+    @Local ValHigh
+    @Local VarIndex
+    @Local VarTypeIn
+    @Local ActualType
+    @Local ArrayPtr
+    @Local Offset
+    @Local TargetPtr
+    @Local NewObj
+    @Local ObjSize
 
     @POPI VarTypeIn
     @POPI ValHigh
@@ -1258,12 +1492,28 @@ M ZeroOutVar @MA2V 0 %1
           @PUSHII TargetPtr
           @IF_NOTZERO
              @POPNULL
+             @Call(V) strlen ValLow
+             @ADD 1
+             @POPI ObjSize
+             @Call(VV) HeapNewObject RunTimeHeap ObjSize
+             @IF_ULT_A 100
+                 @Call(AA) BasicRaiseError ERR_MEMORY 0
+             @ENDIF
+             @POPI NewObj
+             @DECI ObjSize
+             @Call(VVV) memcpy NewObj ValLow ObjSize
+             #Null last byte
+             @PUSHI ObjSize @ADDI NewObj
+             @POPI ObjSize
+             @Call(VAA) EmitByte ObjSize 0 1
+             
              # Delete old String
              @PUSHI RunTimeHeap
              @SWP
              @CALL HeapDeleteObject
              @IF_NOTZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @ENDIF
              @POPNULL
+             @MV2V NewObj ValLow
           @ELSE
              @POPNULL
           @ENDIF
@@ -1272,11 +1522,29 @@ M ZeroOutVar @MA2V 0 %1
        @ENDIF
     @ELSE
        # Not an Array Case
+       @POPNULL
        @PUSHI VarPtr
        @ADD VAROFF_Pay1
        @POPI TargetPtr
 
        @IF_EQ_AV STRING_TYPE ActualType
+          # Create a new string of the correct size
+
+          @Call(V) strlen ValLow
+          @ADD 1
+          @POPI ObjSize
+          @Call(VV) HeapNewObject RunTimeHeap ObjSize
+          @IF_ULT_A 100
+              @Call(AA) BasicRaiseError ERR_MEMORY 0
+          @ENDIF
+          @POPI NewObj
+          @DECI ObjSize
+          @Call(VVV) memcpy NewObj ValLow ObjSize
+          # Null last byte
+          @PUSHI ObjSize @ADDI NewObj
+          @POPI ObjSize
+          @Call(VAA) EmitByte ObjSize 0 1
+          @POPNULL @POPNULL          
           # Delete old scalar string if present
           @PUSHII TargetPtr
           @IF_NOTZERO
@@ -1289,9 +1557,8 @@ M ZeroOutVar @MA2V 0 %1
           @ELSE
              @POPNULL
           @ENDIF
-
           # Adopt new string heap object
-          @PUSHI ValLow
+          @PUSHI NewObj
           @POPII TargetPtr
        @ELSE
           @PUSHI ValLow
@@ -1305,15 +1572,7 @@ M ZeroOutVar @MA2V 0 %1
     @ENDIF
     @PUSHI VarPtr
 
-    @RestoreVar 09
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #
@@ -1490,7 +1749,55 @@ M ZeroOutVar @MA2V 0 %1
 @EndLocals
 @POPRETURN
 @RET
+
+#--------------------------------------
+# StrDupHeap(Src):(DstPtr)
+# Copies one string to a new heap object for 'tempoary' storage
+#--------------------------------------
+:StrDupHeap
+@PUSHRETURN
+@Locals
+   @Local SrcPtr
+   @Local StrLen
+   @Local DstPtr
+
+   @POPI SrcPtr
+
+   @Call(V) strlen SrcPtr
+   @POPI StrLen    
+
+   @IF_EQ_AV 0 SrcPtr
+      # A null srcptr is same as empty string.
+      @Call(VV) HeapNewObject RunTimeHeap 1
+      @IF_ULT_A 100
+         @Call(AA) BasicRaiseError ERR_MEMORY 0
+      @ENDIF
+      @POPI DstPtr
+      @Call(VAA) EmitByte DstPtr 0 1
+      @PUSHI DstPtr
+   @ELSE
+      @PUSHI StrLen
+      @IF_INRANGE_AB 0 254
+         @POPNULL
+         @INCI StrLen # StrLen does not include the Null, we want it.
+         @Call(VV) HeapNewObject RunTimeHeap StrLen
+         @IF_ULT_A 100
+            # Failed to allocate memory
+            @Call(AA) BasicRaiseError ERR_MEMORY 0
+         @ENDIF
+         @POPI DstPtr
+         @Call(VVV) memcpy DstPtr SrcPtr StrLen
+         @PUSHI DstPtr
+      @ELSE
+         @POPNULL
+         # Wasn't a valid string.
+         @Call(AA) BasicRaiseError ERR_MEMORY 0
+      @ENDIF
+   @ENDIF
    
+@EndLocals
+@POPRETURN
+@RET
 
 M SIZESINCECOMMENT basic_storage.h
 @SIZESINCE  

@@ -3,6 +3,8 @@
 M __LIB_STRING_LOADED 1
 P Load string.ld
 I string.ref
+L mul.ld
+L div.ld
 
 # --- External dependencies (not defined in this file) ---
 #  DIV
@@ -26,6 +28,7 @@ G strUpCase G strLowCase
 # Some 'String' Macros
 # STRSET copies %1 to memory at %2, which muse be the address where sufficent space exists.
 G STRSET G STRSETI
+# USE strcpy
 M STRSET \
   @JMP _%0_Skip :_%0Store %1 $$0 :_%0_Skip @PUSH %2 @PUSH _%0Store @CALL strcpy
 # STRSETI same as STRSET but %2 is ptr to memory rather than the address itself.
@@ -971,6 +974,7 @@ M SafeMove(VVV) \
    :sfReturn 0
    :ShortString 0 0
    :strfndc
+   #USE strstr
    @POPI sfReturn       # We're not using PUSHRETURN to preserve flags
    @POPI ShortString
    @PUSH ShortString

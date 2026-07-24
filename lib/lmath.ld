@@ -237,6 +237,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @FUNCTION ADD32
 :ADD32
 @PUSHRETURN
+#USE ADD32S
 @CALL ADD32S
 @POPRETURN
 @RET
@@ -253,7 +254,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @Local R32_High
   @Local CarryAmt
   @Local OverFlow
-
+#USE ADD32_BASE,SetFlags32
     @CALL ADD32_BASE
     @POPI CarryAmt
     @POPI R32_High
@@ -301,7 +302,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
   @Local R32_High
   @Local CarryAmt
   @Local OverFlow
-
+#USE ADD32_BASE,SetFlags32
     @CALL ADD32_BASE
     @POPI CarryAmt
     @POPI R32_High
@@ -336,8 +337,12 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 #   - Carry flag acts as "no borrow" flag.
 #   - Discards borrow out of high word.
 # ===========================================================
+@FUNCTION SUB32
+#USE SUB32S
+JMP SUB32S
+@ENDFUNCTION
+
 @FUNCTION SUB32S
-:SUB32
 :SUB32S
 @PUSHRETURN
 @Locals
@@ -348,7 +353,9 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local B32_High
     @Local R32_Low
     @Local R32_High
-    
+
+#USE CMP32S    
+
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
 
@@ -408,6 +415,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @Local BorrowFlag
 =UCA UCA_Low
 =UCB UCB_Low
+#USE SetFlags32
     @POP32I(V) UCB
     @POP32I(V) UCA
     # --- Low word subtraction ---
@@ -673,7 +681,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local B32_High
     @Local R32_Low
     @Local R32_High
-    
+#USE SetFlags32    
 
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
@@ -717,6 +725,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local B32_High
     @Local R32_Low
     @Local R32_High
+#USE SetFlags32
 
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
@@ -759,6 +768,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local B32_High
     @Local R32_Low
     @Local R32_High
+#USE SetFlags32
 
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
@@ -798,7 +808,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local A32_High
     @Local B32_Low
     @Local B32_High
-    
+#USE SetFlags32    
     @POP32I(V) A32_Low
 
     @PUSHI A32_Low
@@ -837,6 +847,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @Local AVar_High
 @Local RVar_Low
 @Local RVar_High
+#USE CMP32S
     @POP32I(V) AVar_Low
 
     # Invert both words
@@ -1024,7 +1035,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local C8
     @Local C1
     @Local _I
-
+#USE SetFlags32,SHL32_8,SHL32_small
     # Read args
     @POPI Count
     @POP32I(V) Low
@@ -1216,15 +1227,9 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @FUNCTION SHL32_1
 :SHL32_1
 @PUSHRETURN
-#    @LocalVar Low 01
-#    @LocalVar High 02
-
-#    @POP32I(V) Low   # Pop Low and High from stack
-#    @PUSH32I(V) Low
+#USE SHL32
     @PUSH 1
     @CALL SHL32
-#    @RestoreVar 02
-#    @RestoreVar 01
 @POPRETURN
 @RET
 @ENDFUNCTION
@@ -1418,6 +1423,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @Locals
     @Local Low
     @Local High
+#USE SHL32
 
     @POP32I(V) Low   # Pop Low and High from stack
     @PUSH32I(V) Low
@@ -1457,7 +1463,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local Sum_Low
     @Local Sum_High
     @Local Carry
-
+#USE ADD16U,MUL16x32U,ADD32U
     # Pop operands
     @POP32I(V) B_Low
     @POP32I(V) A_Low
@@ -1770,7 +1776,8 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local SignB
     @Local R_Low
     @Local R_High
-
+#USE MUL32U
+#USE COMP232
     # Pop inputs (stack: [ ... A_Low A_High B_Low B_High ])
     @POP32I(V) B_Low
     @POP32I(V) A_Low
@@ -1845,6 +1852,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local Q_L
     @Local Q_H
     @Local BitIndex
+#USE SHL32_1,CMP32U,OR32,SUB32U
 
     ########################################################
     # Load inputs
@@ -1957,7 +1965,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local AB_A_High
     @Local AB_B_Low
     @Local AB_B_High
-
+#USE COMP232,DIV32U,CMP32U
     # Pop inputs (stack: [ ... A_Low A_High B_Low B_High ])
     @POP32I(V) B_Low
     @POP32I(V) A_Low
@@ -2092,7 +2100,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local ValH
     @Local Bit
     @Local Mask
-
+#USE SHL16_BY_N
     # Pop arguments
     @POPI Bit
     @POPI ValH
@@ -2160,7 +2168,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local Bit
     @Local BitMask_L
     @Local BitMask_H
-
+#USE SHL16x32
     @POPI Bit
     @POPI ValH
     @POPI ValL
@@ -2195,6 +2203,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 # ============================================================
 @FUNCTION DIV10_32U
 :DIV10_32U
+#USE DIV32U
 @PUSHRETURN
    @PUSH32(A) 10    # Dirty but not optimized.
    @CALL DIV32U
@@ -2225,7 +2234,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
    @Local RevIndex
    @Local Rem_Low
    @Local Rem_High
-   
+#USE CMP32S,COMP232,CMP32U,DIV32U
    @IF_GT_A 16            # Limit to max of base 16
       @POPNULL
       @PUSH 16
@@ -2326,6 +2335,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     @Local Digit
     @Local Digit_High
     @Local Temp_Low
+#USE strlen,MUL32U,ADD32U,COMP232
 
     # --- Initialize ---
     @POPI StrPtr

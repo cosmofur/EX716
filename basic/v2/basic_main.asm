@@ -1,18 +1,14 @@
-M USE_ONLY 1
 I common.mc
 I basic_common.h
 L softstack.ld
-L heapmgr.ld
+D heapmgr.ld
 L hexdump.ld
 L mul.ld
-P Past Mul
 L div.ld
-P Past Div
-L string.ld
-P Past String
-P STRSETI set to {STRSETI}
-L diskos.ld
-L lmath.ld
+D string.ld
+#L diskos_stub.ld
+D diskos.ld
+D lmath.ld
 I basic_header.asm
 I basic_storage.asm
 I basic_support.asm
@@ -43,9 +39,11 @@ I basic_eval.asm
 :MainLoop
     @SRTP
     @IF_NOTZERO
+       @POPNULL
        @StackDump
+    @ELSE
+       @POPNULL
     @ENDIF
-    @POPNULL
     @PRT "> "
 
     # Read a full line (device handles editing & termination)
@@ -69,11 +67,12 @@ I basic_eval.asm
 #---------------------------------------------------
  :FixUpCaseCmd
 @PUSHRETURN
-    @LocalVar InStr     01
-    @LocalVar LenStr    02
-    @LocalVar QuoteFlag 03
-    @LocalVar ESCFlag   04
-    @LocalVar Ch        05
+@Locals
+    @Local InStr
+    @Local LenStr
+    @Local QuoteFlag
+    @Local ESCFlag
+    @Local Ch
 
     @POPI InStr
 
@@ -138,12 +137,7 @@ I basic_eval.asm
        @PUSHI LenStr
    @ENDWHILE
    @POPNULL
-
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET   
 
@@ -156,12 +150,13 @@ I basic_eval.asm
 
 :ParseLineOrCommand
 @PUSHRETURN
-    @LocalVar StrPtr 01
-    @LocalVar Ch     02
-    @LocalVar WorkBuf 03
-    @LocalVar LineNum 04
-    @LocalVar TextPtr 05
-    @LocalVar TextLen 06
+@Locals
+    @Local StrPtr
+    @Local Ch
+    @Local WorkBuf
+    @Local LineNum
+    @Local TextPtr
+    @Local TextLen
     # No multiply for constants so use add three times to get sizeable buffer.
 
     @POPI StrPtr
@@ -192,12 +187,7 @@ I basic_eval.asm
         @Call(v) ExecuteCommand WorkBuf
         @Call(VV) HeapDeleteObject RunTimeHeap WorkBuf @IF_GT_A 0 @PRT "Error Deleting Heap" @JMP BasicPanic @ENDIF @POPNULL
     @ENDIF
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02    
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -215,11 +205,12 @@ I basic_eval.asm
 
 :ParseLineNumber
 @PUSHRETURN
-    @LocalVar Acc     01
-    @LocalVar Ptr     02
-    @LocalVar Ch      03
-    @LocalVar TextPtr 04
-    @LocalVar TextLen 05
+@Locals
+    @Local Acc
+    @Local Ptr
+    @Local Ch
+    @Local TextPtr
+    @Local TextLen
 
     @POPI BufPtr
     @MV2V BufPtr Ptr
@@ -267,11 +258,7 @@ I basic_eval.asm
     @PUSHI Acc
     @PUSHI TextPtr
     @PUSHI TextLen
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -284,11 +271,12 @@ I basic_eval.asm
 
 :ExecuteCommand
 @PUSHRETURN
-    @LocalVar BufPtr 01
-    @LocalVar FileName 02
-    @LocalVar StrLength 03
-    @LocalVar FileData 04
-    @LocalVar Index1 05
+@Locals
+    @Local BufPtr
+    @Local FileName
+    @Local StrLength
+    @Local FileData
+    @Local Index1
 
     @POPI BufPtr
     @WHEN
@@ -334,22 +322,13 @@ I basic_eval.asm
              @JMP PCExit
           @ENDIF
           @POPNULL
-          @INCI BufPtr
-          @LOADBII BufPtr                # Get Length
-          @POPI StrLength
-          @INCI StrLength               # Add a spot for the Null
-          @Call(VV) HeapNewObject RunTimeHeap StrLength
-          @POPI FileData
-          @DECI StrLength               # Return StrLength to real length
-          @INCI BufPtr                  # Point to first letter in string          
-          @ForIA2V Index1 0 StrLength
-              # FileData[I]=BufPtr[I]&0xff
-              @PUSHI BufPtr @ADDI Index1
-              @PUSHS
-              @AND 0xff                 # Want just byte, but also get null term for free
-              @PUSHI FileData @ADDI Index1
-              @POPS
-          @Next Index1          
+          @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
+          @IF_NOTZERO
+             @POPNULL
+             @POPI2 BufPtr FileData
+          @ELSE
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
+          @ENDIF
           # Call Save
           @Call(V) SAVEMEM FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -364,22 +343,13 @@ I basic_eval.asm
              @JMP PCExit
           @ENDIF
           @POPNULL
-          @INCI BufPtr
-          @LOADBII BufPtr                # Get Length
-          @POPI StrLength
-          @INCI StrLength               # Add a spot for the Null
-          @Call(VV) HeapNewObject RunTimeHeap StrLength
-          @POPI FileData
-          @DECI StrLength               # Return StrLength to real length
-          @INCI BufPtr                  # Point to first letter in string          
-          @ForIA2V Index1 0 StrLength
-              # FileData[I]=BufPtr[I]&0xff
-              @PUSHI BufPtr @ADDI Index1
-              @PUSHS
-              @AND 0xff                 # Want just byte, but also get null term for free
-              @PUSHI FileData @ADDI Index1
-              @POPS
-          @Next Index1          
+          @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
+          @IF_NOTZERO
+             @POPNULL
+             @POPI2 BufPtr FileData
+          @ELSE
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
+          @ENDIF
           # Call Load
           @Call(V) LOADMEM FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -395,22 +365,21 @@ I basic_eval.asm
              @JMP PCExit
           @ENDIF
           @POPNULL
-          @INCI BufPtr
-          @LOADBII BufPtr                # Get Length
-          @POPI StrLength
-          @INCI StrLength               # Add a spot for the Null
-          @Call(VV) HeapNewObject RunTimeHeap StrLength
-          @POPI FileData
-          @DECI StrLength               # Return StrLength to real length
-          @INCI BufPtr                  # Point to first letter in string          
-          @ForIA2V Index1 0 StrLength
-              # FileData[I]=BufPtr[I]&0xff
-              @PUSHI BufPtr @ADDI Index1
-              @PUSHS
-              @AND 0xff                 # Want just byte, but also get null term for free
-              @PUSHI FileData @ADDI Index1
-              @POPS
-          @Next Index1          
+          @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
+          @IF_NOTZERO
+             @POPNULL
+             @POPI2 BufPtr FileData
+          @ELSE
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
+          @ENDIF
+          @POPNULL
+          @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
+          @IF_NOTZERO
+             @POPNULL
+             @POPI2 BufPtr FileData
+          @ELSE
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
+          @ENDIF
           # Call Type
           @Call(V) TYPEFILE FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -419,31 +388,49 @@ I basic_eval.asm
           @CBREAK
        @CASE DIRCODE
           @POPNULL
-          @Call(VA) HeapNewObject RunTimeHeap 33 # Longest possible filename is 32 bytes.
-          @POPI FileData
-         
           @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
-              # No pattern given, use wildcard as default
-              @STRSETI "*\0" FileData          
+              # Default is wildcard pattern
+              @Call(VV) HeapNewObject RunTimeHeap 10
+              @POPI FileData
+              @STRSETI "*\0" FileData
           @ELSE
-              @INCI BufPtr          # Move to string len
-              @LOADBII BufPtr                # Get Length
-              @POPI StrLength
-              @INCI BufPtr                  # Point to first letter in string          
-             @ForIA2V Index1 0 StrLength
-                 # FileData[I]=BufPtr[I]&0xff
-                 @PUSHI BufPtr @ADDI Index1
-                 @PUSHS
-                 @AND 0xff                 # Want just byte, but also get null term for free
-                 @PUSHI FileData @ADDI Index1
-                 @POPS
-             @Next Index1
+              @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
+              @IF_NOTZERO
+                  @POPNULL
+                  @POPI2 BufPtr FileData
+              @ELSE
+                  @POPNULL
+                  @Call(AA)  BasicRaiseError ERR_SYNTAX 0
+              @ENDIF
          @ENDIF
-         @POPNULL
          @Call(V)  DIRDISK FileData
          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
          @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
+         @JMP PCExit
+         @CBREAK
+       @CASE DELETECODE
+         @POPNULL
+         @PUSHII BufPtr @AND 0xff
+         @IF_NEQ_A STRING_TOKEN
+             @PRTLN "DELETE requires filename."
+             @JMP PCExit
+         @ENDIF
+         @POPNULL
+         @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
+         @IF_NOTZERO
+             @POPNULL
+             @POPI2 BufPtr FileData
+         @ELSE
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
+         @ENDIF
+         # Call Delete/Erase
+         @Call(V) ERASEDISK FileData
+         @Call(VV) HeapDeleteObject RunTimeHeap FileData
+         @IF_GT_A 0
+            @Call(AA) BasicRaiseError ERR_MEMORY 0
+         @ENDIF
+         @POPNULL
          @JMP PCExit
          @CBREAK
        @CASE MEM_CODE
@@ -487,11 +474,7 @@ I basic_eval.asm
    @ENDWHEN
    @POPNULL
  :PCExit
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+ @EndLocals
  @POPRETURN
  @RET
 
@@ -501,9 +484,10 @@ I basic_eval.asm
 #-------------------------------
 :MatchToken
 @PUSHRETURN
-   @LocalVar PtrA 01
-   @LocalVar PtrB 02
-   @LocalVar Len  03
+@Locals
+   @Local PtrA
+   @Local PtrB
+   @Local Len
 
    @POPI Len
    @POPI PtrB
@@ -521,11 +505,7 @@ I basic_eval.asm
       @PUSH 0       # MatchToken returns 1 on true, and 0 on false.
    @ENDIF
 
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
-   
-
+@EndLocals
 @POPRETURN
 @RET
 
@@ -534,14 +514,15 @@ I basic_eval.asm
 #------------------------------------------------------
 :NextToken
 @PUSHRETURN
-    @LocalVar InPtr     01
-    @LocalVar CurPtr    02
-    @LocalVar TblPtr    03
-    @LocalVar StartPtr  04
-    @LocalVar Len       05
-    @LocalVar TOK       06
-    @LocalVar Match     07
-    @LocalVar CH        08
+@Locals
+    @Local InPtr
+    @Local CurPtr
+    @Local TblPtr
+    @Local StartPtr
+    @Local Len
+    @Local TOK
+    @Local Match
+    @Local CH
 
     @POPI InPtr
     @MV2V InPtr CurPtr
@@ -687,14 +668,7 @@ I basic_eval.asm
     @PUSHI StartPtr
     @PUSHI CurPtr
 :NTReturnBlock
-    @RestoreVar 08
-    @RestoreVar 07
-    @RestoreVar 06
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -704,9 +678,10 @@ I basic_eval.asm
 #--------------------------------------------------
 :RmComments
 @PUSHRETURN
-   @LocalVar StrPtr 01
-   @LocalVar QuoteFlag 02
-   @LocalVar RetPtr 03
+@Locals
+   @Local StrPtr
+   @Local QuoteFlag
+   @Local RetPtr
 
    @POPI StrPtr
    @MV2V StrPtr RetPtr
@@ -744,9 +719,7 @@ I basic_eval.asm
     @POPNULL
     @PUSHI RetPtr
  :RMCExit
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -755,10 +728,11 @@ I basic_eval.asm
 #---------------------------------------------------
 :CmdTableLookup
 @PUSHRETURN
-   @LocalVar StrPtr    01
-   @LocalVar TablePtr  02
-   @LocalVar StrLength 03
-   @LocalVar InStrLen  04
+@Locals
+   @Local StrPtr
+   @Local TablePtr
+   @Local StrLength
+   @Local InStrLen
 
    @POPI TablePtr
    @POPI InStrLen
@@ -785,10 +759,7 @@ I basic_eval.asm
    # Exit this way means no match use -1 as failure flag
    @PUSH -1
    :CTLEXIT
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #--------------------------------------------------
@@ -796,18 +767,19 @@ I basic_eval.asm
 #--------------------------------------------------
 :TokenizeStr
 @PUSHRETURN
-   @LocalVar InPtr      01
-   @LocalVar OutPtr     02
-   @LocalVar MaxOutSize 03
-   @LocalVar CurPtr     04
-   @LocalVar TokenType  05
-   @LocalVar StartPtr   06
-   @LocalVar EndPtr     07
-   @LocalVar Length     08
-   @LocalVar TokenCode  09
-   @LocalVar OutSize    10
-   @LocalVar TablePtr   11
-   @LocalVar FutureSize 12
+@Locals
+   @Local InPtr
+   @Local OutPtr
+   @Local MaxOutSize
+   @Local CurPtr
+   @Local TokenType
+   @Local StartPtr
+   @Local EndPtr
+   @Local Length
+   @Local TokenCode
+   @Local OutSize
+   @Local TablePtr
+   @Local FutureSize
 
    @POPI TablePtr
    @POPI MaxOutSize
@@ -935,19 +907,7 @@ I basic_eval.asm
    
    @Call(VAV) EmitByte OutPtr EOL_TOKEN OutSize @POPI OutSize @POPI OutPtr
    @PUSHI OutSize
-
-   @RestoreVar 12
-   @RestoreVar 11
-   @RestoreVar 10
-   @RestoreVar 09
-   @RestoreVar 08
-   @RestoreVar 07
-   @RestoreVar 06
-   @RestoreVar 05
-   @RestoreVar 04
-   @RestoreVar 03
-   @RestoreVar 02
-   @RestoreVar 01   
+@EndLocals
 
 @POPRETURN
 @RET
@@ -995,6 +955,8 @@ I basic_eval.asm
    @CASE ERR_BAD_RETURN   @PRTLN "? Invalid Return:"     @CBREAK
    @CASE ERR_OUT_RANGE    @PRTLN "? Out of Range:"       @CBREAK
    @CASE ERR_MEMORY       @PRTLN "? Memory Error:"       @CBREAK
+   @CASE ERR_STACK_OVERFLOW @PRTLN "? Stack Overflow:"    @CBREAK
+   @CASE ERR_BAD_NEXT     @PRTLN "? NEXT Without FOR:"  @CBREAK
    @CASE ERR_STRING_SPACE @PRTLN "? String Space Error:" @CBREAK
    @CASE ERR_NO_FILE_HANDLES @PRTLN "? Filesystm out of handles :"     @CBREAK
    @CASE ERR_FILE_NOT_FOUND @PRTLN "? File Not Found :"     @CBREAK
@@ -1026,11 +988,12 @@ I basic_eval.asm
 #-------------------------
 :CodeToString
 @PUSHRETURN
-    @LocalVar InCode 01
-    @LocalVar TablePtr 02
-    @LocalVar StrSize 03
-    @LocalVar Index 04
-    @LocalVar CharHold 05
+@Locals
+    @Local InCode
+    @Local TablePtr
+    @Local StrSize
+    @Local Index
+    @Local CharHold
 
     @AND 0xff
     @DUP
@@ -1073,11 +1036,7 @@ I basic_eval.asm
        @POPNULL
     @ENDIF
     :CTSBreakWhile
-    @RestoreVar 05
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #----------------------------------------

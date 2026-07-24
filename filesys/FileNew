@@ -1,0 +1,7 @@
+10 PRINT "New File"
+20 A=10
+30 PRINT A;",";
+40 A=A-1
+50 IF A > 0 THEN 30
+60 PRINT ""
+70 END

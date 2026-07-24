@@ -4,7 +4,6 @@ G BasicCommandTable
 G BasicMain    
 G DeleteLine
 G DirArgTableToEntry
-G DirClearArgTable
 G DirEntryPtr
 G DirEntryToArgTable
 G DirLocate
