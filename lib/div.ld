@@ -8,28 +8,22 @@ G DIVU G DIV
 # Function DIVU unsigned Divide.
 @FUNCTION DIVU
 :DIVU
-# Local Variable Names
-=B_VAL Var01
-=A_VAL Var02
-=QVal Var03
-=Remainder Var04
-=MASK Var05
-=Index Var06
-#
 @PUSHRETURN
-   @PUSHLOCALI A_VAL
-   @PUSHLOCALI B_VAL
-   @PUSHLOCALI QVal
-   @PUSHLOCALI Remainder
-   @PUSHLOCALI MASK
+# Local Variable Names
+@Locals
+    @Local B_VAL
+    @Local A_VAL
+    @Local QVal
+    @Local Remainder
+    @Local MASK
+    @Local Index
    #
    @POPI B_VAL
    @POPI A_VAL
    @PUSHI B_VAL
    @IF_ZERO
-      @PRTLN "Divide by Zero error:"
+      @PRTLN "ERR:/0"
       @JMP DIVUEXIT
-
    @ENDIF
    @POPNULL
    @MA2V 0 QVal
@@ -61,11 +55,7 @@ G DIVU G DIV
    @PUSHI QVal
 
    :DIVUEXIT
-   @POPLOCAL MASK
-   @POPLOCAL Remainder
-   @POPLOCAL QVal
-   @POPLOCAL B_VAL
-@POPLOCAL A_VAL
+@EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
@@ -73,15 +63,13 @@ G DIVU G DIV
 # Function DIV, this version knows about Signs, but uses the DIVU version to do the main work.
 @FUNCTION DIV
 :DIV
-# Define local names
-=A_VAL Var01
-=B_VAL Var02
-=SIGN Var03
-#
 @PUSHRETURN
-   @PUSHLOCALI A_VAL
-   @PUSHLOCALI B_VAL
-   @PUSHLOCALI SIGN
+# Define local names
+@Locals
+    @Local A_VAL
+    @Local B_VAL
+    @Local SIGN
+#
 #USE DIVU
    #
    @POPI B_VAL
@@ -116,9 +104,7 @@ G DIVU G DIV
    @PUSHI B_VAL
    @PUSHI A_VAL
    :DIVEXIT
-   @POPLOCAL SIGN
-   @POPLOCAL B_VAL
-   @POPLOCAL A_VAL
+@EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION

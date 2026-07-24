@@ -24,6 +24,7 @@ M __LIB_RANDOM_LOADED 1
 
 I common.mc
 I random.ref
+L lmath.ld
 # --- internal build markers ---
 M SIZESINCECOMMENT random.ld
 
@@ -70,6 +71,8 @@ G frndint
 # ============================================================
 @FUNCTION rnd16
 :rnd16
+@PUSHRETURN
+@Locals
     # --- Allocate locals for 32-bit scratch space ---
     @Local Scratch32A   # low word
     @Local Scratch32AHW   # high word
@@ -89,20 +92,13 @@ G frndint
 
     # --- Return high 16 bits of Seed32A as random value ---
     @PUSHI Seed32A+2
-    @SWP     # Reminder: the return address is still on the stack.
-             # Before: [ ... , ReturnAddr ]
-             # After PUSH: [ ... , ReturnAddr, Value ]
-             # After SWP:  [ ... , Value, ReturnAddr ]
-             # Now @RET will pop ReturnAddr and leave Value on the stack.    
-
 
     # --- Free local variables before returning ---
-    @RestoreVar 04
-    @RestoreVar 03
-    @RestoreVar 02
-    @RestoreVar 01
-    @RET
-ENDBLOCK
+
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 
 
 # ============================================================
@@ -125,7 +121,7 @@ ENDBLOCK
 # ============================================================
 @FUNCTION rndsetseed
 :rndsetseed
-    @PUSHRETURN
+@PUSHRETURN
 
     # --- Store user-provided seed in low 16 bits ---
     @POPI Seed32A
@@ -150,9 +146,9 @@ ENDBLOCK
 
     # --- Clean up and return ---
     @POPNULL               # discard last rnd16 result
-    @POPRETURN
-    @RET
-ENDBLOCK
+@POPRETURN
+@RET
+@ENDFUNCTION
 
 # ============================================================
 # rndint(N)  →  Random integer in range 0..N
@@ -167,8 +163,8 @@ ENDBLOCK
 # ============================================================
 @FUNCTION rndint
 :rndint
-    @PUSHRETURN
-    @Locals
+@PUSHRETURN
+@Locals
     @Local Range1
 
     # --- Store argument ---
@@ -201,10 +197,11 @@ ENDBLOCK
     @ENDCASE
 
     # --- Restore locals and return result ---
-    @EndLocals
-    @POPRETURN
-    @RET
-ENDBLOCK
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
 # ============================================================
 # frndint(N)  →  Fast random integer in range 0..N
 #
@@ -222,8 +219,8 @@ ENDBLOCK
 # ============================================================
 @FUNCTION frndint
 :frndint
-    @PUSHRETURN
-    @Locals
+@PUSHRETURN
+@Locals
     @Local RIRange
 
     # --- Store argument ---
@@ -256,10 +253,10 @@ ENDBLOCK
     @ENDCASE
 
     # --- Restore locals and return result ---
-    @EndLocals
-    @POPRETURN
-    @RET
-ENDBLOCK
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 
 # ============================================================
 # frnd16()  →  Fast 16-bit random number
@@ -279,8 +276,8 @@ ENDBLOCK
 
 @FUNCTION frnd16
 :frnd16 
-    @PUSHRETURN
-    @Locals
+@PUSHRETURN
+@Locals
     @Local S1Seed
 
     # --- Copy Seed into local working variable ---
@@ -308,9 +305,9 @@ ENDBLOCK
     @XORI S1Seed @POPI Seed
 
     # --- Clean up ---
-    @EndLocals
-    @POPRETURN
-    @RET
-ENDBLOCK
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 @SIZESINCE
 ENDBLOCK

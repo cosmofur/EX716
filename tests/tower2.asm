@@ -1,8 +1,9 @@
 I common.mc
-L screen.ld
-L random.ld
 L softstack.ld
 L heapmgr.ld
+L random.ld
+L screen.ld
+
 
 # Tower Defense
 #
@@ -148,7 +149,6 @@ M SafeNewObject :%0L @CALL HeapNewObject @IF_ULT_A 255 @PRT "Heap Error " @PRTHE
    @INCI Var04
 @Next Var03
 @StackDump
-:BreakE
 @RET
 #
 # First two words of map data is the addresses where it's stored.

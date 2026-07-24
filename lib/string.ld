@@ -156,7 +156,7 @@ M SafeMove(VVV) \
 :strcat
 @PUSHRETURN
    @LocalVar StrPtrA 01
-   @LocalVar StrPtrBB 02
+   @LocalVar StrPtrB 02
    @POPI StrPtrB
    @POPI StrPtrA
    @PUSHI StrPtrA
@@ -236,35 +236,36 @@ M SafeMove(VVV) \
    @LocalVar Length 01
    @LocalVar SrcPtr 02
    @LocalVar DstPtr 03
-   @LocalVar Index 04
    @POPI Length
    @POPI SrcPtr
    @POPI DstPtr
-   # Get acutual length of src, and if < Length, change Length to len(src)
-   @PUSHI SrcPtr
-   @CALL strlen
    @PUSHI Length
-   @IF_LT_S
+   @IF_NOTZERO
       @POPNULL
-      @POPI Length
-   @ELSE
-      @POPNULL
-      @POPNULL
-   @ENDIF
-   #
-   # Do the copy, one byte at a time.
-   #
-   @ForIA2V Index 0 Length
       @PUSHII SrcPtr
       @AND 0x00ff
-      @PUSHII DstPtr
-      @AND 0xff00
-      @ORS
-      @POPII DstPtr
-      @INCI SrcPtr
-      @INCI DstPtr
-   @Next Index
-   @RestoreVar 04
+      @WHILE_NOTZERO
+         @PUSHII DstPtr
+         @AND 0xff00
+         @ORS
+         @POPII DstPtr
+         @INCI SrcPtr
+         @INCI DstPtr
+         @DECI Length
+         @PUSHI Length
+         @IF_NOTZERO
+            @POPNULL
+            @PUSHII SrcPtr
+            @AND 0x00ff
+         @ELSE
+            @POPNULL
+            @PUSH 0
+         @ENDIF
+      @ENDWHILE
+      @POPNULL
+   @ELSE
+      @POPNULL
+   @ENDIF
    @RestoreVar 03
    @RestoreVar 02
    @RestoreVar 01
@@ -466,92 +467,138 @@ M SafeMove(VVV) \
 # stoi, reverse of itos, takes text version of number and returns integer.
 # Function stoi(string)
 # Vars
-@FUNCTION stoi
-:stoi
+@FUNCTION stoi_core
+:stoi_core
 @PUSHRETURN
    @LocalVar StrPtr 01
-   @LocalVar NegFlag 02
-   @LocalVar Base 03
-   @LocalVar Invalue 04
-   @LocalVar Multiplier 05
-   @LocalVar Length 06
-   #
-   #
+   @LocalVar Result 02
+   @LocalVar SignVal 03
+   @LocalVar Base 04
+   @LocalVar DigitVal 05
+   @LocalVar Continue 06
+
    @POPI StrPtr
-   @MA2V 0 NegFlag
-   @MA2V 10 Base     # Default Base is ten
-   @MA2V 0 Invalue
-   @MA2V 1 Multiplier
-   @PUSHI StrPtr @CALL strlen @POPI Length
-   @PUSHII StrPtr @AND 0xff
-   @IF_EQ_A "-\0"      # Negative Sige in ASCII code
+   @MA2V 0 Result
+   @MA2V 0 SignVal
+   @MA2V 10 Base
+
+   # Skip leading spaces.
+   @PUSHII StrPtr
+   @AND 0xff
+   @WHILE_EQ_A " \0"
       @POPNULL
-      @MA2V 1 NegFlag
       @INCI StrPtr
-      @DECI Length
+      @PUSHII StrPtr
+      @AND 0xff
+   @ENDWHILE
+
+   # Optional sign.
+   @IF_EQ_A "-\0"
+      @POPNULL
+      @MA2V 1 SignVal
+      @INCI StrPtr
    @ELSE
-      @POPNULL
-   @ENDIF
-   @PUSHI Length
-   @IF_GT_A 2
-      @POPNULL
-      # There no point of looking for 0x type codes if length is less 3
-      @PUSHII StrPtr   @AND 0xff
-      @IF_EQ_A 0x0030  # Is first character a '0'?
+      @IF_EQ_A "+\0"
          @POPNULL
          @INCI StrPtr
-         @PUSHII StrPtr @AND 0xff   # Get second character like for 0xHHHH
-         @SWITCH
-            @CASE "x\0"      # Lower case 'x' for hex
-               @MA2V 16 Base
-               @INCI StrPtr
-               @DEC2I Length
-               @CBREAK
-            @CASE "o\0"      # Lower case 'o' for octal
-               @MA2V 8 Base
-               @INCI StrPtr
-               @DEC2I Length
-               @CBREAK
-            @CASE "b\0"     # Lower case 'b' for binary
-               @MA2V 2 Base
-               @INCI StrPtr
-               @DEC2I Length
-               @CBREAK
-            @CDEFAULT
-               @MA2V 10 Base # This is for cases where the first character was zero but net ment to indicate Base
-               @DECI StrPtr
-               @CBREAK
-         @ENDCASE
+      @ELSE
+         @POPNULL
       @ENDIF
    @ENDIF
-   @POPNULL
-   @PUSHI Length
-   @WHILE_NOTZERO
-      @DECI Length
+
+   # Optional base prefix: 0x, 0o, 0b.
+   @PUSHII StrPtr
+   @AND 0xff
+   @IF_EQ_A "0\0"
       @POPNULL
-      @PUSHI StrPtr @ADDI Length @PUSHS @AND 0xff  # Fetches StrPtr[Length]
-      @SUB "0\0"
-      @IF_EQ_VA Base 16  # Are we dealign with Hex numbers?
-         @POPNULL
-         @IF_GE_A 10    # Was it > 10
-            @SUB 7 # In which case we need to deail with the ASCII gab between '9' and 'A' down by 7
-         @ENDIF
-      @ENDIF
-      @PUSHI Multiplier
-      @CALL MULU
-      @ADDI Invalue @POPI Invalue   # Invalue = str[index]*Multiplier + Invalue
-      @PUSHI Base @PUSHI Multiplier @CALL MULU @POPI Multiplier # Multiplier *= Base
-      @PUSHI Length
-   @ENDWHILE
-   @POPNULL
-   @PUSHI Invalue
-   @PUSHI NegFlag
-   @IF_NOTZERO
-      @POPNULL
-      @COMP2
+      @INCI StrPtr
+      @PUSHII StrPtr
+      @AND 0xff
+      @SWITCH
+         @CASE "x\0"
+            @POPNULL
+            @MA2V 16 Base
+            @INCI StrPtr
+            @CBREAK
+         @CASE "o\0"
+            @POPNULL
+            @MA2V 8 Base
+            @INCI StrPtr
+            @CBREAK
+         @CASE "b\0"
+            @POPNULL
+            @MA2V 2 Base
+            @INCI StrPtr
+            @CBREAK
+         @CDEFAULT
+            @POPNULL
+            @DECI StrPtr
+            @CBREAK
+      @ENDCASE
    @ELSE
       @POPNULL
    @ENDIF
+
+   @MA2V 1 Continue
+   @PUSHI Continue
+   @WHILE_NOTZERO
+      @POPNULL
+      @PUSHII StrPtr
+      @AND 0xff
+      @IF_GE_A "0\0"
+         @IF_LE_A "9\0"
+            @SUB "0\0"
+            @POPI DigitVal
+         @ELSE
+            @IF_EQ_AV 16 Base
+               @IF_GE_A "A\0"
+                  @IF_LE_A "F\0"
+                     @SUB "A\0"
+                     @ADD 10
+                     @POPI DigitVal
+                  @ELSE
+                     @POPNULL
+                     @MA2V 0 Continue
+                  @ENDIF
+               @ELSE
+                  @POPNULL
+                  @MA2V 0 Continue
+               @ENDIF
+            @ELSE
+               @POPNULL
+               @MA2V 0 Continue
+            @ENDIF
+         @ENDIF
+      @ELSE
+         @POPNULL
+         @MA2V 0 Continue
+      @ENDIF
+
+      @IF_NEQ_AV 0 Continue
+         @PUSHI DigitVal
+         @IF_UGE_V Base
+            @POPNULL
+            @MA2V 0 Continue
+         @ELSE
+            @POPNULL
+            @PUSHI Result
+            @PUSHI Base
+            @CALL MULU
+            @ADDI DigitVal
+            @POPI Result
+            @INCI StrPtr
+         @ENDIF
+      @ENDIF
+      @PUSHI Continue
+   @ENDWHILE
+   @POPNULL
+
+   @PUSHI Result
+   @IF_EQ_AV 1 SignVal
+      @COMP2
+   @ENDIF
+   @PUSHI StrPtr
+
    @RestoreVar 06
    @RestoreVar 05
    @RestoreVar 04
@@ -562,104 +609,53 @@ M SafeMove(VVV) \
 @RET
 @ENDFUNCTION
 #
+# stoi, reverse of itos, takes text version of number and returns integer.
+# Function stoi(string)
+@FUNCTION stoi
+:stoi
+@PUSHRETURN
+   @LocalVar StrPtr 01
+   @LocalVar Result 02
+   @LocalVar EndPtr 03
+#USE stoi_core
+
+   @POPI StrPtr
+   @Call(V) stoi_core StrPtr
+   @POPI EndPtr
+   @POPI Result
+   # Full-string conversion requires parser to stop on NUL.
+   @PUSHII EndPtr
+   @AND 0xff
+   @IF_NOTZERO
+      @POPNULL
+      @MA2V 0 Result
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @PUSHI Result
+
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+@ENDFUNCTION
 #
-# Function stoifirst(strptr) is very  much like stoi but does not require the string to terminat on a null
-# Which in practical data processing is most of the cases where numbers are enbeded into text.
+# Function stoifirst(strptr) converts first numeric prefix and stops at first invalid char.
 @FUNCTION stoifirst
 :stoifirst
 @PUSHRETURN
-   @LocalVar StrPtrA 01
-   @LocalVar StrPtrB 02
-   @LocalVar SrcPtr 03
-   @LocalVar Result 04
-   @LocalVar SignVal 05
+   @LocalVar StrPtr 01
+   @LocalVar EndPtr 02
+   @LocalVar Result 03
+#USE stoi_core
 
-   @POPI StrPtrA
-   # Move StrPtrA until nul, or '-' or '+' or digit
-   @MA2V 0 StrPtrB      # Mark this so we know if none found
-   @MA2V 0 Result      # Will hold final result
-   @MA2V 0 SignVal      # Store 1 if Negative
-   @PUSH 1
-   @WHILE_NOTZERO
-      @POPNULL
-      @PUSHII StrPtrA @AND 0xff
-      @SWITCH
-      @CASE "-\0"
-         @POPNULL
-         @PUSH 1
-         @MA2V 1 SignVal
-         @INCI StrPtrA
-         @CBREAK
-      @CASE "+\0"
-         @POPNULL
-         @PUSH 1
-         @INCI StrPtrA
-         @CBREAK
-      @CASE " \0"   # Skip past spaces.
-         @POPNULL
-         @PUSH 1
-         @INCI StrPtrA
-         @CBREAK      
-      @CASE_RANGE "0\0" "9\0"        # Found start of numbers
-         @POPNULL
-         @PUSH 1
-         @CBREAK   
-      @CDEFAULT                      # Some illeagl character, error.
-         @POPNULL
-         @PUSH 0
-         @PRTLN "Warning: String did not contain any digits."
-         @CBREAK
-      @ENDCASE
-      @IF_EQ_A 1
-         @POPNULL
-         @MV2V StrPtrA StrPtrB # Save start position of number
-         @PUSH 0   # Exit While Loop
-      @ENDIF
-   @ENDWHILE
-   @POPNULL
-   @IF_EQ_AV 0 StrPtrB
-      # No numbers found in string. Return zero
-      @PRT "Warning: String did not countain any digits"
-      @MA2V 0 Result
-   @ELSE
-      @PUSHII StrPtrA @AND 0xff
-      @WHILE_NOTZERO
-         @IF_GE_A "0\0"
-             @IF_LE_A "9\0"
-                @POPNULL
-                @PUSH 0  # Was a digit, continue
-             @ENDIF
-         @ENDIF
-         @IF_EQ_A 0
-            #Digit found just continue.
-            @INCI StrPtrA
-            @POPNULL
-            @PUSHII StrPtrA @AND 0xff
-         @ELSE
-            @POPNULL
-            @PUSH 0
-            #Non Digit found, or end of number found.
-         @ENDIF
-      @ENDWHILE
-      # Save what ever word was at StrPtrA and replace will Null
-      @POPNULL
-      @PUSHII StrPtrA @POPI SrcPtr
-      @PUSH 0 @POPII StrPtrA
-      @PUSHI StrPtrB
-      @CALL stoi
-      @POPI Result
-      @PUSHI SrcPtr @POPII StrPtrA # Restore where we Null'ed
-      @IF_EQ_AV 1 SignVal
-         # Negative Sign found.
-         @PUSHI Result
-         @COMP2
-         @POPI Result
-      @ENDIF
-   @ENDIF
-   #@POPNULL
+   @POPI StrPtr
+   @Call(V) stoi_core StrPtr
+   @POPI EndPtr
+   @POPI Result
    @PUSHI Result
-   @RestoreVar 05
-   @RestoreVar 04
+
    @RestoreVar 03
    @RestoreVar 02
    @RestoreVar 01
@@ -668,7 +664,6 @@ M SafeMove(VVV) \
 @ENDFUNCTION
 #
 #
-# Function strcmp is just an alternative for strncmp with a super sized 'n'
 @FUNCTION strcmp
 :strcmp
 @PUSHRETURN
@@ -971,15 +966,40 @@ M SafeMove(VVV) \
 # (strstr but with character constant on stack)
 # strfndc(String, Character):Ptr_In_String | 0
 @FUNCTION strfndc
-   :sfReturn 0
-   :ShortString 0 0
-   :strfndc
-   #USE strstr
-   @POPI sfReturn       # We're not using PUSHRETURN to preserve flags
-   @POPI ShortString
-   @PUSH ShortString
-   @CALL strstr
-   @PUSHI sfReturn
+:strfndc
+@PUSHRETURN
+   @LocalVar SearchChar 01
+   @LocalVar StrPtr 02
+   @LocalVar ResultPtr 03
+
+   @POPI SearchChar
+   @POPI StrPtr
+   @PUSHI SearchChar
+   @AND 0xff
+   @POPI SearchChar
+   @MA2V 0 ResultPtr
+
+   @PUSHII StrPtr
+   @AND 0xff
+   @WHILE_NOTZERO
+      @IF_EQ_V SearchChar
+         @POPNULL
+         @MV2V StrPtr ResultPtr
+         @JMP strfndc_done
+      @ENDIF
+      @POPNULL
+      @INCI StrPtr
+      @PUSHII StrPtr
+      @AND 0xff
+   @ENDWHILE
+   @POPNULL
+
+:strfndc_done
+   @PUSHI ResultPtr
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
 @RET
 @ENDFUNCTION
 

@@ -523,11 +523,11 @@ L string.ld
     @POPI FileName
 
     # Open file for read ("ro")
-    @Call(VA) file_open FileName MODE_RO
+    @Call(VA) file_open_basic FileName MODE_RO
     @POPI FilePtr
 
     @IF_EQ_AV 0 FilePtr
-       @PRT "File: " @PRTSI FileName @PRT " could not be opened.\n"
+       @Call(AA) BasicRaiseError ERR_FILE_NOT_FOUND 0
        @JMP TPM_EXIT
     @ENDIF
 
@@ -579,7 +579,7 @@ L string.ld
     @MA2V 4 StartPoint
     @MA2V 0 FileNum
 
-    @CALL DirNewArgTable @IF_ZERO @PRT "Error allocating ArgTable" @END @ENDIF
+    @CALL DirNewArgTable @IF_ZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @END @ENDIF
     @POPI ArgTable
     @CALL DiskNewBuffer
     @POPI DiskBuff
@@ -590,7 +590,7 @@ L string.ld
        @POPI FileNum
        @Call(VVV) DirReadEntry FileNum ArgTable DiskBuff
        @IF_ZERO
-           @PRT "Disk Error:"
+           @Call(AA) BasicRaiseError ERR_FILE_READ_FAIL 0
            @JMP DD_Exit
        @ENDIF
        @POPNULL
@@ -615,21 +615,18 @@ L string.ld
           @Call(VVV) DirWriteRawEntry FileNum ArgTable DiskBuff
           @IF_ZERO
              @POPNULL
-             @PRT "DIR Write Error:" @PRTI FileNum @PRTNL
-             @Call(AA) BasicRaiseError  ERR_FILE_WRITE_FAIL 0 
+             @Call(AA) BasicRaiseError ERR_FILE_WRITE_FAIL 0 
           @ENDIF
           @POPNULL
           @Call(V) FSClearFileUsed FileNum
           @IF_ZERO
              @POPNULL
-             @PRT "FS Bitmap Error:" @PRTI FileNum @PRTNL
-             @Call(AA) BasicRaiseError  ERR_FILE_WRITE_FAIL 0 
+             @Call(AA) BasicRaiseError ERR_FILE_WRITE_FAIL 0 
           @ENDIF
           @POPNULL
           @CALL FSWriteHeader
           @IF_ZERO
-             @PRT "Failed to write FS data to disk:" @PRTI FileNum @PRTNL
-             @Call(AA) BasicRaiseError  ERR_FILE_WRITE_FAIL 0 
+             @Call(AA) BasicRaiseError ERR_FILE_WRITE_FAIL 0 
           @ENDIF
           @POPNULL
        @ELSE
@@ -640,8 +637,8 @@ L string.ld
    @ENDWHEN
    @POPNULL
 
-   @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
-   @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @Call(AA) BasicRaiseError ERR_MEMORY 0 @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @Call(AA) BasicRaiseError ERR_MEMORY 0 @END @ELSE @POPNULL @ENDIF
    @EndLocals
 @POPRETURN
 @RET
@@ -670,7 +667,7 @@ L string.ld
     @MA2V 0 FileNum
     @MA2V 0 Count
 
-    @CALL DirNewArgTable @IF_ZERO @PRT "Error allocating ArgTable" @END @ENDIF
+    @CALL DirNewArgTable @IF_ZERO @Call(AA) BasicRaiseError ERR_MEMORY 0 @END @ENDIF
     @POPI ArgTable
     @CALL DiskNewBuffer
     @POPI DiskBuff
@@ -684,7 +681,7 @@ L string.ld
        @INCI Count
        @Call(VVV) DirReadEntry FileNum ArgTable DiskBuff
        @IF_ZERO
-           @PRT "Disk Error:"
+           @Call(AA) BasicRaiseError ERR_FILE_READ_FAIL 0
            @JMP DD_Exit
        @ENDIF
        @POPNULL
@@ -710,8 +707,8 @@ L string.ld
        
        
 :DD_Exit
-   @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
-   @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @PRT "Memory Error:" @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap DiskBuff @IF_NOTZERO  @Call(AA) BasicRaiseError ERR_MEMORY 0 @END @ELSE @POPNULL @ENDIF
+   @Call(VV) HeapDeleteObject DiskHeap ArgTable  @IF_NOTZERO  @Call(AA) BasicRaiseError ERR_MEMORY 0 @END @ELSE @POPNULL @ENDIF
    @EndLocals
 @POPRETURN
 @RET

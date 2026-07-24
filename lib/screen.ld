@@ -11,7 +11,7 @@ I screen.ref
 # Exported Symbols
 # -----------------------------
 # Screen management
-G WinClear G WinResize G WinWidth G WinHeight
+G WinClear G WinResize G WinWidth G WinHeight G WinClearRect
 
 # Cursor control
 G WinCursor G WinHideCursor G WinShowCursor
@@ -32,7 +32,7 @@ G WinUnderLineOn G WinUnderLineOff
 G WinBoldOn G WinBoldOff
 
 # Misc
-G CSICODE
+G CISCODE
 
 # -----------------------------
 # Defaults
@@ -40,8 +40,8 @@ G CSICODE
 :WinWidth 80     # default until WinResize called
 :WinHeight 24    # default until WinResize called
 
-# CSICODE: start of ANSI escape sequences
-:CSICODE
+# CISCODE: start of ANSI escape sequences
+:CISCODE
 ! DEBUGSCREEN
    $$27 "[" $$0
 ENDBLOCK
@@ -60,12 +60,12 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinClear
 :WinClear
-@PRTS CSICODE @PRT "0m"
-@PRTS CSICODE @PRT "0;0H"
-@PRTS CSICODE @PRT "2J"
+@PRTS CISCODE @PRT "0m"
+@PRTS CISCODE @PRT "0;0H"
+@PRTS CISCODE @PRT "2J"
 @CALL WinShowCursor
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function: WinCursor
@@ -77,13 +77,13 @@ ENDBLOCK
 @FUNCTION WinCursor
 :WinCursor
 @SWP
-@PRTS CSICODE @PRTTOP @POPNULL
+@PRTS CISCODE @PRTTOP @POPNULL
 @PRT ";"
 @SWP
 @PRTTOP @POPNULL
 @PRT "H"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function: WinHideCursor
@@ -94,9 +94,9 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinHideCursor
 :WinHideCursor
-@PRTS CSICODE @PRT "?25l"
+@PRTS CISCODE @PRT "?25l"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function: WinShowCursor
@@ -107,9 +107,9 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinShowCursor
 :WinShowCursor
-@PRTS CSICODE @PRT "?25h"
+@PRTS CISCODE @PRT "?25h"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinPlot
@@ -215,7 +215,7 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinResize
@@ -239,91 +239,226 @@ ENDBLOCK
 @FUNCTION WinResize
 :WinResize
 #
-# Windows Resize queries Terminal for it's size
-! DEBUGSCREEN
-@Local TIBChar
-@Local CurVal
-@TTYRAW
-@PRTLN "------------Initilizing....<Hit Enter>"
-@PRTS CSICODE @PRT "s"
-@PRTS CSICODE @PRT "999;999H"    # Move cursor to far bottom right.
-@PRTS CSICODE @PRT "6n"          # Termanil will clamp that to real max size.
-@MA2V TermInfoBuffer TIBIndex
-# Drain until we see 'ESC'
-@PUSH 1
-@WHILE_NOTZERO
-   @READCNW TIBChar
-   @IF_EQ_AV "\e\0" TIBChar
-      @POPNULL
-      @PUSH 0
-   @ENDIF
-@ENDWHILE
-@POPNULL
-@MA2V 0 WinHeight
-@MA2V 0 WinWidth
-@MA2V 0 CurVal
-@PUSH 0
-@WHILE_ZERO
-   @POPNULL
-   @READC TIBChar
-   @PUSHI TIBChar @AND 0xff
-   @IF_INRANGE_AB "0\0" "9\0"
-      @SUB "0\0"                           # Ascii to val
-      @PUSHI CurVal @SHL @DUP @SHL @SHL @ADDS   # Mul Cur*10
-      @ADDS
-      @POPI CurVal
-      @PUSH 0
-   @ELSE
-      @IF_EQ_A ";\0"
-          @POPNULL
-          @MV2V CurVal WinHeight
-          @MA2V 0 CurVal
-          @PUSH 0
-      @ELSE
-          @IF_EQ_A "R\0"
-             @POPNULL
-             @MV2V CurVal WinWidth
-             @PUSH 1
-          @ELSE
-             @POPNULL
-             @PUSH 0
-          @ENDIF          
-      @ENDIF
-   @ENDIF
-@ENDWHILE
-@POPNULL
-@PRTS CSICODE @PRT "u"
-# We need to make sure values are not too big. Our limit is 80x50
-@PUSHI WinWidth
-@IF_GT_A 80
-   @POPNULL
-   @PUSH 80
-@ENDIF
-@IF_LT_A 5
-   @POPNULL
-   @PUSH 5
-@ENDIF
-@POPI WinWidth
-@PUSHI WinHeight
-@IF_GT_A 50
-   @POPNULL
-   @PUSH 50
-@ENDIF
-@IF_LT_A 5
-   @POPNULL
-   @PUSH 5
-@ENDIF
-@POPI WinHeight
-@RestoreVar 02
-@RestoreVar 01
+# Query the terminal for its current dimensions.
+#
+# Normally the terminal replies:
+#
+#     ESC [ <rows> ; <columns> R
+#
+# When debugging under a cooked terminal, enter:
+#
+#     E<Enter>
+# or:
+#     Q<Enter>
+#
+# That selects an emulated ANSI terminal with an 80x24 screen.
+#
+@PUSHRETURN
+@Locals
+    @Local TIBChar
+    @Local CurVal
+    @Local DebugKey
+    @Local FakeScreen
+
+    #
+    # Do not enable raw mode here.
+    #
+    # During normal execution, the caller/event system may already have enabled
+    # raw mode. During line-by-line debugging, leaving the terminal cooked permits
+    # E<Enter> or Q<Enter> to be entered normally.
+    #
+    @TTYRAW
+
+    @MA2V 0 DebugKey
+    @MA2V 0 FakeScreen
+
+    #
+    # Save cursor, move beyond the largest supported screen, and request the
+    # resulting cursor position.
+    #
+    @PRTS CISCODE
+    @PRT  "s"
+
+    @PRTS CISCODE
+    @PRT  "999;999H"
+
+    @PRTS CISCODE
+    @PRT  "6n"
+
+    #
+    # Wait for either:
+    #
+    #   ESC       Beginning of a real terminal response
+    #
+    # or:
+    #
+    #   E<Enter>  Use the fake 80x24 ANSI screen
+    #   Q<Enter>  Use the fake 80x24 ANSI screen
+    #
+    # DebugKey remembers E or Q until the terminating newline arrives.
+    #
+    @PUSH 1
+    @WHILE_NOTZERO
+        @POPNULL
+        @READCNW TIBChar
+
+        @PUSHI TIBChar
+        @AND 0x00ff
+        @SWITCH
+        @CASE "\e\0"
+           # ESC means most likely real ANSI terminal
+           @POPNULL
+           @MA2V 0 DebugKey
+           @PUSH 0
+           @CBREAK
+        @CASE "E\0"
+           # E is debug if followed by CR
+           @POPNULL
+           @MA2V 1 DebugKey
+           @PUSH 1
+           @CBREAK
+        @CASE "e\0"
+           # E is debug if followed by CR
+           @POPNULL
+           @MA2V 1 DebugKey
+           @PUSH 1
+           @CBREAK
+        @CASE "\n\0"
+           @POPNULL
+           @IF_EQ_AV 1 DebugKey
+              # Is debug so end look with LineFeed
+              @MA2V 1 FakeScreen
+              @PUSH 0
+           @ELSE
+              # Continue to look for valid pattern
+              @PUSH 1
+           @ENDIF
+           @CBREAK
+       @CDEFAULT
+           @POPNULL
+           @PUSH 1
+           @CBREAK
+       @ENDCASE
+    @ENDWHILE
+    @POPNULL
+    #
+    # Select either the debugger-friendly dimensions or parse the real response.
+    #
+    @PUSHI FakeScreen
+    @IF_NOTZERO
+        @POPNULL
+
+        @MA2V 80 WinWidth
+        @MA2V 24 WinHeight
+
+        #
+        # CISCODE is address of fixed CIS string
+        #
+        @PUSH "AN"
+        @POPI CISCODE
+        @PUSH "N\0"
+        @PUSH CISCODE+1
+        @POPS
+
+    @ELSE
+        @POPNULL
+
+        @MA2V 0 WinHeight
+        @MA2V 0 WinWidth
+        @MA2V 0 CurVal
+
+        #
+        # ESC has already been consumed. Ignore '[' and any unexpected characters,
+        # accumulate the row value until ';', then accumulate the column value
+        # until 'R'.
+        #
+        @PUSH 1
+        @WHILE_NOTZERO
+            @POPNULL
+            @READC TIBChar
+
+            @PUSHI TIBChar
+            @AND 0x00ff
+
+            @IF_INRANGE_AB "0\0" "9\0"
+                @SUB "0\0"
+
+                #
+                # CurVal = CurVal * 10 + digit
+                #
+                @PUSHI CurVal
+                @SHL
+                @DUP
+                @SHL
+                @SHL
+                @ADDS
+                @ADDS
+                @POPI CurVal
+
+                @PUSH 1
+
+            @ELSE
+                @IF_EQ_A ";\0"
+                    @POPNULL
+                    @MV2V CurVal WinHeight
+                    @MA2V 0 CurVal
+                    @PUSH 1
+
+                @ELSE
+                    @IF_EQ_A "R\0"
+                        @POPNULL
+                        @MV2V CurVal WinWidth
+                        @PUSH 0
+
+                    @ELSE
+                        @POPNULL
+                        @PUSH 1
+                    @ENDIF
+                @ENDIF
+            @ENDIF
+        @ENDWHILE
+        @POPNULL
+    @ENDIF
+    #
+    # Restore the cursor. This is harmless in the fake-screen case and undoes the
+    # save/move sequence sent before waiting for input.
+    #
+    @PRTS CISCODE
+    @PRT  "u"
+
+    #
+    # Sanity limits supported by the window library.
+    #
+    @PUSHI WinWidth
+    @IF_GT_A 80
+        @POPNULL
+        @PUSH 80
+    @ENDIF
+    @IF_LT_A 5
+        @POPNULL
+        @PUSH 5
+    @ENDIF
+    @POPI WinWidth
+
+    @PUSHI WinHeight
+    @IF_GT_A 50
+        @POPNULL
+        @PUSH 50
+    @ENDIF
+    @IF_LT_A 5
+        @POPNULL
+        @PUSH 5
+    @ENDIF
+    @POPI WinHeight
+@EndLocals
+@POPRETURN
 @RET
-ENDBLOCK
-ENDBLOCK
-@TTYRAWOFF
-? DEBUGSCREEN
-  @PRT "DEBUG MODE:"
-  @RET
-ENDBLOCK
+@ENDFUNCTION
+
+
+#
+# Terminal identification used by the debugger fallback.
+#
 
 :TermInfoBuffer "                                                      " $$0
 :TIBIndex 0
@@ -345,10 +480,10 @@ ENDBLOCK
 :ColorBGSet
 @PUSHRETURN
 @POPI ColorID
-@PRTS CSICODE  @PRT "48;5;" @PRTI ColorID @PRT "m"
+@PRTS CISCODE  @PRT "48;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ---------------------------------------------------------------------
 #    ANSI Color 'table'
 #  The “256-color” ANSI palette splits into ranges:
@@ -380,10 +515,10 @@ ENDBLOCK
 :ColorFGSet
 @PUSHRETURN
 @POPI ColorID
-@PRTS CSICODE @PRT "38;5;" @PRTI ColorID @PRT "m"
+@PRTS CISCODE @PRT "38;5;" @PRTI ColorID @PRT "m"
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ----------------------------------------------------------------------
 # Function : ColorReset
 # Purpose  : Reset all text attributes to default.
@@ -393,9 +528,9 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION ColorReset
 :ColorReset
-@PRTS CSICODE @PRT "0m"
+@PRTS CISCODE @PRT "0m"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ########################### Direction
 # ----------------------------------------------------------------------
 # Function : WinNorth
@@ -410,12 +545,12 @@ ENDBLOCK
 @FUNCTION WinNorth
 :WinNorth
 @SWP
-@PRT CSICODE
+@PRT CISCODE
 @PRTTOP @POPNULL
 @PRT "A"
 @RET
 # --
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------------------------------
 # Function : WinSouth
 # Purpose  : Move the cursor down (south) by N cells.
@@ -429,12 +564,12 @@ ENDBLOCK
 @FUNCTION WinSouth
 :WinSouth
 @SWP
-@PRT CSICODE
+@PRT CISCODE
 @PRTTOP @POPNULL
 @PRT "B"
 @RET
 # --
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------------------------------
 # Function : WinEast
 # Purpose  : Move the cursor right (east) by N cells.
@@ -448,12 +583,12 @@ ENDBLOCK
 @FUNCTION WinEast
 :WinEast
 @SWP
-@PRT CSICODE
+@PRT CISCODE
 @PRTTOP @POPNULL
 @PRT "C"
 @RET
 # --
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------------------------------
 # Function : WinWest
 # Purpose  : Move the cursor left (west) by N cells.
@@ -467,12 +602,12 @@ ENDBLOCK
 @FUNCTION WinWest
 :WinWest
 @SWP
-@PRT CSICODE
+@PRT CISCODE
 @PRTTOP @POPNULL
 @PRT "D"
 @RET
 # --
-ENDBLOCK
+@ENDFUNCTION
 #--------------------------------------------------------------------
 # Function : WinScrollRegion
 # Purpose  : Define a scrolling region within the screen.
@@ -499,11 +634,11 @@ ENDBLOCK
 @Local TopRow
 @Local BottomRot
 #
-# Setting region CSICODE toprow# ; bottomrow# r
+# Setting region CISCODE toprow# ; bottomrow# r
    @POPI BottomRow
    @POPI TopRow
    #
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRTI TopRow
    @PRT ";"
    @PRTI BottomRow
@@ -512,7 +647,7 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # Save for future use in scroll right / letf
 :TopRow 0
 :BottomRow 0
@@ -537,13 +672,13 @@ ENDBLOCK
 @Locals
 @Local NumLines
     @POPI NumLines
-    @PRTS CSICODE
+    @PRTS CISCODE
     @PRTI NumLines
     @PRT "S"
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ----------------------------------------------------------------------
 # Function : WinResetScrollRegion
 # Purpose  : Restore full-screen scrolling region.
@@ -559,10 +694,10 @@ ENDBLOCK
 # Function: WinResetScrollRegion
 @FUNCTION WinResetScrollRegion
 :WinResetScrollRegion
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRT "r"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinScrollDown
@@ -584,13 +719,13 @@ ENDBLOCK
 @Locals
 @Local NumLines
    @POPI NumLines
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRTI NumLines
    @PRT "T"
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinScrollRight
@@ -615,14 +750,14 @@ ENDBLOCK
       @PUSHI WinWidth
       @PUSHI Index
       @CALL WinCursor
-      @PRTS CSICODE
+      @PRTS CISCODE
       @PRTI NumLines
       @PRT "@"
    @Next Index
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ----------------------------------------------------------------------
 # Function : WinScrollLeft
 # Purpose  : Scroll text right within the current scroll region.
@@ -646,14 +781,14 @@ ENDBLOCK
       @PUSH 1
       @PUSHI Index
       @CALL WinCursor
-      @PRTS CSICODE
+      @PRTS CISCODE
       @PRTI NumLines
       @PRT "P"
    @Next Index
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 # ----------------------------------------------------------------------
 # Function : WinUnderLineOn
 # Purpose  : Enable underlining for subsequent printed text.
@@ -666,10 +801,10 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinUnderLineOn
 :WinUnderLineOn
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRT "4m"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinUnderLineOff
@@ -683,10 +818,10 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinUnderLineOff
 :WinUnderLineOff
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRT "24m"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinBoldOn
@@ -699,10 +834,10 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinBoldOn
 :WinBoldOn
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRT "1m"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function : WinBoldOff
@@ -715,10 +850,10 @@ ENDBLOCK
 # ----------------------------------------------------------------------
 @FUNCTION WinBoldOff
 :WinBoldOff
-   @PRTS CSICODE
+   @PRTS CISCODE
    @PRT "22m"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # ----------------------------------------------------------------------
@@ -749,7 +884,7 @@ ENDBLOCK
 :WinBox
 @PUSHRETURN
 @Locals
-@Local X1 @LocalVar Y1 02 @LocalVar X2 03 @LocalVar Y2 04
+@Local X1 @Local Y1 @Local X2 @Local Y2
 @Local Index
 @POPI Y2 @POPI X2 @POPI Y1 @POPI X1
 
@@ -773,9 +908,42 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
+################################################################
+# WinClearRect(X1,Y1,X2,Y2)
+#
+# Clear an inclusive rectangular screen region by printing
+# spaces. Coordinates are normalized before use.
+################################################################
+@FUNCTION WinClearRect
+:WinClearRect
+@PUSHRETURN
+@Locals
+    @Local X1
+    @Local Y1
+    @Local X2
+    @Local Y2
+    @Local X
+    @Local Y
 
+    @POPI4 Y2 X2 Y1 X1
+
+    @QuickMinI X1 X2
+    @QuickMinI Y1 Y2
+
+    @MV2V Y1 Y
+
+    @ForIV2V Y Y1 Y2
+        @Call(VV) WinCursor X1 Y
+        @ForIV2V X X1 X2
+            @PRT " "
+        @Next X
+    @Next Y
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 
 
 
