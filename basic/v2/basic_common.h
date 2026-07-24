@@ -214,6 +214,8 @@ $$1 "^" "^\0"
 =ERR_OUT_RANGE        7
 =ERR_MEMORY           8
 =ERR_UNDEF_LINE       9
+=ERR_STACK_OVERFLOW   10
+=ERR_BAD_NEXT         11
 # Error Resource
 =ERR_OUT_OF_MEMORY    1
 =ERR_STRING_SPACE     2
@@ -239,6 +241,20 @@ $$1 "^" "^\0"
 =VAROFF_Next 8
 #
 =MaxVarNameLen 10
+# BASIC runtime logic stack. Each frame is LOGIC_FRAME_SIZE bytes.
+=LOGIC_FRAME_GOSUB 1
+=LOGIC_FRAME_FOR   2
+=LOGIC_FRAME_OFF_TYPE       0
+=LOGIC_FRAME_OFF_RESUME_BPC 2
+=LOGIC_FRAME_OFF_VARPTR     4
+=LOGIC_FRAME_OFF_VARTYPE    6
+=LOGIC_FRAME_OFF_LIMIT_LOW  8
+=LOGIC_FRAME_OFF_LIMIT_HIGH 10
+=LOGIC_FRAME_OFF_STEP_LOW   12
+=LOGIC_FRAME_OFF_STEP_HIGH  14
+=LOGIC_FRAME_SIZE           16
+=LOGIC_STACK_DEPTH          32
+=LOGIC_STACK_BYTES          512
 
 #USE  ADD32S
 #USE  AND32
@@ -266,6 +282,7 @@ $$1 "^" "^\0"
 #USE DiskFileReadLine
 #USE DiskFileWrite
 #USE DiskNewBuffer
+#USE DirWriteRawEntry
 #USE FSFindFile
 #USE FSReadHeader
 #USE FSClearFileUsed

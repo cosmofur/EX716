@@ -58,6 +58,8 @@ G RunTimeHeap
 :RUN_ACTIVE   0
 :Debug_Mode   0
 :InputBuf     0
+:LogicStackBase 0
+:LogicStackTop  0
 #  Break Logic Control
 G BreakPollMask
 :BreakPollMask 0xf
@@ -113,6 +115,11 @@ G InputBuf
     # Setup in the InputBuf
     @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
     @POPI InputBuf
+
+    # BASIC control-flow stack. This is separate from interpreter call/soft stacks.
+    @Call(VA) HeapNewObject RunTimeHeap LOGIC_STACK_BYTES @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
+    @POPI LogicStackBase
+    @MA2V 0 LogicStackTop
 
     #
     # Allocate the Basic 100 line LineTableBase  or 4*100
@@ -231,6 +238,7 @@ M ZeroOutVar @MA2V 0 %1
     @ZeroOutVar RET_ERRDOM
     @ZeroOutVar RET_ERRINFO
     @MA2V True RUN_ACTIVE
+    @MA2V 0 LogicStackTop
 
 @POPRETURN
 @RET
@@ -672,8 +680,12 @@ M ZeroOutVar @MA2V 0 %1
    @ENDIF
 
    @POPI FileName
-   @Call(VA) file_open FileName 0x6f77   # "wo"
+   @Call(VA) file_open FileName MODE_WP
    @POPI FilePtr
+   @IF_EQ_AV 0 FilePtr
+      @PRTLN "SAVE failed to open file."
+      @JMP SM_EXIT
+   @ENDIF
    # Allocate temp ASCII buffer
    @Call(VA) HeapNewObject RunTimeHeap TOLKBUF_SIZE @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
    @IF_ULT_A 100
@@ -708,6 +720,7 @@ M ZeroOutVar @MA2V 0 %1
       @POPNULL      
       @PUSHI Ptr @ADD 4 @POPI Ptr
       @MV2V OutBufHead OutBuf
+      @PUSHI EndPtr
    @ENDWHILE
    @POPNULL
    # Free buffer

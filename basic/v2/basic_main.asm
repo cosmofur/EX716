@@ -329,7 +329,6 @@ I basic_eval.asm
           @ELSE
              @Call(AA)  BasicRaiseError ERR_SYNTAX 0
           @ENDIF
-          @POPNULL
           # Call Save
           @Call(V) SAVEMEM FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -351,7 +350,6 @@ I basic_eval.asm
           @ELSE
              @Call(AA)  BasicRaiseError ERR_SYNTAX 0
           @ENDIF
-          @POPNULL
           # Call Load
           @Call(V) LOADMEM FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -382,7 +380,6 @@ I basic_eval.asm
           @ELSE
              @Call(AA)  BasicRaiseError ERR_SYNTAX 0
           @ENDIF
-          @POPNULL
           # Call Type
           @Call(V) TYPEFILE FileData
           @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
@@ -407,7 +404,6 @@ I basic_eval.asm
                   @Call(AA)  BasicRaiseError ERR_SYNTAX 0
               @ENDIF
          @ENDIF
-         @POPNULL         
          @Call(V)  DIRDISK FileData
          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
          @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
@@ -428,7 +424,6 @@ I basic_eval.asm
          @ELSE
              @Call(AA)  BasicRaiseError ERR_SYNTAX 0
          @ENDIF
-         @POPNULL
          # Call Delete/Erase
          @Call(V) ERASEDISK FileData
          @Call(VV) HeapDeleteObject RunTimeHeap FileData
@@ -960,6 +955,8 @@ I basic_eval.asm
    @CASE ERR_BAD_RETURN   @PRTLN "? Invalid Return:"     @CBREAK
    @CASE ERR_OUT_RANGE    @PRTLN "? Out of Range:"       @CBREAK
    @CASE ERR_MEMORY       @PRTLN "? Memory Error:"       @CBREAK
+   @CASE ERR_STACK_OVERFLOW @PRTLN "? Stack Overflow:"    @CBREAK
+   @CASE ERR_BAD_NEXT     @PRTLN "? NEXT Without FOR:"  @CBREAK
    @CASE ERR_STRING_SPACE @PRTLN "? String Space Error:" @CBREAK
    @CASE ERR_NO_FILE_HANDLES @PRTLN "? Filesystm out of handles :"     @CBREAK
    @CASE ERR_FILE_NOT_FOUND @PRTLN "? File Not Found :"     @CBREAK

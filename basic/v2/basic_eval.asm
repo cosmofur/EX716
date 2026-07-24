@@ -58,13 +58,25 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
 @PUSHRETURN
 @Locals
     @Local LinePtr
+    @Local EndPtr
     
     @POPI LinePtr
     
     @IF_EQ_AV RET_OK RET_CODE
         @PUSHI LinePtr @ADD 4
         @POPI BPC
+        @PUSHI ProgramLineCount
+        @SHL2
+        @ADDI LineTableBase
+        @POPI EndPtr
         @PUSHI BPC
+        @IF_UGE_V EndPtr
+            @POPNULL
+            @PUSH 0
+        @ELSE
+            @POPNULL
+            @PUSHI BPC
+        @ENDIF
     @ELSE
         @PUSH 0
     @ENDIF
@@ -86,6 +98,8 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
     @Local NoVal
     @Local CondLow
     @Local CondHigh
+    @Local ReturnBPC
+    @Local FramePtr
     
     @ADD 2               # Tokenized Line starts at address at 2nd word
     @PUSHS
@@ -153,6 +167,52 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
                 @MV2V NewBPC BPC
              @ENDIF
              @CBREAK
+          @CASE GOSUB_CODE
+             @POPNULL
+             @INCI Ptr
+             @Call(V) BasicEval Ptr
+             @POPI4 Ptr NoVal NewLineNum NoVal
+             @Call(V) FindLine NewLineNum
+             @POPI NewBPC
+             @IF_EQ_AV 0 NewBPC
+                @PRT "Undefined Line Number: " @PRTI NewLineNum @PRTNL
+                @Call(AA) BasicRaiseError ERR_UNDEF_LINE 0
+             @ELSE
+                @Call(V) NextLine BPC
+                @POPI ReturnBPC
+                @Call(A) LogicStackPush LOGIC_FRAME_GOSUB
+                @POPI FramePtr
+                @IF_NEQ_AV 0 FramePtr
+                   @FILL_AT_V FramePtr LOGIC_FRAME_OFF_RESUME_BPC ReturnBPC
+                   @MV2V NewBPC BPC
+                @ENDIF
+             @ENDIF
+             @CBREAK
+          @CASE RETURN_CODE
+             @POPNULL
+             @INCI Ptr
+             @Call(A) LogicStackPopType LOGIC_FRAME_GOSUB
+             @POPI FramePtr
+             @IF_EQ_AV 0 FramePtr
+                @Call(AA) BasicRaiseError ERR_BAD_RETURN 0
+             @ELSE
+                @GET_FROM FramePtr LOGIC_FRAME_OFF_RESUME_BPC
+                @POPI ReturnBPC
+                @MV2V ReturnBPC BPC
+             @ENDIF
+             @CBREAK
+          @CASE FOR_CODE
+             @POPNULL
+             @INCI Ptr
+             @Call(V) ParseFOR Ptr
+             @POPI Ptr
+             @CBREAK
+          @CASE NEXT_CODE
+             @POPNULL
+             @INCI Ptr
+             @Call(V) HandleNEXT Ptr
+             @POPI Ptr
+             @CBREAK
           @CASE IF_CODE
              @POPNULL
              @INCI Ptr
@@ -210,6 +270,90 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
 @POPRETURN
 @RET
 #-----------------------------------------
+# LogicStackPush(FrameType):FramePtr | 0
+#----------------------------------------
+:LogicStackPush
+@PUSHRETURN
+@Locals
+    @Local FrameType
+    @Local FramePtr
+
+    @POPI FrameType
+
+    @PUSHI LogicStackTop
+    @IF_UGE_A LOGIC_STACK_DEPTH
+       @POPNULL
+       @MA2V 0 FramePtr
+       @Call(AA) BasicRaiseError ERR_STACK_OVERFLOW 0
+    @ELSE
+       @POPNULL
+       @INDEXV_PTR LogicStackBase LogicStackTop LOGIC_FRAME_SIZE
+       @POPI FramePtr
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_TYPE FrameType
+       @INCI LogicStackTop
+    @ENDIF
+
+    @PUSHI FramePtr
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# LogicStackTopFrame():FramePtr | 0
+#----------------------------------------
+:LogicStackTopFrame
+@PUSHRETURN
+@Locals
+    @Local FramePtr
+    @Local Index
+
+    @IF_EQ_AV 0 LogicStackTop
+       @MA2V 0 FramePtr
+    @ELSE
+       @PUSHI LogicStackTop
+       @SUB 1
+       @POPI Index
+       @INDEXV_PTR LogicStackBase Index LOGIC_FRAME_SIZE
+       @POPI FramePtr
+    @ENDIF
+
+    @PUSHI FramePtr
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# LogicStackPopType(FrameType):FramePtr | 0
+#----------------------------------------
+:LogicStackPopType
+@PUSHRETURN
+@Locals
+    @Local FrameType
+    @Local FramePtr
+    @Local ActualType
+
+    @POPI FrameType
+
+    @CALL LogicStackTopFrame
+    @POPI FramePtr
+    @IF_EQ_AV 0 FramePtr
+       @MA2V 0 FramePtr
+    @ELSE
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_TYPE
+       @POPI ActualType
+       @IF_EQ_VV ActualType FrameType
+          @DECI LogicStackTop
+       @ELSE
+          @MA2V 0 FramePtr
+       @ENDIF
+    @ENDIF
+
+    @PUSHI FramePtr
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
 # SkipToEOL(Ptr):Ptr
 #----------------------------------------
 :SkipToEOL
@@ -228,6 +372,307 @@ M FreeIfString @IF_EQ_AV STRING_TYPE %1 \
     @POPNULL
 
     @PUSHI Ptr
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# ParseFOR(Ptr):Ptr
+#----------------------------------------
+:ParseFOR
+@PUSHRETURN
+@Locals
+    @Local PtrIn
+    @Local VarPtr
+    @Local VarType
+    @Local EvalType
+    @Local LowWord
+    @Local HighWord
+    @Local LimitLow
+    @Local LimitHigh
+    @Local StepLow
+    @Local StepHigh
+    @Local ResumeBPC
+    @Local FramePtr
+
+    @POPI PtrIn
+
+    @Call(V) ParseVarName PtrIn
+    @IF_ZERO
+       @Call(AA) BasicRaiseError ERR_SYNTAX 0
+    @ENDIF
+    @POPI PtrIn
+    @POPI VarPtr
+
+    @PUSHI VarPtr @ADD VAROFF_TypeID
+    @PUSHS
+    @AND 0xf
+    @POPI VarType
+    @IF_EQ_AV STRING_TYPE VarType
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+    @IF_EQ_AV FLOAT_TYPE VarType
+       @Call(AA) BasicRaiseError ERR_TYPE_MISMATCH 0
+    @ENDIF
+
+    @PUSHII PtrIn @AND 0xff
+    @IF_NEQ_A "=\0"
+       @Call(AA) BasicRaiseError ERR_SYNTAX 0
+    @ENDIF
+    @POPNULL
+    @INCI PtrIn
+
+    @Call(V) BasicEval PtrIn
+    @POPI4 PtrIn HighWord LowWord EvalType
+    @Call(VVVV) CoerceType VarType EvalType LowWord HighWord
+    @POPI3 VarType HighWord LowWord
+    @Call(VAVVV) SetVarVal VarPtr 0 LowWord HighWord VarType
+    @POPNULL
+
+    @PUSHII PtrIn @AND 0xff
+    @IF_NEQ_A TO_CODE
+       @Call(AA) BasicRaiseError ERR_SYNTAX 0
+    @ENDIF
+    @POPNULL
+    @INCI PtrIn
+
+    @Call(V) BasicEval PtrIn
+    @POPI4 PtrIn HighWord LimitLow EvalType
+    @Call(VVVV) CoerceType VarType EvalType LimitLow HighWord
+    @POPI3 VarType LimitHigh LimitLow
+
+    @MA2V 1 StepLow
+    @MA2V 0 StepHigh
+    @PUSHII PtrIn @AND 0xff
+    @IF_EQ_A STEP_CODE
+       @POPNULL
+       @INCI PtrIn
+       @Call(V) BasicEval PtrIn
+       @POPI4 PtrIn HighWord LowWord EvalType
+       @Call(VVVV) CoerceType VarType EvalType LowWord HighWord
+       @POPI3 VarType StepHigh StepLow
+    @ELSE
+       @POPNULL
+    @ENDIF
+
+    @Call(V) NextLine BPC
+    @POPI ResumeBPC
+    @Call(A) LogicStackPush LOGIC_FRAME_FOR
+    @POPI FramePtr
+    @IF_NEQ_AV 0 FramePtr
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_RESUME_BPC ResumeBPC
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_VARPTR VarPtr
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_VARTYPE VarType
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_LIMIT_LOW LimitLow
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_LIMIT_HIGH LimitHigh
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_STEP_LOW StepLow
+       @FILL_AT_V FramePtr LOGIC_FRAME_OFF_STEP_HIGH StepHigh
+    @ENDIF
+
+    @PUSHI PtrIn
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# HandleNEXT(Ptr):Ptr
+#----------------------------------------
+:HandleNEXT
+@PUSHRETURN
+@Locals
+    @Local PtrIn
+    @Local FramePtr
+    @Local VarPtr
+    @Local NextVarPtr
+    @Local VarType
+    @Local CurLow
+    @Local CurHigh
+    @Local StepLow
+    @Local StepHigh
+    @Local LimitLow
+    @Local LimitHigh
+    @Local NewLow
+    @Local NewHigh
+    @Local KeepLooping
+    @Local ResumeBPC
+
+    @POPI PtrIn
+
+    @CALL LogicStackTopFrame
+    @POPI FramePtr
+    @IF_EQ_AV 0 FramePtr
+       @Call(AA) BasicRaiseError ERR_BAD_NEXT 0
+    @ELSE
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_TYPE
+       @IF_NEQ_A LOGIC_FRAME_FOR
+          @Call(AA) BasicRaiseError ERR_BAD_NEXT 0
+       @ENDIF
+       @POPNULL
+    @ENDIF
+
+    @IF_NEQ_AV 0 FramePtr
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_VARPTR
+       @POPI VarPtr
+       @PUSHII PtrIn @AND 0xff
+       @IF_EQ_A VAR_TOKEN
+          @POPNULL
+          @Call(V) ParseVarName PtrIn
+          @POPI PtrIn
+          @POPI NextVarPtr
+          @IF_NEQ_VV NextVarPtr VarPtr
+             @Call(AA) BasicRaiseError ERR_SYNTAX 0
+          @ENDIF
+       @ELSE
+          @POPNULL
+       @ENDIF
+
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_VARTYPE
+       @POPI VarType
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_STEP_LOW
+       @POPI StepLow
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_STEP_HIGH
+       @POPI StepHigh
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_LIMIT_LOW
+       @POPI LimitLow
+       @GET_FROM FramePtr LOGIC_FRAME_OFF_LIMIT_HIGH
+       @POPI LimitHigh
+
+       @Call(VA) GetVarVal VarPtr 0
+       @POPI CurHigh
+       @POPI CurLow
+       @IF_EQ_AV INT_TYPE VarType
+          @PUSHI CurLow
+          @PUSHI StepLow
+          @ADDS
+          @POPI NewLow
+          @MA2V 0 NewHigh
+          @Call(VVVV) BasicForStillActive16 NewLow LimitLow StepLow StepHigh
+          @POPI KeepLooping
+       @ELSE
+          @Call(VVVV) BasicAdd32 CurLow CurHigh StepLow StepHigh
+          @POPI2 NewHigh NewLow
+          @PUSHI6 NewLow NewHigh LimitLow LimitHigh StepLow StepHigh
+          @CALL BasicForStillActive
+          @POPI KeepLooping
+       @ENDIF
+       @Call(VAVVV) SetVarVal VarPtr 0 NewLow NewHigh VarType
+       @POPNULL
+       @IF_NEQ_AV 0 KeepLooping
+          @GET_FROM FramePtr LOGIC_FRAME_OFF_RESUME_BPC
+          @POPI ResumeBPC
+          @MV2V ResumeBPC BPC
+       @ELSE
+          @Call(A) LogicStackPopType LOGIC_FRAME_FOR
+          @POPNULL
+       @ENDIF
+    @ENDIF
+
+    @PUSHI PtrIn
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# BasicAdd32(ALow,AHigh,BLow,BHigh):(Low,High)
+#----------------------------------------
+:BasicAdd32
+@PUSHRETURN
+@Locals
+    @Local ALow
+    @Local AHigh
+    @Local BLow
+    @Local BHigh
+
+    @POPI4 BHigh BLow AHigh ALow
+    @PUSH32I(V) ALow
+    @PUSH32I(V) BLow
+    @CALL ADD32S
+    @POP32I(V) ALow
+    @PUSHI ALow
+    @PUSHI AHigh
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# BasicForStillActive16(ValueLow,LimitLow,StepLow,StepHigh):Bool
+#----------------------------------------
+:BasicForStillActive16
+@PUSHRETURN
+@Locals
+    @Local ValueLow
+    @Local LimitLow
+    @Local StepLow
+    @Local StepHigh
+
+    @POPI4 StepHigh StepLow LimitLow ValueLow
+
+    @PUSHI StepLow
+    @AND 0x8000
+    @IF_ZERO
+       @POPNULL
+       @PUSHI ValueLow
+       @IF_LE_V LimitLow
+          @POPNULL
+          @PUSH 1
+       @ELSE
+          @POPNULL
+          @PUSH 0
+       @ENDIF
+    @ELSE
+       @POPNULL
+       @PUSHI ValueLow
+       @IF_GE_V LimitLow
+          @POPNULL
+          @PUSH 1
+       @ELSE
+          @POPNULL
+          @PUSH 0
+       @ENDIF
+    @ENDIF
+
+@EndLocals
+@POPRETURN
+@RET
+#-----------------------------------------
+# BasicForStillActive(ValueLow,ValueHigh,LimitLow,LimitHigh,StepLow,StepHigh):Bool
+#----------------------------------------
+:BasicForStillActive
+@PUSHRETURN
+@Locals
+    @Local ValueLow
+    @Local ValueHigh
+    @Local LimitLow
+    @Local LimitHigh
+    @Local StepLow
+    @Local StepHigh
+
+    @POPI6 StepHigh StepLow LimitHigh LimitLow ValueHigh ValueLow
+
+    # Compare Value - Limit. Positive steps continue while <= 0.
+    # Negative steps continue while >= 0.
+    @Call32(VV) CMP32S ValueLow LimitLow
+    @PUSHI StepHigh
+    @AND 0x8000
+    @IF_ZERO
+       @POPNULL
+       @IF32_NEG
+          @PUSH 1
+       @ELSE
+          @IF32_ZERO
+             @PUSH 1
+          @ELSE
+             @PUSH 0
+          @ENDIF
+       @ENDIF
+    @ELSE
+       @POPNULL
+       @IF32_NEG
+          @PUSH 0
+       @ELSE
+          @PUSH 1
+       @ENDIF
+    @ENDIF
 
 @EndLocals
 @POPRETURN
