@@ -154,7 +154,7 @@ def skip_ws(s, i=0):
 
 if sys.platform == "win32":
     import msvcrt
-
+    print("Windows Mode")
     def get_key():
         if msvcrt.kbhit():
             ch = msvcrt.getch()
@@ -265,7 +265,6 @@ def record_symbol_use(context, sym, addr, file=None, line=None):
 class AssemblerContext:
     def __init__(self):
         # Memory and address state
-#        self.StoreMem = np.zeros(0x10000, dtype=np.uint8)
         self.address = 0
         self.dataaddress = 0
         self.highaddress = 0
@@ -552,41 +551,66 @@ def PollSetEchoFunc(arg=None):
     termios.tcsetattr(_fd, termios.TCSANOW, attrs)
 
 # --- Raw mode ---
+
+_saved_attrs = None
+_saved_flags = None
+
+
 def PollSetRawFunc(arg=None):
-    """Put terminal into full raw mode, save old settings."""
-    global _saved_attrs
+    """Put terminal into raw, non-blocking mode."""
+    global _saved_attrs, _saved_flags
+
     if _saved_attrs is None:
         _saved_attrs = termios.tcgetattr(_fd)
 
+    if _saved_flags is None:
+        _saved_flags = fcntl.fcntl(_fd, fcntl.F_GETFL)
+
     tty.setraw(_fd)
 
-    # Optional: tweak VMIN/VTIME so reads don’t block forever
     attrs = termios.tcgetattr(_fd)
-    attrs[6][termios.VMIN]  = 0
-    attrs[6][termios.VTIME] = 1   # 0.1s
+    attrs[6][termios.VMIN] = 0
+    attrs[6][termios.VTIME] = 1
     termios.tcsetattr(_fd, termios.TCSANOW, attrs)
 
-def PollReSetRawFunc(arg=None):
-    """Restore terminal to state before PollSetRaw was called."""
-    global _saved_attrs
-    if _saved_attrs is not None:
-        termios.tcsetattr(_fd, termios.TCSADRAIN, _saved_attrs)
-        print("Cleaning up caches")
+    fcntl.fcntl(
+        _fd,
+        fcntl.F_SETFL,
+        _saved_flags | os.O_NONBLOCK
+    )
 
-        old_flags = fcntl.fcntl(_fd, fcntl.F_GETFL)
-        fcntl.fcntl(_fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
-        try:
-            while True:
-                rlist, _, _ = select.select([_fd], [], [], 0)
-                if not rlist:
-                    break
-                os.read(_fd, 1024)
-                print("#")
-        except Exception:
-            pass
-        finally:
-            fcntl.fcntl(_fd, fcntl.F_SETFL, old_flags)
+def PollReSetRawFunc(arg=None):
+    """Restore terminal state from before PollSetRawFunc."""
+    global _saved_attrs, _saved_flags
+
+    if _saved_attrs is None and _saved_flags is None:
+        return
+
+    try:
+        # Discard unread terminal input while still in raw mode.
+        termios.tcflush(_fd, termios.TCIFLUSH)
+
+    except termios.error:
+        # Flushing is best effort.
+        pass
+
+    finally:
+        if _saved_attrs is not None:
+            termios.tcsetattr(
+                _fd,
+                termios.TCSADRAIN,
+                _saved_attrs
+            )
+
+        if _saved_flags is not None:
+            fcntl.fcntl(
+                _fd,
+                fcntl.F_SETFL,
+                _saved_flags
+            )
+
         _saved_attrs = None
+        _saved_flags = None
         
 
 def PollTTYStateFunc(arg=None):
@@ -709,9 +733,9 @@ def FindHistoricVal(varname, testaddress, context=None):
         return True
 
     # 1) Exact-name lookup, but active/in-range only.
-    history = LocVarHist.get(varname)
-    if history:
-        candidates = [e for e in history if in_range(e)]
+    exact_history = LocVarHist.get(varname)
+    if exact_history:
+        candidates = [e for e in exact_history if in_range(e)]
         if candidates:
             best = max(candidates, key=lambda e: e["start"])
             return best["value"]
@@ -720,73 +744,22 @@ def FindHistoricVal(varname, testaddress, context=None):
     prefix = f"{varname}__"
     candidates = []
 
-    for name, history2 in LocVarHist.items():
-        if name.startswith(prefix):
-            for entry in history2:
-                if in_range(entry):
-                    candidates.append(entry)
-
-    if candidates:
-        best = max(candidates, key=lambda e: e["start"])
-        return best["value"]
-
-    # 3) No valid active symbol found.
-    return None
-
-def FindHistoricVal_OLD(varname, testaddress, context=None):
-    global LocVarHist
-
-    testaddress = int(testaddress)
-
-    def in_range(entry):
-        start = entry["start"]
-        end = entry["end"]
-        if testaddress < start:
-            return False
-        if end is not None and testaddress > end:
-            return False
-        return True
-
-    # ------------------------------------------------------------
-    # 1) Exact-name lookup first
-    # ------------------------------------------------------------
-    candidates = []
-    history = LocVarHist.get(varname)
-    if history:
-        candidates = [e for e in history if in_range(e)]
-
-        if candidates:
-            # Pick the most recent valid definition
-            best = max(candidates, key=lambda e: e["start"])
-            return best["value"]
-        # Fallback if nothing in range return most recent definition
-#        best = max(history, key=lambda e: e["start"])
-#        return best["value"]
-
-    # ------------------------------------------------------------
-    # 2) Prefix-based lookup (varname__)
-    # ------------------------------------------------------------
-    prefix = f"{varname}__"
-    candidates = []
-
     for name, history in LocVarHist.items():
-        if name.startswith(prefix):
-            for entry in history:
-                if in_range(entry):
-                    candidates.append(entry)
+        if not name.startswith(prefix):
+            continue
+        for entry in history:
+            if in_range(entry):
+                candidates.append(entry)
 
     if candidates:
         best = max(candidates, key=lambda e: e["start"])
         return best["value"]
 
-    # ------------------------------------------------------------
-    # 3) No valid historical entry found
-    # ------------------------------------------------------------
-    if history:
-        best = max(history, key=lambda e: e["start"])
-        return best["value"]
+    # 3) Handle cases where it not a declaired global but has a larger context that its valud in.
+    if exact_history and len(exact_history) == 1:
+        return exact_history[0]["value"]
+    # 4 No active or unique value found.
     return None
-
 
 
 def Sort_And_Combine_Labels(inboundtext):
@@ -952,7 +925,6 @@ class microcpu:
         self.pc = origin
         self.flags = np.uint16(0)    # B0 = ZF, B1=NF, B2=CF, B3=OF
         self.identity = next(self.cpu_id_iter)
-#        self.hwstack = np.zeros(256, dtype=np.uint16)
         self.hwstack = np.zeros(MAXHWSTACK, dtype=np.uint16)
         self.hwstacksp = 0
         self.memspace = np.zeros(memsize, dtype=np.uint8)
@@ -1523,7 +1495,6 @@ class microcpu:
 
     def optCAST(self, address):
         global Debug,  PrevPC
-        # In the future 'CAST' will related to networking, for now it will just write to stdout
         # for now it acts as the stdout write tool
         # if Acum is 0, it will print a small dump of the memory of address and the current Stack
         # if 1, it will print the null terminated string starting at address
@@ -1543,8 +1514,8 @@ class microcpu:
         # 21 is 'seek' identifies the record in the current disk.
         # 22 is 'write block' address points to a block of memory (512 bytes) that will be written to disk
         # 23 is sync, closes the device until the next write.
-        # if 32 it will print the 32 bit integer value stored AT location of address
-        # if 33 if will print the 32 bit integer value stored At location on Stack
+        # 32 Print 32 bit integer at address  (32 version of PRTI)
+        # 33 print 32 bit integer at [address] (32 version of PRTII)
 
         if address >= (MAXMEMSP-11):
             self.raiseerror(
@@ -1557,7 +1528,7 @@ class microcpu:
                 c = self.memspace[i]
                 if c == 0:
                     safeprint("Odd C is zero")
-                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 27 and c != 30 and c!=9 and c!=8 ):
+                if (c < 32 ) and c not in (7, 8, 9, 10, 13, 27, 30):                    
                     sys.stdout.write("%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
@@ -1601,11 +1572,9 @@ class microcpu:
         if cmd == CastPrintStrI:
             self.optPOPNULL(address)            
             i = self.getwordat(address)
-            while self.memspace[i] != 0 and i < MAXMEMSP:
+            while i < MAXMEMSP and self.memspace[i] != 0:
                 c = self.memspace[i]
-                if c == 0:
-                    safeprint("0x0")
-                if (c < 32 or c > 127) and (c != 10 and c != 7 and c != 30):
+                if (c < 32 ) and c not in (7, 8, 9, 10, 13, 27, 30):
                     sys.stdout.write("%02x" % c)
                 else:
                     sys.stdout.write(chr(c))
@@ -1905,8 +1874,10 @@ class microcpu:
                 else:
                     self.raiseerror(
                         "042 Attempted to read block with insuffient memory %04x < 0x4x" %(v,MAXMEMSP-0xff))
+            else:
+                self.raiseerror("042 No Disk selected before Read Block.")
         if cmd == PollReadSectorI:
-            self.optPOPNULL(address)            
+            self.optPOPNULL(address)
             if current_context.DeviceHandle is not None:
                 v = self.getwordmem(address)
                 if v <= MAXMEMSP-0x1ff:
@@ -1931,6 +1902,8 @@ class microcpu:
                 else:
                     self.raiseerror(
                         "043 Attempt to read Tape Block with insufficent memory")
+            else:
+                self.raiseerror("042 No Tape selected before Read Block.")
         if cmd == PollReadTapeI:
             self.optPOPNULL(address)            
             if current_context.DeviceHandle is not None:
@@ -1944,11 +1917,16 @@ class microcpu:
                 else:
                     self.raiseerror(
                         "043 Attempt to read Tape Block with insufficent memory")
+            else:
+                self.raiseerror("042 No Tape selected before Read Block.")
         if cmd == PollRewindTape:
             self.optPOPNULL(address)
             if current_context.DeviceHandle != None:
                 current_context.DeviceFile.seek(0)
+            else:
+                self.raiseerror("042 No Tape selected before Rewind Operation.")
 
+# PollReadTime should be reworked to write time to 32 bit block at address rather than stack.
         if cmd == PollReadTime:
             self.optPOPNULL(address)          # Most POLLs leave the Call CMD on stack to be poped.
             v32=int(time.time())              # But time returns 32bit value, so needs to do the popnull.
@@ -2050,6 +2028,7 @@ class microcpu:
         depending on context.Fast.
         """
         if context.CrossCheck:
+            safeprint("Cross Check Mode: Both C and Python and compair results.")
             halted = False
             step_count = 0
             while not halted:
@@ -2148,39 +2127,60 @@ class microcpu:
             #    NORMAL MODE
             # -------------------------------
             if context.Debug == 0:
-
-                # Fast-path for multi-step run, but only if:
-                #   - more than 1 step remaining
-                #   - AND no pending debug events
-                if steps_remaining is not None and steps_remaining > 1:
-                    # use the C batch executor for speed
-                    batch = steps_remaining
+                # Unlimited normal execution: let C run until completion,
+                # interruption, or a debug-toggle event.
+                if steps_remaining is None:
                     (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
-                        self.memspace, self.hwstack, self.pc, self.flags, self.hwstacksp, batch, ReturnCode
+                        self.memspace,
+                        self.hwstack,
+                        self.pc,
+                        self.flags,
+                        self.hwstacksp,
+                        -1,
+                        ReturnCode
                     )
-                    context.GlobalOptCnt += batch
 
-                    # interpret result
-                    if ReturnCode == -11:  # toggle -> enter debug mode
+                    if ReturnCode == -11:
                         context.Debug = 1
-                        steps_remaining -= batch
                         ReturnCode = 0
                         continue
 
                     if ReturnCode != 0:
-                        break  # exit condition
-
-                    # batch OK
-                    steps_remaining = 0 if steps_remaining is not None else None
-                    if steps_remaining == 0:
                         break
+
+                    # An unlimited call normally should not return zero unless the
+                    # C executor intentionally yielded. If yielding is valid, continue.
                     continue
 
-                # Otherwise fall back to single-step normal execution
+                # Finite multi-step execution
+                if steps_remaining > 1:
+                    batch = steps_remaining
+                    (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
+                        self.memspace,
+                        self.hwstack,
+                        self.pc,
+                        self.flags,
+                        self.hwstacksp,
+                        batch,
+                        ReturnCode
+                    )
+                    context.GlobalOptCnt += batch
+
+                    if ReturnCode == -11:
+                        context.Debug = 1
+                        ReturnCode = 0
+                        continue
+
+                    if ReturnCode != 0:
+                        break
+
+                    steps_remaining = 0
+                    break
+
+                # Exactly one finite step remains
                 rc = step_one()
 
                 if rc == -11:
-                    # toggle into debug
                     context.Debug = 1
                     ReturnCode = 0
                     continue
@@ -2188,13 +2188,11 @@ class microcpu:
                 if rc != 0:
                     break
 
-                if steps_remaining is not None:
-                    steps_remaining -= 1
-                    if steps_remaining <= 0:
-                        break
+                steps_remaining -= 1
+                if steps_remaining <= 0:
+                    break
 
                 continue
-
             # -------------------------------
             #    DEBUG MODE
             # -------------------------------
@@ -2308,7 +2306,7 @@ class microcpu:
             print(f"Stack Overflow: {self.pc:04x}")
         elif code == RC_USER_HALT:
             print(f"^C at {self.pc:04x}")
-            debugger(FileLabels, "")
+            debugger("",current_context)
         elif code == RC_INVALID_INPUT:
             print(f"Non numeric User Input")
         elif code == RC_DISK_SEEK_FAIL:
@@ -2391,6 +2389,7 @@ def GetQuoted(inline):
                 'e': chr(27),
                 '0': '\0',
                 'b': '\b',
+                'r': '\r',
                 '"': '"',
                 '\\': '\\'
             }

@@ -1,6 +1,7 @@
 ! __LIB_EVENT_LOADED
 M __LIB_EVENT_LOADED 1
 I event.ref
+L mul.ld
 
 #########################
 # These are the main public Functions.
@@ -13,7 +14,7 @@ G EventList                 # Prints for debugging Event Table ()
 G EventTableNew             # Creates a New Event table (HeapID):EventTableID
 G EventSetActive            # Switches current active eventtable to Active  (EventTableID)
 G EventGetActive            # Returns the current Active eventtable ():EventTableID
-G CSICODE                   # Points to the CSICODE "<ESC>[" string
+G CISCODE                   # Points to the CISCODE "<ESC>[" string
 ##########################
 # These are public meta data to recall additional information about last registed event.
 # These are Variables, not functions.
@@ -47,6 +48,7 @@ G MouseEventClick       # Mouse Event Click
 G MouseEventRelease     # Mouse Event Release
 G TimerEvent            # Timer event 'constant'
 G KeyEvent              # Key event 'constant'
+G EventTableFree        # Frees heap for table.
 
 # These functions manage the event queue for caching events.
 G ReadKeyTimeOut
@@ -73,22 +75,39 @@ G ActiveEventTable
 =MouseEventRelease 0x2     # MF_RELEASE
 =TimerEvent 0x0100         # Keep away from bitmasks used for Mouse eventss
 =KeyEvent 0x0200
+=KeyRangeEvent 0x300
 =MouseEventDetected 1
 #
 #
 # Strucure of Event Table entries.
+=EventTableHeaderSize 6
+=EventUsedHeadOff     0
+=EventMaxUsedHeadOff  2
+=EventBackupHeapOff   4
 =EventRecordSize 12
-=ActiveEventTableHeaderSize 6
-=EventMaxUsedHeadOff 2
-=EventBackupHeapOff 4
-=EventMaxLocOff 2
+=EventDataOneOff 0
+=EventDataTwoOff 2
 =EventIDOff 4
 =EventTypeOff 6
 =EventExOneOff 8
 =EventExTwoOff 10
-=TimerStartOff 0
-=TimerDurOff 8
-=TimerRepOff 10
+
+=EventMinLocOff 0
+=EventMaxLocOff 2
+
+=MouseMinLocOff EventMinLocOff
+=MouseMaxLocOff EventMaxLocOff
+=KeyMatchPtrOff EventExOneOff
+=KeyASCIIStartOff EventExOneOff
+=KeyASCIIEndOff EventExTwoOff
+
+
+=TimerStartOff EventDataOneOff
+=TimerDurOff EventExOneOff
+=TimerRepOff EventExTwoOff
+#
+#
+
 
 
 ########################################
@@ -100,15 +119,16 @@ G ActiveEventTable
 @Locals
 @Local HeapID
 @POPI HeapID
-   @Call(vA) HeapNewObject HeapID EventRecordSize+ActiveEventTableHeaderSize
+   @Call(vA) HeapNewObject HeapID EventRecordSize+EventTableHeaderSize
    @POPI ActiveEventTable
-   @PUSH 1 @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @POPS   # Sets allocated rows in table
-   @PUSHI HeapID @PUSHI ActiveEventTable @ADD EventBackupHeapOff @POPS  # Saves HeapID for later resizes.
+   @FILL_AT_A ActiveEventTable EventUsedHeadOff 0
+   @FILL_AT_A ActiveEventTable EventMaxUsedHeadOff 1
+   @FILL_AT_V ActiveEventTable EventBackupHeapOff HeapID
    @PUSHI ActiveEventTable
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #########################################
 # function: EventTableFree(EventTableID)
 @FUNCTION EventTableFree
@@ -116,22 +136,25 @@ ENDBLOCK
 @PUSHRETURN
 @Locals
 @Local EventTableID
-@POPI EventID
+@POPI EventTableID
    @IF_EQ_AV 0 EventTableID
       # Event table not setup, nothing to kill.
    @ELSE
-      @PUSHI EventID @ADD EventBackupHeapOff @POPS   # Get HeapID
+      @GET_FROM EventTableID EventBackupHeapOff    # Get HeapID
       @PUSHI EventTableID
-      @CALL HeapDeleteObject @IF_NOTZERO
-         @PRT "Memory Error deleteing Event Table:" @PRTTOP
+      @CALL HeapDeleteObject
+      @IF_NOTZERO
+         @PRT "ERR:MEM"
          @END
       @ENDIF
+      @IF_EQ_VV ActiveEventTable EventTableID
+         @MA2V 0 ActiveEventTable
+      @ENDIF
    @ENDIF
-   @MA2V 0 ActiveEventTable
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ##########################################
 # function: EventSetActive(EventTableID)
 # This function sets the ActiveEventTable
@@ -140,7 +163,7 @@ ENDBLOCK
 @SWP
 @POPI ActiveEventTable
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ##########################################
 # function: EventGetActive():EventTableID
 # Queries what the current ActiveEventTable is.
@@ -149,7 +172,7 @@ ENDBLOCK
 @PUSHI ActiveEventTable
 @SWP
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 
 # For MouseEvents:
@@ -168,23 +191,21 @@ ENDBLOCK
 # Function: TermMouseDisable()
 @FUNCTION TermMouseDisable
 :TermMouseDisable
-@PRTS CSICODE @PRT "?1000l"
-@PRTS CSICODE @PRT "?1006l"
+@PRTS CISCODE @PRT "?1000l"
+@PRTS CISCODE @PRT "?1006l"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ########################################
 # Function: TermMouseEnable()
 @FUNCTION TermMouseEnable
 :TermMouseEnable
-@PRTS CSICODE @PRT "?1000h"
-@PRTS CSICODE @PRT "?1006h"
+@PRTS CISCODE @PRT "?1000h"
+@PRTS CISCODE @PRT "?1006h"
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #######################################
 # Macros for EventAdd
-# Ensures (%1, %2) such that %1 <= %2 Both must be variable lables, not constants.
-M QuickMinI @PUSHI %1 @PUSHI %2 @IF_GT_S @SWP @POPI %2 @POPI %1 @ELSE @POPNULL @POPNULL @ENDIF
 #
 # Combines 1,2 into word so %1 is high byte and %2 is low.
 M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xff @ORS
@@ -221,17 +242,20 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @Local Index2
 @Local InsertSpot
 #
-@POPI EventID @POPI Y2 @POPI X2 @POPI Y1 @POPI X1 @POPI Type
+@POPI EventID
+@POPI2 Y2 X2
+@POPI2 Y1 X1
+@POPI Type 
     # Extract table header data
-    @PUSHI ActiveEventTable @PUSHS @POPI MAESize                  # Current Number of used records
-    @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @PUSHS @POPI MAEMaxSize # Max possible without resize
-    @PUSHI ActiveEventTable @ADD EventBackupHeapOff @PUSHS @POPI MTHeapID    # HeapID for resizeing
-    @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Index1           # First Record after headers
+    @GET_FROM ActiveEventTable EventUsedHeadOff @POPI MAESize
+    @GET_FROM ActiveEventTable EventMaxUsedHeadOff @POPI MAEMaxSize
+    @GET_FROM ActiveEventTable EventBackupHeapOff @POPI MTHeapID
+    @PTR_AT ActiveEventTable EventTableHeaderSize @POPI Index1           # First Record after headers
     #
     # See if EventID exists already, which case this is a replace.
     @MA2V -1 InsertSpot   # For cases with no matching EventID
     @ForIA2V Index2 0 MAESize
-        @PUSHI Index1 @ADD EventIDOff @PUSHS   # EventID
+        @GET_FROM Index1 EventIDOff
         @IF_EQ_V EventID
            # Exact match
            @POPNULL
@@ -252,22 +276,22 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
            @ADD 10                # Allocate 10 new cells for growth.
            @PUSH EventRecordSize
            @CALL MUL              # Multiply
-           @ADD ActiveEventTableHeaderSize     # Add the Header part.
+           @ADD EventTableHeaderSize     # Add the Header part.
            @CALL HeapResizeObject
            @IF_ULT_A 100
-               @PRT "Error Can not allocate memory for mouse table growth."
+               @PRT "ERR:MEM"
                @END
            @ENDIF
            @POPI ActiveEventTable
            @PUSHI MAEMaxSize @ADD 10     # Reset Max size record to new size
-           @PUSHI ActiveEventTable @ADD EventMaxUsedHeadOff @POPS  # Writes new max size
+           @FILL_AT_S ActiveEventTable EventMaxUsedHeadOff
            #
        @ENDIF
        @PUSHI MAESize @PUSH EventRecordSize @CALL MUL
        @ADDI ActiveEventTable
-       @ADD ActiveEventTableHeaderSize @POPI InsertSpot
+       @ADD EventTableHeaderSize @POPI InsertSpot
        @INCI MAESize
-       @PUSHI MAESize @PUSHI ActiveEventTable  @POPS # Save it in header First record is used record count.
+       @FILL_AT_V ActiveEventTable EventUsedHeadOff MAESize
    @ELSE
        # Here means  InsertSpot has a non -1 value, so there is pre-existing EventID Cell
    @ENDIF
@@ -289,33 +313,48 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
       @QuickMinI Y1 Y2
       #
       @EncodeLoc X1 Y1
-      @PUSHI InsertSpot @POPS           # InsertSpot[0,1] = MinLoc
+      @FILL_AT_S InsertSpot MouseMinLocOff
       @EncodeLoc X2 Y2
-      @PUSHI InsertSpot @ADD EventMaxLocOff  @POPS    # Save to InsertSpot[2,3]
-      @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
-      @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS       # InsertSpot[6,7]=Type
+      @FILL_AT_S InsertSpot MouseMaxLocOff
+      # InsertSpot[4,5]=EvenID
+      @FILL_AT_V InsertSpot EventIDOff EventID
+      # InsertSpot[6,7]=Type
+      @FILL_AT_V InsertSpot EventTypeOff Type
       # For mouse EventData1/2 are not used.
       @CBREAK
-   @CASE KeyEvent # KeyBoard
+   @CASE KeyEvent # KeyBoard based on fixed strings
       # KeyBoard Event
       # X1 = StrPtr to string listing what to keep eye out for. Keys that do not match will be ignored.
-      @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS
-      @PUSHI X1   @PUSHI InsertSpot @ADD EventExOneOff @POPS
-      @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
+      @FILL_AT_V InsertSpot EventTypeOff Type
+      @FILL_AT_V InsertSpot KeyMatchPtrOff X1
+      @FILL_AT_V InsertSpot EventIDOff EventID
       @CBREAK
+   @CASE KeyRangeEvent # KeyBoard based on ascii ranges
+      # X1=Start ASCII code, Y1=Stop Ascii Code
+      @QuickMinI X1 Y1
+      
+      @FILL_AT_V InsertSpot EventTypeOff Type
+      @FILL_AT_V InsertSpot KeyASCIIStartOff X1
+      @FILL_AT_V InsertSpot KeyASCIIEndOff Y1      
+      @FILL_AT_V InsertSpot EventIDOff EventID 
+      @CBREAK
+      
    @CASE TimerEvent  # Timer
       # Timer Event
       # Mouse MinLoc == Start time
-      @PUSHI Type @PUSHI InsertSpot @ADD EventTypeOff @POPS
+      @FILL_AT_V InsertSpot EventTypeOff Type
+      
       @GETTIME
-      @POPNULL # Drop High 16
-      @PUSHI InsertSpot @ADD TimerStartOff @POPS
-      @PUSHI X1   @PUSHI InsertSpot @ADD TimerDurOff @POPS
-      @PUSHI Y1   @PUSHI InsertSpot @ADD TimerRepOff @POPS
-      @PUSHI EventID @PUSHI InsertSpot @ADD EventIDOff  @POPS    # InsertSpot[4,5]=EvenID
+      @POPNULL   # Discard high word
+      @FILL_AT_S InsertSpot TimerStartOff
+
+      @FILL_AT_V InsertSpot TimerDurOff X1
+      @FILL_AT_V InsertSpot TimerRepOff Y1
+      @FILL_AT_V InsertSpot EventIDOff EventID
+      
       @CBREAK
    @CDEFAULT
-      @PRT "Error Not valid event type:"
+      @PRT "ERR:ETY"
       @END
       @CBREAK
    @ENDCASE
@@ -323,17 +362,17 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 #########################################
 # Function ReadKeyTimeOut
-# Polls for next character but also times out if not seen in 10 cycles
+# Polls for next character but also times out if not seen in limited number cycles
 @FUNCTION ReadKeyTimeOut
 :ReadKeyTimeOut
 @PUSHRETURN
 @Locals
 @Local CHin
    @PUSH 0
-   @WHILE_LT_A 2
+   @WHILE_LT_A 3
       @READCNW CHin
       @IF_EQ_AV 0 CHin
          @ADD 1
@@ -341,7 +380,7 @@ ENDBLOCK
          @WHILEBREAK
       @ENDIF
    @ENDWHILE
-   @IF_LT_A 10
+   @IF_LT_A 3
       @POPNULL
       @PUSHI CHin @AND 0xff
    @ELSE
@@ -351,7 +390,7 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ########################################
 #
 =KQ_MASK 0x1f
@@ -388,10 +427,10 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ########################################
 # Function KeyQueueSize()
-@FUNCTION
+@FUNCTION KeyQueueSize
 :KeyQueueSize
 #
 # Light enough code we don't need to save locals
@@ -400,10 +439,9 @@ ENDBLOCK
    @PUSHI QBufferHead @AND 0xff
    @SUBS                       # Sub Tail-Head
    @AND KQ_MASK                   # Mod 32
-#@SWP   # put (retaddr) on top so @RET pops it; leaves size to caller
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 #########################################
 # Function KeyDeQueue
@@ -430,10 +468,10 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 ########################################
-# Function: KeyReadMouseSeq():(x,y)
+# Function: KeyReadMouseSeq():status (0|1)
 # Only handles the <ESC>[<btn;XVal;YValM mouse events.
 # Mouse and screen events are 1 base, meaning upper left is 1,1 not 0,0
 @FUNCTION KeyReadMouseSeq
@@ -495,16 +533,16 @@ ENDBLOCK
     @POPNULL
     # Process result into meta data
     # Compute LastMouseBtn
-    @PUSHI LastMouseRawB @PUSHS @AND 0x0040
+    @PUSHI LastMouseRawB @AND 0x0040
     @IF_NOTZERO
        @POPNULL
        # wheel: up if (RawB & 1)==0, down if ==1
-       @PUSHI LastMouseRawB @PUSHS @AND 0x0001
+       @PUSHI LastMouseRawB @AND 0x0001
        @IF_ZERO @POPNULL  @PUSH 3  @ELSE @POPNULL @PUSH 4 @ENDIF
        @POPI LastMouseBtn
      @ELSE
         @POPNULL
-        @PUSHI LastMouseRawB @PUSHS @AND 0x0003 @POPI LastMouseBtn
+        @PUSHI LastMouseRawB @AND 0x0003 @POPI LastMouseBtn
     @ENDIF
     # Set up flags
     @MA2V 0 LastMouseFlags
@@ -523,12 +561,16 @@ ENDBLOCK
     @IF_NOTZERO @POPNULL @OR MF_CTRL @ELSE @POPNULL @ENDIF
     @POPI LastMouseFlags
 
-    @PUSHI LastMouseX
-    @PUSHI LastMouseY
+    @IF_EQ_AV -1 LastMouseX
+       # No result
+       @PUSH 0
+    @ELSE
+       @PUSH 1
+    @ENDIF
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ############################################
 # Helper Macros for the ActiveEventTable Search functions
 M ExtractXMin @PUSHII %1 @AND 0xff
@@ -568,10 +610,10 @@ M Between_U \
 @POPI X1
     @MA2V -1 Result
     @PUSHII ActiveEventTable @POPI MTSize
-    @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
+    @PTR_AT ActiveEventTable EventTableHeaderSize @POPI Base
     @ForIV2A Rec MTSize 0
        # Skip any non-mouse event
-       @PUSHI Base @ADD EventTypeOff @PUSHS
+       @GET_FROM Base EventTypeOff
        @ANDI LastMouseFlags
        @IF_ZERO
           @POPNULL
@@ -587,7 +629,7 @@ M Between_U \
              @Between_U Y1 MinY MaxY
              @IF_NOTZERO
                  @POPNULL
-                 @PUSHI Base @ADD EventIDOff @PUSHS
+                 @GET_FROM Base EventIDOff
                  @POPI Result
                  @PUSHI MTSize @SUB 1 @POPI Rec # Break For
              @ELSE
@@ -596,8 +638,8 @@ M Between_U \
           @ELSE
              @POPNULL
           @ENDIF
-      @ENDIF
-      @PUSHI Base @ADD EventRecordSize @POPI Base
+      @ENDIF      
+      @PTR_AT Base EventRecordSize @POPI Base
    @NextBy Rec -1
    @IF_EQ_AV -1 Result
       @PUSH 0      # Return null if no match
@@ -607,7 +649,7 @@ M Between_U \
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 ########################################
 # Function FindCh(String,Char):(0|Ptr)
@@ -640,7 +682,7 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 ########################################
 # Function: KeySearchKeyBoard(ch) -> EventID|0
@@ -652,38 +694,93 @@ ENDBLOCK
 @Local MTSize
 @Local Base
 @Local InPtr
-@Local C
+@Local FirstKey
+@Local LastKey
 @Local Rec
 @Local Result
+@Local Type
 @POPI CHR
    @MA2V -1 Result
    @PUSHII ActiveEventTable @POPI MTSize
-   @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
-   @INCI MTSize
+   @PTR_AT ActiveEventTable EventTableHeaderSize @POPI Base
+
    @ForIV2A Rec MTSize 0
-      @PUSHI Base @ADD EventTypeOff @PUSHS
-      # Skip non keyboard events
-      @IF_NEQ_A KeyEvent
-          @POPNULL
-      @ELSE
+      @GET_FROM Base EventTypeOff
+      @POPI Type
+      @PUSHI Type
+      @SWITCH
+      @CASE KeyEvent
+         # Mapped String Event
          @POPNULL
-         @PUSHI Base @ADD EventExOneOff @PUSHS @POPI InPtr
+         @GET_FROM Base EventExOneOff
+         @POPI InPtr
+         
          @PUSHI InPtr
          @PUSHI CHR
          @CALL FindCh
+         
          @IF_NOTZERO
             @POPI LastKeyMatchPtr
-            @PUSHI CHR @AND 0xff @POPI LastKeyChar
-            # Input Matches Event
-            @PUSHI Base @ADD EventIDOff @PUSHS
+            
+            @PUSHI CHR
+            @AND 0xff
+            @POPI LastKeyChar
+            
+            @MA2V 1 LastKeyLen
+            
+            @GET_FROM Base EventIDOff
             @POPI Result
-            @PUSHI MTSize @SUB 1 @POPI Rec # Break For loop
+            
+            @PUSHI MTSize
+            @SUB 1
+            @POPI Rec
          @ELSE
             @POPNULL
          @ENDIF
-      @ENDIF
-      @PUSHI Base @ADD EventRecordSize @POPI Base
+         @CBREAK
+      @CASE KeyRangeEvent
+         # ASCII Range Inclusive event
+         # Normalize CHR to be 8 bit
+         @PUSHI CHR
+         @AND 0xff
+         @POPI CHR
+
+         @GET_FROM Base KeyASCIIStartOff
+         @POPI FirstKey
+         @GET_FROM Base KeyASCIIEndOff
+         @POPI LastKey
+
+         @Between_U CHR FirstKey LastKey
+         @IF_NOTZERO
+            @POPNULL
+
+            @PUSHI CHR
+            @AND 0xff
+            @POPI LastKeyChar
+
+            @MA2V 1 LastKeyLen
+            @MA2V 0 LastKeyMatchPtr
+
+            @GET_FROM Base EventIDOff
+            @POPI Result
+
+            @PUSHI MTSize
+            @SUB 1
+            @POPI Rec
+         @ELSE
+            @POPNULL
+         @ENDIF
+         @CBREAK
+      @CDEFAULT
+#         @POPNULL
+         @CBREAK
+      @ENDCASE
+      @POPNULL
+   @PTR_AT Base EventRecordSize
+   @POPI Base
+   
    @NextBy Rec -1
+   
    @IF_EQ_AV -1 Result
       @PUSH 0
    @ELSE
@@ -692,7 +789,7 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
 ##############################################
 # Function: KeySearchTimer() -> EventID | 0
@@ -710,21 +807,21 @@ ENDBLOCK
 @Local Elap
 @Local Result
    @MA2V -1 Result
-   @PUSHI ActiveEventTable @PUSHS @POPI MTSize
-   @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
+   @GET_FROM ActiveEventTable EventUsedHeadOff @POPI MTSize
+   @PTR_AT ActiveEventTable EventTableHeaderSize @POPI Base
    @ForIV2A Rec MTSize 0
-       @PUSHI Base @ADD EventTypeOff @PUSHS
+       @GET_FROM Base EventTypeOff
        @IF_NEQ_A TimerEvent
           @POPNULL
        @ELSE
           @POPNULL
-          @PUSHI Base @ADD TimerDurOff  @PUSHS @POPI Dur
+          @GET_FROM Base TimerDurOff @POPI Dur
           @IF_EQ_AV 0 Dur
              # Do Nothing.
           @ELSE
 
-             @PUSHI Base @ADD TimerStartOff @PUSHS @POPI Start
-             @PUSHI Base @ADD TimerRepOff   @PUSHS @POPI Rep
+             @GET_FROM Base TimerStartOff @POPI Start
+             @GET_FROM Base TimerRepOff @POPI Rep
              # Now = low16(Unix time)
              @GETTIME
              @POPNULL  # Get Rid of high 16
@@ -738,16 +835,16 @@ ENDBLOCK
              @IF_ULE_V Elap
                 # Event detected Push EventID to result
                 @POPNULL
-                @PUSHI Base @ADD EventIDOff @PUSHS @POPI Result
+                @GET_FROM Base EventIDOff @POPI Result
                 @IF_EQ_AV 0 Rep
                     # One Time timer, mark as disabled.
-                    @PUSH 0 @PUSHI Base @ADD EventTypeOff @POPS
-                    @MV2V 0 LastTimeRep
+                    @FILL_AT_A Base EventTypeOff 0
+                    @MA2V 0 LastTimeRep
                 @ELSE
                    # periodic: advance Start forward by k*Dur past Now
                    # while Elap >= Dur: Start += Dur; Elap -= Dur
                    # This allows events to more closely match real time incriments.
-                   @MV2V 1 LastTimeRep
+                   @MA2V 1 LastTimeRep
                    @MA2V 0 LastTimerSkip
                    @PUSH 0
                    @WHILE_ZERO
@@ -768,7 +865,7 @@ ENDBLOCK
                    # Save the updated Start time in record
                    @MV2V Elap LastTimerELap
                    @MV2V Dur LastTimerDur
-                   @PUSHI Start @PUSHI Base @ADD TimerStartOff @POPS
+                   @FILL_AT_V Base TimerStartOff Start
                 @ENDIF
                 @PUSHI MTSize @SUB 1 @POPI Rec # Break Outer loop
              @ELSE
@@ -776,7 +873,7 @@ ENDBLOCK
              @ENDIF
          @ENDIF
      @ENDIF
-     @PUSHI Base @ADD EventRecordSize @POPI Base
+     @PTR_AT Base EventRecordSize @POPI Base
   @NextBy Rec -1
 
 
@@ -788,104 +885,351 @@ ENDBLOCK
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 
+########################################
+# Function: TermInputPoll():InputType
+#
+# Reads at most one new terminal input item.
+#
+# Returns:
+#   0          No input available
+#   KeyEvent   Keyboard byte(s) queued
+#   MouseEvent Mouse metadata updated
+#
+@FUNCTION TermInputPoll
+:TermInputPoll
+@PUSHRETURN
+@Locals
+   @Local RawCh
+   @Local NextCh
+   @Local ThirdCh
+   @Local InputType
+
+   @MA2V 0 InputType
+
+   @CALL ReadKeyTimeOut
+   @POPI RawCh
+
+   @IF_EQ_AV 0 RawCh
+      # No input available.
+
+   @ELSE
+      @IF_EQ_AV "\e\0" RawCh
+         # ESC can be a standalone key or the start of an ANSI sequence.
+         @CALL ReadKeyTimeOut
+         @POPI NextCh
+
+         @IF_EQ_AV 0 NextCh
+            # Nothing followed ESC immediately.
+            # Treat it as a standalone Escape key.
+            @Call(A) KeyEnQueue "\e\0"
+            @MA2V KeyEvent InputType
+
+         @ELSE
+            @IF_EQ_AV "[\0" NextCh
+               # CSI sequence: ESC [
+               @CALL ReadKeyTimeOut
+               @POPI ThirdCh
+
+               @IF_EQ_AV "<\0" ThirdCh
+                  # SGR mouse sequence: ESC [ <
+                  #
+                  # Current KeyReadMouseSeq interface returns:
+                  #     X, Y, Status
+                  @CALL KeyReadMouseSeq
+
+                  @IF_NOTZERO
+                     @MA2V MouseEvent InputType
+                  @ENDIF
+                  @POPNULL       # Status
+               @ELSE
+                  # Not a mouse CSI sequence.
+                  # Preserve all bytes for keyboard processing.
+                  @Call(A) KeyEnQueue "\e\0"
+
+                  @Call(A) KeyEnQueue "[\0"
+
+                  @Call(V) KeyEnQueue ThirdCh
+
+                  @MA2V KeyEvent InputType
+               @ENDIF
+
+            @ELSE
+               # ESC followed by a non-CSI byte.
+               # Preserve both bytes.
+               @Call(A) KeyEnQueue "\e\0"
+
+               @Call(V) KeyEnQueue NextCh
+
+               @MA2V KeyEvent InputType
+            @ENDIF
+         @ENDIF
+
+      @ELSE
+         # Ordinary keyboard byte.
+         @Call(V) KeyEnQueue RawCh
+         @MA2V KeyEvent InputType
+      @ENDIF
+   @ENDIF
+
+   @PUSHI InputType
+
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+########################################
+# Function: EventDispatch(InputType):(EventID,MatchedType)
+#
+# InputType:
+#   0          No newly decoded input
+#   KeyEvent   Keyboard bytes may be queued
+#   MouseEvent Mouse metadata contains a decoded mouse event
+#
+# Returns:
+#   EventID     Application-defined event ID, or 0
+#   MatchedType MouseEvent, KeyEvent, TimerEvent, or 0
+#
+@FUNCTION EventDispatch
+:EventDispatch
+@PUSHRETURN
+@Locals
+   @Local InputType
+   @Local Result
+   @Local MatchedType
+   @Local QueueSize
+
+   @POPI InputType
+
+   @MA2V 0 Result
+   @MA2V 0 MatchedType
+
+   ####################################
+   # Mouse input has first priority.
+   @IF_EQ_AV MouseEvent InputType
+      @PUSHI LastMouseX
+      @PUSHI LastMouseY
+      @CALL KeySearchMouse
+      @POPI Result
+
+      @IF_NEQ_AV 0 Result
+         @MA2V MouseEvent MatchedType
+      @ENDIF
+   @ENDIF
+
+   ####################################
+   # If mouse did not match, process one queued keyboard byte.
+   #
+   # Check the queue regardless of InputType. A prior CSI sequence
+   # may have left additional bytes queued for later polls.
+   @IF_EQ_AV 0 Result
+      @CALL KeyQueueSize
+      @POPI QueueSize
+
+      @IF_NEQ_AV 0 QueueSize
+         @CALL KeyDeQueue
+         @CALL KeySearchKeyBoard
+         @POPI Result
+
+         @IF_NEQ_AV 0 Result
+            @MA2V KeyEvent MatchedType
+         @ENDIF
+      @ENDIF
+   @ENDIF
+
+   ####################################
+   # If no input event matched, check timers.
+   #
+   # This prevents unmatched keyboard input from starving timers.
+   @IF_EQ_AV 0 Result
+      @CALL KeySearchTimer
+      @POPI Result
+
+      @IF_NEQ_AV 0 Result
+         @MA2V TimerEvent MatchedType
+      @ENDIF
+   @ENDIF
+
+   # Return EventID followed by MatchedType.
+   @PUSHI Result
+   @PUSHI MatchedType
+
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+########################################
+# Function: EventPoll():EventID
+#
+# Coordinates terminal input, event dispatch, and common metadata.
+#
+@FUNCTION EventPoll
+:EventPoll
+@PUSHRETURN
+@Locals
+   @Local InputType
+   @Local Result
+   @Local MatchedType
+   @Local EventCount
+
+   @MA2V 0 InputType
+   @MA2V 0 Result
+   @MA2V 0 MatchedType
+
+   ####################################
+   # No table means there is nothing to poll.
+   @IF_EQ_AV 0 ActiveEventTable
+      @JMP EventPollDone
+   @ENDIF
+
+   ####################################
+   # Do not consume terminal input when the table has no events.
+   @GET_FROM ActiveEventTable EventUsedHeadOff
+   @POPI EventCount
+
+   @IF_EQ_AV 0 EventCount
+      @JMP EventPollDone
+   @ENDIF
+
+   ####################################
+   # Decode at most one new terminal input item.
+   @CALL TermInputPoll
+   @POPI InputType
+
+   ####################################
+   # Match decoded/queued input or an expired timer.
+   @PUSHI InputType
+   @CALL EventDispatch
+
+   # EventDispatch returns EventID, MatchedType.
+   @POPI MatchedType
+   @POPI Result
+
+   ####################################
+   # Update common metadata only when an event matched.
+   @IF_NEQ_AV 0 Result
+      @MV2V Result LastEventID
+      @MV2V MatchedType LastEventType
+
+      # GETTIME  return Low,High with High on TOS.
+      @GETTIME
+      @POPI LastEventTSHi
+      @POPI LastEventTSLo
+   @ENDIF
+
+:EventPollDone
+   @PUSHI Result
+
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 
 ########################################
 # Function: EventPoll:EventID
 # Mouse Event.
 @FUNCTION EventPoll
-:EventPoll
+:EventPoll_OLD
 @PUSHRETURN
 @Locals
-@Local MouseXVal @LocalVar MouseYVal 02 @LocalVar MouseEventCode 03
+   @Local MouseXVal
+   @Local MouseYVal
+   @Local MouseEventCode
+   @Local Result
+   @Local MatchedType
+   
    # Fast exit if there nothing in ActiveEventTable to search for.
+   @MA2V 0 Result
+   @MA2V 0 MatchedType
    @MA2V 0 MouseEventCode
-   @PUSHII ActiveEventTable   # Mouse table will be zero if never defined.
-   @IF_ZERO
-      # nothing to do, just exit with zero as event id.
+
+   @IF_NEQ_AV 0 ActiveEventTable
+     @GET_FROM ActiveEventTable EventUsedHeadOff
+     @IF_NOTZERO
+        @POPNULL
+        @CALL ReadKeyTimeOut
+        @IF_EQ_A 0
+           @POPNULL
+           # Zero on first char read, do nothing
+        @ELSE
+           @IF_EQ_A "\e\0"
+              # Start of possible ESC sequence
+              @POPNULL
+              @CALL ReadKeyTimeOut
+              @AND 0xff              # Make sure we are only dealing with 1 character.
+              @SWITCH
+              @CASE 0
+                  # Nothing immeditly followed ESC so its probably just the
+                  @POPNULL
+                  @PUSH "\e\0"       # Add the ESC to the Queue
+                  @CALL KeyEnQueue
+                  @CBREAK
+              @CASE "[\0"
+                  # All Mouse sequences start <ESC>[ but it might still be something else.
+                  @POPNULL
+                  @CALL ReadKeyTimeOut
+                  @IF_EQ_A "<\0"
+                      # Start of Mouse Sequence
+                      @POPNULL
+                      @CALL KeyReadMouseSeq     #parse Mouse Sequce into X,Y
+                      @IF_NOTZERO
+                         @POPNULL
+                         @POPI MouseYVal
+                         @POPI MouseXVal
+                         @MA2V MouseEventDetected MouseEventCode      # Flags that there is a mouse event to check
+                         # If Mouse sequence was invalid, leaves 0 on stack.
+                         @MV2V MouseEventCode Result
+                      @ENDIF
+                  @ELSE
+                      # Was not a Mouse event, so queue it up so can be decord by calling functions.
+                      @PUSH "\e\0" @CALL KeyEnQueue
+                      @PUSH "[\0" @CALL KeyEnQueue
+                      # What ever it was still on stack
+                      @CALL KeyEnQueue
+                  @ENDIF
+                  @CBREAK
+               @CDEFAULT
+                  # Not a <ESC>[ sequeucne so just put it on the queue
+                  @PUSH "\e\0" @CALL KeyEnQueue
+                  @CALL KeyEnQueue
+                  @CBREAK
+               @ENDCASE
+           @ELSE
+               # Was not started by an <ESC> so treat as normal key.
+               @IF_NOTZERO
+                  @CALL KeyEnQueue
+               @ELSE
+                  @POPNULL
+               @ENDIF
+           @ENDIF
+        @ENDIF
+     @ENDIF
+   @ENDIF
+        
+   # When we get here, we should now know if there was a mouse or key event and queue it up.
+   # We handle MouseEvents before Key Events.
+   @IF_EQ_AV MouseEventDetected MouseEventCode
+       @PUSHI MouseXVal @PUSHI MouseYVal
+       @CALL KeySearchMouse
    @ELSE
-      @POPNULL        # OK Mouse Table has some data, we'll review it later.
-      @CALL ReadKeyTimeOut
-      @IF_EQ_A 0
-         @POPNULL
-         # Zero on first char read, do nothing
-      @ELSE
-         @IF_EQ_A "\e\0"
-            # Start of possible ESC sequence
-            @POPNULL
-            @CALL ReadKeyTimeOut
-            @AND 0xff              # Make sure we are only dealing with 1 character.
-            @SWITCH
-            @CASE 0
-                # Nothing immeditly followed ESC so its probably just the
-                @POPNULL
-                @PUSH "\e\0"       # Add the ESC to the Queue
-                @CALL KeyEnQueue
-                @CBREAK
-            @CASE "[\0"
-                # All Mouse sequences start <ESC>[ but it might still be something else.
-                @POPNULL
-                @CALL ReadKeyTimeOut
-                @IF_EQ_A "<\0"
-                    # Start of Mouse Sequence
-                    @POPNULL
-                    @CALL KeyReadMouseSeq     #parse Mouse Sequce into X,Y
-                    @IF_NOTZERO
-                       @POPI MouseYVal
-                       @POPI MouseXVal
-                       @MA2V MouseEventDetected MouseEventCode      # Flags that there is a mouse event to check
-                    #
-                       # If Mouse sequence was invalid, leaves 0 on stack.
-                    @ENDIF
-                @ELSE
-                    # Was not a Mouse event, so queue it up so can be decord by calling functions.
-                    @PUSH "\e\0" @CALL KeyEnQueue
-                    @PUSH "[\0" @CALL KeyEnQueue
-                    # What ever it was still on stack
-                    @CALL KeyEnQueue
-                @ENDIF
-                @CBREAK
-             @CDEFAULT
-                # Not a <ESC>[ sequeucne so just put it on the queue
-                @PUSH "\e\0" @CALL KeyEnQueue
-                @CALL KeyEnQueue
-                @CBREAK
-             @ENDCASE
-         @ELSE
-             # Was not started by an <ESC> so treat as normal key.
-             @IF_NOTZERO
-                @CALL KeyEnQueue
-             @ELSE
-                @POPNULL
-             @ENDIF
-         @ENDIF
-      @ENDIF
-      # When we get here, we should now know if there was a mouse or key event and queue it up.
-      # We handle MouseEvents before Key Events.
-      @IF_EQ_AV MouseEventDetected MouseEventCode
-          @PUSHI MouseXVal @PUSHI MouseYVal
-          @CALL KeySearchMouse
-      @ELSE
-          @CALL KeyQueueSize
-          @IF_ZERO
-             @POPNULL
-             @CALL KeySearchTimer
-          @ELSE
-             # Not zero there is a key to deal with.
-             @POPNULL
-             @PRTERR "Before KeyDeQueue" @StackDump
-             @CALL KeyDeQueue
-             @PRTERR "After KeyDeQueue" @StackDump
-             @CALL KeySearchKeyBoard
-             @PRTERR "After KeySearchKeyBoard" @StackDump
-         @ENDIF
+       @CALL KeyQueueSize
+       @IF_ZERO
+          @POPNULL
+          @CALL KeySearchTimer
+       @ELSE
+          # Not zero there is a key to deal with.
+          @POPNULL
+          @CALL KeyDeQueue
+          @CALL KeySearchKeyBoard
       @ENDIF
    @ENDIF
- @EndLocals
- @POPRETURN
- @RET
- ENDBLOCK
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
 ###########################
 # Mouse Test
 @FUNCTION EventList
@@ -904,7 +1248,7 @@ ENDBLOCK
 
    # Load header values
    @PUSHI ActiveEventTable @PUSHS @POPI MTSize       # number of used entries
-   @PUSHI ActiveEventTable @ADD ActiveEventTableHeaderSize @POPI Base
+   @PUSHI ActiveEventTable @ADD EventTableHeaderSize @POPI Base
 
    @PRTNL
    @PRT "ActiveEventTable (" @PRTHEXI MTSize @PRT " records)" @PRTNL
@@ -917,10 +1261,10 @@ ENDBLOCK
       @ExtractYMax Base @POPI Y2
 
       # EventID
-      @PUSHI Base @ADD EventIDOff @PUSHS @POPI EventID
+      @GET_FROM Base EventIDOff @POPI EventID
 
       # Type
-      @PUSHI Base @ADD EventTypeOff @PUSHS @POPI Type
+      @GET_FROM Base EventTypeOff @POPI Type
 
       # Print line
       @PRT "Event:ID=" @PRTHEXI EventID
@@ -932,31 +1276,14 @@ ENDBLOCK
       @PRTNL
 
       # Next record
-      @PUSHI Base @ADD EventRecordSize @POPI Base
+      @PTR_AT Base EventRecordSize @POPI Base      
    @Next Index
 
 @EndLocals
 @POPRETURN
 @RET
-ENDBLOCK
+@ENDFUNCTION
 ############# Storage
-########################################
-# Event Meta Data Struture:
-# While EventLoop returns an EventID, the extra informaton learned about events is stored here.
-#
-#   Common Headers
-:LastEventType 0
-:LastEventID 0
-:LastEventTSLo 0
-:LastEventTSHi 0
-#   Mouse Meta Data
-:LastMouseX 0
-:LastMouseY 0
-:LastMouseBtn 0         # 0=left 1=middle 2=right, 3=wheel_up, 4=wheel_down
-:LastMouseFlags 0       # Bitfield Press/Relase/Drag/Shift/Alt/Ctrl/Wheel
-:LastMouseRawB 0        # Raw Button info
-:LastMouseTerm 0        # M or m for click vs Relase
-:ActiveEventTable 0     # Global Stored Active Event Table
 ########################################
 # Event Meta Data Struture:
 # While EventLoop returns an EventID, the extra informaton learned about events is stored here.

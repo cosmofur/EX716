@@ -115,7 +115,7 @@ M DEBUGSCREEN True
     @PRT "5" @PUSH 1 @CALL Sleep    
     @CALL Demo_Scrolling
     @PRT "6" @PUSH 1 @CALL Sleep    
-    @PRTS CSICODE @PRT "r"
+    @PRTS CISCODE @PRT "r"
     @CALL WinClear
     @PRT "Testing Mouse:"
     

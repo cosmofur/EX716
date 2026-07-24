@@ -242,7 +242,7 @@ G DiskOpen
 G DiskClose
 G DiskFileRead
 G DiskFileWrite
-G file_open
+G file_open G file_open_basic
 
 G DiskFileReadLine
 
@@ -1843,6 +1843,94 @@ G LINE_EOF
 @POPRETURN
 @RET
 @ENDFUNCTION
+
+#--------------------------------------------
+@FUNCTION  file_open_basic
+# file_open_basic(FileName, Mode): FilePointer | 0
+# BASIC only uses MODE_RO and MODE_WP.
+#--------------------------------------------
+:file_open_basic
+@PUSHRETURN
+@Locals
+#USE FSFindFreeFile,DiskSetFileName,DiskOpen,DiskClose,FSSetFileUsed,FSWriteHeader
+    @Local FileName
+    @Local Mode
+    @Local FileNum
+    @Local NewFlag
+    @Local FilePointer
+
+    @POPI Mode
+    @POPI FileName
+    @MA2V 0 FilePointer
+
+    @PUSHI Mode
+    @IF_EQ_A MODE_RO
+       @POPNULL
+       @MA2V FP_OPEN_READ NewFlag
+    @ELSE
+       @IF_EQ_A MODE_WP
+          @POPNULL
+          @PUSH FP_OPEN_WRITE
+          @PUSH FP_OPEN_CREATE
+          @ORS
+          @PUSH FP_OPEN_APPEND
+          @ORS
+          @POPI NewFlag
+       @ELSE
+          @POPNULL
+          @JMP FOB_Exit
+       @ENDIF
+    @ENDIF
+
+    @Call(VA) FSFindFile FileName 0
+    @POPI FileNum
+    @IF_EQ_AV 0 FileNum
+       @PUSHI NewFlag
+       @AND FP_OPEN_WRITE
+       @IF_ZERO
+          @POPNULL
+          @JMP FOB_Exit
+       @ENDIF
+       @POPNULL
+
+       @CALL FSFindFreeFile
+       @IF_NOTZERO
+          @POPI FileNum
+          @Call(V) FSSetFileUsed FileNum
+          @IF_ZERO
+             @POPNULL
+             @JMP FOB_Exit
+          @ENDIF
+          @POPNULL
+
+          @PUSHI NewFlag @OR FP_OPEN_CREATE @POPI NewFlag
+          @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "ERR:!O" @END @ENDIF
+          @POPI FilePointer
+          @Call(VV) DiskSetFileName FilePointer FileName
+
+          @CALL FSWriteHeader  @IF_ZERO @PRT "ERR:!W" @POPNULL @END @ELSE @POPNULL @ENDIF
+          @Call(V) DiskClose FilePointer
+          @IF_ZERO
+             @POPI FilePointer
+             @JMP FOB_Exit
+          @ELSE
+             @POPNULL
+          @ENDIF
+       @ELSE
+          @PRTS MEMERRMSG
+          @JMP FOB_Exit
+       @ENDIF
+    @ENDIF
+
+    @Call(VV) DiskOpen FileNum NewFlag @IF_ZERO @PRT "ERR:!FO" @END @ENDIF
+    @POPI FilePointer
+
+:FOB_Exit
+    @PUSHI FilePointer
+
+@EndLocals
+@POPRETURN
+@RET
 
 #---------------------------------------------------------
 # Series of API to modify/access DIR header data.

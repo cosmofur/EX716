@@ -27,27 +27,23 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @Local year
 @POPI year
 #
-@PUSHI year
-@PUSH 4
-@CALL DIVU
+@Call(VA) DIVU year 4
 @POPNULL # We only want the MOD value
 @IF_ZERO       # If Mod(year,4)=0
    @POPNULL
-   @PUSHI year
-   @PUSH 100        # Will be leap year, UNless it also a 00 year.
-   @CALL DIVU
+   @Call(VA) DIVU year 100
    @POPNULL
    @IF_ZERO
       @POPNULL
-      @PUSH 100
-      @PUSH 400
+      @Call(VA) DIVU year 400
+      @POPNULL
       @IF_ZERO
+         @POPNULL
          @PUSH 1         # 00 years are only leap if diviable by 400
       @ELSE
+         @POPNULL
          @PUSH 0
       @ENDIF
-      @SWP               # Move the test result behind the mod value      
-      @POPNULL
    @ELSE
       @POPNULL
       @PUSH 1       # All other that are mod(4)=0 are leap years.
@@ -96,8 +92,8 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
    @POPNULL
    @PUSH -1
 @ELSE
-  @PUSH year
-  @CALL IsLeapYear
+  @POPNULL
+  @Call(V) IsLeapYear year
   @IF_ZERO
      @POPNULL
      @PUSHI month @SHL
@@ -124,91 +120,123 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 # Storage
 # 32 bit constants
 @FUNCTION Time2Units
+
 :SecondsMinute $$$60
-:SecondsHour $$$3600
-:SecondsDay $$$86400
+:SecondsHour   $$$3600
+:SecondsDay    $$$86400
 
 :Time2Units
 @PUSHRETURN
 @Locals
-@Local Year @LocalVar Month 02 @LocalVar Day 03 @LocalVar Hour 04
-@Local Minute @LocalVar Second 06 @LocalVar days 07 @LocalVar SecondsPtr 08
-@Local LResult @LocalVar LResultHW 10 @LocalVar LRemain 11 @LocalVar LRemainHW 12
-@Local LRemaingSecs @LocalVar LRemaingSecHW 14
 
-#
-# Top will be address where 32b seconds is stored.
-@POPI SecondsPtr
-#
-# days=seconds/SecondsDay
-# Remaing Seconds= Seconds % SecondsDay
-@DIVU32IVVV SecondsPtr SecondsDay LResult LRemaingSecs
-@LONG2INTVV LResult Day
-#
-# hours = LRemainingSecs / SecondsHour, then update remaining Secs
-@DIVU32VVVV LRemaingSecs SecondsHour LResult LRemaingSecs
-@LONG2INTVV LResult Hour
-#
-# minute=LRemaingSecs / SecondsMinute then update remaining Secs
-@DIVU32VVVV LRemaingSecs SecondsMinute LResult LRemaingSecs
-@LONG2INTVV LResult Minute
-#
-# second=LRemaingSecs
-@LONG2INTVV LRemaingSecs Second
-#
-# Now calculate Year
-@MA2V 1970 Year
-@PUSH 1
-@WHEN
-   @POPNULL
-   @PUSHI Year
-   @CALL DaysInYear
-   @IF_ULE_V Day
-      # Day = Day - DaysInYear(Year) value is at TOS
-      @PUSHI Day
+@Local Year
+@Local Month
+@Local Day
+@Local Hour
+@Local Minute
+@Local Second
+
+@Local SecondsPtr
+@Local DaysInPeriod
+@Local DaysInEpoch16
+
+@Local32 LDaysSinceEpoch
+@Local32 LRemainingSecs
+@Local32 LResult
+
+   #
+   # Input is pointer to a 32-bit epoch-seconds value.
+   #
+   @POPI SecondsPtr
+
+   #
+
+   ############################################################
+   # Split seconds into complete days and time within the day.
+   ############################################################
+
+   @Call32(PV) DIV32U SecondsPtr SecondsDay
+   @POP32I(VV) LDaysSinceEpoch LRemainingSecs
+   @M32VTO16V LDaysSinceEpoch DaysInEpoch16   # Safe to use 16 bit math
+
+   #
+   # Hours
+   #
+   @Call32(VV) DIV32U LRemainingSecs SecondsHour
+   @POP32I(VV) LResult LRemainingSecs
+   @M32VTO16V LResult Hour
+
+   #
+   # Minutes
+   #
+   @Call32(VV) DIV32U LRemainingSecs SecondsMinute
+   @POP32I(VV) LResult LRemainingSecs
+   @M32VTO16V LResult Minute
+
+   #
+   # Seconds
+   #
+   @M32VTO16V LRemainingSecs Second
+
+   ############################################################
+   # Determine year.
+   #
+   # DaysInEpoch16 remains zero-based.
+   ############################################################
+
+   @MA2V 1970 Year
+
+   @Call(V) DaysInYear Year
+
+   @WHILE_LT_V DaysInEpoch16
+      @PUSHI DaysInEpoch16
       @SWP
       @SUBS
-      @POPI Day
+      @POPI DaysInEpoch16
       @INCI Year
-      @PUSH 1
-    @ELSE
-      @POPNULL
-      @PUSH 0 # Break Year Loop
-    @ENDIF
-    @DO_NOTZERO
-@ENDWHEN
-# At end of this loop Day should be just the remaining days in current year
-#
-@MA2V 1 Month
-@WHEN
-   @PUSHI Month
-   @PUSHI Year
-   @CALL DaysInMonth
-   @IF_ULT_V Day
-      # Day = Day - DaysInMonth (Value is at TOS)
-      @PUSHI Day
+      @Call(V) DaysInYear Year
+   @ENDWHILE
+   @POPNULL
+   ############################################################
+   # Determine month.
+   #
+   # DaysInEpoch16 is now the zero-based day within Year.
+   ############################################################
+
+   @MA2V 1 Month
+
+   @Call(VV) DaysInMonth Month Year
+   @WHILE_LT_V DaysInEpoch16
+      @PUSHI DaysInEpoch16
       @SWP
       @SUBS
-      @POPI Day
+      @POPI DaysInEpoch16
       @INCI Month
-      @PUSH 1
-    @ELSE
-      @POPNULL
-      @PUSH 0   # Break Month Loop
-    @ENDIF
-    @DO_NOTZERO
-@ENDWHEN
-@DECI Day
-@PUSHI Year
-@PUSHI Month
-@PUSHI Day
-@PUSHI Hour
-@PUSHI Minute
-@PUSHI Second
+      @Call(VV) DaysInMonth Month Year
+   @ENDWHILE
+   @POPNULL
+   #
+   # Remaining value is zero-based day within month.
+   #
+   @MV2V DaysInEpoch16 Day
+   @INCI Day
+
+   ############################################################
+   # Return six 16-bit values.
+   ############################################################
+
+   @PUSHI Year
+   @PUSHI Month
+   @PUSHI Day
+   @PUSHI Hour
+   @PUSHI Minute
+   @PUSHI Second
+
 @EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
+
 ###################################################################################
 # Function TimeCalabrate():int OpsPerUnit
 #     Goal is to calculate NOS per 1/256th of second

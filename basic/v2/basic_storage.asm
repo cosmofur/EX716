@@ -107,7 +107,7 @@ G InputBuf
     @POPI RunTimeHeap
 
     # Create the SoftStack large enough to allow some decent level of funciton recursion.
-    =SoftStackSize 2048
+    =SoftStackSize 1536
     @Call(VA) HeapNewObject RunTimeHeap SoftStackSize @IF_ULT_A 100 @PRT "Memory Error" @JMP BasicPanic @ENDIF
     @DUP @ADD SoftStackSize @SWP
     @CALL SetSSStack
@@ -675,15 +675,15 @@ M ZeroOutVar @MA2V 0 %1
    @LocalVar OutBufHead 09
 
    @IF_EQ_AV 1 NullProgram
-      @PRTLN "No Program."
+      @Call(AA) BasicRaiseError ERR_UNDEF_LINE 0
       @JMP SM_EXIT
    @ENDIF
 
    @POPI FileName
-   @Call(VA) file_open FileName MODE_WP
+   @Call(VA) file_open_basic FileName MODE_WP
    @POPI FilePtr
    @IF_EQ_AV 0 FilePtr
-      @PRTLN "SAVE failed to open file."
+      @Call(AA) BasicRaiseError ERR_FILE_OPEN_FAIL 0
       @JMP SM_EXIT
    @ENDIF
    # Allocate temp ASCII buffer
@@ -715,7 +715,7 @@ M ZeroOutVar @MA2V 0 %1
       @INCI OutLen
       @Call(VVV) DiskFileWrite FilePtr OutBufHead OutLen
       @IF_ULT_V BufLen
-         @PRT "Truncated Write."
+         @Call(AA) BasicRaiseError ERR_FILE_WRITE_FAIL 0
       @ENDIF
       @POPNULL      
       @PUSHI Ptr @ADD 4 @POPI Ptr
@@ -728,7 +728,7 @@ M ZeroOutVar @MA2V 0 %1
    @POPNULL
    @Call(V) DiskClose FilePtr
    @IF_ZERO
-      @PRT "Error Writing File:"
+      @Call(AA) BasicRaiseError ERR_FILE_WRITE_FAIL 0
    @ENDIF
    @POPNULL
    
@@ -765,11 +765,11 @@ M ZeroOutVar @MA2V 0 %1
     @MA2V 0 SkipLong
 
     # Open file for read ("ro")
-    @Call(VA) file_open FileName MODE_RO  # 0x726f "ro"
+    @Call(VA) file_open_basic FileName MODE_RO  # 0x726f "ro"
     @POPI FilePtr
     
     @IF_EQ_AV 0 FilePtr
-        @PRT "File: " @PRTSI FileName @PRT " could not be opened."
+        @Call(AA) BasicRaiseError ERR_FILE_NOT_FOUND 0
         @JMP LM_EXIT
     @ENDIF
 
@@ -791,7 +791,7 @@ M ZeroOutVar @MA2V 0 %1
             # Do not parse. Keep reading until non LINE_PARTIAL which
             # will be the final fragment of long line.
             @IF_EQ_AV 0 SkipLong
-               @PRTLN "Line too long; skipped."
+               @Call(AA) BasicRaiseError ERR_OUT_RANGE 0
             @ENDIF
             @MA2V 1 SkipLong
         @ELSE

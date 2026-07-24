@@ -26,8 +26,6 @@ I mul.ref
 G MULU G MUL 
 M SIZESINCECOMMENT mul.ld
 
-M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @POPRETURN @RET
-
 # --- Public entry points ---
 
 # ============================================================
@@ -43,11 +41,12 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
 :NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @FUNCTION MULU
 :MULU
-    @PUSHRETURN
-    @LocalVar MM      01   # multiplier
-    @LocalVar NN      02   # multiplicand
-    @LocalVar ANSLO   03   # accumulator (low word)
-    @LocalVar ANSHI   04   # accumulator (high word)
+@PUSHRETURN
+@Locals
+    @Local MM         # multiplier
+    @Local NN         # multiplicand
+    @Local ANSLO      # accumulator (low word)
+    @Local ANSHI      # accumulator (high word)
 
     # --- Load arguments into locals ---
     @POPI MM
@@ -61,57 +60,57 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
         @CASE 0
             @POPNULL
             @PUSH 0
-            @RETURN_RESULT
+            @JMP MULUExit
             @CBREAK
         @CASE 1
             @POPNULL
             @PUSHI NN
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK
         @CASE 2
             @POPNULL
             @PUSHI NN @SHL
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK
         @CASE 3
             @POPNULL
             @PUSHI NN @DUP SHL @ADDS
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK
         @CASE 4
             @POPNULL
             @PUSHI NN @SHL2
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK
         @CASE 5
             @POPNULL
             @PUSHI NN @DUP @SHL2 @ADDS
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK            
         @CASE 6
             @POPNULL
             @PUSHI NN @SHL @DUP @DUP @ADDS @ADDS
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK
         @CASE 7
             @POPNULL
             @PUSHI NN @DUP @SHLN 3 @SWP @SUBS
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK            
         @CASE 8
             @POPNULL
-            @PUSHI NN @SHLN 3   # 3 shifts 
-            @RETURN_RESULT
+            @PUSHI NN @SHLN 3   # 3 shifts
+            @JMP MULUExit
             @CBREAK
         @CASE 10
             @POPNULL
             @PUSHI NN @SHL @DUP @SHLN 2 @ADDS  # (ADD (NN*2), (NN*8))
-            @RETURN_RESULT
+            @JMP MULUExit
             @CBREAK
         @CASE 16
             @POPNULL
             @PUSHI NN @SHL4
-            @RETURN_RESULT
+            @JMP MULUExit            
             @CBREAK
         @CDEFAULT
             @POPNULL
@@ -163,7 +162,10 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
     @POPNULL
 
     # --- Clean up ---
-    @RETURN_RESULT
+:MULUExit    
+@EndLocals
+@POPRETURN
+@RET
 @ENDFUNCTION
 
 # ============================================================
@@ -179,8 +181,9 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
 :NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @FUNCTION MUL
 :MUL
-    @PUSHRETURN
-    @LocalVar SIGN 01
+@PUSHRETURN
+@Locals
+    @Local SIGN
 #USE MULU
 
     @MA2V 0 SIGN     # sign = +1
@@ -238,9 +241,9 @@ M RETURN_RESULT  @RestoreVar 04 @RestoreVar 03 @RestoreVar 02 @RestoreVar 01  @P
      @ENDIF
 
     # --- Clean up and return ---
-    @RestoreVar 01
-    @POPRETURN
-    @RET
+@EndLocals
+@POPRETURN
+@RET
 @ENDFUNCTION
 :NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @SIZESINCE

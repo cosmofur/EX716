@@ -47,8 +47,11 @@
 # 
 
 
-
-
+# Utility function use to keep two values in low to high order.
+# Ensures (%1, %2) such that %1 <= %2 Both must be variable lables, not constants.
+M QuickMinI @PUSHI %1 @PUSHI %2 @IF_GT_S @SWP @POPI %2 @POPI %1 @ELSE @POPNULL @POPNULL @ENDIF
+# Variation that accepts constant as one of the values.
+M QuickMinAI @PUSH %1 @PUSHI %2 @IF_GT_S @SWP @POPI %2 @POPI %1 @ELSE @POPNULL @POPNULL @ENDIF
 
 # 
 #    Stack is not poped so what ever values you are testing, will remain on stack.
@@ -466,11 +469,25 @@ M WHILE_GT_A \
   @JLE _%V_ExitLoop \
   :_%0_True
 
+M WHILE_GE_A \
+  %S \
+  :_%V_LoopTop \
+  @CMP %1 \
+  @JLT _%V_ExitLoop \
+  :_%0_True
+
 M WHILE_GT_V \
   %S \
   :_%V_LoopTop \
   @CMPI %1 \
   @JLE _%V_ExitLoop \
+  :_%0_True
+
+M WHILE_GE_V \
+  %S \
+  :_%V_LoopTop \
+  @CMPI %1 \
+  @JLT _%V_ExitLoop \
   :_%0_True
 
 M WHILE_LT_A \
@@ -480,6 +497,13 @@ M WHILE_LT_A \
   @JGE _%V_ExitLoop \
   :_%0_True
 
+M WHILE_LE_A \
+  %S \
+  :_%V_LoopTop \
+  @CMP %1 \
+  @JGT _%V_ExitLoop \
+  :_%0_True
+
 M WHILE_LT_V \
   %S \
   :_%V_LoopTop \
@@ -487,6 +511,12 @@ M WHILE_LT_V \
   @JGE _%V_ExitLoop \
   :_%0_True
 
+M WHILE_LE_V \
+  %S \
+  :_%V_LoopTop \
+  @CMPI %1 \
+  @JGT _%V_ExitLoop \
+  :_%0_True
 
 M WHILE_UGT_A \
   %S \

@@ -2,7 +2,7 @@ I common.mc
 I basic_common.h
 L softstack.ld
 D heapmgr.ld
-L hexdump.ld
+#L hexdump.ld
 L mul.ld
 L div.ld
 D string.ld
@@ -318,7 +318,7 @@ I basic_eval.asm
           @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
              @POPNULL
-             @PRTLN "SAVE requires a quoted filename. SAVE \"name\""
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
              @JMP PCExit
           @ENDIF
           @POPNULL
@@ -331,7 +331,7 @@ I basic_eval.asm
           @ENDIF
           # Call Save
           @Call(V) SAVEMEM FileData
-          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
+          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @Call(AA) BasicRaiseError ERR_MEMORY 0 @JMP BasicPanic @ENDIF @POPNULL
           @JMP PCExit
           @CBREAK
        @CASE LOADCODE
@@ -339,7 +339,7 @@ I basic_eval.asm
           @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
              @POPNULL
-             @PRTLN "LOAD requires a quoted filename. LOAD \"name\""
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
              @JMP PCExit
           @ENDIF
           @POPNULL
@@ -352,7 +352,7 @@ I basic_eval.asm
           @ENDIF
           # Call Load
           @Call(V) LOADMEM FileData
-          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
+          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @Call(AA) BasicRaiseError ERR_MEMORY 0 @JMP BasicPanic @ENDIF @POPNULL
           @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
           @JMP PCExit          
           @CBREAK
@@ -361,7 +361,7 @@ I basic_eval.asm
           @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
              @POPNULL
-             @PRTLN "TYPE requires a quoted filename. TYPE \"name\""
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
              @JMP PCExit
           @ENDIF
           @POPNULL
@@ -382,7 +382,7 @@ I basic_eval.asm
           @ENDIF
           # Call Type
           @Call(V) TYPEFILE FileData
-          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
+          @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @Call(AA) BasicRaiseError ERR_MEMORY 0 @JMP BasicPanic @ENDIF @POPNULL
           @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
           @JMP PCExit          
           @CBREAK
@@ -390,11 +390,13 @@ I basic_eval.asm
           @POPNULL
           @LOADBII BufPtr
           @IF_NEQ_A STRING_TOKEN
+              @POPNULL
               # Default is wildcard pattern
               @Call(VV) HeapNewObject RunTimeHeap 10
               @POPI FileData
               @STRSETI "*\0" FileData
           @ELSE
+              @POPNULL
               @Call(VA) ParseQuotedArgument BufPtr DIR_FN_SIZE
               @IF_NOTZERO
                   @POPNULL
@@ -405,7 +407,7 @@ I basic_eval.asm
               @ENDIF
          @ENDIF
          @Call(V)  DIRDISK FileData
-         @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @PRT "Error with filename." @JMP BasicPanic @ENDIF @POPNULL
+         @Call(VV) HeapDeleteObject RunTimeHeap FileData @IF_GT_A 0 @Call(AA) BasicRaiseError ERR_MEMORY 0 @JMP BasicPanic @ENDIF @POPNULL
          @PUSHI BufPtr @ADD StrLength @ADD 1 @POPI BufPtr  # Move to next word in command line.
          @JMP PCExit
          @CBREAK
@@ -413,7 +415,7 @@ I basic_eval.asm
          @POPNULL
          @PUSHII BufPtr @AND 0xff
          @IF_NEQ_A STRING_TOKEN
-             @PRTLN "DELETE requires filename."
+             @Call(AA)  BasicRaiseError ERR_SYNTAX 0
              @JMP PCExit
          @ENDIF
          @POPNULL
@@ -435,13 +437,12 @@ I basic_eval.asm
          @CBREAK
        @CASE MEM_CODE
          @POPNULL
-         @PRT "Memory Report\n"
-         @Call(V) HeapListMap RunTimeHeap
-         @PRT "InputBuf: " @PRTHEXI InputBuf @PRT "\n"
-         @PRT "VarFirstEntry: " @PRTHEXI VarFirstEntry @PRT "\n"
-         @PRT "LineTableBase: " @PRTHEXI LineTableBase @PRT "\n"
-         @StackDump
+         @PRT "MEM Available: "
+         @Call(V) HeapAvailable RunTimeHeap
+         @PRTTOP
+         @POPNULL
          @PRTNL
+         @Call(V) HeapListMap RunTimeHeap
          @CBREAK
          
        @CASE PRINT_CODE
@@ -939,47 +940,18 @@ I basic_eval.asm
 # Put system into error state allow roll back.
 #-------------------------------------
 :BasicRaiseError
-@PRT "ERROR AT ADDRESS: " @PRTHEXTOP @PRTNL
 @PUSHRETURN
    @LocalVar ERR_TYPE 01
    @LocalVar ERR_DOMAIN 02
 
    @POPI ERR_DOMAIN
    @POPI ERR_TYPE
-   @PRT "ERROR CODE: " @PRTI ERR_TYPE
-   
+   @PRT "ERR:" @PRTI ERR_TYPE
    @IF_NEQ_AV 0 LRL
-      @PRT "Line Number: " @PUSHII LRL @PRTTOP @POPNULL
+      @PRT " LN:" @PUSHII LRL @PRTTOP @POPNULL
    @ENDIF
-   @PRTNL   
-   @StackDump
+   @PRTNL
    @MA2V RET_ERROR RET_CODE
-   @PUSHI ERR_TYPE
-   @SWITCH
-   @CASE ERR_NONE         @PRTLN "? Unknown Error:"     @CBREAK
-   @CASE ERR_SYNTAX       @PRTLN "? Syntax Error:"       @CBREAK
-   @CASE ERR_DIV_ZERO     @PRTLN "? Divide by Zero:"     @CBREAK
-   @CASE ERR_UNDEF_VAR    @PRTLN "? Undefined Variable:" @CBREAK
-   @CASE ERR_BAD_GOTO     @PRTLN "? Invalid GOTO:"       @CBREAK
-   @CASE ERR_BAD_RETURN   @PRTLN "? Invalid Return:"     @CBREAK
-   @CASE ERR_OUT_RANGE    @PRTLN "? Out of Range:"       @CBREAK
-   @CASE ERR_MEMORY       @PRTLN "? Memory Error:"       @CBREAK
-   @CASE ERR_STACK_OVERFLOW @PRTLN "? Stack Overflow:"    @CBREAK
-   @CASE ERR_BAD_NEXT     @PRTLN "? NEXT Without FOR:"  @CBREAK
-   @CASE ERR_STRING_SPACE @PRTLN "? String Space Error:" @CBREAK
-   @CASE ERR_NO_FILE_HANDLES @PRTLN "? Filesystm out of handles :"     @CBREAK
-   @CASE ERR_FILE_NOT_FOUND @PRTLN "? File Not Found :"     @CBREAK
-   @CASE ERR_FILE_OPEN_FAIL  @PRTLN "? Open File Error :"     @CBREAK
-   @CASE ERR_FILE_READ_FAIL @PRTLN "? Read File Error:"     @CBREAK
-   @CASE ERR_FILE_WRITE_FAIL @PRTLN "? Write File Error :"     @CBREAK
-   @CASE ERR_INTERNAL_FAULT @PRTLN "? Internal Fault :"     @CBREAK
-   @CASE ERR_UNDEF_LINE @PRTLN "? Undefined Line:"          @CBREAK
-   @CDEFAULT
-         @PRTLN "? Unknown Error:"
-         @CBREAK
-   @ENDCASE
-   @POPNULL
-      
 
    @IF_EQ_AV 1 RUN_ACTIVE
       @MV2V BPC RET_ERRLINE
@@ -987,8 +959,8 @@ I basic_eval.asm
       @MA2V 0 RET_ERRLINE
    @ENDIF
    @RestoreVar 02
-   @RestoreVar 01   
-   @POPRETURN
+   @RestoreVar 01
+@POPRETURN
    @CALL BasicPanic
 @RET
 

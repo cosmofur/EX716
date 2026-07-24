@@ -196,7 +196,7 @@ L timetool.ld
 #
 # Clear Line
 @PUSH 0 @PUSHI PostionRow @CALL WinCursor
-@PRTS CSICODE @PRT "2K"   # Ansi code erase current line
+@PRTS CISCODE @PRT "2K"   # Ansi code erase current line
 @PUSHII BarIndex @SHR
 @ADDI PostionCenter
 @SUBII BarIndex

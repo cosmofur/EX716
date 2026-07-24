@@ -145,6 +145,12 @@ M Call32(PA) @Insert32(A) V1_%0 %3 @PUSHII %2  @PUSHI %2 @ADD 2 @PUSHS @PUSHI V1
 # Call32(PP) when both are PtrTo32bit pointers
 M Call32(PP) @PUSHII %2 @PUSHI %2 @ADD 2 @PUSHS @PUSHII %3 @PUSHI %3 @ADD 2 @PUSHS @CALL %1
 #
+# Call32(PV) When first is pointer and second is simple variable
+M Call32(PV) @PUSHII %2 @PUSHI %2 @ADD 2 @PUSHS @PUSHI %3 @PUSHI %3+2 @CALL %1
+#
+# Call32(VP) When first is variable and second is pointer
+M Call32(VP) @PUSHI %2 @PUSHI %2+2 @PUSHII %3 @PUSHI %3 @ADD 2 @PUSHS @CALL %1
+#
 # Call32(A) For sigle parameter 32 bit immediate $$$ value function calls
 M Call32(A) @Insert32(A) V1_%0 %2 @Call(VV) %1 V1_%0 V1_%0+2
 #

@@ -150,7 +150,7 @@ L div.ld
 @PRTLN "Calling DrawMap"
 @CALL DrawMap
 #
-@PRTS CSICODE @PRT "-1;1H"
+@PRTS CISCODE @PRT "-1;1H"
 
 @END
 
@@ -180,9 +180,9 @@ L div.ld
 @INCI Size
 @PUSHI MapObject @ADD 6 @ADDI YPOS @PUSHS @AND 0xff
 @POPI PreColor
-@PRTS CSICODE @PRT "0;0H"
-@PRTS CSICODE @PRT "0m|"
-@PRTS CSICODE @PRT "48;5;" @PRTI PreColor @PRT "m"
+@PRTS CISCODE @PRT "0;0H"
+@PRTS CISCODE @PRT "0m|"
+@PRTS CISCODE @PRT "48;5;" @PRTI PreColor @PRT "m"
 @ForIA2V Index1 1 Size
    @PUSHI Index1
    @ADDI MapObject
@@ -192,22 +192,22 @@ L div.ld
    @IF_EQ_VV CharVal PreColor  # saves us from changing color when it's already that color.
       @PRT " "
    @ELSE
-      @PRTS CSICODE @PRT "48;5;" @PRTI CharVal @PRT "m*"
+      @PRTS CISCODE @PRT "48;5;" @PRTI CharVal @PRT "m*"
       @MV2V CharVal PreColor
    @ENDIF
    # XPOS counts down the width of current line.
    @IF_EQ_AV 1 XPOS
        @PUSHI MapObject @ADD 2 @PUSHS @POPI XPOS
-       @PRTS CSICODE @PRT "0m|\n|"
+       @PRTS CISCODE @PRT "0m|\n|"
        @PUSHI Index1 @ADDI MapObject @PUSHS @AND 0xff
        @POPI PreColor
        # YPOS is 1st character of next line.
-       @PRTS CSICODE @PRT "48;5;" @PRTI PreColor @PRT "m"
+       @PRTS CISCODE @PRT "48;5;" @PRTI PreColor @PRT "m"
    @ELSE
        @DECI XPOS
    @ENDIF
 @Next Index1
-@PRTS CSICODE @PRTLN "0m"
+@PRTS CISCODE @PRTLN "0m"
 @POPLOCAL Var07
 @POPLOCAL Var06
 @POPLOCAL Var05

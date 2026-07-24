@@ -1138,6 +1138,42 @@ M PUSHI5 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4 @PUSHI %5
 M PUSHI4 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4
 M PUSHI3 @PUSHI %1 @PUSHI %2 @PUSHI %3
 M PUSHI2 @PUSHI %1 @PUSHI %2
+#----------------------------------------------
+# Table Structue helpers
+#----------------------------------------------
+#
+# Fill Group, saves Word to object at offset constant
+# FILL_AT_? ( BasePtrVariable, Offset_Constant [source A-constant,V-Varibale,S-Stack]
+M FILL_AT_A @PUSH %3  @PUSHI %1 @ADD %2 @POPS
+M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
+M FILL_AT_S @PUSHI %1 @ADD %2 @POPS
+# Get Group, fetches a word from object of offset constant
+# GET_FROM ( BasePtrvariable, Offset_Constant) 
+M GET_FROM @PUSHI %1 @ADD %2 @PUSHS
+# Returns Pointer to where field is in object.
+M PTR_AT @PUSHI %1 @ADD %2
+# Index, get start of structure in table of structures.
+# Return Ptr to Object
+# INDEX_PTR(TablePtr, Index[AV], ObjectSize_Constant)
+M INDEXA_PTR @PUSH %2 @PUSH %3 @CALL MULU @ADDI %1
+M INDEXV_PTR @PUSHI %2 @PUSH %3 @CALL MULU @ADDI %1
+# List Based version of GET_FROM
+# LIST_GET_FROM( BasePtrVariable, Index[AV], ObjectSize_Constant, FieldOffset_Constant)
+M LISTA_GET_FROM @INDEXA_PTR %1 %2 %3 @ADD %4 @PUSHS
+M LISTV_GET_FROM @INDEXV_PTR %1 %2 %3 @ADD %4 @PUSHS
+# List Based versions of FILL_AT
+# LIST[AV]_FILL_AT_[AVS](BasePtrVariable, Index[AV], ObjectSizeC, FieldOffsetC, Source A,V,S])
+M LISTA_FILL_AT_A @PUSH %5 @INDEXA_PTR %1 %2 %3 @ADD %4 @POPS
+M LISTA_FILL_AT_V @PUSHI %5 @INDEXA_PTR %1 %2 %3 @ADD %4 @POPS
+M LISTV_FILL_AT_A @PUSH %5 @INDEXV_PTR %1 %2 %3 @ADD %4 @POPS
+M LISTV_FILL_AT_V @PUSHI %5 @INDEXV_PTR %1 %2 %3 @ADD %4 @POPS
+M LISTA_FILL_AT_S @INDEXA_PTR %1 %2 %3 @ADD %4 @POPS
+M LISTV_FILL_AT_S @INDEXV_PTR %1 %2 %3 @ADD %4 @POPS
+
+
+
+
+
 
 
 #--------------------------------------------------

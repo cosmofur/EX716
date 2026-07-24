@@ -260,13 +260,8 @@ $$1 "^" "^\0"
 
 #USE  ADD32S
 #USE  AND32
-#USE  CMP32S
-#USE  CMP32U
 #USE  COMP232
 #USE  DIV32S
-#USE  ADD32U
-#USE  ADD32_BASE
-#USE  DIV32U
 #USE  MUL32S
 #USE  i32tos
 #USE  SUB32S
@@ -275,6 +270,7 @@ $$1 "^" "^\0"
 #USE HeapDeleteObjecct
 #USE HeapDeleteObject
 #USE HeapListMap
+#USE HeapAvailable
 #USE HeapNewObject
 #USE HeapResizeObject
 
@@ -289,11 +285,11 @@ $$1 "^" "^\0"
 #USE FSReadHeader
 #USE FSClearFileUsed
 #USE SetDiskHeap
-#USE file_open
+#USE file_open_basic
 #USE strncpy
 #USE strcmp
 #USE strfndc
-#USE strstr
+##USE strstr
   
 
 P Starting to define the #USE for string.ld
@@ -304,7 +300,6 @@ P Starting to define the #USE for string.ld
 #USE  strcpy
 #USE  strlen
 #USE  strncmp
-#USE  strncpyw
 #USE  ISAlphaNum
 #USE  ISNumeric
 #USE  stoi

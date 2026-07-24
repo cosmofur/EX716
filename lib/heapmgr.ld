@@ -15,6 +15,7 @@ G HeapNewObject         # HeapNewObject(HeapID,SizeBytes):ObjectID
 G HeapResizeObject      # HeapResizeObject(HeapID,ObjectID,NewSizeBytes):ObjectID
 G HeapDeleteObject      # HeapDeleteObject(HeapID,ObjectID):0|error
 G HeapListMap           # HeapListMap(HeapID)
+G HeapAvailable         # HeapAvailable(HeapID):FreeBytes
 G GetObjectRealSize     # GetObjectRealSize(HeapID, ObjectID):SizeBytes
 G HeapAppend            # HeapAppend(ObjID1,ObjID2,Offset):NewObjectID
 G HeapValidate          # HeapValidate(HeapID):0|error(1|2|3)
@@ -473,6 +474,46 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
 @ENDFUNCTION   
    
 
+
+# Function HeapAvailable(HeapID):FreeBytes
+@FUNCTION HeapAvailable
+:HeapAvailable
+@PUSHRETURN
+   @LocalVar HeapID 01
+   @LocalVar ObjectID 02
+   @LocalVar FreeBytes 03
+#USE GetObjectRealSize
+
+   @POPI HeapID
+   @MA2V 0 FreeBytes
+   @PUSHII HeapID
+   @POPI ObjectID
+
+   @PUSHI ObjectID
+   @WHILE_NOTZERO
+      @POPNULL
+      @PUSHI ObjectID @SUB OBJ_HEAD_SIZE @PUSHS @AND 0xff
+      @IF_ZERO
+         @POPNULL
+         @Call(VV) GetObjectRealSize HeapID ObjectID
+         @ADDI FreeBytes
+         @POPI FreeBytes
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @PUSHI ObjectID @SUB OBJ_NEXT_LOC @PUSHS
+      @POPI ObjectID
+      @PUSHI ObjectID
+   @ENDWHILE
+   @POPNULL
+
+   @PUSHI FreeBytes
+   @RestoreVar 03
+   @RestoreVar 02
+   @RestoreVar 01
+@POPRETURN
+@RET
+@ENDFUNCTION
 
 # Function GetObjectRealSize(HeapID,ObjectID)
 # Utility given ObjectID will look forward to the next object and calculate the size of ObjectID
