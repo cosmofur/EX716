@@ -1087,9 +1087,9 @@ M Call_PromoteType \
          @PUSH 0
       @ELSE
          @IF_EQ_AV ",\0" Ch
-            @PUSH 0
-            @PUSHI ScanPtr
-            @POPS
+            @Call(VAA) EmitByte ScanPtr 0 1
+            @POPNULL
+            @POPNULL
             @INCI ScanPtr
             @MA2V 1 HasMore
             @PUSH 0
@@ -1217,22 +1217,12 @@ M Call_PromoteType \
       @POPNULL
    @ENDIF
 
-   @Call(VA) HeapNewObject RunTimeHeap INPUTBUF_SIZE
-   @IF_ULT_A 100
-      @Call(AA) BasicRaiseError ERR_MEMORY 0
-   @ENDIF
-   @POPI WorkBuf
-
    @IF_NEQ_AV 0 NeedPrompt
       @PRT "? "
    @ENDIF
    @READSI InputBuf
    @PRTNL
 
-   @Call(V) FixUpCaseCmd InputBuf
-   @Call(VVAA) TokenizeStr InputBuf WorkBuf INPUTBUF_SIZE KeyWordTable
-   @POPNULL
-   @MV2V WorkBuf ValuePtr
    @MV2V InputBuf RawValuePtr
 
    @PUSH 1
@@ -1283,29 +1273,18 @@ M Call_PromoteType \
       @AND 0xf
       @POPI VarType
 
+      @Call(V) InputNextRawSegment RawValuePtr
+      @POPI3 HasMoreInput RawValuePtr SegmentPtr
+
       @IF_EQ_AV STRING_TYPE VarType
-         # Quoted string input can use the expression parser; otherwise use a raw
-         # comma-delimited segment for classic unquoted string input.
-         @PUSHII ValuePtr @AND 0xff
-         @IF_EQ_A STRING_TOKEN
-            @POPNULL
-            @Call(V) BasicEval ValuePtr
-            @POPI4 ValuePtr EvalHigh EvalLow EvalType
-            @Call(V) InputNextRawSegment RawValuePtr
-            @POPI3 HasMoreInput RawValuePtr SegmentPtr
-         @ELSE
-            @POPNULL
-            @Call(V) InputNextRawSegment RawValuePtr
-            @POPI3 HasMoreInput RawValuePtr SegmentPtr
-            @Call(V) InputSkipTokenSegment ValuePtr
-            @POPI ValuePtr
-            @MV2V SegmentPtr EvalLow
-            @MA2V 0 EvalHigh
-            @MA2V STRING_TYPE EvalType
-         @ENDIF
+         @MV2V SegmentPtr EvalLow
+         @MA2V 0 EvalHigh
+         @MA2V STRING_TYPE EvalType
       @ELSE
-         @Call(V) BasicEval ValuePtr
-         @POPI4 ValuePtr EvalHigh EvalLow EvalType
+         @Call(V) stoi SegmentPtr
+         @POPI EvalLow
+         @MA2V 0 EvalHigh
+         @MA2V INT_TYPE EvalType
       @ENDIF
 
       @Call(VVVV) CoerceType VarType EvalType EvalLow EvalHigh
@@ -1323,13 +1302,6 @@ M Call_PromoteType \
       @POPI Tok
       @IF_EQ_AV ",\0" Tok
          @INCI PtrIn
-         @PUSHII ValuePtr @AND 0xff
-         @IF_EQ_A ",\0"
-            @POPNULL
-            @INCI ValuePtr
-         @ELSE
-            @POPNULL
-         @ENDIF
          @PUSH 1
       @ELSE
          @IF_EQ_AV EOL_TOKEN Tok
@@ -1339,12 +1311,6 @@ M Call_PromoteType \
          @ENDIF
       @ENDIF
    @ENDWHILE
-   @POPNULL
-
-   @Call(VV) HeapDeleteObject RunTimeHeap WorkBuf
-   @IF_NOTZERO
-      @Call(AA) BasicRaiseError ERR_MEMORY 0
-   @ENDIF
    @POPNULL
 
    @PUSHI PtrIn
