@@ -54,14 +54,15 @@ Remember, random results start from **0**, not 1.
 To roll a 6-sided die (values 1–6):
 
 ```asm
-@PUSH 6           # range we want
-@CALL rndint      # generate random 0..6
+@Call(A) rndint 6 # generate random 0..6
 @ADD 1            # shift range → 1..6
 ```
 
 ---
 
 ## 2. Basic Input/Output Recap
+
+From here on, examples use the friendly `@Call(...)` form for simple function arguments. `A` means direct/immediate value, `V` means variable value, and `P` means pointer value. For example, `@Call(A) rndint 6` pushes `6` and calls `rndint`.
 
 We’ll need simple I/O for our program:
 
@@ -111,15 +112,13 @@ L random.ld
 @MA2V 0 Score     # initialize Score
 
 # Seed RNG with fixed number (repeatable sequence)
-@PUSH 101
-@CALL rndsetseed
+@Call(A) rndsetseed 101
 
 # --- Main loop ---
-@PUSH 0
+@PUSH 1
 @WHILE_NOTZERO
    # Generate random die roll (1–6)
-   @PUSHI 6
-   @CALL rndint
+   @Call(A) rndint 6
    @ADD 1
    @POPI Value
 
@@ -169,7 +168,7 @@ We can throw away the high word and use the low word as a seed:
 ```asm
 @GETTIME
 @POPNULL         # discard high word
-@CALL rndsetseed # seed with low word
+@CALL rndsetseed # low word is already on the stack
 ```
 
 This makes each run of the program different.

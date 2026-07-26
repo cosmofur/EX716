@@ -8,7 +8,7 @@ Now we’ll go further: **combining multiple libraries** to build a complete ani
 ## 🎯 Goals
 
 1. Learn how to combine several EX716 libraries in one project.  
-2. Understand how structured macros (`@IF`, `@FOR`, etc.) keep logic clear.  
+2. Understand how structured macros (`@IF_*`, `@For...`, etc.) keep logic clear.  
 3. Study an example of real-time animation with screen updates and randomness.  
 
 ---
@@ -56,12 +56,12 @@ The animation would be too fast without a delay.
 The program calls:
 
 ```asm
-@PUSH 1
-@CALL Sleep
+@Call(A) Sleep 1
+```
 
 This pauses ~1 second per frame, keeping the motion human-visible.
 
-📜 The Demo Program
+## 📜 The Demo Program
 
 Below is the complete cowdemo.asm.
 Try assembling and running it in the emulator to see the animated cow bounce around the screen.
@@ -72,43 +72,44 @@ L timetool.ld      # for delay between frames
 L string.ld        # for strlen()
 L mul.ld           # for MULU
 L random.ld        # for random direction changes
+L softstack.ld     # scoped @Locals frames
 
 =FaceRight 0
 =FaceLeft  1
 
 # ----------------------------------------------------------------------
 # DrawCow(UpX,UpY,Dir)
-# Draws cow facing Dir (1=Right, -1=Left) starting at X,Y
+# Draws cow facing Dir (0=Right, 1=Left) starting at X,Y
 # ----------------------------------------------------------------------
 :DrawCow
 @PUSHRETURN
-@LocalVar UpX 01
-@LocalVar UpY 02
-@LocalVar Dir 03
-@LocalVar Index1 04
-@LocalVar CowStr 05
-@LocalVar CowWidth 06
+@Locals
+@Local UpX
+@Local UpY
+@Local Dir
+@Local Index1
+@Local CowStr
+@Local CowWidth
 @POPI Dir
 
 @POPI UpY
 @POPI UpX
-   @PUSH RightCow @CALL strlen @ADD 1 @POPI CowWidth
+   @Call(A) strlen RightCow @ADD 1 @POPI CowWidth
    @ForIA2B Index1 0 8
       @PUSHI UpX
       @PUSHI UpY @ADDI Index1
       @CALL WinCursor
-      @IF_EQ_AV 1 Dir
+      @IF_EQ_AV FaceRight Dir
           @PUSH RightCow
       @ELSE
           @PUSH LeftCow
       @ENDIF
-      @PUSHI CowWidth @PUSHI Index1 @CALL MULU
+      @Call(VV) MULU CowWidth Index1
       @ADDS
       @POPI CowStr
       @PRTSI CowStr
    @Next Index1
-@RestoreVar 06 @RestoreVar 05 @RestoreVar 04 @RestoreVar 03
-@RestoreVar 02 @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -138,17 +139,18 @@ L random.ld        # for random direction changes
 # ----------------------------------------------------------------------
 :DemoCow
   @PUSHRETURN
-  @LocalVar CowX 01
-  @LocalVar CowY 02
-  @LocalVar CowDX 03
-  @LocalVar CowDY 04
-  @LocalVar Distance 05
-  @LocalVar Index01 06
-  @LocalVar CowDir 07
-  @LocalVar WinRightLimit 08
-  @LocalVar WinLeftLimit 09
-  @LocalVar WinTopLimit 10
-  @LocalVar WinBotLimit 11
+  @Locals
+  @Local CowX
+  @Local CowY
+  @Local CowDX
+  @Local CowDY
+  @Local Distance
+  @Local Index01
+  @Local CowDir
+  @Local WinRightLimit
+  @Local WinLeftLimit
+  @Local WinTopLimit
+  @Local WinBotLimit
 
   @MA2V 1 CowDX
   @MA2V 0 CowDY
@@ -171,12 +173,10 @@ L random.ld        # for random direction changes
      # (distance countdown + frndint)
 
      # Draw the cow
-     @PUSHI CowX @PUSHI CowY @PUSHI CowDX @CALL DrawCow
+     @Call(VVV) DrawCow CowX CowY CowDir
   @Next Index01
 
- @RestoreVar 11 @RestoreVar 10 @RestoreVar 09 @RestoreVar 08
- @RestoreVar 07 @RestoreVar 06 @RestoreVar 05 @RestoreVar 04
- @RestoreVar 03 @RestoreVar 02 @RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -184,12 +184,12 @@ L random.ld        # for random direction changes
 @CALL TimeCalabrate
 @CALL WinClear
 @GETTIME @POPNULL
-@POPNULL @PUSH 101
-@CALL rndsetseed
+@POPNULL
+@Call(A) rndsetseed 101
 @CALL DemoCow
 @END
 
-🔎 Wrap-Up
+## 🔎 Wrap-Up
 
 This program shows how independent libraries combine into a larger whole:
 
@@ -205,7 +205,7 @@ random.ld → unpredictability
 
 By combining these, you’ve built your first animated program on the EX716.
 
-🚀 Further Projects
+## 🚀 Further Projects
 
 Bouncing Ball – Replace the cow sprite with a single character like *.
 

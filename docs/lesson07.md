@@ -1,6 +1,6 @@
 # 📚 EX716 Assembler - Lesson 7: Standard Library Overview
 
-The EX716 core CPU is intentionally minimalist, but real-world programs need more functionality than 52 instructions can offer. Rather than baking everything into the core, functionality is extended using a set of modular, loadable **libraries** (`.ld` files).
+The EX716 core CPU is intentionally minimalist, but real-world programs need more functionality than the core instruction set can offer. Rather than baking everything into the core, functionality is extended using a set of modular, loadable **libraries** (`.ld` files).
 
 These libraries are written in EX716 macro assembly and provide features traditionally handled by OS calls or high-level runtime environments.
 
@@ -19,7 +19,7 @@ These libraries are written in EX716 macro assembly and provide features traditi
 | `mul.ld`       | Integer multiply (signed/unsigned)      |
 | `random.ld`    | Simple pseudo-random generator          |
 | `screen.ld`    | ANSI terminal cursor/screen control     |
-| `mouse.ld`     | ANSI terminal mouse events tools        |
+| `event.ld`     | Terminal mouse, keyboard, and timer events |
 | `softstack.ld` | Allocate and manage software stacks     |
 | `string.ld`    | String comparison, copy, length         |
 | `timetool.ld`  | Time calculations (epoch math, offsets) |
@@ -51,25 +51,29 @@ G HeapNewObject(heap_id, size)            → object
 G HeapResizeObject(heap_id, obj, size)    → object
 G HeapDeleteObject(heap_id, obj)          → status
 G HeapListMap(heap_id)                    → prints/inspects
-G GetObjectRealSize(heap_id, obj)         → size - hidden headers.
-G HeapAppend(obj1, obj2, offset)          → modifies obj1
+G HeapAvailable(heap_id)                  → free bytes
+G GetObjectRealSize(heap_id, obj)         → usable object size
+G HeapAppend(obj1, obj2, offset)          → appends obj2 to obj1
+G HeapDefrag(heap_id)                     → merges adjacent free objects
+G HeapValidate(heap_id)                   → 0 or validation error
 ```
 
 ---
 
 ## 🧮 `lmath.ld` — 32-bit Integer Math
 
-**Depends on:** `string.ld`, `common.mc`  
+**Depends on:** `shift16.ld`, `string.ld`, `common.mc`  
 All operands are **pointers to 32-bit little-endian integers in memory**.  
 There is also an assembler prefix `$$$` to embed a 32-bit literal at the current memory address, though it cannot be pushed directly.
 
 Provides:
 
-- Arithmetic: `ADD32`, `SUB32`, `CMP32`, `DIV32`, `DIV32U`, `MUL32`
-- Bitwise: `AND32`, `OR32`, `INV32`, `SHL32`, `SHR32`
-- Conversions: `INT2LONG`, `LONG2INT`, `i32tos`, `stoi32`
-- I/O: `PRT32BIN`, `PRT32HEX`
-- Vector forms: `ADD32VVV`, `DIV32VVVV`, etc.
+- Arithmetic: `ADD32S`, `ADD32U`, `SUB32S`, `SUB32U`, `MUL32U`, `MUL32S`, `DIV32U`, `DIV32S`
+- Compatibility aliases: `ADD32`, `SUB32`, `CMP32`
+- Bitwise: `AND32`, `OR32`, `XOR32`, `INV32`, `SHL32`, `SHR32`
+- Bit helpers: `SetBit32`, `ClearBit32`, `SHL16x32`, `SHR16x32`, `SHL3264`
+- Conversions: `i32tos`, `stoi32`
+- Flags/constants: `Flags32`, `C32Flag`, `N32Flag`, `Z32Flag`, `O32Flag`, `ZERO32`, `ONE32`, `TWO32`, `OVF32`
 
 > This library is large and will be covered in detail in a future lesson.
 
@@ -98,7 +102,6 @@ G rndint(limit)    → Random mod limit
 G rndsetseed(seed) → Set PRNG seed
 G frnd16()         → Faster, weaker PRNG
 G frndint(limit)   → Faster with range
-G xorshift16(seed) → Mix entropy
 ```
 
 > This is a lightweight, non-cryptographic generator.
@@ -111,39 +114,73 @@ G xorshift16(seed) → Mix entropy
 Provides cursor and screen control for ANSI-compatible terminals.
 
 ```text
-G WinClear          G WinCursor          G WinWidth         G WinHeight
-G WinResize         G WinPlot            G WinHideCursor    G WinShowCursor
-G ColorReset        G ColorFGSet         G ColorBGSet       G CSICODE
-G WinNorth          G WinSouth           G WinEast          G WinWest
+G WinClear          G WinResize         G WinWidth         G WinHeight
+G WinClearRect      G WinCursor         G WinHideCursor    G WinShowCursor
+G WinNorth          G WinSouth          G WinEast          G WinWest
+G ColorReset        G ColorFGSet        G ColorBGSet       G WinPlot
+G WinBox            G WinScrollRegion   G WinResetScrollRegion
+G WinScrollUp       G WinScrollDown     G WinUnderLineOn   G WinUnderLineOff
+G WinBoldOn         G WinBoldOff        G CISCODE
 ```
 
 > A future lesson will demonstrate creating screen-based interfaces using this library.
 
 ---
 
-## 🖥️ `mouse.ld` — ANSI Mouse Control
+## 🧭 `event.ld` — Terminal Event Handling
 
-** Depends on: `common.md`, `heapmgr.ld` 
-Provides tools for dealing with mouse and event programming.
+**Depends on:** `common.mc`, `heapmgr.ld`, `mul.ld`
+
+Provides a table-based event system for terminal mouse, keyboard, and timer events. Programs create an event table on the heap, register the events they care about, then call `EventPoll` to check whether one has fired.
 
 ### Core Functions
+
 ```text
-G MouseInit         G KeyEnQueue             G KeyDeQueue   G KeyQueueSize
-G KeyReadMouseSeq   G KeySearchMouse         G KeySearchKeyBoard
-G KeySearchTimer    G MouseDisable           G MouseAddEvent
-G ReadKeyTimeOut    G MouseEventLoop 
+G TermMouseEnable       G TermMouseDisable
+G EventTableNew         G EventTableFree
+G EventSetActive        G EventGetActive
+G EventAdd              G EventPoll
+G EventList
 ```
+
+`EventAdd` uses the same six stack arguments for all event types:
+
+```text
+EventAdd(Type, X1, Y1, X2, Y2, EventID)
+```
+
+- Mouse events: `Type=MouseEvent`, `X1/Y1` to `X2/Y2` describe the hit rectangle.
+- Keyboard events: `Type=KeyEvent`, `X1` is a pointer to the string of keys to watch.
+- Timer events: `Type=TimerEvent`, `X1` is the duration in seconds and `Y1` is the repeat flag (`0` one-shot, `1` periodic).
+
+`EventPoll()` returns `0` when nothing matched, or the matching `EventID`.
+
 ### Core variables
-```
-G CSICODE           G LastEventType          G LastEventID  G LastEventTSLo
-G LastEventTSHi     G LastMouseX             G LastMouseY   G LastMouseBtn
+
+```text
+G CISCODE           G ActiveEventTable       G LastEventType
+G LastEventID       G LastEventTSLo          G LastEventTSHi
+G LastMouseX        G LastMouseY             G LastMouseBtn
 G LastMouseFlags    G LastMouseRawB          G LastMouseTerm
-G MF_PRESS          G MF_RELEASE             G MF_DRAG      G MF_WHEEL
-G MF_SHIFT          G MF_ALT                 G MF_CTRL      G LastKeyMatchPtr
-G LastKeyLen        G LastKeyChar            G LastTimerDur G LastTimeRep
-G LastTimerELap     G LastTimerSkip          G MouseEvent   G TimerEvent
-G KeyEvent
+G MF_PRESS          G MF_RELEASE             G MF_DRAG
+G MF_WHEEL          G MF_SHIFT               G MF_ALT
+G MF_CTRL           G LastKeyMatchPtr        G LastKeyLen
+G LastKeyChar       G LastTimerDur           G LastTimeRep
+G LastTimerELap     G LastTimerSkip
+G MouseEvent        G MouseEventClick        G MouseEventRelease
+G TimerEvent        G KeyEvent
 ```
+
+The lower-level queue/search helpers are also exported for advanced code:
+
+```text
+G ReadKeyTimeOut    G KeyEnQueue             G KeyDeQueue
+G KeyQueueSize      G KeyReadMouseSeq        G KeySearchMouse
+G KeySearchKeyBoard G KeySearchTimer
+```
+
+After a successful `EventPoll`, the `Last...` variables describe the matched event.
+
 ---
 
 ## 📥 `softstack.ld` — Software Stack Management
@@ -156,7 +193,7 @@ Defines a software-managed memory stack in contrast to the CPU's hardware stack.
 ```text
 G SetSSStack(ptr)              → Initialize soft stack
 G SaveSSStack / RestoreSSStack
-G __SS_TOP / __SS_BOTTOM / __SS_SP  → Variable definding Soft Stack
+G __SS_TOP / __SS_BOTTOM / __SS_SP  → Variables defining the soft stack
 G __MOVE_HW_SS / __MOVE_SS_HW  → POP HW, PUSH SW or POP SW, PUSH HW
 ```
 
@@ -192,24 +229,24 @@ Main functions:
 ```
 strlen(A)      → String Length
 strcpy(A,B)    → Copies StrB overwrite StrA
-strncpy(A,B,mx)→ Copies upto mx of strB over StrA
+strncpy(A,B,mx)→ Copies up to mx of strB over StrA
 strcat(A,B)    → Appends StrB to StrA (does not resize A)
-strncat(A,B,mx)→ Appens upto mx of StrB to StrA
-strcmp(A,B)    → Compairs A to B, A-B
-strncp(A,B,mx) → Compairs A[:mx] to B[:mx]
-strstr(A,B)    → where sub string B found in A or null
+strncat(A,B,mx)→ Appends up to mx of StrB to StrA
+strcmp(A,B)    → Compares A to B, A-B
+strncmp(A,B,mx)→ Compares A[:mx] to B[:mx]
+strstr(A,B)    → Address where substring B is found in A, or null
 strfndc(A,c)   → First instance of char c or null
 memcpy(A,B,mx) → Copy mx bytes from B to A. Not Null Terminated.
-itos(A,I,B)    → Turn value I into string A using base B 
+itos(A,I,B)    → Turn value I into string A using base B
 stoi(A)        → Returns integer value of A, support 0x# 0o# and 0b# default decimal
-stoifirst(A)   → like stoi but tolerant of non null string terminators
-strtok(A,ch)   → Walk though A finding tolkens deliinated by character ch.
-splitstr(A,B,HeapID) → Returns new Heap Array of A split by set in B, needs HeapID
-SplitDelete(Obj,HeapID) → Cleanup heap object created by splitstr
+stoifirst(A)   → Like stoi but tolerant of non-null string terminators
+strtok(A,ch)   → Walk through A finding tokens delimited by character ch.
+splitstr(A,B,HeapID) → Returns new heap array of A split by set in B, needs HeapID
+SplitDelete(Obj,HeapID) → Clean up heap object created by splitstr
 strUpCase(A)    → Modify A so all alpha are uppercase
 strLowCase(A)   → Modify A so all alpha are lowercase
-ISAlpha(A)      → true if 1st char in A is in range [A-Z,A-z]
-IsAlphaNum(A)   → true if 1st char in A is in range [A-Z,A-z,0-9,_]
+ISAlpha(A)      → true if 1st char in A is in range [A-Z,a-z]
+IsAlphaNum(A)   → true if 1st char in A is in range [A-Z,a-z,0-9,_]
 ISNumeric(A)    → true if 1st character is in range [0-9]
 ```
   
@@ -224,7 +261,7 @@ G Time2Units     → Convert time value into calendar fields
 G IsLeapYear     → True if year is leap
 G DaysInYear     → 365 or 366
 G DaysInMonth    → Month length
-G TimeCalabrate  → Setup time baseline
+G TimeCalabrate  → Set up time baseline
 G Sleep, SleepMilli
 ```
 

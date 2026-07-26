@@ -86,14 +86,15 @@ EX716 uses suffix notation to indicate what is being compared. Here's how to rea
 | `_A`   | TOS vs Immediate constant        | `@IF_EQ_A 0`          |
 | `_V`   | TOS vs Variable (memory address) | `@IF_GT_V Score`      |
 | `_S`   | SFT vs TOS Values                | `@IF_EQ_S`            |
-| `_AV`  | Constant vs. Variable            | `@IF_LT_AV 5 Max`     |
-| `_VV`  | Variable vs. Variable            | `@IF_EQ_VV Var1 Var2` |
+| `_AV`  | Constant vs. Variable (equality) | `@IF_EQ_AV 5 Max`     |
+| `_VV`  | Variable vs. Variable (equality) | `@IF_EQ_VV Var1 Var2` |
 
 Examples:
 
 ```asm
 @IF_EQ_VV Var1 Var2        # True if Var1 == Var2
-@IF_GT_AV 100 MaxValue     # True if 100 > MaxValue
+@PUSHI MaxValue
+@IF_GT_A 100               # True if MaxValue > 100
 ```
 
 ---
@@ -111,7 +112,8 @@ But you can express it in EX716 like this:
 ```asm
 @PUSH 0
 @IF_EQ_VV a1 b1
-   @IF_GT_VA a11 100      # Nested IF's are like ANDs
+   @PUSHI a1
+   @IF_GT_A 100           # Nested IFs are like ANDs
       @POPNULL @PUSH 1
    @ENDIF
 @ENDIF
@@ -183,7 +185,7 @@ Loop exits when Index=10, so the body is skipped on 10
 | `@ForIupV2A`         | Var to Const (ascending)   |
 | `@ForIdownA2V`       | Const to Var (descending)  |
 | `@Next Index`        | Increment by 1             |
-| `@NextBy  Index -1   | Increment by -1 (decrement)|
+| `@NextBy Index -1`   | Increment by -1 (decrement)|
 | `@NextByI Index Var` | Add Var to Index each step |
 
 ---
@@ -237,7 +239,7 @@ Example:
    @PRT "Too low\n"
 @ENDIF
 
-For readablity you can puts short IF blocks on one line.
+For readability, you can put short IF blocks on one line.
 
 @IF_ZERO @ADD 25 @ELSE @SUB 1 @ENDIF
 ```
@@ -248,8 +250,8 @@ This is much cleaner than manually tracking 3–4 labels for control flow.
 
 ## 🧭 Recap
 
-- Use suffixes like `_V`, `_A`, `_VV`, etc. to control comparison types
-- `@IF`, `@WHILE`, `@WHEN`, and `@FOR` macros replace most label-heavy logic
+- Use suffixes like `_V`, `_A`, and `_VV` to control comparison types. For relational tests, push the left operand and use `@IF_LT_A`, `@IF_GT_V`, etc.
+- `@IF_*`, `@WHILE_*`, `@WHEN`, and `@For...` macros replace most label-heavy logic
 - Complex conditions can be factored out using `@WHEN` + `@DO_NOTZERO`
 - `SWITCH` and `CASE` macros help organize multi-path logic
 - Nesting is supported and encouraged

@@ -86,25 +86,33 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
 # Function: DoSomething(param1, param2)
 :DoSomething
 @PUSHRETURN              # Save return address
-@LocalVar param1 01             # Local variable (acts like a register)
-@LocalVar param2 02
-@Localvar Hidden 03
+@Locals
+@Local param1             # Local variable (acts like a register)
+@Local param2
+@Local Hidden
 
 
    @POPI param1
    @POPI param2
 
-   @IF_A
-      @PUSH "Valid"
+   @PUSHI param1
+   @IF_GT_A 0
+      @PRT "Valid
+"
       @MA2V 100 Hidden
    @ELSE
-      @PUSH "Invalid"
+      @PRT "Invalid
+"
       @MA2V 200 Hidden
    @ENDIF
 
-   @WHILE_V
-      ; Loop body
+   @PUSHI Hidden
+   @WHILE_NEQ_A 0
+      @POPNULL
+      @DECI Hidden
+      @PUSHI Hidden
    @ENDWHILE
+   @POPNULL
 
    @PUSHI Hidden
    @SWITCH
@@ -119,10 +127,43 @@ While EX716 doesn’t enforce function semantics, here’s a recommended structu
       @CBREAK
    @ENDCASE
 
-@RestoreVar 02           # Reverse order of LocalVar
-@RestoreVar 01
+@EndLocals                # Restores this frame's locals in reverse order
 @POPRETURN
 @RET
+```
+
+---
+
+## ☎️ Friendly Function Calls
+
+Once you are past the very early stack mechanics lessons, prefer the friendly `@Call(...)` macros for simple function arguments. The letters describe how each argument is pushed before the call:
+
+```text
+A = direct/immediate value, pushed with @PUSH
+V = variable value, pushed with @PUSHI
+P = pointer value, pushed with @PUSHII
+```
+
+Examples:
+
+```asm
+@Call(AA) HeapDefineMemory 0x8000 256
+@Call(VA) HeapNewObject MyHeap 16
+@Call(VV) MULU Width Height
+@Call(A) rndsetseed 1234
+```
+
+The friendly form supports up to **five arguments**. For zero-argument functions, keep using plain `@CALL FunctionName`. For functions with more than five arguments, push the arguments yourself and finish with `@CALL FunctionName`.
+
+```asm
+# EventAdd has six arguments, so use the raw stack form.
+@PUSH MouseEventClick
+@PUSH 2
+@PUSH 3
+@PUSH 12
+@PUSH 3
+@PUSH E_SAVE
+@CALL EventAdd
 ```
 
 ---
@@ -142,7 +183,7 @@ This structure allows visual scanning of the function shape and nesting depth.
 
 - Library guard macros: `! MYLIBNAME_LOADED`
 - Global symbols: `G MyLibrary.myfunc`
-- Local variables: `@LocalVar varname 01` #(comment the purpose nearby)
+- Local variables: start a frame with @Locals, declare each name with @Local varname, and close it with @EndLocals.
 - Labels inside library: keep simple (`:init`, `:loop`), since they get mangled automatically
 
 ---
@@ -154,7 +195,7 @@ This structure allows visual scanning of the function shape and nesting depth.
 | Library inclusion  | Use `L` with `!` guard and `M` macro            |
 | Globals            | Declare with `G` *before* first use             |
 | Reuse              | Override `G` functions by redefining later      |
-| Function layout    | Use `@PUSHRETURN`, `@LocalVar`, and indent      |
+| Function layout    | Use @PUSHRETURN, @Locals / @Local / @EndLocals, and indent |
 | Control flow       | Align `IF`, `ELSE`, `ENDIF`, `SWITCH`, `CASE`   |
 
 ---

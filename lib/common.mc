@@ -1139,30 +1139,58 @@ M PUSHI4 @PUSHI %1 @PUSHI %2 @PUSHI %3 @PUSHI %4
 M PUSHI3 @PUSHI %1 @PUSHI %2 @PUSHI %3
 M PUSHI2 @PUSHI %1 @PUSHI %2
 #----------------------------------------------
-# Table Structue helpers
+# Table Structure helpers
 #----------------------------------------------
+# These helpers treat memory as records with fixed field offsets.
+# BasePtrVariable means a variable whose value is the base address
+# of the object or list. Field and record-size arguments are constants.
 #
-# Fill Group, saves Word to object at offset constant
-# FILL_AT_? ( BasePtrVariable, Offset_Constant [source A-constant,V-Varibale,S-Stack]
+# Source suffixes:
+#   A = direct/immediate source value, pushed with @PUSH
+#   V = variable source value, pushed with @PUSHI
+#   S = source value is already on TOS
+#
+# Store a word at BasePtrVariable + Offset_Constant.
+# FILL_AT_A(BasePtrVariable, Offset_Constant, Source_Constant)
+# FILL_AT_V(BasePtrVariable, Offset_Constant, Source_Variable)
+# FILL_AT_S(BasePtrVariable, Offset_Constant)  # consumes TOS
 M FILL_AT_A @PUSH %3  @PUSHI %1 @ADD %2 @POPS
 M FILL_AT_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
 M FILL_AT_S @PUSHI %1 @ADD %2 @POPS
-# Get Group, fetches a word from object of offset constant
-# GET_FROM ( BasePtrvariable, Offset_Constant) 
+#
+# Fetch a word from BasePtrVariable + Offset_Constant and push it.
+# GET_FROM(BasePtrVariable, Offset_Constant)
 M GET_FROM @PUSHI %1 @ADD %2 @PUSHS
-# Returns Pointer to where field is in object.
+#
+# Push the address BasePtrVariable + Offset_Constant.
+# PTR_AT(BasePtrVariable, Offset_Constant)
 M PTR_AT @PUSHI %1 @ADD %2
-# Index, get start of structure in table of structures.
-# Return Ptr to Object
-# INDEX_PTR(TablePtr, Index[AV], ObjectSize_Constant)
+#
+# Push the address of a record in a fixed-size list:
+#   BasePtrVariable + Index * ObjectSize_Constant
+# INDEXA_PTR uses a direct/immediate index.
+# INDEXV_PTR uses an index stored in a variable.
+# These helpers call MULU, so load mul.ld before using them.
+# INDEXA_PTR(BasePtrVariable, Index_Constant, ObjectSize_Constant)
+# INDEXV_PTR(BasePtrVariable, Index_Variable, ObjectSize_Constant)
 M INDEXA_PTR @PUSH %2 @PUSH %3 @CALL MULU @ADDI %1
 M INDEXV_PTR @PUSHI %2 @PUSH %3 @CALL MULU @ADDI %1
-# List Based version of GET_FROM
-# LIST_GET_FROM( BasePtrVariable, Index[AV], ObjectSize_Constant, FieldOffset_Constant)
+#
+# Fetch a field from an indexed list record and push it.
+# LISTA_GET_FROM(BasePtrVariable, Index_Constant, ObjectSize_Constant, FieldOffset_Constant)
+# LISTV_GET_FROM(BasePtrVariable, Index_Variable, ObjectSize_Constant, FieldOffset_Constant)
 M LISTA_GET_FROM @INDEXA_PTR %1 %2 %3 @ADD %4 @PUSHS
 M LISTV_GET_FROM @INDEXV_PTR %1 %2 %3 @ADD %4 @PUSHS
-# List Based versions of FILL_AT
-# LIST[AV]_FILL_AT_[AVS](BasePtrVariable, Index[AV], ObjectSizeC, FieldOffsetC, Source A,V,S])
+#
+# Store a field in an indexed list record.
+# LISTA_* uses a direct/immediate index; LISTV_* uses a variable index.
+# Final suffix A/V/S describes the source value, same as FILL_AT_*.
+# LISTA_FILL_AT_A(BasePtrVariable, Index_Constant, ObjectSize_Constant, FieldOffset_Constant, Source_Constant)
+# LISTA_FILL_AT_V(BasePtrVariable, Index_Constant, ObjectSize_Constant, FieldOffset_Constant, Source_Variable)
+# LISTA_FILL_AT_S(BasePtrVariable, Index_Constant, ObjectSize_Constant, FieldOffset_Constant)  # consumes TOS
+# LISTV_FILL_AT_A(BasePtrVariable, Index_Variable, ObjectSize_Constant, FieldOffset_Constant, Source_Constant)
+# LISTV_FILL_AT_V(BasePtrVariable, Index_Variable, ObjectSize_Constant, FieldOffset_Constant, Source_Variable)
+# LISTV_FILL_AT_S(BasePtrVariable, Index_Variable, ObjectSize_Constant, FieldOffset_Constant)  # consumes TOS
 M LISTA_FILL_AT_A @PUSH %5 @INDEXA_PTR %1 %2 %3 @ADD %4 @POPS
 M LISTA_FILL_AT_V @PUSHI %5 @INDEXA_PTR %1 %2 %3 @ADD %4 @POPS
 M LISTV_FILL_AT_A @PUSH %5 @INDEXV_PTR %1 %2 %3 @ADD %4 @POPS
