@@ -4942,6 +4942,7 @@ def resolve_all_forward_references(context, CPU):
     context.GlobeLabels["END__"] = end_address
     context.FileLabels["END__"] = end_address
     context.DefinedSymbols.add("END__")
+    LocVarHist["END__"] = [{"value": end_address, "start": 0, "end": None}]
 
     # Ensure tracking structures exist
     if not hasattr(context, "UsedSymbols"):

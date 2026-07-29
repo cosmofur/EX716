@@ -299,6 +299,7 @@ G OBJ_FLAG_LOC G OBJ_NEXT_LOC G HEAP_SIZE_LOC G HEAP_FIRST_OBJ_LOC
    @Next IndexX
    #
    @Call(VV) HeapDeleteObject HeapID ObjectID
+   @POPNULL
    #
    # Return the NewObject
    @PUSHI NewObject
