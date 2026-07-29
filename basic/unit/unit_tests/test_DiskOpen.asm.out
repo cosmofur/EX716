@@ -1,0 +1,47 @@
+CPU State:
+084c:   PUSHI P1:0002 [I]:0007 [II]:0000 Z0 N1 C0 O0
+Line: diskos.ld:1052
+Stack Empty or Invalid SP: 00
+Error Number: 330 Stack underflow, optPOPI at PC:0x084c
+Entering debugger due to fatal error.
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ diskos.ref  Loaded.. 
+ "Require heapmgr.ld needs to be included." 
+ "Require string.ld needs to be included." 
+ "Including "  DiskOpen 
+ "Including "  DirNewArgTable 
+ "Including "  DirReadEntry 
+ "Including "  DirWriteEntry 
+ "Including "  DiskNewBuffer 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ diskos.ref  Loaded.. 
+ "Require heapmgr.ld needs to be included." 
+ "Require string.ld needs to be included." 
+ "Including "  DiskOpen 
+ "Including "  DirNewArgTable 
+ "Including "  DirReadEntry 
+ "Including "  DirWriteEntry 
+ "Including "  DiskNewBuffer 
+ Module  diskos.ld  :  Size  2820  Bytes 
+ heapmgr.ref  Loaded.. 
+ "Including "  HeapDeleteObject 
+ "Including "  HeapNewObject 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  1205  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 9 resolved= 327 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 54
+  Used symbols      : 9
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+Filename: start.ld:32
+start.ld:32
+084c> >>End Debugging.
+[?1000l[?25h
+

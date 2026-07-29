@@ -217,6 +217,9 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 #   (Type=KeyEvent, StrPtr, 0, 0, 0, EventID)
 #     - StrPtr points to string of keys to watch for
 #
+# For KeyRangeEvent:
+#   (Type=KeyRangeEvent, Low ASCII, High ASCII, 0, 0, EventID)
+#
 # For TimerEvents:
 #   (Type=TimerEvent, Duration(sec), RepeatFlag, 0, 0, EventID)
 #     - RepeatFlag = 0 one-shot, 1 periodic

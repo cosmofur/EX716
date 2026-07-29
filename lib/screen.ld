@@ -880,31 +880,53 @@ ENDBLOCK
 #######################################
 # WinBox(x1,y1,x2,y2)
 # Draw in ANSI a 'box' on the screen.
+G BOXFONT
+:BOXFONT "-\0|\0+\0=\0!\0o\0 \0 \0 \0"
+G BOXMODE
+:BOXMODE 0        # Default line, 1=alt lines, 2=erase mode.
 @FUNCTION WinBox
 :WinBox
 @PUSHRETURN
 @Locals
-@Local X1 @Local Y1 @Local X2 @Local Y2
+@Local X1
+@Local Y1
+@Local X2
+@Local Y2
 @Local Index
+@Local BoxChars
+@Local HLine
+@Local VLine
+@Local Corner
+
 @POPI Y2 @POPI X2 @POPI Y1 @POPI X1
+@IF_EQ_AV 0 BOXMODE
+   @MA2V BOXFONT BoxChars
+@ELSE
+   @PUSH BOXFONT @ADD 6
+   @POPI BoxChars
+@ENDIF
+@PUSHI BoxChars @POPI HLine
+@PUSHI BoxChars @ADD 2 @POPI VLine
+@PUSHI BoxChars @ADD 4 @POPI Corner
+
 
 @PUSHI X1 @PUSHI Y1 @CALL WinCursor
 @ForIV2V Index X1 X2
-  @PRT "-"
+  @PRTSI HLine
 @Next Index
 @PUSHI X1 @PUSHI Y2 @CALL WinCursor
 @ForIV2V Index X1 X2
-  @PRT "-"
+  @PRTSI HLine
 @Next Index
 @PUSHI X1 @PUSHI Y1 @CALL WinCursor
 @ForIV2V Index Y1 Y2
-   @PUSHI X1 @PUSHI Index @CALL WinCursor @PRT "|"
-   @PUSHI X2 @PUSHI Index @CALL WinCursor @PRT "|"
+   @PUSHI X1 @PUSHI Index @CALL WinCursor @PRTSI VLine
+   @PUSHI X2 @PUSHI Index @CALL WinCursor @PRTSI VLine
 @Next Index
-@PUSHI X1 @PUSHI Y1 @CALL WinCursor @PRT "+"
-@PUSHI X2 @PUSHI Y1 @CALL WinCursor @PRT "+"
-@PUSHI X1 @PUSHI Y2 @CALL WinCursor @PRT "+"
-@PUSHI X2 @PUSHI Y2 @CALL WinCursor @PRT "+"
+@PUSHI X1 @PUSHI Y1 @CALL WinCursor @PRTSI Corner
+@PUSHI X2 @PUSHI Y1 @CALL WinCursor @PRTSI Corner
+@PUSHI X1 @PUSHI Y2 @CALL WinCursor @PRTSI Corner
+@PUSHI X2 @PUSHI Y2 @CALL WinCursor @PRTSI Corner
 @EndLocals
 @POPRETURN
 @RET

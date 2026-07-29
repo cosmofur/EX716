@@ -1,0 +1,22 @@
+ 02eb:Stack:(1):test_DIV.asm:18 [ 0000 0000 ]
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ heapmgr.ref  Loaded.. 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  0  Bytes 
+ "Including "  DIV 
+ Module  div.ld  :  Size  535  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 3 resolved= 58 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 30
+  Used symbols      : 3
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+
+END of Run:(144 Opts)
