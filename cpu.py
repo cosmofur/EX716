@@ -287,7 +287,7 @@ class AssemblerContext:
         self.DefinedSymbols = set()
         from collections import defaultdict
         self.UsedSymbols = defaultdict(int)
-        self.GlobalDeclarations=set()
+        self.GlobalDeclarations={"END__"}
         self.GlobalDeclInfo={}
         self.StructStack = []
         self.UseRequested = set()
@@ -2916,6 +2916,8 @@ def expand_brace_refs(text, filename, context, CPU, preserve_unresolved=True):
 
         if name in context.MacroData:
             resolved = context.MacroData[name]
+        elif name in context.GlobeLabels:
+            resolved = context.GlobeLabels[name]
         else:
             resolved = FindHistoricVal(name, context.address, context)
 
@@ -3342,6 +3344,9 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
 
     if labelname in context.FileLabels:
         return ("value", Str2Word(context.FileLabels[labelname]))
+
+    if labelname in context.GlobeLabels:
+        return ("value", Str2Word(context.GlobeLabels[labelname]))
 
     localkey = IsLocalVar(labelname, context)
 
@@ -4928,7 +4933,15 @@ def resolve_all_forward_references(context, CPU):
     # Resolve forward references (FWORDLIST)
     # --------------------------------------------------
 
-    context.GlobeLabels["_END_"] = context.highwater
+    end_address = max(
+        context.highwater,
+        context.highaddress,
+        context.address,
+        context.dataaddress if context.DataSegment >= 0 else 0,
+    )
+    context.GlobeLabels["END__"] = end_address
+    context.FileLabels["END__"] = end_address
+    context.DefinedSymbols.add("END__")
 
     # Ensure tracking structures exist
     if not hasattr(context, "UsedSymbols"):
