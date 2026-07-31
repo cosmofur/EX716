@@ -429,27 +429,27 @@ ENDBLOCK
     #
     # Sanity limits supported by the window library.
     #
-    @PUSHI WinWidth
-    @IF_GT_A 80
-        @POPNULL
-        @PUSH 80
-    @ENDIF
-    @IF_LT_A 5
-        @POPNULL
-        @PUSH 5
-    @ENDIF
-    @POPI WinWidth
+#    @PUSHI WinWidth
+#    @IF_GT_A 80
+#        @POPNULL
+#        @PUSH 80
+#    @ENDIF
+#    @IF_LT_A 5
+#        @POPNULL
+#        @PUSH 5
+#    @ENDIF
+#    @POPI WinWidth
 
-    @PUSHI WinHeight
-    @IF_GT_A 50
-        @POPNULL
-        @PUSH 50
-    @ENDIF
-    @IF_LT_A 5
-        @POPNULL
-        @PUSH 5
-    @ENDIF
-    @POPI WinHeight
+#    @PUSHI WinHeight
+#    @IF_GT_A 50
+#        @POPNULL
+#        @PUSH 50
+#    @ENDIF
+#    @IF_LT_A 5
+#        @POPNULL
+#        @PUSH 5
+#    @ENDIF
+#    @POPI WinHeight
 @EndLocals
 @POPRETURN
 @RET
@@ -899,6 +899,8 @@ G BOXMODE
 @Local Corner
 
 @POPI Y2 @POPI X2 @POPI Y1 @POPI X1
+@QuickMinI X1 X2
+@QuickMinI Y1 Y2
 @IF_EQ_AV 0 BOXMODE
    @MA2V BOXFONT BoxChars
 @ELSE
