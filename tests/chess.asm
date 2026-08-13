@@ -1006,17 +1006,20 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
     @Local YCur
     @Local Temp1
     @Local PieceString
+    @Local PieceIndex
+    @Local PieceColor
+    @Local PieceAlive
 
     @POPI ViewPoint
 
     @IF_EQ_AV BlackColor ViewPoint
-       @MA2V 1 XDir
-       @MA2V 0 XCur
+       @MA2V -1 XDir
+       @MA2V 7 XCur
        @MA2V 1 YDir
        @MA2V 0 YCur
     @ELSE
-       @MA2V -1 XDir
-       @MA2V 7 XCur
+       @MA2V 1 XDir
+       @MA2V 0 XCur
        @MA2V -1 YDir
        @MA2V 7 YCur
     @ENDIF
@@ -1035,21 +1038,19 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
        @MV2V XCur Temp1
        @PRTI YCur
        @PRT "|"
-       @IF_EQ_AV 3 Index2
-          @IF_EQ_AV BlackColor ViewPoint
-             @MA2V WhiteColor ViewPoint
-          @ELSE
-             @MA2V BlackColor ViewPoint
-          @ENDIF
-       @ENDIF
        @ForIA2B Index1 0 8
           @Call(VV) CheckBoard Temp1 YCur
           @IF_EQ_A -1
              @POPNULL
              @PRT " |"
           @ELSE
-             @CALL GetPieceType
-             @Call(V) PieceToString ViewPoint
+             @POPI PieceIndex
+             @Call(V) GetPieceType PieceIndex
+             @Call(V) GetPieceInfo PieceIndex
+             @POPNULL @POPNULL
+             @POPI2 PieceColor PieceAlive
+             @POPNULL
+             @Call(V) PieceToString PieceColor
              @POPI PieceString
              @PRTSI PieceString
              @PRT "|"
@@ -1075,7 +1076,7 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
    @Local PieceIndex
    @Local TargetX
    @Local TargetY
-   @Local StartColor   
+   @Local StartColor
    @Local StartAlive
    @Local DepthIndex
    @Local Count
@@ -1097,12 +1098,12 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
       @JMP UMVExit
    @ENDIF
    @POPNULL
-   
+
    @Call(V) GetPieceInfo PieceIndex
    @POPNULL @POPNULL   # Do not need duplicate X and Y
    @POPI2 StartColor StartAlive
    @POPNULL # Dont need square
-   
+
    @IF_EQ_AV 0 StartAlive
       # Player tried to move dead piece.
       @JMP UMVExit
@@ -1138,17 +1139,17 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @POPRETURN
 @RET
 
-      
-                   
-                   
-            
-            
-            
-            
-   
-   
-      
-     
+
+
+
+
+
+
+
+
+
+
+
 
 
 :PTSString 0 0     # 4 Bytes for reasonable strings with Null
@@ -1235,30 +1236,32 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 :Main .ORG Main
    @CALL SetupStack
    @CALL InitBoard
+@PRTLN "White Board"
+@Call(A)  TestDisplayBoard WhiteColor
+
 @PRTLN "Direct ValidMoves Knight 5 Depth 1"
 @Call(AA) ValidMoves 5 1
 @PRTLN "Count: " @PRTTOP @PRTNL
-   @PRTLN "White Board"
-   @Call(A)  TestDisplayBoard WhiteColor   
+
    @PRTLN "Tests"
    @PRTLN "Move Knight for test"
    @PRTLN "Test Knight to 0,2"
    @Call(AAA) UserMoveValid 5 0 2
-   @PRTLN "Result: " @PRTTOP @PRTNL @POPNULL   
+   @PRTLN "Result: " @PRTTOP @PRTNL @POPNULL
    @PRTLN "Test Knight to 2,2"
    @Call(AAA) UserMoveValid 5 2 2
-   @PRTLN "Result: " @PRTTOP @PRTNL    @POPNULL   
+   @PRTLN "Result: " @PRTTOP @PRTNL    @POPNULL
    @PRTLN "Test Knight to 3,1"
    @Call(AAA) UserMoveValid 5 3 1
-   @PRTLN "Result: " @PRTTOP @PRTNL @POPNULL   
+   @PRTLN "Result: " @PRTTOP @PRTNL @POPNULL
    @PRTLN "Test Knight to 1,2"
    @Call(AAA) UserMoveValid 5 1 2
-   @PRTLN "Result: " @PRTTOP @PRTNL    @POPNULL   
+   @PRTLN "Result: " @PRTTOP @PRTNL    @POPNULL
    @PRTLN "Testing Bishop"
    @PRTLN "Test Bishop to anything"
    @Call(AAA) UserMoveValid 3 4 2
-   @PRTLN "Result: " @PRTTOP @PRTNL @POPNULL   
-   
+   @PRTLN "Result: " @PRTTOP @PRTNL @POPNULL
+
 
 
 
