@@ -351,14 +351,8 @@ ENDBLOCK
         @MA2V 80 WinWidth
         @MA2V 24 WinHeight
 
-        #
-        # CISCODE is address of fixed CIS string
-        #
-        @PUSH "AN"
-        @POPI CISCODE
-        @PUSH "N\0"
-        @PUSH CISCODE+1
-        @POPS
+        # Keep CISCODE as the real CSI prefix. Debug harnesses can render ESC[
+        # as text externally without changing the terminal library global.
 
     @ELSE
         @POPNULL
@@ -545,7 +539,7 @@ ENDBLOCK
 @FUNCTION WinNorth
 :WinNorth
 @SWP
-@PRT CISCODE
+@PRTS CISCODE
 @PRTTOP @POPNULL
 @PRT "A"
 @RET
@@ -564,7 +558,7 @@ ENDBLOCK
 @FUNCTION WinSouth
 :WinSouth
 @SWP
-@PRT CISCODE
+@PRTS CISCODE
 @PRTTOP @POPNULL
 @PRT "B"
 @RET
@@ -583,7 +577,7 @@ ENDBLOCK
 @FUNCTION WinEast
 :WinEast
 @SWP
-@PRT CISCODE
+@PRTS CISCODE
 @PRTTOP @POPNULL
 @PRT "C"
 @RET
@@ -602,7 +596,7 @@ ENDBLOCK
 @FUNCTION WinWest
 :WinWest
 @SWP
-@PRT CISCODE
+@PRTS CISCODE
 @PRTTOP @POPNULL
 @PRT "D"
 @RET

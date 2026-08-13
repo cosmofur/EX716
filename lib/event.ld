@@ -77,6 +77,7 @@ G ActiveEventTable
 =KeyEvent 0x0200
 =KeyRangeEvent 0x300
 =MouseEventDetected 1
+=ReadKeyTimeOutPolls 8
 #
 #
 # Strucure of Event Table entries.
@@ -85,6 +86,7 @@ G ActiveEventTable
 =EventMaxUsedHeadOff  2
 =EventBackupHeapOff   4
 =EventRecordSize 12
+=EventTableGrowBy 20
 =EventDataOneOff 0
 =EventDataTwoOff 2
 =EventIDOff 4
@@ -276,7 +278,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
            @PUSHI MTHeapID
            @PUSHI ActiveEventTable
            @PUSHI MAEMaxSize       # Need to turn max size into bytes in table space.
-           @ADD 10                # Allocate 10 new cells for growth.
+           @ADD EventTableGrowBy   # Allocate new cells for growth.
            @PUSH EventRecordSize
            @CALL MUL              # Multiply
            @ADD EventTableHeaderSize     # Add the Header part.
@@ -286,7 +288,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
                @END
            @ENDIF
            @POPI ActiveEventTable
-           @PUSHI MAEMaxSize @ADD 10     # Reset Max size record to new size
+           @PUSHI MAEMaxSize @ADD EventTableGrowBy # Reset Max size record to new size
            @FILL_AT_S ActiveEventTable EventMaxUsedHeadOff
            #
        @ENDIF
@@ -375,7 +377,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @Locals
 @Local CHin
    @PUSH 0
-   @WHILE_LT_A 3
+   @WHILE_LT_A ReadKeyTimeOutPolls
       @READCNW CHin
       @IF_EQ_AV 0 CHin
          @ADD 1
@@ -383,7 +385,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
          @WHILEBREAK
       @ENDIF
    @ENDWHILE
-   @IF_LT_A 3
+   @IF_LT_A ReadKeyTimeOutPolls
       @POPNULL
       @PUSHI CHin @AND 0xff
    @ELSE
