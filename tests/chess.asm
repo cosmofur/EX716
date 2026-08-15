@@ -2,6 +2,7 @@ I common.mc
 L softstack.ld
 L heapmgr.ld
 L screen.ld
+L string.ld
 
 ##################################
 # Functions Summary
@@ -11,18 +12,21 @@ L screen.ld
 # NibbleGet(MemPtr, Index): Get nibble inside byte array by nibble index
 # NibblePut(Value, MemPtr, Index): Store Nibble value at array by nibble index
 # GetPieceInfo(PieceIndex): (Square, Alive, Color, Xpos, Ypos)
+# SetPieceInfo(PieceIndex,Alive,Color,Xpos,Ypos):void
 # SHLI: Support
 # SHRI: Support
 # CandidatePack(LocX,LocY,CaptFlag,CapPieceIndex)
 # CandidateUnpack(Encoded):(LocX,LocY,CaptFlag, CapPieceIndex)
 # CheckBoard(X,Y): Returns either piece index, or -1 for invalud/empty square.
 # ValidMoves(PieceIndex, Depth):Candidate...CandiateN,Count | 0
-# GetPieceMove(PieceType, Direction, Color):(-1 | DeltaX,DeltaY)
+# GetPieceMove(PieceType, Direction, Color):(MoveInvalid | DeltaX,DeltaY)
 # GetPieceType(PieceIndex):(Type# | PieceInvalid)
+# MovePiece(PieceIndex,Candidate):void
 # SquareXYtoSqr(X,Y):Square| -1
 # SquareSqrtoXY(Square):(X,Y)|-1
-# PieceToString(PieceID): Print["K","Q","R","N","B","P","k","q","r","n","b","p"]
 # DisplayBoard(ViewPoint)
+# UserMoveValid(PieceIndex, TargetX, TargetY):(MoveInvalid| Candidate)
+# PieceToString(PieceID): Print["K","Q","R","N","B","P","k","q","r","n","b","p"]
 #
 ###########
 # Globals
@@ -45,6 +49,7 @@ L screen.ld
 :BKnight 21
 :BPawn   23
 :BQueen  31
+:PTSString 0 0 0 
 :PiecesArray
 . PiecesArray+32     # Allocate 32 bytes
 
@@ -84,6 +89,7 @@ L screen.ld
 =CP_MRShift    9
 
 =MoveInvalid -999
+=EmptySquare -1
 
 # Both unique and ranking of value for game logic
 =PieceKing 99
@@ -334,6 +340,48 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @EndLocals
 @POPRETURN
 @RET
+
+##########################
+# SetPieceInfo(PieceIndex,Alive,Color,Xpos,Ypos):void
+:SetPieceInfo
+@PUSHRETURN
+@Locals
+   @Local PieceIndex
+   @Local Alive
+   @Local Color
+   @Local XLocation
+   @Local YLocation
+   @Local Address
+
+   @POPI5 YLocation XLocation Color Alive PieceIndex
+
+
+   @Call(VV) SquareXYtoSqr XLocation YLocation
+   
+   @PUSHI Alive
+   @AND 1
+   @SHLN 7
+   
+   @ORS
+   
+   @PUSHI Color
+   @AND 1
+   @SHLN 6
+   
+   @ORS
+   
+   @PUSHI PiecesArray
+   @ADDI PieceIndex   
+   @POPI Address
+   
+   @STOREBI Address
+@EndLocals
+@POPRETURN
+@RET
+
+
+
+   
 ########################
 # SHLI Support function  SHLI(Value,Shift count)
 :SHLI
@@ -417,7 +465,7 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @RET
 
 ###############################
-# CheckBoard(X,Y):(-1|PieceIndex)
+# CheckBoard(X,Y):(EmptySquare|PieceIndex)
 ###############################
 :CheckBoard
 @PUSHRETURN
@@ -432,10 +480,10 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
    # Input stack: [X, Y] <TOS
    @POPI2 Yin Xin
 
-   @MA2V -1 ReturnCode
+   @MA2V EmptySquare ReturnCode
    # Convert X,Y to packed square; helper also validates coordinates.
    @Call(VV) SquareXYtoSqr Xin Yin
-   @IF_EQ_A -1
+   @IF_EQ_A EmptySquare
       @POPNULL
       @JMP CBFExit
    @ENDIF
@@ -508,6 +556,7 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 
     # Loop Structures
     @Local Index1
+    @Local IsAngle
 
     @POPI2 RequestedDepth TestPieceIndex
 
@@ -561,6 +610,25 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
           @JMP VMExit   # CandidateCount will still be zero
        @ENDIF
     @ENDIF
+    # Pawn logic says 2 step moves are possible only if on original row, 1 for white, 6 for black
+    @IF_EQ_A 2
+       @IF_EQ_AV PiecePawn PieceType
+           @IF_EQ_AV WhiteColor PieceColor
+               # White 2 move valid only on Row 1
+               @IF_NEQ_AV 1 TestPieceY
+                   @POPNULL
+                   @JMP VMExit
+               @ENDIF
+           @ELSE
+               # Black 2 move valid only on Row 6
+               @IF_NEQ_AV 6 TestPieceY
+                   @POPNULL
+                   @JMP VMExit
+               @ENDIF
+           @ENDIF
+       @ENDIF
+    @ENDIF
+    # And no distance > 2 is ever legal for Pawns
     @IF_GE_A 3
        @POPNULL
        @IF_EQ_AV PiecePawn PieceType
@@ -570,11 +638,24 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
        @POPNULL
     @ENDIF
 
-    # Now we start our depth loop.
+    # Now we start our Direction loop.
     @ForIA2B TestDir 0 8
         @Call(VVV) GetPieceMove PieceType TestDir PieceColor
         @IF_NEQ_A MoveInvalid
-            @POPI2 DeltaY DeltaX
+            @POPI2 DeltaY DeltaX        
+            # We need Angle informaiton for Pawns
+            @PUSHI TestDir
+            @AND 1
+            @POPI IsAngle
+            #
+            # Angle is only valid for pawns if Depth is 1
+            @IF_EQ_AV PiecePawn PieceType
+               @IF_NEQ_AV 1 RequestedDepth
+                  @IF_NEQ_AV 0 IsAngle
+                     @JMP VMEContinueDir
+                  @ENDIF
+               @ENDIF
+            @ENDIF
             @MV2V TestPieceX TestX
             @MV2V TestPieceY TestY
             @MA2V 0 TestDepth
@@ -601,7 +682,7 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
                 @Call(VV) CheckBoard TestX TestY
                 @POPI TargetPieceIndex
                 @PUSHI TargetPieceIndex
-                @IF_NEQ_A -1
+                @IF_NEQ_A EmptySquare
                    # Not empty
                    @CALL GetPieceInfo # index already on stack
                    @POPNULL @POPNULL      # Dont need x,y
@@ -609,6 +690,13 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
                    @POPNULL               # Don't need square
                    @IF_EQ_AV 0 TargetAlive
                       # If not alive treat as empty.
+                      @IF_EQ_AV PiecePawn PieceType
+                         # Special Rule for Pawns
+                         @IF_NEQ_AV 0 IsAngle
+                            # Pawns can not move at an Angle if not taking an enemy.                            
+                            @JMP VMEContinueDir
+                         @ENDIF
+                      @ENDIF
                       @IF_EQ_VV TestDepth RequestedDepth
                           @Call(VVAA) CandidatePack TestX TestY 0 0
                           @INCI CandidateCount
@@ -622,8 +710,15 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
                           # not a candidate
                           @JMP VMEContinueDir
                       @ELSE
+                         # Enemy possible candidate
                          @IF_EQ_VV TestDepth RequestedDepth
-                             # Enemy possible candidate
+                         # Special Rule for Pawns
+                            @IF_EQ_AV PiecePawn PieceType
+                               @IF_EQ_AV 0 IsAngle
+                                  # As this is not diagonal, pawn can't take piece going straight
+                                  @JMP VMEContinueDir
+                               @ENDIF
+                             @ENDIF                             
                              @Call(VVAV) CandidatePack TestX TestY 1 TargetPieceIndex
                              @INCI CandidateCount
                              @ELSE
@@ -634,6 +729,13 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
                 @ELSE
                    # Empty Square
                    @POPNULL
+                   @IF_EQ_AV PiecePawn PieceType
+                      # Special Rule for Pawns
+                      @IF_NEQ_AV 0 IsAngle
+                         # Pawns can not move at an Angle if not taking an enemy.                            
+                         @JMP VMEContinueDir
+                      @ENDIF
+                   @ENDIF                   
                    @IF_EQ_VV TestDepth RequestedDepth
                       # Enemy possible candidate
                       # Add to possible candidate list
@@ -661,8 +763,8 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 
 
 #################################
-# GetPieceMove(PieceType, Direction, Color):(-1 | DeltaX,DeltaY)
-# Returns the 1 step delta the piece can move in given direction or -1 if direction not allowed.
+# GetPieceMove(PieceType, Direction, Color):(MoveInvalid | DeltaX,DeltaY)
+# Returns the 1 step delta the piece can move in given direction or MoveInvalid if direction not allowed.
 # Does not know location on board, so can't tell if move is valid for current position.
 #
 :DirFixedXTable
@@ -848,28 +950,6 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ##################################
 # GetPieceType(PieceIndex)
 :GetPieceType
@@ -945,7 +1025,58 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @EndLocals
 @POPRETURN
 @RET
-###############################################
+#######################################
+# MovePiece(PieceIndex, Candidate):void
+:MovePiece
+@PUSHRETURN
+@Locals
+    @Local PieceIndex
+    @Local Candidate
+    @Local TargetX
+    @Local TargetY
+    @Local CaptFlag
+    @Local CapPieceIndex
+    @Local PieceAlive
+    @Local PieceColor
+    @Local CaptureX
+    @Local CaptureY
+    
+
+    @POPI2 Candidate PieceIndex
+
+    @Call(V) CandidateUnpack Candidate
+    @POPI4 CapPieceIndex CaptFlag TargetY TargetX
+
+    @Call(VV) CheckBoard TargetX TargetY
+
+    @IF_NEQ_A EmptySquare
+       # This is a capture. Mark old piece as dead.
+       @POPI CapPieceIndex
+       @Call(V) GetPieceInfo CapPieceIndex
+       @POPI4 CaptureY CaptureX PieceColor PieceAlive
+       @POPNULL               # Original square no longer matters
+       @Call(VAVVV) SetPieceInfo CapPieceIndex 0 PieceColor CaptureX CaptureY   # Mark piece as captured.
+    @ELSE
+       @POPNULL
+    @ENDIF
+    # Now move active piece to captured pieces location
+    @Call(V) GetPieceInfo PieceIndex
+    @POPNULL @POPNULL         # don't need original location
+    @POPI2 PieceColor PieceAlive
+    @POPNULL                  # don't need original square
+    @Call(VVVVV) SetPieceInfo PieceIndex PieceAlive PieceColor TargetX TargetY
+@EndLocals
+@POPRETURN
+@RET
+
+       
+       
+    
+
+    
+
+
+#######################################
 # SquareXYtoSqr(X,Y):Sqr|-1
 :SquareXYtoSqr
 @PUSHRETURN
@@ -993,7 +1124,7 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @RET
 
 ########################################
-# DisplayBoard(ViewPoint)
+# DisplayBoard(ViewPoint) 
 :DisplayBoard
 @PUSHRETURN
 @Locals
@@ -1023,20 +1154,16 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
        @MA2V -1 YDir
        @MA2V 7 YCur
     @ENDIF
-
-    @PRT " |"
-    @MV2V XCur Temp1
-    @ForIA2B Index1 0 8
-       @PRTI Temp1
-       @PRT "|"
-       @PUSHI Temp1
-       @ADDI XDir
-       @POPI Temp1
-    @Next Index1
-    @PRTNL
+    @IF_EQ_AV BlackColor ViewPoint
+         @PRTLN " |h|g|f|e|d|c|b|a|"
+    @ELSE
+         @PRTLN " |a|b|c|d|e|f|g|h|"
+    @ENDIF
     @ForIA2B Index2 0 8
        @MV2V XCur Temp1
-       @PRTI YCur
+       @PUSHI YCur @ADD 1 
+       @PRTTOP
+       @POPNULL
        @PRT "|"
        @ForIA2B Index1 0 8
           @Call(VV) CheckBoard Temp1 YCur
@@ -1045,14 +1172,11 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
              @PRT " |"
           @ELSE
              @POPI PieceIndex
-             @Call(V) GetPieceType PieceIndex
-             @Call(V) GetPieceInfo PieceIndex
-             @POPNULL @POPNULL
-             @POPI2 PieceColor PieceAlive
-             @POPNULL
-             @Call(V) PieceToString PieceColor
+             @PUSHI PieceIndex
+             @Call(V) PieceToString PieceIndex
              @POPI PieceString
              @PRTSI PieceString
+             @Call(V) GetPieceType PieceIndex
              @PRT "|"
           @ENDIF
           @PUSHI Temp1
@@ -1141,18 +1265,6 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-:PTSString 0 0     # 4 Bytes for reasonable strings with Null
 ####################################
 # PieceToString(PieceID,Color):StrPtr
 :PieceToString
@@ -1160,6 +1272,7 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @Locals
    @Local PieceID
    @Local Color
+
 
    @POPI2 Color PieceID
 
@@ -1200,6 +1313,245 @@ M MaskValueI @PUSHI %1 @ANDI %2 @POPI %1
 @EndLocals
 @POPRETURN
 @RET
+#####################################
+# ChessCmdUnpack(CmdCode)
+# Splits cmdcode into 4 3 bit fields
+:ChessCmdUnpack
+@PUSHRETURN
+@Locals
+   @Local CmdCode
+   @POPI CmdCode
+
+   @PUSHI CmdCode
+   @AND 0x7           # X1
+   @PUSHI CmdCode
+   @SHRN 3
+   @AND 0x7           # Y1
+   @PUSHI CmdCode
+   @SHRN 6
+   @AND 0x7           # X2
+   @PUSHI CmdCode
+   @SHRN 9
+   @AND 0x7
+@EndLocals
+@POPRETURN
+@RET
+
+   
+
+
+######################################
+# ReadChessCmd
+:ReadChessCmd
+@PUSHRETURN
+@Locals
+   @Local InputStr
+   @Local Index1
+   @Local StrLen
+   @Local Value01
+   @Local Value02
+   @Local Value03
+   @Local Value04
+
+
+   @Call(VA) HeapNewObject MainHeap 255
+   @IF_ULT_A 100
+      @PRTLN "Error, out of memory."
+      @END
+   @ENDIF
+   @POPI InputStr
+   @READSI InputStr
+   
+   @Call(V) strlen InputStr
+   @IF_ZERO
+      @POPNULL      
+      @PRT "No entry."
+      @JMP RCCErrExit
+   @ELSE
+      @POPI StrLen
+      @MA2V 0 Index1
+      @PUSHI InputStr
+      @ADDI Index1
+      @PUSHS
+      @AND 0xff
+      @IF_EQ_A "q\0"
+         @POPI Value01
+         @JMP RCCCmdExit
+      @ENDIF
+      @IF_EQ_A "p\0"
+         @POPI Value01
+         @JMP RCCCmdExit
+      @ENDIF
+      @IF_NEQ_AV 4 StrLen
+         @JMP "Syntax Error"
+         @JMP RCCErrExit
+      @ENDIF
+      @IF_INRANGE_AB "a\0" "h\0"
+         @SUB "a\0"
+         @POPI Value01
+      @ELSE
+         @PRT "Syntax Error"
+         @JMP RCCErrExit
+      @ENDIF
+      @INCI Index1
+      @PUSHI InputStr
+      @ADDI Index1
+      @PUSHS
+      @AND 0xff
+      @IF_INRANGE_AB "1\0" "8\0"
+         @SUB "1\0"
+         @POPI Value02
+      @ELSE
+         @PRT "Syntax Error"
+         @JMP RCCErrExit
+      @ENDIF
+      @INCI Index1
+      @PUSHI Index1
+      @PUSHI InputStr
+      @ADDI Index1
+      @PUSHS
+      @AND 0xff   
+      @IF_INRANGE_AB "a\0" "h\0"
+         @SUB "a\0"
+         @POPI Value03
+      @ELSE
+         @PRT "Syntax Error"
+         @JMP RCCErrExit
+      @ENDIF
+      @INCI Index1
+      @PUSHI Index1
+      @PUSHI InputStr
+      @ADDI Index1
+      @PUSHS
+      @AND 0xff
+      @IF_INRANGE_AB "1\0" "8\0"
+         @SUB "0\0"
+         @POPI Value04
+      @ELSE
+         @PRT "Syntax Error"
+         @JMP RCCErrExit
+      @ENDIF
+      @PUSHI Value01
+      @AND 0x7
+      @PUSHI Value02
+      @AND 0x7
+      @SHLN 3
+      @ORS
+      @PUSHI Value03
+      @AND 0x7
+      @SHLN 6
+      @ORS
+      @PUSHI Value04
+      @AND 0x7
+      @SHLN 9
+      @ORS
+      @POPI Value01
+      @JMP RCCCmdExit
+  @ENDIF
+  :RCCErrExit
+  @MA2V MoveInvalid Value01
+  :RCCCmdExit
+  @PUSHI Value01
+  @Call(VV) HeapDeleteObject MainHeap InputStr
+@EndLocals
+@POPRETURN
+@RET
+
+      
+      
+         
+
+########################################
+# ManualPlay():void
+# Test play loop where user enters all moves
+#    "q\0"       Quit
+#    "p\0"       Pass/switch player
+#    otherwise   value accepted by ParseCmd
+:ManualPlay
+@PUSHRETURN
+@Locals
+   @Local ActiveColor
+   @Local CmdMode
+   @Local TargetX
+   @Local TargetY
+   @Local SrcPiece
+   @Local SrcAlive
+   @Local SrcColor
+   @Local SrcX
+   @Local SrcY
+   @Local Candidate
+
+   @MA2V WhiteColor ActiveColor
+   @MA2V 0 CmdMode
+
+   @WHILE_EQ_AV 0 CmdMode
+      @IF_EQ_AV WhiteColor ActiveColor
+          @PRT "White's Move: "
+      @ELSE
+          @PRT "Black's Move: "
+      @ENDIF
+
+      @Call(V) DisplayBoard ActiveColor
+
+      @CALL ReadChessCmd
+      @POPI CmdMode
+
+      @IF_EQ_AV "q\0" CmdMode
+         @PRTLN "Exit..."
+      @ELSE
+         @IF_EQ_AV "p\0" CmdMode
+            @PRTLN "Skip Turn"
+         @ELSE
+            @IF_EQ_AV MoveInvalid CmdMode
+               @JMP MPContinue
+            @ENDIF
+            @Call(V) ChessCmdUnpack CmdMode
+            @POPI4 TargetY TargetX SrcY SrcX
+            @Call(VV) CheckBoard SrcX SrcY
+            @POPI SrcPiece
+            @IF_EQ_AV EmptySquare SrcPiece
+               @PRTLN "No piece at that location."
+               @JMP MPContinue
+            @ELSE
+               @Call(V) GetPieceInfo SrcPiece
+               @POPNULL @POPNULL
+               @POPI2 SrcColor SrcAlive
+               @POPNULL
+               @IF_NEQ_VV ActiveColor SrcColor
+                  @PRTLN "Can not move other player's pieces"
+                  @JMP MPContinue                                       
+               @ELSE
+                  @IF_EQ_AV 0 SrcAlive
+                     @PRTLN "Can not move captured piece."
+                     @JMP MPContinue                     
+                  @ELSE
+                     @Call(VVV) UserMoveValid  SrcPiece TargetX TargetY
+                     @POPI Candidate
+                     @IF_EQ_AV MoveInvalid Candidate
+                         @PRTLN "Not a valid move."
+                         @JMP MPContinue
+                     @ELSE
+                         @Call(VV) MovePiece SrcPiece Candidate
+                     @ENDIF
+                  @ENDIF
+               @ENDIF
+            @ENDIF
+         @ENDIF
+         @MA2V 0 CmdMode
+         @IF_EQ_AV WhiteColor ActiveColor
+            @MA2V BlackColor ActiveColor
+         @ELSE
+            @MA2V WhiteColor ActiveColor
+         @ENDIF
+      @ENDIF
+   :MPContinue
+   @ENDWHILE
+   @POPNULL
+@EndLocals
+@POPRETURN
+@RET
+
+
 
 
 ########################################
