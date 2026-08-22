@@ -440,7 +440,7 @@ M AddConstantEvent \
          @POPNULL
          @CALL CanvasCursorMove
          @PUSHI LastKeyChar
-         @STOREBI CharPtr
+         @STOREBII CharPtr
          @INCI CanvasCursor
          @CALL DisplayCanvas
       @ELSE
@@ -468,7 +468,7 @@ M AddConstantEvent \
       @IF_UGT_A 0
          @POPNULL
          @PUSH 32
-         @STOREBI CharPtr
+         @STOREBII CharPtr
          @DECI CanvasCursor
          @CALL DisplayCanvas
       @ELSE
@@ -516,9 +516,9 @@ M AddConstantEvent \
                  @POPI DataPtr2
                  @ForIV2V BoxXI CanvasBoxX1 CanvasBoxX2
                      @PUSH "-\0"
-                     @STOREBI DataPtr1
+                     @STOREBII DataPtr1
                      @PUSH "-\0"
-                     @STOREBI DataPtr2
+                     @STOREBII DataPtr2
                      @INCI DataPtr1
                      @INCI DataPtr2
                  @Next BoxXI
@@ -537,9 +537,9 @@ M AddConstantEvent \
                  @POPI DataPtr2
                  @ForIV2V BoxYI CanvasBoxY1 CanvasBoxY2
                      @PUSH "|\0"
-                     @STOREBI DataPtr1
+                     @STOREBII DataPtr1
                      @PUSH "|\0"
-                     @STOREBI DataPtr2
+                     @STOREBII DataPtr2
                      @PUSHI DataPtr1
                      @ADDI WinWidth
                      @POPI DataPtr1
@@ -557,7 +557,7 @@ M AddConstantEvent \
                  @ADDI CanvasData
                  @POPI DataPtr1
                  @PUSH "+\0"
-                 @STOREBI DataPtr1           
+                 @STOREBII DataPtr1           
                  @PUSHI CanvasBoxY2
                  @SUB 1
                  @PUSHI WinWidth
@@ -568,15 +568,15 @@ M AddConstantEvent \
                  @ADDI CanvasData
                  @POPI DataPtr2
                  @PUSH "+\0"
-                 @STOREBI DataPtr2
+                 @STOREBII DataPtr2
                  @PUSHI DataPtr1 @ADDI CanvasBoxX2 @SUBI CanvasBoxX1
                  @POPI DataPtr1
                  @PUSH "+\0"
-                 @STOREBI DataPtr1
+                 @STOREBII DataPtr1
                  @PUSHI DataPtr2 @ADDI CanvasBoxX2 @SUBI CanvasBoxX1
                  @POPI DataPtr2
                  @PUSH "+\0"
-                 @STOREBI DataPtr2
+                 @STOREBII DataPtr2
                  # Now get out of Box mode
                  @MA2V -1 CanvasBoxX1
                  @MA2V -1 CanvasBoxY1

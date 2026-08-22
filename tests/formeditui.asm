@@ -2039,7 +2039,7 @@ M AddConstantEvent \
          @POPNULL
          @CALL CanvasCursorMove
          @PUSHI LastKeyChar
-         @STOREBI CharPtr
+         @STOREBII CharPtr
          @INCI CanvasCursor
          @CALL DisplayCanvas
       @ELSE
@@ -2069,7 +2069,7 @@ M AddConstantEvent \
          @POPI CharPtr
          
          @PUSH 32
-         @STOREBI CharPtr
+         @STOREBII CharPtr
 
          @CALL DisplayCanvas
       @ELSE
@@ -2203,9 +2203,9 @@ M AddConstantEvent \
    @POPI DataPtr2
    @ForIV2V BoxXI SelectionX1 SelectionX2
       @PUSH "-\0"
-      @STOREBI DataPtr1
+      @STOREBII DataPtr1
       @PUSH "-\0"
-      @STOREBI DataPtr2
+      @STOREBII DataPtr2
       @INCI DataPtr1
       @INCI DataPtr2
    @Next BoxXI
@@ -2224,9 +2224,9 @@ M AddConstantEvent \
    @POPI DataPtr2
    @ForIV2V BoxYI SelectionY1 SelectionY2
       @PUSH "|\0"
-      @STOREBI DataPtr1
+      @STOREBII DataPtr1
       @PUSH "|\0"
-      @STOREBI DataPtr2
+      @STOREBII DataPtr2
       @PUSHI DataPtr1
       @ADDI WinWidth
       @POPI DataPtr1
@@ -2244,7 +2244,7 @@ M AddConstantEvent \
    @ADDI CanvasData
    @POPI DataPtr1
    @PUSH "+\0"
-   @STOREBI DataPtr1
+   @STOREBII DataPtr1
    @PUSHI SelectionY2
    @SUB 1
    @PUSHI WinWidth
@@ -2255,15 +2255,15 @@ M AddConstantEvent \
    @ADDI CanvasData
    @POPI DataPtr2
    @PUSH "+\0"
-   @STOREBI DataPtr2
+   @STOREBII DataPtr2
    @PUSHI DataPtr1 @ADDI SelectionX2 @SUBI SelectionX1
    @POPI DataPtr1
    @PUSH "+\0"
-   @STOREBI DataPtr1
+   @STOREBII DataPtr1
    @PUSHI DataPtr2 @ADDI SelectionX2 @SUBI SelectionX1
    @POPI DataPtr2
    @PUSH "+\0"
-   @STOREBI DataPtr2
+   @STOREBII DataPtr2
 
    @Call(A) SelectionCompleteAndReset SEL_DrawBox
 @EndLocals

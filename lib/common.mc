@@ -316,7 +316,10 @@ M STOREBII \
      @AND 0xff00 @ORS \
      @POPII %1
 # Byte version of Store stack to memory at address %1
-M STOREBI @AND 0xff @PUSHII %1 @AND 0xff00 @ORS @POPII %1
+M STOREBI \
+    @AND 0xff @PUSHI %1 \
+    @AND 0xff00 @ORS \
+    @POPII %1
 #
 # LOADB moves BYTE value from memory to stack.
 #
