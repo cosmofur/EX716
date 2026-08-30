@@ -17,12 +17,16 @@ L string.ld
 # CandidateUnpack(Encoded):(LocX,LocY,CaptFlag, CapPieceIndex)
 # ReadChessCmd():("q","p",ABab)
 # KingCheck(Color):1|0
+# HasLegalMove(Color):1|0
+# ReportGameState(Color):void
+# SuggestMove(Color):void
 # CastleSetValid(Color)
 # CastleInvalidKing(Color)
 # CastleInvalidRook(PieceIndex, Color)
 # CastleTestRook(PieceIndex, Color):(0|1)
 # CastleTestKing(Color):(0|1)
 # CastleMoveTest(CmdMode):(0|1)
+# CastleMoveValid(CmdMode):(MoveInvalid | KingPiece,RookPiece,KingDestX,RookDestX,KingY,Result)
 # CastleMoveTry(CmdMode):(MoveInvalid|RookPieceIndex)
 # ManualPlay():void
 # CheckBoard(X,Y): Returns either piece index, or -1 for invalud/empty square.
@@ -33,6 +37,7 @@ L string.ld
 # SquareXYtoSqr(X,Y):Square| -1
 # SquareSqrtoXY(Square):(X,Y)|-1
 # DisplayBoard(ViewPoint)
+# UserMovePossible(PieceIndex, TargetX, TargetY):(MoveInvalid| Candidate)
 # UserMoveValid(PieceIndex, TargetX, TargetY):(MoveInvalid| Candidate)
 # PieceToString(PieceType, Color): Print["K","Q","R","N","B","P","k","q","r","n","b","p"]
 #
@@ -65,12 +70,14 @@ WRook WBishop WKnight WPawn WQueen WPieceEnd
 :BlackRangePtr
 BRook BBishop BKnight BPawn BQueen BPieceEnd
 
-:PTSString 0 0 0 
+:PTSString 0 0 0
 :PiecesArray
 . PiecesArray+32     # Allocate 32 bytes
 :PromotionArray
 . PromotionArray+32  # Per-piece promoted type override, or 0.
 :CastleArray 0 0     # Castling information.
+:EnPassantSquare 0     # Square capturable by en passant, or MoveInvalid.
+:EnPassantPiece 0      # Pawn index capturable by en passant, or MoveInvalid.
 
 
 ###########
@@ -86,6 +93,8 @@ BRook BBishop BKnight BPawn BQueen BPieceEnd
 # CmdCode Constants
 =PromotionQueen  0x0001
 =PromotionKnight 0x0002
+=PromotionRook   0x0003
+=PromotionBishop 0x0000
 
 # Pack Structure constants
 =CPDIR_N    0
@@ -138,6 +147,10 @@ M SAVEBOARD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @NextBy %0_Index 2 \
     @PUSHI ActiveColor \
     @PUSHHW \
+    @PUSHI EnPassantSquare \
+    @PUSHHW \
+    @PUSHI EnPassantPiece \
+    @PUSHHW \
     @PUSHI CastleArray \
     @PUSHHW \
     @PUSHI CastleArray+2 \
@@ -147,9 +160,9 @@ M SAVEBOARD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
        @ADDI %0_Index \
        @PUSHS \
        @PUSHHW \
-    @NextBy %0_Index 2    
-    
-     
+    @NextBy %0_Index 2
+
+
 M RESTOREBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @ForIA2B %0_Index 30 -2 \
        @POPHW \
@@ -160,7 +173,11 @@ M RESTOREBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @POPHW \
     @POPI CastleArray+2 \
     @POPHW \
-    @POPI CastleArray \    
+    @POPI CastleArray \
+    @POPHW \
+    @POPI EnPassantPiece \
+    @POPHW \
+    @POPI EnPassantSquare \
     @POPHW \
     @POPI ActiveColor \
     @ForIA2B %0_Index 30 -2 \
@@ -178,12 +195,14 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @POPNULL \
     @POPNULL \
     @POPNULL \
+    @POPNULL \
+    @POPNULL \
     @ForIA2B %0_Index 30 -2 \
        @POPHW \
        @POPNULL \
     @NextBy %0_Index -2
 
-    
+
 
 
 
@@ -294,6 +313,8 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
    # Initlize Castleing Flags
    @Call(A) CastleSetValid WhiteColor
    @Call(A) CastleSetValid BlackColor
+   @MA2V MoveInvalid EnPassantSquare
+   @MA2V MoveInvalid EnPassantPiece
 @EndLocals
 @POPRETURN
 @RET
@@ -374,23 +395,23 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 
 
    @Call(VV) SquareXYtoSqr XLocation YLocation
-   
+
    @PUSHI Alive
    @AND 1
    @SHLN 7
-   
+
    @ORS
-   
+
    @PUSHI Color
    @AND 1
    @SHLN 6
-   
+
    @ORS
-   
+
    @PUSH PiecesArray
-   @ADDI PieceIndex   
+   @ADDI PieceIndex
    @POPI Address
-   
+
    @STOREBII Address
 @EndLocals
 @POPRETURN
@@ -398,7 +419,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 
 
 
-   
+
 ########################
 # SHLI Support function  SHLI(Value,Shift count)
 :SHLI
@@ -660,7 +681,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @ForIA2B TestDir 0 8
         @Call(VVV) GetPieceMove PieceType TestDir PieceColor
         @IF_NEQ_A MoveInvalid
-            @POPI2 DeltaY DeltaX        
+            @POPI2 DeltaY DeltaX
             # We need Angle informaiton for Pawns
             @PUSHI TestDir
             @AND 1
@@ -711,7 +732,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
                       @IF_EQ_AV PiecePawn PieceType
                          # Special Rule for Pawns
                          @IF_NEQ_AV 0 IsAngle
-                            # Pawns can not move at an Angle if not taking an enemy.                            
+                            # Pawns can not move at an Angle if not taking an enemy.
                             @JMP VMEContinueDir
                          @ENDIF
                       @ENDIF
@@ -736,7 +757,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
                                   # As this is not diagonal, pawn can't take piece going straight
                                   @JMP VMEContinueDir
                                @ENDIF
-                             @ENDIF                             
+                             @ENDIF
                              @Call(VVAV) CandidatePack TestX TestY 1 TargetPieceIndex
                              @INCI CandidateCount
                              @ELSE
@@ -750,10 +771,15 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
                    @IF_EQ_AV PiecePawn PieceType
                       # Special Rule for Pawns
                       @IF_NEQ_AV 0 IsAngle
-                         # Pawns can not move at an Angle if not taking an enemy.                            
+                         @Call(VV) SquareXYtoSqr TestX TestY
+                         @POPI TargetSquare
+                         @IF_EQ_VV TargetSquare EnPassantSquare
+                            @Call(VVAV) CandidatePack TestX TestY 1 EnPassantPiece
+                            @INCI CandidateCount
+                         @ENDIF
                          @JMP VMEContinueDir
                       @ENDIF
-                   @ENDIF                   
+                   @ENDIF
                    @IF_EQ_VV TestDepth RequestedDepth
                       # Enemy possible candidate
                       # Add to possible candidate list
@@ -986,7 +1012,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       @POPNULL
    @ELSE
       @POPNULL
-      @JMP GPTExit
+      @JMP GPTExitNoPop
    @ENDIF
 
    @PUSH PromotionArray
@@ -1074,28 +1100,27 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @Local CapPieceIndex
     @Local PieceAlive
     @Local PieceColor
-    @Local PieceType    
-    @Local CaptPieceColor    
+    @Local PieceType
+    @Local CaptPieceColor
+    @Local SourceX
+    @Local SourceY
     @Local CaptureX
     @Local CaptureY
+    @Local TargetSquare
 
     @POPI2 Candidate PieceIndex
 
     @Call(V) GetPieceInfo PieceIndex
-    @POPNULL @POPNULL                # Don't need X,Y
+    @POPI2 SourceY SourceX
     @POPI2 PieceColor PieceAlive
     @POPNULL                         # Don't need square
 
     @Call(V) CandidateUnpack Candidate
     @POPI4 CapPieceIndex CaptFlag TargetY TargetX
- 
-    # Handle Capture
-    
-    @Call(VV) CheckBoard TargetX TargetY
 
-    @IF_NEQ_A EmptySquare
-       @POPI CapPieceIndex
-       
+    # Handle Capture
+
+    @IF_EQ_AV 1 CaptFlag
        @Call(V) GetPieceInfo CapPieceIndex
        @POPI4 CaptureY CaptureX CaptPieceColor PieceAlive
        @POPNULL               # Original square no longer matters
@@ -1103,22 +1128,43 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
        # If Captured piece is original Rook it can't castle after capture.
        @Call(VV) CastleInvalidRook CapPieceIndex CaptPieceColor
        # Mark as dead.
-       @Call(VAVVV) SetPieceInfo CapPieceIndex 0 CaptPieceColor CaptureX CaptureY 
-    @ELSE
-       @POPNULL
+       @Call(VAVVV) SetPieceInfo CapPieceIndex 0 CaptPieceColor CaptureX CaptureY
     @ENDIF
-    
+
     # Makes sure if we move King or Rook invalidate Castling
     @Call(V) GetPieceType PieceIndex
     @POPI PieceType
-    
+
     @IF_EQ_AV PieceKing PieceType
        @Call(V) CastleInvalidKing PieceColor
     @ENDIF
 
     # Safe to call always as only does something if piece is original rook.
-    @Call(V) CastleInvalidRook PieceIndex PieceColor
+    @Call(VV) CastleInvalidRook PieceIndex PieceColor
 
+
+    # En passant is available only immediately after a pawn double move.
+    @MA2V MoveInvalid EnPassantSquare
+    @MA2V MoveInvalid EnPassantPiece
+    @IF_EQ_AV PiecePawn PieceType
+       @IF_EQ_AV WhiteColor PieceColor
+          @IF_EQ_AV 1 SourceY
+             @IF_EQ_AV 3 TargetY
+                @Call(VA) SquareXYtoSqr TargetX 2
+                @POPI EnPassantSquare
+                @MV2V PieceIndex EnPassantPiece
+             @ENDIF
+          @ENDIF
+       @ELSE
+          @IF_EQ_AV 6 SourceY
+             @IF_EQ_AV 4 TargetY
+                @Call(VA) SquareXYtoSqr TargetX 5
+                @POPI EnPassantSquare
+                @MV2V PieceIndex EnPassantPiece
+             @ENDIF
+          @ENDIF
+       @ENDIF
+    @ENDIF
 
     @Call(VVVVV) SetPieceInfo PieceIndex PieceAlive PieceColor TargetX TargetY
 @EndLocals
@@ -1167,11 +1213,25 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
        @ENDIF
     @ENDIF
 
-    @IF_EQ_AV PromotionKnight Promotion
+    @PUSHI Promotion
+    @SWITCH
+    @CASE PromotionKnight
+       @POPNULL
        @MA2V PieceKnight NewPieceType
-    @ELSE
+       @CBREAK
+    @CASE PromotionRook
+       @POPNULL
+       @MA2V PieceRook NewPieceType
+       @CBREAK
+    @CASE PromotionBishop
+       @POPNULL
+       @MA2V PieceBishop NewPieceType
+       @CBREAK
+    @CDEFAULT
+       @POPNULL
        @MA2V PieceQueen NewPieceType
-    @ENDIF
+       @CBREAK
+    @ENDCASE
 
     @PUSH PromotionArray
     @ADDI PieceIndex
@@ -1232,7 +1292,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 @RET
 
 ########################################
-# DisplayBoard(ViewPoint) 
+# DisplayBoard(ViewPoint)
 :DisplayBoard
 @PUSHRETURN
 @Locals
@@ -1249,6 +1309,8 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @Local PieceColor
     @Local PieceAlive
     @Local PieceType
+    @Local EPX
+    @Local EPY
 
     @POPI ViewPoint
 
@@ -1270,7 +1332,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
     @ENDIF
     @ForIA2B Index2 0 8
        @MV2V XCur Temp1
-       @PUSHI YCur @ADD 1 
+       @PUSHI YCur @ADD 1
        @PRTTOP
        @POPNULL
        @PRT "|"
@@ -1302,9 +1364,94 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
        @POPI YCur
    @Next Index2
    @PRTNL
+   @IF_NEQ_AV MoveInvalid EnPassantSquare
+      @Call(V) SquareSqrtoXY EnPassantSquare
+      @POPI2 EPY EPX
+      @PRT "En passant active: target X,Y "
+      @PRTI EPX
+      @PRT ","
+      @PRTI EPY
+      @PRT "; captured pawn index "
+      @PRTI EnPassantPiece
+      @PRTNL
+   @ENDIF
 @EndLocals
 @POPRETURN
 @RET
+##################################
+# UserMovePossible(PieceIndex, TargetX, TargetY)
+:UserMovePossible
+@PUSHRETURN
+@Locals
+   @Local PieceIndex
+   @Local TargetX
+   @Local TargetY
+   @Local StartColor
+   @Local StartAlive
+   @Local DepthIndex
+   @Local Count
+   @Local Index1
+   @Local CapPieceIndex
+   @Local CaptFlag
+   @Local Result
+   @Local Candidate
+   @Local CandidateX
+   @Local CandidateY
+
+   @POPI3 TargetY TargetX PieceIndex
+   @MA2V MoveInvalid Result
+
+   @PUSHI PieceIndex
+   @IF_UGE_A 32
+      # Not valid
+      @POPNULL
+      @JMP UMPExit
+   @ENDIF
+   @POPNULL
+
+   @Call(V) GetPieceInfo PieceIndex
+   @POPNULL @POPNULL   # Do not need duplicate X and Y
+   @POPI2 StartColor StartAlive
+   @POPNULL # Dont need square
+
+   @IF_EQ_AV 0 StartAlive
+      # Player tried to move dead piece.
+      @JMP UMPExit
+   @ENDIF
+   @IF_NEQ_VV ActiveColor StartColor
+      # Player tried to move piece he didn't own.
+      @JMP UMPExit
+   @ENDIF
+   @ForIA2B DepthIndex 1 8
+      @Call(VV) ValidMoves PieceIndex DepthIndex
+      @POPI Count
+      @IF_EQ_AV 0 Count
+         @JMP UMPExit
+      @ENDIF
+      @ForIA2V Index1 0 Count
+         @POPI Candidate
+         @Call(V) CandidateUnpack Candidate
+         @POPI4 CapPieceIndex CaptFlag CandidateY CandidateX
+         @IF_EQ_VV TargetX CandidateX
+             @IF_EQ_VV TargetY CandidateY
+                @MV2V Candidate Result
+             @ENDIF
+         @ENDIF
+      @Next Index1
+      @IF_NEQ_VA Result MoveInvalid
+         # Requested destination found at this depth
+         @JMP UMPExit
+      @ENDIF
+   @Next DepthIndex
+:UMPExit
+   @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
+
+
+
+
 ##################################
 # UserMoveValid(PieceIndex, TargetX, TargetY)
 :UserMoveValid
@@ -1375,7 +1522,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       # Lastly check if move puts king into check
       # First simulate the move, then look for Check
       @SAVEBOARD
-      @Call(VV) MovePiece PieceIndex Result      
+      @Call(VV) MovePiece PieceIndex Result
       @Call(V) KingCheck ActiveColor
       @RESTOREBORD
       @IF_NOTZERO
@@ -1468,7 +1615,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 @POPRETURN
 @RET
 
-   
+
 ######################################
 # ReadChessCmd
 #
@@ -1484,9 +1631,10 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 #
 # Promotion:
 #
-#   0 = None
-#   1 = Queen
+#   0 = Bishop
+#   1 = Queen, also used as the default when no suffix is supplied
 #   2 = Knight
+#   3 = Rook
 #
 # Single-character commands return their character value.
 #
@@ -1507,6 +1655,8 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       @PRTLN "Error, out of memory."
       @END
    @ENDIF
+   @PUSH 0
+   @POPII InputStr    # Null out any previous string.
    @POPI InputStr
 
    @PRT ") "
@@ -1515,9 +1665,10 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
    @Call(V) strlen InputStr
    @IF_ZERO
       @POPNULL
-      @PRT "No entry."
+      @PRTLN "No entry."
       @JMP RCCErrExit
    @ELSE
+      @PRT "c:" @PRTHEXI InputStr @PRT "(" @PRTSI InputStr @PRT ")" @PRTNL
       @POPI StrLen
    @ENDIF
 
@@ -1560,15 +1711,25 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
          @POPI Value01
          @JMP RCCCmdExit
          @CBREAK
-         
+
       @CASE "b\0"
          @POPI Value01
          @JMP RCCCmdExit
          @CBREAK
-         
+
+      @CASE "B\0"
+         @POPI Value01
+         @JMP RCCCmdExit
+         @CBREAK
+
+      @CASE "?\0"
+         @POPI Value01
+         @JMP RCCCmdExit
+         @CBREAK
+
       @CDEFAULT
          @POPNULL
-         @PRT "Syntax Error"
+         @PRTLN "Syntax Error"
          @JMP RCCErrExit
          @CBREAK
       @ENDCASE
@@ -1589,7 +1750,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       @ENDIF
    @ENDIF
 
-   @MA2V 0 Promotion
+   @MA2V PromotionQueen Promotion
 
 
    ##################################
@@ -1700,6 +1861,16 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       @MA2V PromotionKnight Promotion
       @CBREAK
 
+   @CASE "r\0"
+      @POPNULL
+      @MA2V PromotionRook Promotion
+      @CBREAK
+
+   @CASE "b\0"
+      @POPNULL
+      @MA2V PromotionBishop Promotion
+      @CBREAK
+
    @CDEFAULT
       @POPNULL
       @PRT "Syntax Error"
@@ -1767,7 +1938,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 @POPRETURN
 @RET
 
-   
+
 #########################################
 # KingCheck(Color):1|0
 # Returns 1 if Color's king is currently attacked.
@@ -1867,10 +2038,286 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 
 @EndLocals
 @POPRETURN
-@RET      
+@RET
 
 
-      
+
+#########################################
+# HasLegalMove(Color):1|0
+# Returns 1 if Color has at least one legal move.
+:HasLegalMove
+@PUSHRETURN
+@Locals
+   @Local Color
+   @Local OldActiveColor
+   @Local PieceBase
+   @Local PieceIndex
+   @Local PieceAlive
+   @Local Index1
+   @Local Index2
+   @Local Depth
+   @Local Count
+   @Local Candidate
+   @Local InCheck
+   @Local Result
+
+   @POPI Color
+   @MV2V ActiveColor OldActiveColor
+   @MV2V Color ActiveColor
+   @MA2V 0 Result
+
+   @IF_EQ_AV WhiteColor Color
+      @MA2V 0 PieceBase
+   @ELSE
+      @MA2V 16 PieceBase
+   @ENDIF
+
+   @ForIA2B Index1 0 16
+      @PUSHI PieceBase
+      @ADDI Index1
+      @POPI PieceIndex
+
+      @Call(V) GetPieceInfo PieceIndex
+      @POPNULL @POPNULL
+      @POPNULL
+      @POPI PieceAlive
+      @POPNULL
+
+      @IF_NEQ_AV 0 PieceAlive
+         @ForIA2B Depth 1 8
+            @Call(VV) ValidMoves PieceIndex Depth
+            @POPI Count
+            @IF_EQ_AV 0 Count
+               @FORBREAK
+            @ENDIF
+
+            @ForIA2V Index2 0 Count
+               @POPI Candidate
+               @IF_EQ_AV 0 Result
+                  @SAVEBOARD
+                  @Call(VV) MovePiece PieceIndex Candidate
+                  @Call(V) KingCheck Color
+                  @POPI InCheck
+                  @RESTOREBORD
+                  @IF_EQ_AV 0 InCheck
+                     @MA2V 1 Result
+                  @ENDIF
+               @ENDIF
+            @Next Index2
+
+            @IF_EQ_AV 1 Result
+               @FORBREAK
+            @ENDIF
+         @Next Depth
+      @ENDIF
+
+      @IF_EQ_AV 1 Result
+         @FORBREAK
+      @ENDIF
+   @Next Index1
+
+   @IF_EQ_AV 0 Result
+      # Castling is not produced by ValidMoves, so test each castle command.
+      @Call(A) CastleMoveValid 0x0184
+      @POPI InCheck
+      @IF_NEQ_AV MoveInvalid InCheck
+         @POPI5 InCheck InCheck InCheck InCheck InCheck
+         @MA2V 1 Result
+      @ENDIF
+   @ENDIF
+   @IF_EQ_AV 0 Result
+      @Call(A) CastleMoveValid 0x0084
+      @POPI InCheck
+      @IF_NEQ_AV MoveInvalid InCheck
+         @POPI5 InCheck InCheck InCheck InCheck InCheck
+         @MA2V 1 Result
+      @ENDIF
+   @ENDIF
+   @IF_EQ_AV 0 Result
+      @Call(A) CastleMoveValid 0x0fbc
+      @POPI InCheck
+      @IF_NEQ_AV MoveInvalid InCheck
+         @POPI5 InCheck InCheck InCheck InCheck InCheck
+         @MA2V 1 Result
+      @ENDIF
+   @ENDIF
+   @IF_EQ_AV 0 Result
+      @Call(A) CastleMoveValid 0x0ebc
+      @POPI InCheck
+      @IF_NEQ_AV MoveInvalid InCheck
+         @POPI5 InCheck InCheck InCheck InCheck InCheck
+         @MA2V 1 Result
+      @ENDIF
+   @ENDIF
+
+:HLMExit
+   @MV2V OldActiveColor ActiveColor
+   @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
+
+#########################################
+# ReportGameState(Color):void
+# Prints check/checkmate/stalemate status for Color.
+:ReportGameState
+@PUSHRETURN
+@Locals
+   @Local Color
+   @Local InCheck
+   @Local HasMove
+
+   @POPI Color
+   @Call(V) KingCheck Color
+   @POPI InCheck
+   @Call(V) HasLegalMove Color
+   @POPI HasMove
+
+   @IF_EQ_AV 0 HasMove
+      @IF_EQ_AV 0 InCheck
+         @PRTLN "Stalemate."
+      @ELSE
+         @PRTLN "Checkmate."
+      @ENDIF
+   @ELSE
+      @IF_NEQ_AV 0 InCheck
+         @PRTLN "Check."
+      @ENDIF
+   @ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+
+#########################################
+# SuggestMove(Color):void
+# One-ply material scorer. Captures score as captured piece value;
+# quiet legal moves score 0.
+:SuggestMove
+@PUSHRETURN
+@Locals
+   @Local Color
+   @Local PieceBase
+   @Local PieceIndex
+   @Local PieceAlive
+   @Local PieceX
+   @Local PieceY
+   @Local Index1
+   @Local Index2
+   @Local Depth
+   @Local Count
+   @Local Candidate
+   @Local CandidateX
+   @Local CandidateY
+   @Local CaptFlag
+   @Local CapPieceIndex
+   @Local InCheck
+   @Local MoveScore
+   @Local BestScore
+   @Local BestPieceIndex
+   @Local BestCandidate
+
+   @POPI Color
+   @MA2V 0 BestScore
+   @MA2V MoveInvalid BestPieceIndex
+   @MA2V MoveInvalid BestCandidate
+
+   @IF_EQ_AV WhiteColor Color
+      @MA2V 0 PieceBase
+   @ELSE
+      @MA2V 16 PieceBase
+   @ENDIF
+
+   @ForIA2B Index1 0 16
+      @PUSHI PieceBase
+      @ADDI Index1
+      @POPI PieceIndex
+
+      @Call(V) GetPieceInfo PieceIndex
+      @POPNULL @POPNULL
+      @POPNULL
+      @POPI PieceAlive
+      @POPNULL
+
+      @IF_NEQ_AV 0 PieceAlive
+         @ForIA2B Depth 1 8
+            @Call(VV) ValidMoves PieceIndex Depth
+            @POPI Count
+            @IF_EQ_AV 0 Count
+               @FORBREAK
+            @ENDIF
+
+            @ForIA2V Index2 0 Count
+               @POPI Candidate
+               @SAVEBOARD
+               @Call(VV) MovePiece PieceIndex Candidate
+               @Call(V) KingCheck Color
+               @POPI InCheck
+               @RESTOREBORD
+
+               @IF_EQ_AV 0 InCheck
+                  @Call(V) CandidateUnpack Candidate
+                  @POPI4 CapPieceIndex CaptFlag CandidateY CandidateX
+                  @MA2V 0 MoveScore
+                  @IF_EQ_AV 1 CaptFlag
+                     @Call(V) GetPieceType CapPieceIndex
+                     @POPI MoveScore
+                  @ENDIF
+                  @IF_EQ_AV MoveInvalid BestPieceIndex
+                     @MV2V MoveScore BestScore
+                     @MV2V PieceIndex BestPieceIndex
+                     @MV2V Candidate BestCandidate
+                  @ELSE
+                     @PUSHI MoveScore
+                     @IF_UGT_V BestScore
+                        @POPNULL
+                        @MV2V MoveScore BestScore
+                        @MV2V PieceIndex BestPieceIndex
+                        @MV2V Candidate BestCandidate
+                     @ELSE
+                        @POPNULL
+                     @ENDIF
+                  @ENDIF
+               @ENDIF
+            @Next Index2
+         @Next Depth
+      @ENDIF
+   @Next Index1
+
+   @IF_EQ_AV MoveInvalid BestPieceIndex
+      @PRTLN "No legal move found."
+   @ELSE
+      @Call(V) GetPieceInfo BestPieceIndex
+      @POPI2 PieceY PieceX
+      @POPNULL @POPNULL @POPNULL
+      @Call(V) CandidateUnpack BestCandidate
+      @POPI4 CapPieceIndex CaptFlag CandidateY CandidateX
+
+      @PRT "Best move: "
+      @PUSHI PieceX
+      @ADD "a\0"
+      @POPI Temp01
+      @PRTCHI Temp01
+      @PUSHI PieceY
+      @ADD 1
+      @PRTTOP
+      @POPNULL
+      @PUSHI CandidateX
+      @ADD "a\0"
+      @POPI Temp01
+      @PRTCHI Temp01
+      @PUSHI CandidateY
+      @ADD 1
+      @PRTTOP
+      @POPNULL
+      @PRT " value "
+      @PRTI BestScore
+      @PRTNL
+   @ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
 M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
                  @MA2V BlackColor ActiveColor \
                @ELSE \
@@ -1900,7 +2347,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @Local Color
    @Local CastlePtr
    @Local ColorOffset
-   
+
    @POPI Color
 
    @PUSHI Color
@@ -1925,7 +2372,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @ADD 1
    @AND 0x1f
    @SHLN 7
-   @ORS   
+   @ORS
    #
    # Save result in array
    @POPII CastlePtr
@@ -1940,7 +2387,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
 @Locals
    @Local Color
    @Local CastlePtr
-   
+
    @POPI Color
 
    @PUSH CastleArray
@@ -1948,7 +2395,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @ADDI Color
    @POPI CastlePtr
 
-   @PUSHII CastlePtr   
+   @PUSHII CastlePtr
    @AND 0xfffe
    @POPII CastlePtr
 
@@ -2022,7 +2469,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
 @EndLocals
 @POPRETURN
 @RET
-   
+
 
 
 ########################################
@@ -2066,7 +2513,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @PUSHII CastlePtr
    @SHRN 7
    @AND 0x1f
-   
+
    @IF_EQ_V RookIndex
       @PUSHII CastlePtr
       @AND 0x1000
@@ -2234,13 +2681,13 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
       @CBREAK
    @ENDCASE
    @POPNULL
-   
+
    @PUSHI Result
 @EndLocals
 @POPRETURN
 @RET
 #######################################
-# CastleMoveTry(CmdMode):(MoveInvalid|RookPieceIndex)
+# CastleMoveValid(CmdMode):(MoveInvalid | KingPiece,RookPiece,KingDestX,RookDestX,KingY,Result)
 #  1. Castle command belongs to ActiveColor
 #  2. CastleTestKing(Color) != 0
 #  3. King actually exists on e1/e8 and is the correct color/type
@@ -2251,7 +2698,7 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
 #  8. King is not currently in check
 #  9. King's transit square is not attacked
 #  10. King's destination is not attacked
-:CastleMoveTry
+:CastleMoveValid
 @PUSHRETURN
 @Locals
    @Local CmdMode
@@ -2262,15 +2709,18 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @Local RookY
    @Local TestX
    @Local RookPiece
-   @Local KingPiece   
+   @Local KingPiece
    @Local Result
    @Local KingDir
    @Local Candidate
    @Local KingDestX
    @Local RookDestX
+   @Local PieceColor
+   @Local PieceAlive
 
    @POPI CmdMode
    @MA2V MoveInvalid Result
+   @MA2V MoveInvalid Color
 
    # Determine Castle geometry, destinations
    @PUSHI CmdMode
@@ -2341,6 +2791,14 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @ENDIF
    @POPNULL
 
+   @Call(V) GetPieceInfo KingPiece
+   @POPNULL @POPNULL
+   @POPI2 PieceColor PieceAlive
+   @POPNULL
+   @IF_NEQ_VV PieceColor Color
+      @JMP CMVExit
+   @ENDIF
+
    # Make sure Rook is at legal location
    @Call(VV) CheckBoard RookX RookY
    @POPI RookPiece
@@ -2356,6 +2814,14 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @ENDIF
    @POPNULL
 
+   @Call(V) GetPieceInfo RookPiece
+   @POPNULL @POPNULL
+   @POPI2 PieceColor PieceAlive
+   @POPNULL
+   @IF_NEQ_VV PieceColor Color
+      @JMP CMVExit
+   @ENDIF
+
    @Call(VV) CastleTestRook RookPiece Color
    @IF_ZERO
       @POPNULL
@@ -2365,14 +2831,13 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
 
    # All squars between rook and king must be empty
 
-   @MV2V KingX TestX
-
    @PUSHI RookX
    @IF_UGT_V KingX
       @MA2V 1 KingDir
    @ELSE
       @MA2V -1 KingDir
    @ENDIF
+   @POPNULL
 
    # Calculate final King and Rook locations
    @PUSHI KingX
@@ -2383,12 +2848,8 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @ADDI KingDir
    @POPI KingDestX
 
-   @PUSHI TestX
-   @ADDI KingDir
-   @POPI TestX
+   @ForIV2V TestX RookDestX RookX
 
-   @ForIV2V TestX RookX KingX
-      
       @Call(VV) CheckBoard TestX KingY
       @IF_NEQ_A EmptySquare
          # Not Valid just exit.a
@@ -2413,9 +2874,9 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @POPI TestX
    @SAVEBOARD
    @Call(VVAA) CandidatePack TestX KingY 0 0
-   @POPI Candidate   
+   @POPI Candidate
    @Call(VV) MovePiece KingPiece Candidate
-   @Call(V) KingCheck ActiveColor   
+   @Call(V) KingCheck ActiveColor
    @RESTOREBORD
    @IF_NOTZERO
       @POPNULL
@@ -2424,31 +2885,66 @@ M InvertPlayer  @IF_EQ_AV WhiteColor ActiveColor \
    @POPNULL
    # 3 King Can not be left in Check at destination.
    @SAVEBOARD
-   @Call(VVVVV) CastleMove KingPiece RookPiece KingDestX RookDestX KingY   
-   @Call(V) KingCheck ActiveColor   
+   @Call(VVVVV) CastleMove KingPiece RookPiece KingDestX RookDestX KingY
+   @Call(V) KingCheck ActiveColor
    @RESTOREBORD
    @IF_NOTZERO
       @POPNULL
       @JMP CMVExit
    @ENDIF
    @POPNULL
-   # All tests passed, not do the acutual move an set return to RookPiece
+   # All tests passed, return the geometry needed to execute the castle.
 
-   @Call(VVVVV) CastleMove KingPiece RookPiece KingDestX RookDestX KingY
-   
    @MV2V RookPiece Result
-   
+   @PUSHI KingPiece
+   @PUSHI RookPiece
+   @PUSHI KingDestX
+   @PUSHI RookDestX
+   @PUSHI KingY
+
 :CMVExit
    @PUSHI Result
 @EndLocals
 @POPRETURN
 @RET
 
+#######################################
+# CastleMoveTry(CmdMode):(MoveInvalid|RookPieceIndex)
+#
+# Validates and executes a castle move.
+:CastleMoveTry
+@PUSHRETURN
+@Locals
+   @Local CmdMode
+   @Local KingPiece
+   @Local RookPiece
+   @Local KingDestX
+   @Local RookDestX
+   @Local KingY
+   @Local Result
+
+   @POPI CmdMode
+   @Call(V) CastleMoveValid CmdMode
+   @POPI Result
+   @IF_EQ_AV MoveInvalid Result
+      @JMP CMTExit
+   @ENDIF
+
+   @POPI5 KingY RookDestX KingDestX RookPiece KingPiece
+   @Call(VVVVV) CastleMove KingPiece RookPiece KingDestX RookDestX KingY
+
+:CMTExit
+   @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
 #########################################
-# BoardEditMode()
+# BoardEditMode(VisualOrder)
+# VisualOrder=0 reads rank 1 to rank 8.
+# VisualOrder=1 reads rank 8 to rank 1, matching DisplayBoard output.
 # Array Data
 :PieceNameArray "KQRBNPkqrbnp .\0"
-:PieceNameValue 
+:PieceNameValue
 $$PieceKing $$PieceQueen $$PieceRook $$PieceBishop $$PieceKnight $$PiecePawn
 $$PieceKing $$PieceQueen $$PieceRook $$PieceBishop $$PieceKnight $$PiecePawn
 $$PieceSpace $$PieceSpace
@@ -2460,11 +2956,15 @@ $$PieceSpace $$PieceSpace
    @Local Index1
    @Local XPos
    @Local YPos
+   @Local YStep
+   @Local VisualOrder
    @Local SearchChar
    @Local SearchIndex
    @Local RepeatInput
    @Local InputColor
-   @Local InputPiece   
+   @Local InputPiece
+
+   @POPI VisualOrder
 
    # Clear the board
    @ForIA2B Index1 0 32
@@ -2479,16 +2979,22 @@ $$PieceSpace $$PieceSpace
    @PUSH 0
    @PUSH CastleArray+2      # We only get away with +2 here as CastleArray is fixed array
    @POPS
+
    # Setup Input string
    @Call(VA) HeapNewObject MainHeap 255
    @POPI LineIn
-   
-   @MA2V 0 YPos
+
+   @IF_EQ_AV 1 VisualOrder
+      @MA2V 7 YPos
+      @MA2V -1 YStep
+   @ELSE
+      @MA2V 0 YPos
+      @MA2V 1 YStep
+   @ENDIF
    @ForIA2B Index1 1 9
       @MA2V 1 RepeatInput
       @WHILE_EQ_AV 1 RepeatInput
          @MA2V 1 RepeatInput   # Only successfull parsing will allow moving to next line.
-         @PRT "(" @PRTI Index1 @PRT "):"
          @READSI LineIn
          @Call(V) strlen LineIn
          @IF_EQ_A 8
@@ -2530,7 +3036,7 @@ $$PieceSpace $$PieceSpace
                         # 12 > Index >= 6 is a blacks piece
                        @MA2V BlackColor InputColor
                      @ENDIF
-                  @ENDIF                  
+                  @ENDIF
                   @POPI SearchIndex
                   # Get the pieces real value
                   @PUSHI SearchIndex
@@ -2566,7 +3072,9 @@ $$PieceSpace $$PieceSpace
          @ENDIF
          :EBAbortLine
       @ENDWHILE
-      @INCI YPos
+      @PUSHI YPos
+      @ADDI YStep
+      @POPI YPos
   @Next Index1
   @Call(V) DisplayBoard ActiveColor
   @Call(VV) HeapDeleteObject MainHeap LineIn
@@ -2575,6 +3083,8 @@ $$PieceSpace $$PieceSpace
      @END
   @ENDIF
   @POPNULL
+  @Call(A) CastleSetValid WhiteColor
+  @Call(A) CastleSetValid BlackColor
 @EndLocals
 @POPRETURN
 @RET
@@ -2595,6 +3105,7 @@ $$PieceSpace $$PieceSpace
     @Local RangeStart
     @Local RangeEnd
     @Local RangePtr
+    @Local Result
 
 
 
@@ -2609,7 +3120,7 @@ $$PieceSpace $$PieceSpace
     @ENDIF
 
     # There has to be at least one empty slot.
-    @MA2V 0 Result    
+    @MA2V 0 Result
     @ForIA2B Index1 15 -1
        @PUSH PiecesArray
        @ADDI PAStart
@@ -2617,11 +3128,14 @@ $$PieceSpace $$PieceSpace
        @PUSHS
        @AND 0xff
        @IF_ZERO
+          @POPNULL
           @PUSHI Index1
           @ADDI PAStart
           @POPI HighFreeIndex
           @MA2V 1 Result
           @FORBREAK
+       @ELSE
+          @POPNULL
        @ENDIF
     @NextBy Index1 -1
 
@@ -2668,7 +3182,7 @@ $$PieceSpace $$PieceSpace
     @POPNULL
     # Now use that as indexes to get range
     @PUSHI RangeID
-    @SHL     # *2 for words    
+    @SHL     # *2 for words
     @ADDI RangePtr
     @PUSHS
     @PUSHS
@@ -2676,10 +3190,11 @@ $$PieceSpace $$PieceSpace
     @PUSHI RangeID @ADD 1 @SHL
     @ADDI RangePtr
     @PUSHS
+    @PUSHS
     @POPI RangeEnd
 
     @ForIV2V Index1 RangeStart RangeEnd
-       @PUSH PiecesArray       
+       @PUSH PiecesArray
        @ADDI Index1
        @PUSHS
        @AND 0xff
@@ -2693,7 +3208,7 @@ $$PieceSpace $$PieceSpace
        @POPNULL
     @Next Index1
     # Drop Here means we need to expand range by promotion
-    @Call(VVV) ExpandPieceRange InputColor RangeID RangeEnd HighFreeIndex
+    @Call(VVVVV) ExpandPieceRange InputColor RangeID RangeEnd RangePtr HighFreeIndex
     @POPI RangeID
     @Call(VAVVV) SetPieceInfo RangeID 1 InputColor XPos YPos
     @MA2V 1 Result
@@ -2722,32 +3237,44 @@ $$PieceSpace $$PieceSpace
 
     @POPI5 HighFreeIndex RangePtr RangeEnd InPieceRange InColor
 
-    @MV2V RangeEnd SourceStart
-    @PUSHI HighFreeIndex
-    @SUB 1
-    @POPI SourceEnd
-    @PUSHI RangeEnd
-    @ADD 1
-    @POPI DestStart
-    @MV2V HighFreeIndex DestEnd
 
-    @MV2V Index1 Index2
-    @INCI Index2
+    @MV2V HighFreeIndex Index1
+
     @ForIV2V Index1 HighFreeIndex RangeEnd
-       @LOADBII Index1
+
+       # destination = PiecesArray + Index1
+
+       # source = PiecesArray + Index1 - 1
+       @PUSH PiecesArray
+       @ADDI Index1
+       @SUB 1
+       @POPI Index2
+
+       @LOADBII Index2
+
+       @PUSH PiecesArray
+       @ADDI Index1
+       @POPI Index2
+
        @STOREBII Index2
-       @INCI Index2
+
     @NextBy Index1 -1
 
+
+    @PUSH PiecesArray
+    @ADDI RangeEnd
+    @POPI Index1
     @PUSH 0
-    @STOREBII RangeEnd
+    @STOREBII Index1
 
     # Now incriment all the values from RangeID to end of Range table
     # RangePtr points to either WhiteRangePtr or BlackRangePtr
     # Range ID is 0-4 but RangePtr tables are words not bytes
-    @PUSHI RangeID
+    @PUSHI InPieceRange
     @ADD 1
     @SHL
+    @ADDI RangePtr
+    @PUSHS
     @POPI SourceStart
 
     # Last entry in both the white and black tables is 100 to mark end
@@ -2767,37 +3294,37 @@ $$PieceSpace $$PieceSpace
 
 
 
-    
 
 
 
-    
 
 
-       
 
 
-    
-    
-    
-    
-    
-    
-    
-    
-      
-                     
 
-                  
 
-                  
-               
-               
-               
 
-                  
 
-      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2851,7 +3378,7 @@ $$PieceSpace $$PieceSpace
           @POPNULL
           @PRTLN "Skip Turn"
           @InvertPlayer
-         @MA2V 0 CmdMode
+          @MA2V 0 CmdMode
           @JMP MPContinue
           @CBREAK
       @CASE "r\0"
@@ -2860,6 +3387,12 @@ $$PieceSpace $$PieceSpace
           @CALL InitBoard
           @MA2V WhiteColor ActiveColor
          @MA2V 0 CmdMode
+          @JMP MPContinue
+          @CBREAK
+      @CASE "?\0"
+          @POPNULL
+          @Call(V) SuggestMove ActiveColor
+          @MA2V 0 CmdMode
           @JMP MPContinue
           @CBREAK
       @CASE "s\0"
@@ -2878,7 +3411,7 @@ $$PieceSpace $$PieceSpace
              @PRTLN "No Saved Game to restore."
           @ELSE
              @POPNULL
-             @PRT "Restore Game From Slot:" @PRTI SoftStackDepth @PRTNL             
+             @PRT "Restore Game From Slot:" @PRTI SoftStackDepth @PRTNL
              @DECI SoftStackDepth
              @RESTOREBORD
           @ENDIF
@@ -2887,9 +3420,16 @@ $$PieceSpace $$PieceSpace
           @CBREAK
        @CASE "b\0"
           @POPNULL
-          @CALL BoardEditMode
+          @Call(A) BoardEditMode 0
           @MA2V 0 CmdMode
           @JMP MPContinue
+          @CBREAK
+       @CASE "B\0"
+          @POPNULL
+          @Call(A) BoardEditMode 1
+          @MA2V 0 CmdMode
+          @JMP MPContinue
+          @CBREAK
        @CDEFAULT
           @POPNULL
           @IF_EQ_AV MoveInvalid CmdMode
@@ -2901,34 +3441,19 @@ $$PieceSpace $$PieceSpace
           # Start check for possible Castling move
           @Call(V) CastleMoveTest CmdMode
           @IF_NOTZERO
-             # Attempt to move King to a Rook's spot
              @POPNULL
-             @Call(VV) CheckBoard TargetX TargetY
-             @POPI CheckPiece
-             @Call(V) GetPieceType CheckPiece
-             @IF_EQ_A PieceRook
-                # Continue test if target spot was a Rook
+             @Call(V) CastleMoveTry CmdMode
+             @IF_EQ_A MoveInvalid
                 @POPNULL
-                @Call(VV) CastleTestRook CheckPiece ActiveColor
-                @IF_NOTZERO
-                   @POPNULL
-                   # Passed the CastleTestRook Test, so Castling is legal, mark it consumed.
-                   @Call(V) CastleInvalidKing ActiveColor
-                   @Call(V) CastleInvalidRook CheckPiece ActiveColor
-                @ELSE
-                   # Not legal to castle.
-                   @POPNULL
-                   @PRTLN "Castling not legal."
-                   @MA2V 0 CmdMode
-                   @JMP MPContinue
-                @ENDIF
-             @ELSE
-                # Wasn't a Rook, so not legal to castle
-                @POPNULL
-                @PRTLN "Castling not legal, not a rook."
+                @PRTLN "Castling not legal."
                 @MA2V 0 CmdMode
                 @JMP MPContinue
              @ENDIF
+             @POPNULL
+             @InvertPlayer
+             @Call(V) ReportGameState ActiveColor
+             @MA2V 0 CmdMode
+             @JMP MPContinue
           @ELSE
             # Was not an attempt to castle, so just continue.
             @POPNULL
@@ -2937,7 +3462,7 @@ $$PieceSpace $$PieceSpace
           @POPI SrcPiece
           @IF_EQ_AV EmptySquare SrcPiece
              @PRTLN "No piece at that location."
-             @MA2V 0 CmdMode               
+             @MA2V 0 CmdMode
              @JMP MPContinue
           @ELSE
              @Call(V) GetPieceInfo SrcPiece
@@ -2946,18 +3471,25 @@ $$PieceSpace $$PieceSpace
              @POPNULL
              @IF_NEQ_VV ActiveColor SrcColor
                 @PRTLN "Can not move other player's pieces"
-                @MA2V 0 CmdMode                  
-                @JMP MPContinue                                       
+                @MA2V 0 CmdMode
+                @JMP MPContinue
              @ELSE
                 @IF_EQ_AV 0 SrcAlive
                    @PRTLN "Can not move captured piece."
-                   @MA2V 0 CmdMode                     
-                   @JMP MPContinue                     
+                   @MA2V 0 CmdMode
+                   @JMP MPContinue
                 @ELSE
                    @Call(VVV) UserMoveValid  SrcPiece TargetX TargetY
                    @POPI Candidate
                    @IF_EQ_AV MoveInvalid Candidate
-                       @PRTLN "Not a valid move."
+                       @Call(VVV) UserMovePossible SrcPiece TargetX TargetY
+                       @IF_EQ_A MoveInvalid
+                          @POPNULL
+                          @PRTLN "Not a valid move."
+                       @ELSE
+                          @POPNULL
+                          @PRTLN "Not a valid move: king would be in check."
+                       @ENDIF
                        @MA2V 0 CmdMode
                        @JMP MPContinue
                    @ELSE
@@ -2973,8 +3505,9 @@ $$PieceSpace $$PieceSpace
           @ENDIF
           @CBREAK
       @ENDCASE
-      @MA2V 0 CmdMode 
+      @MA2V 0 CmdMode
       @InvertPlayer
+      @Call(V) ReportGameState ActiveColor
    :MPContinue
    @ENDWHILE
    :MPExit
@@ -3022,5 +3555,4 @@ $$PieceSpace $$PieceSpace
    @CALL ManualPlay
    @PRTLN "End."
    @END
-
 
