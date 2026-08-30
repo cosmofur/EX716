@@ -106,7 +106,8 @@ static void handle_ctrl_c(int sig) {
     (void)sig;
     g_return_code = RC_USER_HALT;
     g_interrupt_requested = RC_USER_HALT;
-    write(STDERR_FILENO, "^C\n", 3);
+    ssize_t ignored = write(STDERR_FILENO, "^C\n", 3);
+    (void)ignored;
 }
 
 /*
@@ -614,7 +615,7 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
                 return RC_STACK_UNDERFLOW;
             }
             uint32_t v = ((uint32_t)hi << 16) | (uint32_t)lo;
-            if (pop16(stack, sp, &hi) != 0) {
+            if (pop16(stack, sp, &hi) != 0 || pop16(stack, sp, &lo) != 0) {
                 return RC_STACK_UNDERFLOW;
             }
             printf("%u", (unsigned)v);
@@ -632,7 +633,7 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             }
             uint32_t uv = ((uint32_t)hi << 16) | (uint32_t)lo;
             int32_t v = (int32_t)uv;
-            if (pop16(stack, sp, &hi) != 0) {
+            if (pop16(stack, sp, &hi) != 0 || pop16(stack, sp, &lo) != 0) {
                 return RC_STACK_UNDERFLOW;
             }
             printf("%d", v);
@@ -721,6 +722,9 @@ static int handle_poll(uint8_t *mem, uint16_t *stack, int *sp, uint16_t arg) {
             for (size_t i = 0; i < len; ++i) {
                 unsigned char c = (unsigned char)line[i];
                 if (c > 31) {
+                    if (dst >= 0xFFFFu) {
+                        return RC_DEVICE_MEM_FAIL;
+                    }
                     mem[dst++] = c;
                 }
             }
@@ -789,6 +793,9 @@ static int handle_poll(uint8_t *mem, uint16_t *stack, int *sp, uint16_t arg) {
             }
             break;
         case PollReadTime: {
+            if (*sp < 0 || *sp > (MAXHWSTACK - 2)) {
+                return RC_STACK_OVERFLOW;
+            }
             time_t now = time(NULL);
             if (push16(stack, sp, (uint16_t)(now & 0xFFFF)) != 0) {
                 return RC_STACK_OVERFLOW;
@@ -1223,12 +1230,28 @@ static PyObject *c_EvalOne(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    /* Existing validation omitted here. */
+    if (PyArray_SIZE(mem_arr) < MAXMEM) {
+        PyErr_SetString(PyExc_ValueError, "mem array must contain at least 65536 uint8 entries");
+        PyArray_DiscardWritebackIfCopy(mem_arr);
+        PyArray_DiscardWritebackIfCopy(stack_arr);
+        Py_DECREF(mem_arr);
+        Py_DECREF(stack_arr);
+        return NULL;
+    }
+
+    if (PyArray_SIZE(stack_arr) < MAXHWSTACK) {
+        PyErr_SetString(PyExc_ValueError, "stack array is too small for EX716 hardware stack");
+        PyArray_DiscardWritebackIfCopy(mem_arr);
+        PyArray_DiscardWritebackIfCopy(stack_arr);
+        Py_DECREF(mem_arr);
+        Py_DECREF(stack_arr);
+        return NULL;
+    }
 
     uint8_t *mem = (uint8_t *)PyArray_DATA(mem_arr);
     uint16_t *stack = (uint16_t *)PyArray_DATA(stack_arr);
 
-    signal(SIGINT, handle_ctrl_c);
+    PyOS_sighandler_t old_sigint = PyOS_setsig(SIGINT, handle_ctrl_c);
 
     int return_code = in_rc;
     g_interrupt_requested = 0;
@@ -1250,6 +1273,8 @@ static PyObject *c_EvalOne(PyObject *self, PyObject *args)
     if (g_interrupt_requested && return_code == 0) {
         return_code = RC_USER_HALT;
     }
+
+    PyOS_setsig(SIGINT, old_sigint);
 
     PyArray_ResolveWritebackIfCopy(mem_arr);
     PyArray_ResolveWritebackIfCopy(stack_arr);

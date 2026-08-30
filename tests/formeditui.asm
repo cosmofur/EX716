@@ -24,6 +24,9 @@ D diskos.ld
 L display.ld
 
 =StackSizeDefault 0x400
+=HeapTopLimit 0xfe00
+=EditorMaxWidth 120
+=EditorMaxHeight 42
 
 :MainHeap 0
 :SoftStackStart 0
@@ -166,7 +169,7 @@ L display.ld
 ######################################
 :SetupStack
 # Can't use stack while setting it up. So no locals or PUSHRETURN
-   @PUSH 0xff00
+   @PUSH HeapTopLimit
    @SUB END__
    @POPI ObjectSize
    @Call(AV) HeapDefineMemory END__ ObjectSize
@@ -196,6 +199,20 @@ L display.ld
     @Local Index2
 
     @CALL WinResize   # Setup WinWidth and WinHeight
+    @PUSHI WinWidth
+    @IF_GT_A EditorMaxWidth
+       @POPNULL
+       @MA2V EditorMaxWidth WinWidth
+    @ELSE
+       @POPNULL
+    @ENDIF
+    @PUSHI WinHeight
+    @IF_GT_A EditorMaxHeight
+       @POPNULL
+       @MA2V EditorMaxHeight WinHeight
+    @ELSE
+       @POPNULL
+    @ENDIF
     @MA2V CR_EDIT CanvasCRHandler
     @Call(V) FormTableNew MainHeap
     @POPI FormTable
@@ -403,20 +420,6 @@ L display.ld
 @RET
 
 ########################################
-# AddFormEntry(Type,X,Y,Width,Height,ValuePtr,FieldPtr):EntryPtr
-# Convenience macro for the common editor form metadata call.
-########################################
-M AddFormEntry \
-   @PUSHI %1 \
-   @PUSHI %2 \
-   @PUSHI %3 \
-   @PUSHI %4 \
-   @PUSHI %5 \
-   @PUSH %6 \
-   @PUSH %7 \
-   @CALL FormEntryCreate
-
-########################################
 # FormEntryCreate(Type,X,Y,Width,Height,ValuePtr,FieldPtr):EntryPtr
 ########################################
 :FormEntryCreate
@@ -530,7 +533,14 @@ M AddFormEntry \
       @ENDCASE
       @POPNULL
       
-      @AddFormEntry FieldType SelectionCompleteX1 SelectionCompleteY1 Width Height 0 0
+      @PUSHI FieldType
+      @PUSHI SelectionCompleteX1
+      @PUSHI SelectionCompleteY1
+      @PUSHI Width
+      @PUSHI Height
+      @PUSH 0
+      @PUSH 0
+      @CALL FormEntryCreate
       @POPI EntryPtr
 
    @ENDIF
@@ -1634,41 +1644,82 @@ M AddFormEntry \
 @Locals
    @Local Zero
 
-# Most common Event Add is AVVVVA so create custom macro for most common form.
-M AddCommonEvent \
-   @PUSH %1 \     # EventType Mouse  Key     KeyRange  Timer
-   @PUSHI %2 \    #           X1     StrPtr  ASCII     Secs
-   @PUSHI %3 \    #           Y1     0       ASCII     Repeat
-   @PUSHI %4 \    #           X2     0       0         0
-   @PUSHI %5 \    #           Y2     0       0         0
-   @PUSH %6 \     # EventID
-   @CALL EventAdd
-# Second most common is AAAAAA 
-M AddConstantEvent \
-   @PUSH %1 \     # EventType Mouse  Key     KeyRange  Timer
-   @PUSH %2 \     #           X1     StrPtr  ASCII     Secs
-   @PUSH %3 \     #           Y1     0       ASCII     Repeat
-   @PUSH %4 \     #           X2     0       0         0
-   @PUSH %5 \     #           Y2     0       0         0
-   @PUSH %6 \     # EventID
-   @CALL EventAdd
-
    @MA2V 0 Zero
 
    @Call(V) EventTableNew MainHeap
    @POPI CtrlMenuEventTable
    @Call(V) EventSetActive CtrlMenuEventTable
 
-   @AddCommonEvent MouseEventClick Zero Zero WinWidth WinHeight EV_MenuClick
-   @AddConstantEvent KeyRangeEvent 27 27 0 0 EV_MenuESC
-   @AddConstantEvent KeyRangeEvent 15 15 0 0 EV_MenuOpenCloseCtrl # ^O close menu
-   @AddConstantEvent KeyRangeEvent 2 2 0 0 EV_MenuCtrlBox       # ^B
-   @AddConstantEvent KeyRangeEvent 9 9 0 0 EV_MenuCtrlInteger   # ^I / TAB
-   @AddConstantEvent KeyRangeEvent 12 12 0 0 EV_MenuCtrlLong    # ^L
-   @AddConstantEvent KeyRangeEvent 19 19 0 0 EV_MenuCtrlString  # ^S
-   @AddConstantEvent KeyRangeEvent 23 23 0 0 EV_MenuCtrlWords   # ^W
-   @AddConstantEvent KeyRangeEvent 20 20 0 0 EV_MenuCtrlTextBox # ^T
-   @AddConstantEvent KeyRangeEvent 16 16 0 0 EV_MenuPrint       # ^P
+   @PUSH MouseEventClick
+   @PUSHI Zero
+   @PUSHI Zero
+   @PUSHI WinWidth
+   @PUSHI WinHeight
+   @PUSH EV_MenuClick
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 27
+   @PUSH 27
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuESC
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 15
+   @PUSH 15
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuOpenCloseCtrl
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 2
+   @PUSH 2
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuCtrlBox
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 9
+   @PUSH 9
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuCtrlInteger
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 12
+   @PUSH 12
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuCtrlLong
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 19
+   @PUSH 19
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuCtrlString
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 23
+   @PUSH 23
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuCtrlWords
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 20
+   @PUSH 20
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuCtrlTextBox
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 16
+   @PUSH 16
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_MenuPrint
+   @CALL EventAdd
    @CALL EventGetActive
    @POPI CtrlMenuEventTable
 
@@ -1676,19 +1727,97 @@ M AddConstantEvent \
    @POPI CanvasEventTable
    @Call(V) EventSetActive CanvasEventTable
 
-   @AddCommonEvent MouseEventClick Zero Zero WinWidth WinHeight EV_CanvasClick
-   @AddConstantEvent KeyRangeEvent 2 2 0 0 EV_CanvasCtrlBox       # ^B
-   @AddConstantEvent KeyRangeEvent 9 9 0 0 EV_CanvasCtrlInteger   # ^I / TAB
-   @AddConstantEvent KeyRangeEvent 12 12 0 0 EV_CanvasCtrlLong    # ^L
-   @AddConstantEvent KeyRangeEvent 19 19 0 0 EV_CanvasCtrlString  # ^S
-   @AddConstantEvent KeyRangeEvent 23 23 0 0 EV_CanvasCtrlWords   # ^W
-   @AddConstantEvent KeyRangeEvent 20 20 0 0 EV_CanvasCtrlTextBox # ^T
-   @AddConstantEvent KeyRangeEvent " \0" 126 0 0 EV_CanvasKey
-   @AddConstantEvent KeyRangeEvent 127 127 0 0 EV_CanvasDel   
-   @AddConstantEvent KeyRangeEvent 27 27 0 0 EV_CanvasESC
-   @AddConstantEvent KeyRangeEvent 15 15 0 0 EV_CanvasOpenMenuCtrl # ^O Open menu
-   @AddConstantEvent KeyRangeEvent 10 10 0 0 EV_CanvasNL
-   @AddConstantEvent KeyRangeEvent 13 13 0 0 EV_CanvasCR
+   @PUSH MouseEventClick
+   @PUSHI Zero
+   @PUSHI Zero
+   @PUSHI WinWidth
+   @PUSHI WinHeight
+   @PUSH EV_CanvasClick
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 2
+   @PUSH 2
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCtrlBox
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 9
+   @PUSH 9
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCtrlInteger
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 12
+   @PUSH 12
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCtrlLong
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 19
+   @PUSH 19
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCtrlString
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 23
+   @PUSH 23
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCtrlWords
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 20
+   @PUSH 20
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCtrlTextBox
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH " \0"
+   @PUSH 126
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasKey
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 127
+   @PUSH 127
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasDel
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 27
+   @PUSH 27
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasESC
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 15
+   @PUSH 15
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasOpenMenuCtrl
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 10
+   @PUSH 10
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasNL
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 13
+   @PUSH 13
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_CanvasCR
+   @CALL EventAdd
    @CALL EventGetActive
    @POPI CanvasEventTable
 
@@ -1696,18 +1825,90 @@ M AddConstantEvent \
    @POPI FieldEditEventTable
    @Call(V) EventSetActive FieldEditEventTable
 
-   @AddConstantEvent KeyRangeEvent 27 27 0 0 EV_FieldEditESC
-   @AddConstantEvent KeyRangeEvent 15 15 0 0 EV_FieldEditOpenMenu
-   @AddConstantEvent MouseEventClick 26 11 26 11 EV_FieldEditDecX
-   @AddConstantEvent MouseEventClick 42 11 42 11 EV_FieldEditIncX
-   @AddConstantEvent MouseEventClick 26 12 26 12 EV_FieldEditDecY
-   @AddConstantEvent MouseEventClick 42 12 42 12 EV_FieldEditIncY
-   @AddConstantEvent MouseEventClick 26 13 26 13 EV_FieldEditDecW
-   @AddConstantEvent MouseEventClick 42 13 42 13 EV_FieldEditIncW
-   @AddConstantEvent MouseEventClick 26 14 26 14 EV_FieldEditDecH
-   @AddConstantEvent MouseEventClick 42 14 42 14 EV_FieldEditIncH
-   @AddConstantEvent MouseEventClick 61 6 61 6 EV_FieldEditCloseClick
-   @AddConstantEvent MouseEventClick 26 19 36 19 EV_FieldEditCloseText
+   @PUSH KeyRangeEvent
+   @PUSH 27
+   @PUSH 27
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_FieldEditESC
+   @CALL EventAdd
+   @PUSH KeyRangeEvent
+   @PUSH 15
+   @PUSH 15
+   @PUSH 0
+   @PUSH 0
+   @PUSH EV_FieldEditOpenMenu
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 26
+   @PUSH 11
+   @PUSH 26
+   @PUSH 11
+   @PUSH EV_FieldEditDecX
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 42
+   @PUSH 11
+   @PUSH 42
+   @PUSH 11
+   @PUSH EV_FieldEditIncX
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 26
+   @PUSH 12
+   @PUSH 26
+   @PUSH 12
+   @PUSH EV_FieldEditDecY
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 42
+   @PUSH 12
+   @PUSH 42
+   @PUSH 12
+   @PUSH EV_FieldEditIncY
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 26
+   @PUSH 13
+   @PUSH 26
+   @PUSH 13
+   @PUSH EV_FieldEditDecW
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 42
+   @PUSH 13
+   @PUSH 42
+   @PUSH 13
+   @PUSH EV_FieldEditIncW
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 26
+   @PUSH 14
+   @PUSH 26
+   @PUSH 14
+   @PUSH EV_FieldEditDecH
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 42
+   @PUSH 14
+   @PUSH 42
+   @PUSH 14
+   @PUSH EV_FieldEditIncH
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 61
+   @PUSH 6
+   @PUSH 61
+   @PUSH 6
+   @PUSH EV_FieldEditCloseClick
+   @CALL EventAdd
+   @PUSH MouseEventClick
+   @PUSH 26
+   @PUSH 19
+   @PUSH 36
+   @PUSH 19
+   @PUSH EV_FieldEditCloseText
+   @CALL EventAdd
    @CALL EventGetActive
    @POPI FieldEditEventTable
    @Call(V) EventSetActive CanvasEventTable

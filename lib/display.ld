@@ -2,6 +2,11 @@
 M __LIB_DISPLAY_LOADED 1
 I common.mc
 I display.ref
+L softstack.ld
+L heapmgr.ld
+L screen.ld
+L lmath.ld
+L string.ld
 
 # display.ld - retained-mode text display/form manager.
 

@@ -477,6 +477,8 @@ G LINE_EOF
 
 # Only one buffer supported (non-reentrant)
 :DiskHeap            -1
+:DiskIOSector         0
+:DiskIOBuffer         0
 :FSDiskNumStore      -1
 :FSDiskIDStore       0
 :FSCreateTimeStore   0 0   # 32-bit
@@ -527,14 +529,10 @@ G LINE_EOF
 @FUNCTION DiskReadSector
 :DiskReadSector
 @PUSHRETURN
-@Locals
-    @Local Sector
-    @Local BufPtr
-    @POPI BufPtr
-    @POPI Sector
-    @DISKSEEKI Sector
-    @DISKREADI BufPtr
-@EndLocals
+    @POPI DiskIOBuffer
+    @POPI DiskIOSector
+    @DISKSEEKI DiskIOSector
+    @DISKREADI DiskIOBuffer
 @POPRETURN
 @RET
 @ENDFUNCTION
@@ -544,15 +542,10 @@ G LINE_EOF
 @FUNCTION DiskWriteSector
 :DiskWriteSector
 @PUSHRETURN
-@Locals
-    @Local Sector
-    @Local BufPtr
-    @POPI BufPtr
-    @POPI Sector
-
-    @DISKSEEKI Sector
-    @DISKWRITEI BufPtr
-@EndLocals
+    @POPI DiskIOBuffer
+    @POPI DiskIOSector
+    @DISKSEEKI DiskIOSector
+    @DISKWRITEI DiskIOBuffer
 @POPRETURN
 @RET
 @ENDFUNCTION

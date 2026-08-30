@@ -73,6 +73,45 @@ Rather than hiding assembly language, EX716 attempts to make assembly programmin
 
 ---
 
+# Command-Line Options
+
+Common `cpu.py` options include:
+
+| Option | Purpose |
+| ------ | ------- |
+| `-g` | Run the interactive debugger. Generated dynamic-library temp files are cleaned up when the debugger exits. |
+| `-K` | Keep generated dynamic-library temp files in the system temp directory for deeper debugging. |
+| `-d` | Increase assembly or runtime debug output. May be repeated for more detail. |
+| `-l` | Print an assembled source listing. |
+| `-c` | Write a hex dump of the assembled image. |
+| `-O` | Write a binary dump of the assembled image. |
+| `-w addr` | Add a watch address to the debug listing. |
+| `-b addr` | Set a debugger breakpoint. |
+| `-e command` | Pass an initial command to the debugger. |
+
+---
+
+# Platform Notes
+
+EX716 is primarily developed on Linux and WSL, and also runs in POSIX-like Python environments such as Termux. Native Windows support is best-effort: assembler and non-interactive emulator paths should import cleanly, while terminal raw-mode features are limited compared with POSIX terminals.
+
+`CPUPATH` uses the host platform path separator: `:` on Linux, WSL, macOS, and Termux; `;` on native Windows.
+
+## Optional C Fast Mode
+
+The `-f` fast emulator path uses the optional `cpuCfunc` Python extension built from `speedCPU.c`:
+
+```sh
+make check
+make
+```
+
+The Makefile derives Python include paths, NumPy include paths, and the extension suffix from the selected `PYTHON`, so the built file uses the host Python ABI name such as `cpuCfunc.cpython-312-x86_64-linux-gnu.so`. A compatibility `cpuCfunc.so` copy is also written on POSIX builds.
+
+The current C backend still uses POSIX terminal APIs, so native Windows builds are intentionally rejected by the Makefile. Use WSL/Linux/Termux for `-f`, or run `cpu.py` without `-f` on native Windows.
+
+---
+
 # Project Layout
 
 | Directory       | Purpose                               |
@@ -153,6 +192,8 @@ Only the requested functions and the routines they depend upon are included in t
 Unused code is never assembled into the application.
 
 This allows large libraries to remain practical while keeping executables compact.
+
+When a dynamic library is filtered, `cpu.py` creates a generated `dynlib_*` copy in the system temporary directory and assembles that generated file. Normal runs, including `-g` debugger sessions, remove these generated files on exit and prune older generated copies for the same source library when creating a new one. Use `-K` with `-g` when you intentionally want to keep the generated `dynlib_*` file for deeper inspection. On Linux, WSL, and Termux these files normally live under `/tmp`; on native Windows they use Python's system temp directory.
 
 ---
 
@@ -296,7 +337,7 @@ Instead of:
 prefer:
 
 ```assembly
-@POPI2 Source Dest
+@POPI2 Dest Source
 ```
 
 Likewise:
@@ -308,6 +349,8 @@ Likewise:
 is generally preferred over three individual `@PUSHI` instructions.
 
 Grouped parameter macros improve readability while reducing repetitive code.
+
+Keep in mind that order matters, POP in reverse order as PUSH.
 
 ---
 
