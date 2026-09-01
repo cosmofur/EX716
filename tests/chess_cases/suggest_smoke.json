@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "name": "starting position returns a legal-looking knight move",
+      "expected_any": ["b1c3", "g1f3"]
+    },
+    {
+      "name": "white queen can capture exposed black queen",
+      "board": [
+        "....k...",
+        "........",
+        "........",
+        "...q....",
+        "........",
+        "........",
+        "........",
+        "....K..Q"
+      ],
+      "expected_any": ["h1d5"]
+    }
+  ]
+}

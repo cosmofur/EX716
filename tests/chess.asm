@@ -19,7 +19,8 @@ L string.ld
 # KingCheck(Color):1|0
 # HasLegalMove(Color):1|0
 # ReportGameState(Color):void
-# SuggestMove(Color):void
+# SuggestMove(Color, SearchDepth):(Result, PieceIndex, Candidate, Score)
+# PrintSuggestedMove(Result, PieceIndex, Candidate, Score):void
 # CastleSetValid(Color)
 # CastleInvalidKing(Color)
 # CastleInvalidRook(PieceIndex, Color)
@@ -122,6 +123,24 @@ BRook BBishop BKnight BPawn BQueen BPieceEnd
 
 =MoveInvalid -999
 =EmptySquare -1
+=SuggestMoveOK 1
+=SuggestMoveNoMove 0
+=SuggestMoveDefaultDepth 1
+=SuggestMoveCmdMask 0xff
+=SuggestMoveDepthShift 8
+=SMFrameMoveScore 0
+=SMFrameReplyResult 2
+=SMFrameReplyScore 4
+=SMFrameBestScore 6
+=SMFrameBestPieceIndex 8
+=SMFrameBestCandidate 10
+=SMFrameSize 12
+
+M SM_FILL_A @PUSH %3  @PUSHI %1 @ADD %2 @POPS
+M SM_FILL_V @PUSHI %3 @PUSHI %1 @ADD %2 @POPS
+M SM_FILL_S @PUSHI %1 @ADD %2 @POPS
+M SM_GET @PUSHI %1 @ADD %2 @PUSHS
+
 
 # Both unique and ranking of value for game logic
 =PieceKing 99
@@ -1735,6 +1754,37 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       @ENDCASE
    @ENDIF
 
+   ##################################
+   # Suggest command with explicit depth: ?1 through ?9
+   ##################################
+
+   @IF_EQ_AV 2 StrLen
+      @MA2V 0 Index1
+      @PUSHI InputStr
+      @ADDI Index1
+      @PUSHS
+      @AND 0xff
+      @IF_EQ_A "?\0"
+         @POPNULL
+         @INCI Index1
+         @PUSHI InputStr
+         @ADDI Index1
+         @PUSHS
+         @AND 0xff
+         @IF_INRANGE_AB "1\0" "9\0"
+            @SUB "0\0"
+            @SHLN SuggestMoveDepthShift
+            @OR "?\0"
+            @POPI Value01
+            @JMP RCCCmdExit
+         @ELSE
+            @POPNULL
+         @ENDIF
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @ENDIF
+
 
    ##################################
    # Must now be either:
@@ -2190,42 +2240,55 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
 
 
 #########################################
-# SuggestMove(Color):void
-# One-ply material scorer. Captures score as captured piece value;
-# quiet legal moves score 0.
+# SuggestMove(Color, SearchDepth):(Result, PieceIndex, Candidate, Score)
+# Recursive material scorer. Captures score as captured piece value;
+# quiet legal moves score 0. Deeper searches subtract the opponent's best reply.
 :SuggestMove
 @PUSHRETURN
 @Locals
    @Local Color
+   @Local SearchDepth
+   @Local OppColor
+   @Local FramePtr
    @Local PieceBase
    @Local PieceIndex
    @Local PieceAlive
-   @Local PieceX
-   @Local PieceY
    @Local Index1
    @Local Index2
    @Local Depth
    @Local Count
    @Local Candidate
-   @Local CandidateX
-   @Local CandidateY
    @Local CaptFlag
    @Local CapPieceIndex
    @Local InCheck
-   @Local MoveScore
-   @Local BestScore
-   @Local BestPieceIndex
-   @Local BestCandidate
+   @Local ReturnResult
+   @Local ReturnScore
 
-   @POPI Color
-   @MA2V 0 BestScore
-   @MA2V MoveInvalid BestPieceIndex
-   @MA2V MoveInvalid BestCandidate
+   @POPI2 SearchDepth Color
+   @MA2V SuggestMoveNoMove ReturnResult
+   @MA2V 0 ReturnScore
+   @MA2V 0 FramePtr
+   @Call(VA) HeapNewObject MainHeap SMFrameSize
+   @POPI FramePtr
+   @PUSHI FramePtr
+   @IF_ULT_A 100
+      @POPNULL
+      @MA2V MoveInvalid PieceIndex
+      @MA2V MoveInvalid Candidate
+      @JMP SMReturn
+   @ENDIF
+   @POPNULL
+
+   @SM_FILL_A FramePtr SMFrameBestScore 0
+   @SM_FILL_A FramePtr SMFrameBestPieceIndex MoveInvalid
+   @SM_FILL_A FramePtr SMFrameBestCandidate MoveInvalid
 
    @IF_EQ_AV WhiteColor Color
       @MA2V 0 PieceBase
+      @MA2V BlackColor OppColor
    @ELSE
       @MA2V 16 PieceBase
+      @MA2V WhiteColor OppColor
    @ENDIF
 
    @ForIA2B Index1 0 16
@@ -2253,44 +2316,133 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
                @Call(VV) MovePiece PieceIndex Candidate
                @Call(V) KingCheck Color
                @POPI InCheck
-               @RESTOREBORD
 
                @IF_EQ_AV 0 InCheck
                   @Call(V) CandidateUnpack Candidate
-                  @POPI4 CapPieceIndex CaptFlag CandidateY CandidateX
-                  @MA2V 0 MoveScore
+                  @POPI4 CapPieceIndex CaptFlag Temp02 Temp01
+                  @SM_FILL_A FramePtr SMFrameMoveScore 0
                   @IF_EQ_AV 1 CaptFlag
                      @Call(V) GetPieceType CapPieceIndex
-                     @POPI MoveScore
+                     @SM_FILL_S FramePtr SMFrameMoveScore
                   @ENDIF
-                  @IF_EQ_AV MoveInvalid BestPieceIndex
-                     @MV2V MoveScore BestScore
-                     @MV2V PieceIndex BestPieceIndex
-                     @MV2V Candidate BestCandidate
-                  @ELSE
-                     @PUSHI MoveScore
-                     @IF_UGT_V BestScore
+                  @PUSHI SearchDepth
+                  @IF_GT_A 1
+                     @POPNULL
+                     @PUSHI SearchDepth
+                     @SUB 1
+                     @POPI Temp01
+                     @Call(VV) SuggestMove OppColor Temp01
+                     @POPI Temp02
+                     @POPNULL
+                     @POPNULL
+                     @POPI Temp01
+                     @SM_FILL_V FramePtr SMFrameReplyScore Temp02
+                     @SM_FILL_V FramePtr SMFrameReplyResult Temp01
+                     @SM_GET FramePtr SMFrameReplyResult
+                     @IF_EQ_A SuggestMoveOK
                         @POPNULL
-                        @MV2V MoveScore BestScore
-                        @MV2V PieceIndex BestPieceIndex
-                        @MV2V Candidate BestCandidate
+                        @SM_GET FramePtr SMFrameMoveScore
+                        @SM_GET FramePtr SMFrameReplyScore
+                        @POPI Temp01
+                        @SUBI Temp01
+                        @SM_FILL_S FramePtr SMFrameMoveScore
+                     @ELSE
+                        @POPNULL
+                     @ENDIF
+                  @ELSE
+                     @POPNULL
+                  @ENDIF
+                  @SM_GET FramePtr SMFrameBestPieceIndex
+                  @IF_EQ_A MoveInvalid
+                     @POPNULL
+                     @SM_GET FramePtr SMFrameMoveScore
+                     @SM_FILL_S FramePtr SMFrameBestScore
+                     @SM_FILL_V FramePtr SMFrameBestPieceIndex PieceIndex
+                     @SM_FILL_V FramePtr SMFrameBestCandidate Candidate
+                  @ELSE
+                     @POPNULL
+                     @SM_GET FramePtr SMFrameBestScore
+                     @POPI Temp01
+                     @SM_GET FramePtr SMFrameMoveScore
+                     @IF_GT_V Temp01
+                        @POPNULL
+                        @SM_GET FramePtr SMFrameMoveScore
+                        @SM_FILL_S FramePtr SMFrameBestScore
+                        @SM_FILL_V FramePtr SMFrameBestPieceIndex PieceIndex
+                        @SM_FILL_V FramePtr SMFrameBestCandidate Candidate
                      @ELSE
                         @POPNULL
                      @ENDIF
                   @ENDIF
                @ENDIF
+               @RESTOREBORD
             @Next Index2
          @Next Depth
       @ENDIF
    @Next Index1
 
-   @IF_EQ_AV MoveInvalid BestPieceIndex
+   @SM_GET FramePtr SMFrameBestPieceIndex
+   @IF_EQ_A MoveInvalid
+      @POPNULL
+      @MA2V SuggestMoveNoMove ReturnResult
+      @MA2V MoveInvalid PieceIndex
+      @MA2V MoveInvalid Candidate
+      @MA2V 0 ReturnScore
+   @ELSE
+      @POPNULL
+      @MA2V SuggestMoveOK ReturnResult
+      @SM_GET FramePtr SMFrameBestScore
+      @POPI ReturnScore
+      @SM_GET FramePtr SMFrameBestCandidate
+      @POPI Candidate
+      @SM_GET FramePtr SMFrameBestPieceIndex
+      @POPI PieceIndex
+   @ENDIF
+
+:SMReturn
+   @PUSHI FramePtr
+   @IF_UGE_A 100
+      @POPNULL
+      @Call(VV) HeapDeleteObject MainHeap FramePtr
+      @POPNULL
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI ReturnResult
+   @PUSHI PieceIndex
+   @PUSHI Candidate
+   @PUSHI ReturnScore
+:SMExit
+@EndLocals
+@POPRETURN
+@RET
+
+#########################################
+# PrintSuggestedMove(Result, PieceIndex, Candidate, Score):void
+:PrintSuggestedMove
+@PUSHRETURN
+@Locals
+   @Local Result
+   @Local PieceIndex
+   @Local Candidate
+   @Local Score
+   @Local PieceX
+   @Local PieceY
+   @Local CandidateX
+   @Local CandidateY
+   @Local CaptFlag
+   @Local CapPieceIndex
+
+   @POPI4 Score Candidate PieceIndex Result
+
+   @IF_NEQ_AV SuggestMoveOK Result
       @PRTLN "No legal move found."
    @ELSE
-      @Call(V) GetPieceInfo BestPieceIndex
+      @Call(V) GetPieceInfo PieceIndex
       @POPI2 PieceY PieceX
       @POPNULL @POPNULL @POPNULL
-      @Call(V) CandidateUnpack BestCandidate
+      @Call(V) CandidateUnpack Candidate
       @POPI4 CapPieceIndex CaptFlag CandidateY CandidateX
 
       @PRT "Best move: "
@@ -2311,7 +2463,7 @@ M DUMPBORD @JMP %0_LocJmp :%0_Index 0 :%0_LocJmp \
       @PRTTOP
       @POPNULL
       @PRT " value "
-      @PRTI BestScore
+      @PRTI Score
       @PRTNL
    @ENDIF
 @EndLocals
@@ -3368,6 +3520,29 @@ $$PieceSpace $$PieceSpace
       @POPI CmdMode
 
       @PUSHI CmdMode
+      @AND SuggestMoveCmdMask
+      @IF_EQ_A "?\0"
+          @POPNULL
+          @PUSHI CmdMode
+          @SHRN SuggestMoveDepthShift
+          @AND 0xf
+          @POPI Index1
+          @PUSHI Index1
+          @IF_ULT_A 1
+             @POPNULL
+             @MA2V SuggestMoveDefaultDepth Index1
+          @ELSE
+             @POPNULL
+          @ENDIF
+          @Call(VV) SuggestMove ActiveColor Index1
+          @CALL PrintSuggestedMove
+          @MA2V 0 CmdMode
+          @JMP MPContinue
+      @ELSE
+          @POPNULL
+      @ENDIF
+
+      @PUSHI CmdMode
       @SWITCH
       @CASE "q\0"
           @POPNULL
@@ -3391,7 +3566,8 @@ $$PieceSpace $$PieceSpace
           @CBREAK
       @CASE "?\0"
           @POPNULL
-          @Call(V) SuggestMove ActiveColor
+          @Call(VA) SuggestMove ActiveColor SuggestMoveDefaultDepth
+          @CALL PrintSuggestedMove
           @MA2V 0 CmdMode
           @JMP MPContinue
           @CBREAK
