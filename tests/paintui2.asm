@@ -12,21 +12,12 @@ L string.ld
 L event.ld
 L mul.ld
 L div.ld
-#USE SetDiskHeap
-#USE FSReadHeader
-#USE file_open_basic
-#USE DiskFileWrite
-#USE DiskClose
-#USE DiskNewBuffer
-#USE DirReadEntry
-#USE FSFindFile
-D diskos.ld
 L display.ld
 
 =StackSizeDefault 0x400
 =HeapTopLimit 0xfe00
-=EditorMaxWidth 120
-=EditorMaxHeight 42
+=EditorMaxWidth 80
+=EditorMaxHeight 25
 
 :MainHeap 0
 :SoftStackStart 0
@@ -62,9 +53,6 @@ L display.ld
 :FieldEditActive 0
 :SaveLineBuffer 0
 :SaveNumberBuffer 0
-:SaveFilePtr 0
-:SaveDiskReady 0
-:SaveDiskStatus 0
 
 ######################################
 # Constants
@@ -104,6 +92,8 @@ L display.ld
 =EV_FieldEditIncW 560
 =EV_FieldEditDecH 570
 =EV_FieldEditIncH 580
+=EV_FieldEditDecDepth 585
+=EV_FieldEditIncDepth 587
 =EV_FieldEditCloseClick 590
 =EV_FieldEditCloseText 595
 
@@ -127,7 +117,7 @@ L display.ld
 # - SEL_NewInteger and SEL_NewLong use X1,Y1 plus width only; height is ignored.
 # - SEL_NewString uses one-line width; SEL_NewTextBox uses width and height.
 # - Form object metadata should remain editor-owned so later property editing can rename IDs,
-#   change defaults, delete and replace objects, and prevent overlap.
+#   change defaults, delete and replace objects, control visibility/depth, and prevent overlap.
 # - Actual overlay painting should use display.ld forms and fields, with fields marked dirty
 #   before repaint because DisplayCanvas clears the terminal each pass.
 
@@ -154,16 +144,16 @@ L display.ld
 =FORMOBJ_VALUE_PTR 12
 =FORMOBJ_FIELD_PTR 14
 =FORMOBJ_ID 16
-=FORMOBJ_USER1 18
-=FORMOBJ_USER2 20
-=FORMOBJ_OBJECT_SIZE 22
+=FORMOBJ_DEPTH 18
+=FORMOBJ_USER1 20
+=FORMOBJ_USER2 22
+=FORMOBJ_OBJECT_SIZE 24
 
 =FORMOBJ_TYPE_NONE 0
 =FORMOBJ_FLAG_ENABLED 0x0001
 =FORMOBJ_FLAG_SELECTED 0x0002
 =SAVE_LINE_BUFFER_SIZE 160
 =SAVE_NUMBER_BUFFER_SIZE 8
-:SaveWorkFileName "FORMEDIT.SAV" $$0
 ######################################
 # Stack Setup
 ######################################
@@ -231,9 +221,6 @@ L display.ld
        @END
     @ENDIF
     @POPI SaveNumberBuffer
-    @MA2V 0 SaveFilePtr
-    @MA2V 0 SaveDiskStatus
-    @MA2V 0 SaveDiskReady
     @IF_NEQ_AV 0 CanvasData
        @Call(VV) HeapDeleteObject MainHeap CanvasData
        @POPNULL
@@ -338,6 +325,7 @@ L display.ld
    @FILL_AT_A EntryPtr FORMOBJ_VALUE_PTR 0
    @FILL_AT_A EntryPtr FORMOBJ_FIELD_PTR 0
    @FILL_AT_A EntryPtr FORMOBJ_ID 0
+   @FILL_AT_A EntryPtr FORMOBJ_DEPTH 0
    @FILL_AT_A EntryPtr FORMOBJ_USER1 0
    @FILL_AT_A EntryPtr FORMOBJ_USER2 0      
 @EndLocals
@@ -453,6 +441,7 @@ L display.ld
    @FILL_AT_V EntryPtr FORMOBJ_VALUE_PTR ValuePtr
    @FILL_AT_V EntryPtr FORMOBJ_FIELD_PTR FieldPtr
    @FILL_AT_V EntryPtr FORMOBJ_ID NextFormID
+   @FILL_AT_A EntryPtr FORMOBJ_DEPTH 0
    @INCI NextFormID
    @Call(V) FormEntryNormalizeGeometry EntryPtr
    @PUSHI EntryPtr
@@ -869,12 +858,13 @@ L display.ld
    @Local PrintHeight
    @Local PrintValuePtr
    @Local PrintFieldPtr
+   @Local PrintDepth
 
    @CALL WinClear
    @Call(AA) WinCursor 1 1
-   @PRT "ID   TYPE    X   Y   W   H   VALUE  FIELD"
+   @PRT "ID   TYPE    X   Y   W   H   Z   VALUE  FIELD"
    @Call(AA) WinCursor 1 2
-   @PRT "----------------------------------------"
+   @PRT "--------------------------------------------"
    @GET_FROM FormTable FORMTABLE_USED @POPI UsedCount
    @MA2V 3 Row
    @ForIA2V Index 0 UsedCount
@@ -892,6 +882,7 @@ L display.ld
             @GET_FROM EntryPtr FORMOBJ_Y @POPI PrintY
             @GET_FROM EntryPtr FORMOBJ_WIDTH @POPI PrintWidth
             @GET_FROM EntryPtr FORMOBJ_HEIGHT @POPI PrintHeight
+            @GET_FROM EntryPtr FORMOBJ_DEPTH @POPI PrintDepth
             @GET_FROM EntryPtr FORMOBJ_VALUE_PTR @POPI PrintValuePtr
             @GET_FROM EntryPtr FORMOBJ_FIELD_PTR @POPI PrintFieldPtr
             @Call(AV) WinCursor 1 Row
@@ -906,6 +897,8 @@ L display.ld
             @PRTI PrintWidth
             @PRT "   "
             @PRTI PrintHeight
+            @PRT "   "
+            @PRTI PrintDepth
             @PRT "   "
             @PRTI PrintValuePtr
             @PRT "   "
@@ -926,28 +919,6 @@ L display.ld
 @POPRETURN
 @RET
 
-
-
-########################################
-# SaveEnsureDiskReady():Status
-# DiskOS is initialized lazily so normal editing does not touch the disk.
-########################################
-:SaveEnsureDiskReady
-@PUSHRETURN
-   @IF_EQ_AV 0 SaveDiskReady
-      @Call(V) SetDiskHeap MainHeap
-      @Call(A) FSReadHeader 0
-      @IF_ZERO
-         @POPNULL
-         @MA2V 0 SaveDiskReady
-      @ELSE
-         @POPNULL
-         @MA2V 1 SaveDiskReady
-      @ENDIF
-   @ENDIF
-   @PUSHI SaveDiskReady
-@POPRETURN
-@RET
 
 ########################################
 # SaveLineClear()
@@ -1020,143 +991,158 @@ L display.ld
 
 ########################################
 # SaveLineEmit()
-# Writes to SaveFilePtr when open, otherwise previews via @PRTSI.
+# Emits the serialized work data to stdout/the report view.
 ########################################
 :SaveLineEmit
 @PUSHRETURN
-@Locals
-   @Local OutLen
-   @Local WriteLen
-
-   @IF_NEQ_AV 0 SaveFilePtr
-      @STRSTACK "\n"
-      @CALL SaveLineAppend
-      @Call(V) strlen SaveLineBuffer
-      @POPI OutLen
-      @Call(VVV) DiskFileWrite SaveFilePtr SaveLineBuffer OutLen
-      @POPI WriteLen
-      @PUSHI WriteLen
-      @IF_ULT_V OutLen
-         @POPNULL
-         @MA2V 0 SaveDiskStatus
-      @ELSE
-         @POPNULL
-      @ENDIF
-   @ELSE
-      @STRSTACK "\r\n"
-      @CALL SaveLineAppend
-      @PRTSI SaveLineBuffer
-   @ENDIF
-@EndLocals
+   @STRSTACK "\r\n"
+   @CALL SaveLineAppend
+   @PRTSI SaveLineBuffer
 @POPRETURN
 @RET
 
 
 ########################################
-# SaveEmitHeader()
+# SaveEmitFormCount():Count
 ########################################
-:SaveEmitHeader
+:SaveEmitFormCount
+@PUSHRETURN
+@Locals
+   @Local UsedCount
+   @Local Index
+   @Local EntryPtr
+   @Local Count
+
+   @MA2V 0 Count
+   @GET_FROM FormTable FORMTABLE_USED @POPI UsedCount
+   @ForIA2V Index 0 UsedCount
+      @Call(VV) FormTableEntryPtr FormTable Index
+      @POPI EntryPtr
+      @GET_FROM EntryPtr FORMOBJ_TYPE
+      @IF_NEQ_A FORMOBJ_TYPE_NONE
+         @POPNULL
+         @INCI Count
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @Next Index
+   @PUSHI Count
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# SaveEmitEditorHeader()
+########################################
+:SaveEmitEditorHeader
 @PUSHRETURN
 @Locals
    @Local CanvasRows
+   @Local FormCount
 
    @PUSHI WinHeight
    @SUB 1
    @POPI CanvasRows
+   @CALL SaveEmitFormCount
+   @POPI FormCount
 
    @CALL SaveLineClear
-   @STRSTACK "VERSION: 1.0"
+   @STRSTACK "#PAINTUI VER 1.0"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
 
    @CALL SaveLineClear
-   @STRSTACK "WIDTH: "
+   @STRSTACK "# WIDTH: "
    @CALL SaveLineAppend
    @Call(V) SaveLineAppendInt WinWidth
    @CALL SaveLineEmit
 
    @CALL SaveLineClear
-   @STRSTACK "HEIGHT: "
+   @STRSTACK "# HEIGHT: "
    @CALL SaveLineAppend
    @Call(V) SaveLineAppendInt CanvasRows
    @CALL SaveLineEmit
 
    @CALL SaveLineClear
-   @STRSTACK "canvas_size: "
+   @STRSTACK "# CANVAS_SIZE: "
    @CALL SaveLineAppend
    @Call(V) SaveLineAppendInt CanvasSize
    @CALL SaveLineEmit
 
    @CALL SaveLineClear
-   @STRSTACK "next_form_id: "
+   @STRSTACK "# NEXT_FORM_ID: "
    @CALL SaveLineAppend
    @Call(V) SaveLineAppendInt NextFormID
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "# COUNT: "
+   @CALL SaveLineAppend
+   @Call(V) SaveLineAppendInt FormCount
    @CALL SaveLineEmit
 @EndLocals
 @POPRETURN
 @RET
 
 ########################################
-# SaveEmitFormEntry(EntryPtr)
+# SaveEmitEditorFormEntry(EntryPtr)
+# Compact loader record:
+# # id type flags x y width height depth
 ########################################
-:SaveEmitFormEntry
+:SaveEmitEditorFormEntry
 @PUSHRETURN
 @Locals
    @Local EntryPtr
    @Local Value
 
    @POPI EntryPtr
-
    @CALL SaveLineClear
-   @STRSTACK "  { id: "
+   @STRSTACK "# "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_ID @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK ", type: "
+   @STRSTACK " "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_TYPE @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK ", flags: "
+   @STRSTACK " "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_FLAGS @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK ", x: "
+   @STRSTACK " "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_X @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK ", y: "
+   @STRSTACK " "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_Y @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK ", w: "
+   @STRSTACK " "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_WIDTH @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK ", h: "
+   @STRSTACK " "
    @CALL SaveLineAppend
    @GET_FROM EntryPtr FORMOBJ_HEIGHT @POPI Value
    @Call(V) SaveLineAppendInt Value
-   @STRSTACK " }"
+   @STRSTACK " "
    @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_DEPTH @POPI Value
+   @Call(V) SaveLineAppendInt Value
    @CALL SaveLineEmit
 @EndLocals
 @POPRETURN
 @RET
 
 ########################################
-# SaveEmitForms()
+# SaveEmitEditorForms()
 ########################################
-:SaveEmitForms
+:SaveEmitEditorForms
 @PUSHRETURN
 @Locals
    @Local UsedCount
    @Local Index
    @Local EntryPtr
-
-   @CALL SaveLineClear
-   @STRSTACK "forms: ["
-   @CALL SaveLineAppend
-   @CALL SaveLineEmit
 
    @GET_FROM FormTable FORMTABLE_USED @POPI UsedCount
    @ForIA2V Index 0 UsedCount
@@ -1165,24 +1151,19 @@ L display.ld
       @GET_FROM EntryPtr FORMOBJ_TYPE
       @IF_NEQ_A FORMOBJ_TYPE_NONE
          @POPNULL
-         @Call(V) SaveEmitFormEntry EntryPtr
+         @Call(V) SaveEmitEditorFormEntry EntryPtr
       @ELSE
          @POPNULL
       @ENDIF
    @Next Index
-
-   @CALL SaveLineClear
-   @STRSTACK "]"
-   @CALL SaveLineAppend
-   @CALL SaveLineEmit
 @EndLocals
 @POPRETURN
 @RET
 
 ########################################
-# SaveEmitCanvasLine(DataPtr)
+# SaveEmitEditorCanvasLine(DataPtr)
 ########################################
-:SaveEmitCanvasLine
+:SaveEmitEditorCanvasLine
 @PUSHRETURN
 @Locals
    @Local DataPtr
@@ -1199,7 +1180,11 @@ L display.ld
    @POPII EndPtr
 
    @CALL SaveLineClear
+   @STRSTACK "# \""
+   @CALL SaveLineAppend
    @Call(V) SaveLineAppend DataPtr
+   @STRSTACK "\""
+   @CALL SaveLineAppend
    @CALL SaveLineEmit
 
    @PUSHI KeepIt
@@ -1209,9 +1194,9 @@ L display.ld
 @RET
 
 ########################################
-# SaveEmitCanvas()
+# SaveEmitEditorCanvas()
 ########################################
-:SaveEmitCanvas
+:SaveEmitEditorCanvas
 @PUSHRETURN
 @Locals
    @Local Row
@@ -1219,7 +1204,7 @@ L display.ld
    @Local DataPtr
 
    @CALL SaveLineClear
-   @STRSTACK "canvas: ["
+   @STRSTACK "# CANVAS:"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
 
@@ -1229,14 +1214,110 @@ L display.ld
    @MV2V CanvasData DataPtr
 
    @ForIA2V Row 0 CanvasRows
-      @Call(V) SaveEmitCanvasLine DataPtr
+      @Call(V) SaveEmitEditorCanvasLine DataPtr
       @PUSHI DataPtr
       @ADDI WinWidth
       @POPI DataPtr
    @Next Row
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# SaveEmitAssemblyHeader()
+########################################
+:SaveEmitAssemblyHeader
+@PUSHRETURN
+   @CALL SaveLineClear
+   @STRSTACK "######################################################"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "# Start of Code"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+@POPRETURN
+@RET
+
+########################################
+# SaveEmitAsmCanvasLine(DataPtr, IsLast)
+########################################
+:SaveEmitAsmCanvasLine
+@PUSHRETURN
+@Locals
+   @Local DataPtr
+   @Local IsLast
+   @Local EndPtr
+   @Local KeepIt
+
+   @POPI IsLast
+   @POPI DataPtr
+   @PUSHI DataPtr
+   @ADDI WinWidth
+   @POPI EndPtr
+   @PUSHII EndPtr
+   @POPI KeepIt
+   @PUSH 0
+   @POPII EndPtr
 
    @CALL SaveLineClear
-   @STRSTACK "]"
+   @IF_EQ_AV 0 IsLast
+      @STRSTACK "   @PRTLN \""
+   @ELSE
+      @STRSTACK "   @PRT \""
+   @ENDIF
+   @CALL SaveLineAppend
+   @Call(V) SaveLineAppend DataPtr
+   @STRSTACK "\""
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @PUSHI KeepIt
+   @POPII EndPtr
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# SaveEmitAssemblyBackground()
+########################################
+:SaveEmitAssemblyBackground
+@PUSHRETURN
+@Locals
+   @Local Row
+   @Local CanvasRows
+   @Local LastRow
+   @Local DataPtr
+   @Local IsLast
+
+   @CALL SaveLineClear
+   @STRSTACK ":DrawBackGround"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "   @Call(AA) WinCursor 1 1"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @PUSHI WinHeight
+   @SUB 1
+   @POPI CanvasRows
+   @PUSHI CanvasRows
+   @SUB 1
+   @POPI LastRow
+   @MV2V CanvasData DataPtr
+   @ForIA2V Row 0 CanvasRows
+      @MA2V 0 IsLast
+      @IF_EQ_VV Row LastRow
+         @MA2V 1 IsLast
+      @ENDIF
+      @Call(VV) SaveEmitAsmCanvasLine DataPtr IsLast
+      @PUSHI DataPtr
+      @ADDI WinWidth
+      @POPI DataPtr
+   @Next Row
+   @CALL SaveLineClear
+   @STRSTACK "@RET"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
 @EndLocals
@@ -1244,70 +1325,211 @@ L display.ld
 @RET
 
 ########################################
+# SaveEmitAssemblyFormEntry(EntryPtr)
+########################################
+:SaveEmitAssemblyFormEntry
+@PUSHRETURN
+@Locals
+   @Local EntryPtr
+   @Local Value
+
+   @POPI EntryPtr
+   @CALL SaveLineClear
+   @STRSTACK "   # id: "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_ID @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK ", type: "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_TYPE @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK ", flags: "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_FLAGS @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK ", depth: "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_DEPTH @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSHI FormPtr"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_TYPE @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK "           # FieldType"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_X @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK "           # RelX"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_Y @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK "           # RelY"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_WIDTH @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK "           # Width"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_HEIGHT @POPI Value
+   @Call(V) SaveLineAppendInt Value
+   @STRSTACK "           # Height"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH 0           # ValuePtr: replace with app variable/buffer"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH 0           # Format Code"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PUSH FIELD_FLAGS_DEFAULT"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @CALL DisplayFieldNew"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @POPNULL"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# SaveEmitAssemblyForms()
+########################################
+:SaveEmitAssemblyForms
+@PUSHRETURN
+@Locals
+   @Local UsedCount
+   @Local Index
+   @Local EntryPtr
+
+   @CALL SaveLineClear
+   @STRSTACK ":PaintUIScreenInit"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "@PUSHRETURN"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "@Locals"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "   @Local FormPtr"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "   @POPI FormPtr"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @GET_FROM FormTable FORMTABLE_USED @POPI UsedCount
+   @ForIA2V Index 0 UsedCount
+      @Call(VV) FormTableEntryPtr FormTable Index
+      @POPI EntryPtr
+      @GET_FROM EntryPtr FORMOBJ_TYPE
+      @IF_NEQ_A FORMOBJ_TYPE_NONE
+         @POPNULL
+         @Call(V) SaveEmitAssemblyFormEntry EntryPtr
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @Next Index
+
+   @CALL SaveLineClear
+   @STRSTACK "@EndLocals"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "@POPRETURN"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "@RET"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK ":PaintUIScreenDraw"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "   @CALL DrawBackGround"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "   @CALL DisplayUpdate"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "@RET"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
 # SaveWorkFile
-# Placeholder report view for the editable work-file output path.
+# Emits a loadable editor page followed by importable display.ld code.
 ########################################
 :SaveWorkFile
 @PUSHRETURN
 @Locals
    @CALL TermMouseDisable
    @CALL WinClear
-   @Call(V) HeapAvailable MainHeap
-   @IF_ULT_A 1400
-      @POPNULL
-      @CALL SaveLineClear
-      @STRSTACK "NOT ENOUGH HEAP FOR DISK SAVE"
-      @CALL SaveLineAppend
-      @CALL SaveLineEmit
-      @JMP SaveWorkFileFinish
-   @ENDIF
-   @POPNULL
-   @MA2V 1 SaveDiskStatus
-   @CALL SaveEnsureDiskReady
-   @POPNULL
-   @IF_EQ_AV 0 SaveDiskReady
-      @CALL SaveLineClear
-      @STRSTACK "DISK NOT READY"
-      @CALL SaveLineAppend
-      @CALL SaveLineEmit
-   @ELSE
-      @Call(VA) file_open_basic SaveWorkFileName MODE_WP
-      @POPI SaveFilePtr
-      @IF_EQ_AV 0 SaveFilePtr
-         @CALL SaveLineClear
-         @STRSTACK "SAVE OPEN FAILED: FORMEDIT.SAV"
-         @CALL SaveLineAppend
-         @CALL SaveLineEmit
-      @ELSE
-         @CALL SaveEmitHeader
-         @CALL SaveEmitForms
-         @CALL SaveEmitCanvas
-         @CALL SaveLineClear
-         @STRSTACK "END"
-         @CALL SaveLineAppend
-         @CALL SaveLineEmit
-         @Call(V) DiskClose SaveFilePtr
-         @IF_ZERO
-            @POPNULL
-            @MA2V 0 SaveDiskStatus
-         @ELSE
-            @POPNULL
-         @ENDIF
-         @MA2V 0 SaveFilePtr
-         @CALL SaveLineClear
-         @IF_EQ_AV 1 SaveDiskStatus
-            @STRSTACK "SAVED FORMEDIT.SAV"
-         @ELSE
-            @STRSTACK "SAVE FAILED: FORMEDIT.SAV"
-         @ENDIF
-         @CALL SaveLineAppend
-         @CALL SaveLineEmit
-      @ENDIF
-   @ENDIF
-
-:SaveWorkFileFinish
+   @CALL SaveEmitEditorHeader
+   @CALL SaveEmitEditorForms
+   @CALL SaveEmitEditorCanvas
+   @CALL SaveEmitAssemblyHeader
+   @CALL SaveEmitAssemblyBackground
+   @CALL SaveEmitAssemblyForms
    @CALL SaveLineClear
-   @STRSTACK "Click or ESC returns to editor"
+   @STRSTACK "# END PAINTUI"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+   @CALL SaveLineClear
+   @STRSTACK "Copy output from terminal; click or ESC returns"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
    @CALL TermMouseEnable
@@ -1316,7 +1538,6 @@ L display.ld
 @EndLocals
 @POPRETURN
 @RET
-
 
 ########################################
 # LoadWorkFile
@@ -1328,11 +1549,11 @@ L display.ld
    @CALL TermMouseDisable
    @CALL WinClear
    @CALL SaveLineClear
-   @STRSTACK "LOAD WORK: disk parser pending"
+   @STRSTACK "LOAD WORK: #PAINTUI parser pending"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
    @CALL SaveLineClear
-   @STRSTACK "SAVE WORK currently writes FORMEDIT.SAV"
+   @STRSTACK "Paste/read #PAINTUI comments first"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
    @CALL SaveLineClear
@@ -1364,6 +1585,7 @@ L display.ld
    @Local PrintHeight
    @Local PrintValuePtr
    @Local PrintFieldPtr
+   @Local PrintDepth
 
    @IF_NEQ_AV 0 SelectedFormEntry
       @MA2V 24 EditX
@@ -1382,6 +1604,7 @@ L display.ld
       @GET_FROM SelectedFormEntry FORMOBJ_Y @POPI PrintY
       @GET_FROM SelectedFormEntry FORMOBJ_WIDTH @POPI PrintWidth
       @GET_FROM SelectedFormEntry FORMOBJ_HEIGHT @POPI PrintHeight
+      @GET_FROM SelectedFormEntry FORMOBJ_DEPTH @POPI PrintDepth
       @GET_FROM SelectedFormEntry FORMOBJ_VALUE_PTR @POPI PrintValuePtr
       @GET_FROM SelectedFormEntry FORMOBJ_FIELD_PTR @POPI PrintFieldPtr
 
@@ -1411,6 +1634,10 @@ L display.ld
       @ELSE
          @PRT "  H " @PRTI PrintHeight @PRT " fixed"
       @ENDIF
+      @Call(AA) WinCursor 26 15
+      @PRT "- Z " @PRTI PrintDepth
+      @Call(AA) WinCursor 42 15
+      @PRT "+"
       @Call(AA) WinCursor 26 16
       @PRT "VALUE PTR: " @PRTI PrintValuePtr
       @Call(AA) WinCursor 26 17
@@ -1644,82 +1871,43 @@ L display.ld
 @Locals
    @Local Zero
 
+# EventAdd(EventType, Data1, Data2, Data3, Data4, EventID)
+# Data fields are constants for key events and literal mouse targets.
+M SetupEvent \
+   @PUSH %1 \
+   @PUSH %2 \
+   @PUSH %3 \
+   @PUSH %4 \
+   @PUSH %5 \
+   @PUSH %6 \
+   @CALL EventAdd
+
+# Variant for values already stored in variables, such as full-window bounds.
+M SetupEventV \
+   @PUSH %1 \
+   @PUSHI %2 \
+   @PUSHI %3 \
+   @PUSHI %4 \
+   @PUSHI %5 \
+   @PUSH %6 \
+   @CALL EventAdd
+
    @MA2V 0 Zero
 
    @Call(V) EventTableNew MainHeap
    @POPI CtrlMenuEventTable
    @Call(V) EventSetActive CtrlMenuEventTable
 
-   @PUSH MouseEventClick
-   @PUSHI Zero
-   @PUSHI Zero
-   @PUSHI WinWidth
-   @PUSHI WinHeight
-   @PUSH EV_MenuClick
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 27
-   @PUSH 27
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuESC
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 15
-   @PUSH 15
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuOpenCloseCtrl
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 2
-   @PUSH 2
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuCtrlBox
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 9
-   @PUSH 9
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuCtrlInteger
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 12
-   @PUSH 12
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuCtrlLong
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 19
-   @PUSH 19
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuCtrlString
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 23
-   @PUSH 23
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuCtrlWords
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 20
-   @PUSH 20
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuCtrlTextBox
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 16
-   @PUSH 16
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_MenuPrint
-   @CALL EventAdd
+   @SetupEventV MouseEventClick Zero Zero WinWidth WinHeight EV_MenuClick
+   @SetupEvent KeyRangeEvent 27 27 0 0 EV_MenuESC
+   @SetupEvent KeyRangeEvent 15 15 0 0 EV_MenuOpenCloseCtrl
+   @SetupEvent KeyRangeEvent 2 2 0 0 EV_MenuCtrlBox
+   @SetupEvent KeyRangeEvent 9 9 0 0 EV_MenuCtrlInteger
+   @SetupEvent KeyRangeEvent 12 12 0 0 EV_MenuCtrlLong
+   @SetupEvent KeyRangeEvent 19 19 0 0 EV_MenuCtrlString
+   @SetupEvent KeyRangeEvent 23 23 0 0 EV_MenuCtrlWords
+   @SetupEvent KeyRangeEvent 20 20 0 0 EV_MenuCtrlTextBox
+   @SetupEvent KeyRangeEvent 16 16 0 0 EV_MenuPrint
    @CALL EventGetActive
    @POPI CtrlMenuEventTable
 
@@ -1727,97 +1915,19 @@ L display.ld
    @POPI CanvasEventTable
    @Call(V) EventSetActive CanvasEventTable
 
-   @PUSH MouseEventClick
-   @PUSHI Zero
-   @PUSHI Zero
-   @PUSHI WinWidth
-   @PUSHI WinHeight
-   @PUSH EV_CanvasClick
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 2
-   @PUSH 2
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCtrlBox
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 9
-   @PUSH 9
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCtrlInteger
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 12
-   @PUSH 12
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCtrlLong
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 19
-   @PUSH 19
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCtrlString
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 23
-   @PUSH 23
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCtrlWords
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 20
-   @PUSH 20
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCtrlTextBox
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH " \0"
-   @PUSH 126
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasKey
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 127
-   @PUSH 127
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasDel
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 27
-   @PUSH 27
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasESC
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 15
-   @PUSH 15
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasOpenMenuCtrl
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 10
-   @PUSH 10
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasNL
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 13
-   @PUSH 13
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_CanvasCR
-   @CALL EventAdd
+   @SetupEventV MouseEventClick Zero Zero WinWidth WinHeight EV_CanvasClick
+   @SetupEvent KeyRangeEvent 2 2 0 0 EV_CanvasCtrlBox
+   @SetupEvent KeyRangeEvent 9 9 0 0 EV_CanvasCtrlInteger
+   @SetupEvent KeyRangeEvent 12 12 0 0 EV_CanvasCtrlLong
+   @SetupEvent KeyRangeEvent 19 19 0 0 EV_CanvasCtrlString
+   @SetupEvent KeyRangeEvent 23 23 0 0 EV_CanvasCtrlWords
+   @SetupEvent KeyRangeEvent 20 20 0 0 EV_CanvasCtrlTextBox
+   @SetupEvent KeyRangeEvent " \0" 126 0 0 EV_CanvasKey
+   @SetupEvent KeyRangeEvent 127 127 0 0 EV_CanvasDel
+   @SetupEvent KeyRangeEvent 27 27 0 0 EV_CanvasESC
+   @SetupEvent KeyRangeEvent 15 15 0 0 EV_CanvasOpenMenuCtrl
+   @SetupEvent KeyRangeEvent 10 10 0 0 EV_CanvasNL
+   @SetupEvent KeyRangeEvent 13 13 0 0 EV_CanvasCR
    @CALL EventGetActive
    @POPI CanvasEventTable
 
@@ -1825,90 +1935,20 @@ L display.ld
    @POPI FieldEditEventTable
    @Call(V) EventSetActive FieldEditEventTable
 
-   @PUSH KeyRangeEvent
-   @PUSH 27
-   @PUSH 27
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_FieldEditESC
-   @CALL EventAdd
-   @PUSH KeyRangeEvent
-   @PUSH 15
-   @PUSH 15
-   @PUSH 0
-   @PUSH 0
-   @PUSH EV_FieldEditOpenMenu
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 26
-   @PUSH 11
-   @PUSH 26
-   @PUSH 11
-   @PUSH EV_FieldEditDecX
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 42
-   @PUSH 11
-   @PUSH 42
-   @PUSH 11
-   @PUSH EV_FieldEditIncX
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 26
-   @PUSH 12
-   @PUSH 26
-   @PUSH 12
-   @PUSH EV_FieldEditDecY
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 42
-   @PUSH 12
-   @PUSH 42
-   @PUSH 12
-   @PUSH EV_FieldEditIncY
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 26
-   @PUSH 13
-   @PUSH 26
-   @PUSH 13
-   @PUSH EV_FieldEditDecW
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 42
-   @PUSH 13
-   @PUSH 42
-   @PUSH 13
-   @PUSH EV_FieldEditIncW
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 26
-   @PUSH 14
-   @PUSH 26
-   @PUSH 14
-   @PUSH EV_FieldEditDecH
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 42
-   @PUSH 14
-   @PUSH 42
-   @PUSH 14
-   @PUSH EV_FieldEditIncH
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 61
-   @PUSH 6
-   @PUSH 61
-   @PUSH 6
-   @PUSH EV_FieldEditCloseClick
-   @CALL EventAdd
-   @PUSH MouseEventClick
-   @PUSH 26
-   @PUSH 19
-   @PUSH 36
-   @PUSH 19
-   @PUSH EV_FieldEditCloseText
-   @CALL EventAdd
+   @SetupEvent KeyRangeEvent 27 27 0 0 EV_FieldEditESC
+   @SetupEvent KeyRangeEvent 15 15 0 0 EV_FieldEditOpenMenu
+   @SetupEvent MouseEventClick 26 11 26 11 EV_FieldEditDecX
+   @SetupEvent MouseEventClick 42 11 42 11 EV_FieldEditIncX
+   @SetupEvent MouseEventClick 26 12 26 12 EV_FieldEditDecY
+   @SetupEvent MouseEventClick 42 12 42 12 EV_FieldEditIncY
+   @SetupEvent MouseEventClick 26 13 26 13 EV_FieldEditDecW
+   @SetupEvent MouseEventClick 42 13 42 13 EV_FieldEditIncW
+   @SetupEvent MouseEventClick 26 14 26 14 EV_FieldEditDecH
+   @SetupEvent MouseEventClick 42 14 42 14 EV_FieldEditIncH
+   @SetupEvent MouseEventClick 26 15 26 15 EV_FieldEditDecDepth
+   @SetupEvent MouseEventClick 42 15 42 15 EV_FieldEditIncDepth
+   @SetupEvent MouseEventClick 61 6 61 6 EV_FieldEditCloseClick
+   @SetupEvent MouseEventClick 26 19 36 19 EV_FieldEditCloseText
    @CALL EventGetActive
    @POPI FieldEditEventTable
    @Call(V) EventSetActive CanvasEventTable
@@ -2603,6 +2643,35 @@ L display.ld
 @RET
 
 ############################################
+# FieldEditDepthAdjust
+############################################
+:FieldEditDepthAdjust
+@PUSHRETURN
+@Locals
+   @Local Delta
+   @Local Value
+
+   @POPI Delta
+   @IF_NEQ_AV 0 SelectedFormEntry
+      @GET_FROM SelectedFormEntry FORMOBJ_DEPTH @POPI Value
+      @PUSHI Value
+      @ADDI Delta
+      @POPI Value
+      @PUSHI Value
+      @IF_LT_A 0
+         @POPNULL
+         @MA2V 0 Value
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @FILL_AT_V SelectedFormEntry FORMOBJ_DEPTH Value
+      @CALL DisplaySelectedFieldEditor
+   @ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+############################################
 # FieldEditExit
 ############################################
 :FieldEditExit
@@ -2844,6 +2913,14 @@ L display.ld
                 @ENDIF
              @ENDIF
              @CBREAK
+          @CASE EV_FieldEditDecDepth
+             @POPNULL
+             @Call(A) FieldEditDepthAdjust -1
+             @CBREAK
+          @CASE EV_FieldEditIncDepth
+             @POPNULL
+             @Call(A) FieldEditDepthAdjust 1
+             @CBREAK
           @CASE EV_CanvasClick
              @POPNULL
              @IF_NEQ_AV 0 ReportActive
@@ -2964,13 +3041,21 @@ L display.ld
 
 :Main .ORG Main
    @CALL SetupStack
+   @PRTLN "1"
    @CALL SetupGlobals
+   @PRTLN "2"
    @CALL SetupEvents
+   @PRTLN "3"
    @CALL DisplayCanvas
+   @PRTLN "4"
    @CALL TermMouseEnable
+   @PRTLN "5"
    @CALL MainEventLoop
+   @PRTLN "6"
    @CALL TermMouseDisable
    @END
+
+.ORG Main
 
 
    

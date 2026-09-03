@@ -238,7 +238,7 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @ENDFUNCTION
 
 ###################################################################################
-# Function TimeCalabrate():int OpsPerUnit
+# Function TimeCalabrate():void()
 #     Goal is to calculate NOS per 1/256th of second
 # We'll need some 32 bit numbers
 #
@@ -249,15 +249,16 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @Local StartTime
 @Local CurTime
 @Local Index01
+@Local32 Junk1
 
 @MA2V 0 ClockCalib       # Zero out 32 bit clock calibration
 @MA2V 0 ClockCalib+2
 
-# FIrst make sure we are at a 'safe' starting point for time timese. (not too close to a roll over)
+# FIrst make sure we are at a 'safe' starting point for time times. (not too close to a roll over)
 @LOOP
    @GETTIME
    @POPNULL    # discard high word.
-   @IF_UGE_A 0xfffc
+   @IF_UGE_A 0xfffa
       @POPNULL
       @PUSH 0
    @ELSE
@@ -267,40 +268,42 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @UNTIL_NOTZERO
 @POPNULL
 @MV2V CurTime StartTime
-#@PRT "Now: "
-#@PRTI CurTime
-#@PRT ":"
 
 # Now poll until StartTime != GETTIME to make sure we're at start of a given second
 @LOOP
    @GETTIME      # 2 Words on stack
    @POPNULL      # 1 Word on Stack
-#   @PRTTOP  @PRT " .. "
    @IF_EQ_V StartTime
       @POPNULL   # 0 words on stack
       @PUSH 1    # 1 word on stack
    @ELSE
-      @POPNULL   # 0 words on stack
+      @POPI CurTime
       @PUSH 0    # 1 word on stack
    @ENDIF
 @UNTIL_NOTZERO   # Still 1 word on stack
 @POPNULL         # 0 words on stack
 #
-# Now count how long it takes to get to the next second flip
-@INC2I CurTime  # Count until 2 seconds pass.
-#@PRT "Looking for: " @PRTI CurTime @PRTNL
+# Now count how long it takes to get to the next 4 second flip
+@PUSHI CurTime @ADD 4 @POPI CurTime
+
+@MA2V 256 Junk1
 @PUSH 1
 @WHILE_NOTZERO
    @POPNULL
+   @ForIA2V Index01 0 Junk1
+   @Next Index01
+
+   @PUSHI ClockCalib
+   @ADD 0x100
+   @POPI ClockCalib
+   @IF_EQ_AV 0 ClockCalib
+       # Rolled over so inc high word
+       @INCI ClockCalib+2
+   @ENDIF
    @GETTIME
    @POPNULL
    @IF_NEQ_V CurTime
-      @POPNULL   
-      @INCI ClockCalib
-      @IF_EQ_AV 0 ClockCalib
-         # Rolled over so inc high word
-         @INCI ClockCalib+2
-      @ENDIF
+      @POPNULL
       @PUSH 1
    @ELSE
       @POPNULL
@@ -308,16 +311,10 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
    @ENDIF
 @ENDWHILE
 @POPNULL
-# Now ClockCalib is 32 bit work with total count for 2 seconds, SHR to make it sutable for 1 second.
-@CLC    # Clear Carry
-# We want our ClockCalib about equal to 1 millsec so div by 1024
-
-@ForIA2B Index01 0 10
-  @PUSHI  ClockCalib+2        # High Word
-  @RRTC  @POPI  ClockCalib+2
-  @PUSHI ClockCalib
-  @SHR @POPI ClockCalib     # Low Word
-@Next Index01
+@Call32(VA) DIV32U ClockCalib $$$4000
+@POP32I(V) ClockCalib
+@POPNULL @POPNULL
+@PRT "Time Calibration: " @PRT32I ClockCalib @PRTNL
 @EndLocals
 @POPRETURN
 @RET
@@ -338,7 +335,6 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @POPI Count
 # Check if we need to calabrate
 @IF_EQ_AV 0 ClockCalib
-#   @PRT "Clock not yet Calabrated....Please wait."
    @CALL TimeCalabrate
 @ENDIF
 #
@@ -362,23 +358,33 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 :SleepMilli
 @PUSHRETURN
 @Locals
+@Local Count
 @Local Index1
 @Local Index2
-@Local Index3
-@Local Count
+@Local32 DelayCount
+@Local32 ModifiedCal
 #
 @POPI Count
 @IF_EQ_AV 0 ClockCalib
-#   @PRT "Clock not yet Calabrated....Please wait."
    @CALL TimeCalabrate
 @ENDIF
-@POPNULL
+
+@MV2V ClockCalib ModifiedCal
+@MV2V ClockCalib+2 ModifiedCal+2
 #
+@MV2V ModifiedCal DelayCount
+@MV2V ModifiedCal+2 DelayCount+2
+
+@PUSHI ModifiedCal+2
+@IF_NOTZERO
+  # Very fast computer, does > 65000 instructions a millisecond
+  @MA2V 0xffff ModifiedCal
+  @MA2V 0 ModifiedCal+2
+@ENDIF
+@POPNULL
+
 @ForIA2V Index1 0 Count
-   @ForIA2V Index2 -1 ClockCalib+2   # if Highword is 0, still loop once.
-     @ForIA2V Index3 0 ClockCalib       # Lowword does most of the work.
-       # Do Nothing
-     @Next Index3
+   @ForIA2V Index2 0 ModifiedCal   # Treat as 16 bit number, ignore upper word
    @Next Index2
 @Next Index1
 @EndLocals

@@ -253,7 +253,7 @@ M PutS @PUSHI %2 @SHL @ADDI %1 @POPS
 ##############################
 # Main
 ##############################
-:Main .Org Main
+:Main .ORG Main
 @Locals
    @Local P1
    @Local P2

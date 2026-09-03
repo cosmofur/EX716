@@ -711,7 +711,7 @@ M AddConstantEvent \
 @POPRETURN
 @RET
 
-:Main .Org Main
+:Main .ORG Main
    @CALL SetupStack
    @CALL SetupGlobals
    @CALL SetupEvents

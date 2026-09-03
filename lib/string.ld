@@ -3,6 +3,7 @@
 M __LIB_STRING_LOADED 1
 P Load string.ld
 I string.ref
+L heapmgr.ld
 L mul.ld
 L div.ld
 

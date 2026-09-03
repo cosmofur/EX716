@@ -62,7 +62,7 @@ L event.ld
 # Main
 ############################################################
 
-:Main .Org Main
+:Main .ORG Main
 
    @MA2V 1 Running
 

@@ -1,10 +1,8 @@
 I common.mc
-L screen.ld
 L softstack.ld
+L screen.ld
 L heapmgr.ld
 L random.ld
-#M PUSHRETURN @PRT "Top:" @StackDump @CALL __MOVE_HW_SS 
-#M POPRETURN  @PRT "Bottom:" @StackDump @CALL __MOVE_SS_HW 
 #################################################
 #
 # Screen Library provides
@@ -43,8 +41,11 @@ L random.ld
 @ELSE
   @CALL WinResize
 @ENDIF
-@PUSHI WinHeight @ADD 1 @PUSHI WinWidth @ADD 1 @CALL MULU
-@SHR @SHR @SHR   # Width*Height/8 for bytes
+@PUSHI WinHeight @ADD 1
+@PUSHI WinWidth @ADD 1
+@CALL MULU
+@ADD 7
+@SHR @SHR @SHR
 @POPI BitMapBytes
 #
 @PUSHI MainHeap @PUSHI BitMapBytes @CALL HeapNewObject @IF_ULT_A 100 @PRT "Memory Error 54" @END @ENDIF
@@ -54,7 +55,6 @@ L random.ld
 @POPI FMULTable
 #
 @PUSHI WinWidth @SHR @POPI BlockX
-@PUSH 0 @POPI BlockX
 @MA2V 1 BlockY
 @RET
 #
@@ -77,24 +77,20 @@ L random.ld
    @PUSHI Var02
    @PUSHI Var01 @SHL @ADDI FMULTable
    @POPS
-   @PUSHI Var02 @ADDI WinWidth @SHR @SHR @SHR @POPI Var02
+   @PUSHI Var02 @ADDI WinWidth @POPI Var02
 @Next Var01
 # Setup display and draw line to mark bottom of screen.
 
 
 @ForIA2V Var01 0 WinWidth
     @PUSHI Var01
-#    @PUSH 1
     @PUSHI WinHeight @SUB 1
     @CALL SetBit
 @Next Var01
-#@ForIA2V Var01 0 WinHeight
-#    @PUSH 0 @PUSHI Var01 @CALL SetBit
-#    @PUSHI WinWidth @SUB 1 @PUSHI Var01 @CALL SetBit
-#@Next Var01
     
 @CALL DrawBoard
 @TTYNOECHO
+@TTYRAW
 @CALL GameLoop
 @TTYECHO
 @PRTNL
@@ -103,10 +99,11 @@ L random.ld
 # Function GameLoop
 :GameLoop
 @PUSHRETURN
-@LocalVar Key 01
-@LocalVar FrameCounter 02
-@LocalVar PrevX 03
-@LocalVar PrevY 04
+@Locals
+@Local Key
+@Local FrameCounter
+@Local PrevX
+@Local PrevY
 #
 @PUSH 1
 @MA2V 0 FrameCounter
@@ -118,11 +115,6 @@ L random.ld
    @MV2V BlockY PrevY
    #
    @READCNW Key
-#   @LOOP
-#     @READC Key
-#     @PUSHI Key     
-#   @UNTIL_NOTZERO
-#   @POPNULL
    #
    @PUSHI Key
    @SWITCH
@@ -199,20 +191,18 @@ L random.ld
 @ENDWHILE
 @POPNULL
 :QuitExit
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 ###############################################
 # Function MoveBlock(DX,DY)
 :MoveBlock
 @PUSHRETURN
-@LocalVar Dx 01
-@LocalVar Dy 02
-@LocalVar NewX 03
-@LocalVar NewY 04
+@Locals
+@Local Dx
+@Local Dy
+@Local NewX
+@Local NewY
 #
 @POPI Dy
 @POPI Dx
@@ -276,17 +266,15 @@ L random.ld
 @CALL DrawBlock
 :SkipMoveBlock
 @PUSH 1 @PUSH 1 @CALL WinCursor @PRT " "
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #########################################
 # Function FastSHR(Value,Steps)
 :FastSHR
 @PUSHRETURN
-@LocalVar Steps 01
+@Locals
+@Local Steps
 @AND 0xf @POPI Steps  # We limit our selves to max of 0-15 steps
 @PUSH FSHRCase0
 @ADD 16 @SUBI Steps
@@ -296,14 +284,15 @@ L random.ld
 @SHR @SHR @SHR @SHR
 @SHR @SHR @SHR @SHR
 @SHR @SHR @SHR @SHR
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #########################################
 # Function FastSHL(Value,Steps)
 :FastSHL
 @PUSHRETURN
-@LocalVar Steps 01
+@Locals
+@Local Steps
 @AND 0xf @POPI Steps  # We limit our selves to max of 0-15 steps
 @PUSH FSHLCase0
 @ADD 16 @SUBI Steps
@@ -313,7 +302,7 @@ L random.ld
 @SHL @SHL @SHL @SHL
 @SHL @SHL @SHL @SHL
 @SHL @SHL @SHL @SHL
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -321,14 +310,15 @@ L random.ld
 # Function FixBlock(XP,YP)
 :FixBlock
 @PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar RowBits 03
-@LocalVar HIndex 04
-@LocalVar ByteIndex 05
-@LocalVar Shift 06
-@LocalVar BmapPtr 07
-@LocalVar Mask 08
+@Locals
+@Local XP
+@Local YP
+@Local RowBits
+@Local HIndex
+@Local ByteIndex
+@Local Shift
+@Local BmapPtr
+@Local Mask
 #
 @POPI YP
 @POPI XP
@@ -367,14 +357,7 @@ L random.ld
       @POPII BmapPtr
    @ENDIF
 @Next HIndex      
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
@@ -382,11 +365,12 @@ L random.ld
 # Function DrawBoard
 :DrawBoard
 @PUSHRETURN
-@LocalVar Line 01
-@LocalVar Col 02
-@LocalVar BitIndex 03
-@LocalVar ByteIndex 04
-@LocalVar BitOffset 05
+@Locals
+@Local Line
+@Local Col
+@Local BitIndex
+@Local ByteIndex
+@Local BitOffset
 #
 @MA2V 0 BitIndex
 #
@@ -430,11 +414,7 @@ L random.ld
 @NextBy Line 3
 @StackDump
 #
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 # Local BitMaskTable
@@ -443,9 +423,10 @@ L random.ld
 
 :SwapBytes
 @PUSHRETURN
-@LocalVar highbyte 01
-@LocalVar lowbyte 02
-@LocalVar InWord 03
+@Locals
+@Local highbyte
+@Local lowbyte
+@Local InWord
 @POPI InWord
 @PUSHI InWord @PUSH 8
 @CALL FastSHR
@@ -455,21 +436,20 @@ L random.ld
 @CALL FastSHL
 @AND 0xff00
 @ORI highbyte
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #########################################
 # Function SetBit(X,Y)
 :SetBit
 @PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar Index 03
-@LocalVar Bit 04
-@LocalVar YRsult 05
-@LocalVar Index2 05
+@Locals
+@Local XP
+@Local YP
+@Local Index
+@Local Bit
+@Local YRsult
+@Local Index2
 #
 @POPI YP
 @POPI XP
@@ -486,35 +466,30 @@ L random.ld
 @PUSHI BoardMap @ADDI Index @PUSHS
 @ORS
 @PUSHI BoardMap @ADDI Index @POPS
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #################################################
 # Function GetBit(X,Y)
 :GetBit
 @PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar BitIndex 03
-@LocalVar ByteIndex 04
-@LocalVar BitOffset 05
-@LocalVar BitLoop 06
+@Locals
+@Local XP
+@Local YP
+@Local BitIndex
+@Local ByteIndex
+@Local BitOffset
+@Local BitLoop
 #
 @POPI YP
 @POPI XP
 #
-#@PUSHI YP @PUSHI WinWidth @CALL MULU @POPI YRsult
 
 @PUSHI YP @SHL @ADDI FMULTable @PUSHS @ADDI XP
 @POPI BitIndex
 @PUSHI BitIndex @SHR @SHR @SHR
 @POPI ByteIndex
-@PUSHI ByteIndex @AND 0x7
+@PUSHI BitIndex @AND 0x7
 @POPI BitOffset
 @PUSHI BoardMap @ADDI ByteIndex @PUSHS @AND 0xff
 @ForIA2V BitLoop 0 BitOffset
@@ -525,25 +500,22 @@ L random.ld
    @POPNULL
    @PUSH 1
 @ENDIF
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 #################################################
 # Functoin CheckCollision(XP,YP) 0:No Collision 1:Collision 2:Invalid Boudry
 :CheckCollision
 @PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar RowBits 03
-@LocalVar HIndex 04
-@LocalVar ByteIndex 05
-@LocalVar Shift 06
-@LocalVar BmapPtr 07
+@Locals
+@Local XP
+@Local YP
+@Local RowBits
+@Local HIndex
+@Local ByteIndex
+@Local Shift
+@Local BmapPtr
+@Local Mask
 #
 @POPI YP
 @POPI XP
@@ -596,131 +568,24 @@ L random.ld
 @PUSH 0
 :COLAbort
 
-
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
-#################################################
-# Function CheckCollisionOLD(XP,YP) 0:No Collision 1:Collision 2:Invalid Boudry 
-:CheckCollisionOLD
-@PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar Mask 03
-@LocalVar MaskRow 04
-@LocalVar MaskBitStream 05
-@LocalVar MaskBit 06
-@LocalVar DX 07
-@LocalVar DY 08
-@LocalVar MapX 09
-@LocalVar MapY 10
-@LocalVar BitIndex 11
-@LocalVar ByteIndex 12
-@LocalVar BitOffset 13
-@LocalVar BitLoop 14
-#
-@POPI YP
-@POPI XP
-@PRT "Checking Line:" @PRTHEXI YP @PRTNL
-# Bound Check, if any of these IF's are true, abort with false.
-# Check XP
-@PUSHI XP
-@IF_LT_A 0   @POPNULL @PUSH 2  @JMP COLAbort @ENDIF
-@ADD 3
-@IF_GT_V WinWidth @POPNULL @PUSH 2 @JMP COLAbort @ENDIF
-@POPNULL
-# Check YP
-@PUSHI YP
-@IF_LT_A 0   @POPNULL @PUSH 2  @JMP COLAbort @ENDIF
-@ADD 3
-@IF_GT_V WinHeight
-  @POPNULL @PUSH 1 @JMP COLAbort
-@ENDIF
-@POPNULL
-#
-# Passed Bound Check
-#
-# Figure out what shape and roation to fill the Mask
-@PUSH BlockShapes
-@PUSHI CurrentBlockType @SHL @SHL @SHL  # Mul * 8 as each block db entry is 8 bytes long
-@ADDS
-@PUSHI CurrentRotation @SHL @ADDS       # Mul * 2 as each field is 16 bits
-@PUSHS
-@POPI Mask        # is the 16 bit 4x4 shape data.
-#
-@MV2V Mask MaskRow      # We'll be modifying Mask as we go down rows.
-@PUSH 0
-@ForIA2B DY 0 4
-   @MV2V MaskRow MaskBitStream
-   @ForIA2B DX 0 4
-       @PUSHI MaskBitStream @AND 0x8000  # Test Left most bit
-       @IF_NOTZERO
-          @PUSHI XP @ADDI DX @POPI MapX
-          @PUSHI YP @SUB 1 @ADDI DY @POPI MapY
-          @PUSHI MapY @SHL @ADDI FMULTable @PUSHS @ADDI MapX
-          @POPI BitIndex
-          @PUSHI BitIndex @SHR @SHR @SHR
-          @POPI ByteIndex
-          @PUSHI BitIndex @AND 0x7
-          @POPI BitOffset
-          @PUSHI BoardMap @ADDI ByteIndex @PUSHS @AND 0xff
-          @ForIA2V BitLoop 0 BitOffset
-             @SHL
-          @Next BitLoop
-          @AND 0x80
-          @IF_NOTZERO
-             @POPNULL
-             @POPNULL
-             @PUSH 1
-             @JMP COLAbort  # True, so shortcut to exit
-          @ENDIF
-          @POPNULL
-       @ENDIF
-       @POPNULL
-       @PUSHI MaskBitStream @SHR @POPI MaskBitStream   # MaskBitStream >> 1
-   @Next DX
-   @PUSHI MaskRow @SHL @SHL @SHL @SHL @POPI MaskRow   # MaskRow >> 4
-@Next DY
-# If we get here then there were no matches, 0 should already be on stack
-:COLAbortOLD          # Any calls to COLAbort should have just result on stack.
-#@PUSH 1 @PUSH 30 @CALL WinCursor @StackDump @PRT " WITH MATCH " @JMP SkipForward
-:SkipForwardOLD
-@RestoreVar 14
-@RestoreVar 13
-@RestoreVar 12
-@RestoreVar 11
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
-@POPRETURN
-@RET
 ################################################
 # Function DrawBlock(X,Y,BlockID,Rotation,EraseCode)
 :DrawBlock
 @PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar BlockID 03
-@LocalVar Rotation 04
-@LocalVar Erase 05
-@LocalVar Mask 06
-@LocalVar RowBits 07
-@LocalVar Index1 08
-@LocalVar Index2 09
+@Locals
+@Local XP
+@Local YP
+@Local BlockID
+@Local Rotation
+@Local Erase
+@Local Mask
+@Local RowBits
+@Local Index1
+@Local Index2
 
 @POPI Erase
 @POPI Rotation
@@ -769,92 +634,19 @@ L random.ld
    @Next Index2
    @ENDIF
 @Next Index1
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 
 
 
-################################################
-# Function DrawBlockOLD(x,y,BlockID,Rotation,Erase)
-:DrawBlockOLD
-@PUSHRETURN
-@LocalVar XP 01
-@LocalVar YP 02
-@LocalVar BlockID 03
-@LocalVar Rotation 04
-@LocalVar Erase 05
-@LocalVar Row 06
-@LocalVar Col 07
-@LocalVar BitPosition 08
-@LocalVar ShapeData 09
-@LocalVar IndexT 10
-@POPI Erase
-@POPI Rotation
-@POPI BlockID
-@POPI YP
-@POPI XP
-#
-@PUSH BlockShapes
-@PUSHI BlockID @SHL @SHL @SHL   # 8 bytes per row entry
-@ADDS
-@PUSHI Rotation @SHL            # 2 bytes in each entry
-@ADDS
-@PUSHS
-@POPI ShapeData
-#
-@ForIA2B Row 0 4
-   @ForIA2B Col 0 4
-       # 15 - (row * 4 + col)
-       @PUSH 15
-       @PUSHI Row @SHL @SHL   # *4
-       @ADDI Col
-       @SUBS
-       @POPI BitPosition
-       @PUSHI ShapeData
-       @ForIA2V IndexT 0 BitPosition
-          @SHR
-       @Next IndexT
-       @AND 0x1
-       @IF_NOTZERO          
-           @PUSHI XP @ADDI Col @ADD 1
-           @PUSHI YP @ADDI Row @ADD 1
-           @CALL WinCursor
-           @IF_EQ_AV 1 Erase
-              @PRT " "
-           @ELSE
-              @PRT "#"
-           @ENDIF
-       @ENDIF
-       @POPNULL
-   @Next Col
-@Next Row
-@RestoreVar 10
-@RestoreVar 09
-@RestoreVar 08
-@RestoreVar 07
-@RestoreVar 06
-@RestoreVar 05
-@RestoreVar 04
-@RestoreVar 03
-@RestoreVar 02
-@RestoreVar 01
-@POPRETURN
-@RET
 
 #################################################
 # Function SleepT(Secs)
 :SleepT
 @PUSHRETURN
-@LocalVar Secs 01
+@Locals
+@Local Secs
 @POPI Secs
 #
 @GETTIME @POPNULL
@@ -865,7 +657,7 @@ L random.ld
    @GETTIME @POPNULL
 @ENDWHILE
 @POPNULL
-@RestoreVar 01
+@EndLocals
 @POPRETURN
 @RET
 

@@ -116,12 +116,12 @@ G DISPLAY_NUMERIC_BUFFER_MIN
    @POPI RootPtr
    @MV2V RootPtr DisplayRoot
    @FILL_AT_A RootPtr FORM_PARENT 0
-   @FILL_AT_A RootPtr FORM_REL_X 1
-   @FILL_AT_A RootPtr FORM_REL_Y 1
+   @FILL_AT_A RootPtr FORM_REL_X 0
+   @FILL_AT_A RootPtr FORM_REL_Y 0
    @FILL_AT_V RootPtr FORM_WIDTH WinWidth
    @FILL_AT_V RootPtr FORM_HEIGHT WinHeight
-   @FILL_AT_A RootPtr FORM_ABS_X 1
-   @FILL_AT_A RootPtr FORM_ABS_Y 1
+   @FILL_AT_A RootPtr FORM_ABS_X 0
+   @FILL_AT_A RootPtr FORM_ABS_Y 0
    @FILL_AT_A RootPtr FORM_CLIP_X1 1
    @FILL_AT_A RootPtr FORM_CLIP_Y1 1
    @FILL_AT_V RootPtr FORM_CLIP_X2 WinWidth
