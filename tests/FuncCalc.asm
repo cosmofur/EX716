@@ -22,10 +22,21 @@ L lmath.ld
 # FCInit():void "Creates the heap, soft stack, and initial variable table."
 # FCReadLine():[lineptr] "Allocates and reads one input line from the console."
 # FCFreeString(ptr):void "Deletes a heap string/object when ptr is non-zero."
-# FCHandleLine(inptr):void "Dispatches one REPL line to commands or assignment."
+# FCHandleLine(inptr):void "Dispatches one REPL line to commands or a statement list."
+# FCCompileStatementList(inptr):[listptr] "Builds linked statement objects from a semicolon list."
+# FCCompileStatement(src,len):[stmtptr] "Creates one statement object from a source slice."
+# FCExecStatementList(listptr):void "Executes linked statements until end or RETURN."
+# FCExecStatement(stmtptr):void "Executes one compiled statement object."
+# FCFreeStatementList(listptr):void "Frees linked statement objects and owned text."
+# FCStatementLinkedToList(stmtptr):[listptr] "Moves linked statement nodes into a pointer list."
+# FCExecCodeList(listptr):void "Executes statement nodes stored in a pointer list."
+# FCFreeCodeList(listptr):void "Frees a pointer list of statement nodes and owned text."
+# FCFindStatementSep(ptr):[sepptr] "Finds a top-level semicolon outside strings/grouping."
 # FCHelpStatement():void "Prints the built-in help text."
 # FCMemStatement():void "Prints variable table and heap memory statistics."
 # FCCleanStatement(argptr):void "Deletes all variables or one named variable."
+# FCListStatement(argptr):void "Temporarily compiles LIST name=statements into a stored list."
+# FCExecListStatement(argptr):void "Temporarily executes a stored statement list variable."
 # FCAssignStatement(inptr):void "Parses NAME=expression and stores the result."
 # FCPrintStatement(inptr):void "Evaluates and prints an expression."
 # FCEvalExpr(exprptr):void "Evaluates an expression into EvalType/EvalI32/EvalStr."
@@ -62,15 +73,22 @@ L lmath.ld
 # FCBuiltinStr(argptr):void "Evaluates STR$(number)."
 # FCBuiltinSplit(argptr):void "Evaluates SPLIT(string,start,stop)."
 # FCStoreEval(slot):void "Stores the current Eval value into a variable slot."
+# FCStorePointerValue(slot,type,payload):void "Stores a pointer payload value into a variable slot."
 # FCFindOrAllocSlot(name):[slot] "Finds an existing variable slot or allocates one."
 # FCFindSlot(name):[slot] "Finds an active variable slot by name."
 # FCAllocSlot():[slot] "Allocates the next variable slot, growing the table if needed."
 # FCSymTableGrow():[tableptr] "Doubles the heap-backed variable table."
 # FCValueFromEval():[valueptr] "Creates a heap value object from current Eval state."
 # FCLoadValue(valueptr):void "Loads a heap value object into current Eval state."
+# FCDeleteValue(valueptr):void "Deletes a heap value object and owned nested storage."
 # FCReleaseEvalString():void "Frees the current temporary Eval string if owned."
 # FCSubStringDup(src,len):[dst] "Copies len bytes from src into a new heap string."
 # FCStringDup(src):[dst] "Duplicates a null-terminated string into heap storage."
+# FCListNew(capacity):[listptr] "Creates a heap list of pointer slots plus terminator."
+# FCListAppend(listptr,itemptr):[listptr] "Appends one pointer, growing the list if needed."
+# FCListFree(listptr):void "Frees a heap list object but not its pointed-to items."
+# FCListFreeItems(listptr):void "Frees every pointed-to item, then the list object."
+# FCStrEq(left,right):[equal] "Returns true only when two strings match exactly."
 # FCDeleteAllSlots():void "Deletes all active variable names and values."
 # FCDeleteSlot(slot):void "Deletes one slot and compacts the active slot list."
 # FCValidName(name):[valid] "Checks FuncCalc variable/function name syntax."
@@ -78,8 +96,8 @@ L lmath.ld
 # FCSkipWhite(ptr):[ptr] "Skips spaces and tabs."
 # FCTrimRight(str):void "Trims trailing spaces and tabs in place."
 # FCClearVarTable(table):void "Clears all slots in a variable table."
-# FCParseStatementList():void "Placeholder for statement-list parsing."
-# FCParseExpression():void "Placeholder for future parser entry work."
+# FCParseStatementList(inptr):[listptr] "Compatibility wrapper for statement-list compilation."
+# FCParseExpression(exprptr):void "Compatibility wrapper for expression evaluation."
 # FCDefineFunction():void "Placeholder for DEFUN support."
 # FCWhileBlock():void "Placeholder for WHILE support."
 
@@ -102,12 +120,27 @@ L lmath.ld
 =FC_TYPE_EMPTY 0
 =FC_TYPE_I32 1
 =FC_TYPE_STR 2
+=FC_TYPE_LIST 3
+=FC_TYPE_FUNC 4
 =FC_VAL_TYPE 0
 =FC_VAL_LOW 2
 =FC_VAL_HIGH 4
 =FC_VAL_SIZE 6
+=FC_LIST_COUNT 0
+=FC_LIST_CAPACITY 2
+=FC_LIST_ITEMS 4
+=FC_LIST_MINCAP 4
 =FC_ARG_VAL 0
 =FC_ARG_HEAP 1
+=FC_STMT_NEXT 0
+=FC_STMT_TYPE 2
+=FC_STMT_TEXTPTR 4
+=FC_STMT_AUXPTR 6
+=FC_STMT_SIZE 8
+=FC_STMT_ASSIGN 1
+=FC_STMT_PRINT 2
+=FC_STMT_EXPR 3
+=FC_STMT_RETURN 4
 
 :MainHeapID 0
 :LinePtr 0
@@ -127,6 +160,7 @@ L lmath.ld
 :EvalStrOwned 0
 :ExprOpPtr 0
 :FCArgEndPtr 0
+:FCReturnFlag 0
 :PrintBuff "00000000000\0"
 :FcPrompt "FC> \0"
 :MsgIntro "FuncCalc assembly prototype. QUIT exits.\0"
@@ -138,12 +172,15 @@ L lmath.ld
 :KwMem "MEM\0"
 :KwClean "CLEAN\0"
 :KwHelp "HELP\0"
+:KwList "LIST\0"
+:KwExec "EXEC\0"
 :KwAbs "ABS\0"
 :KwMin "MIN\0"
 :KwLen "LEN\0"
 :KwVal "VAL\0"
 :KwStr "STR$\0"
 :KwSplit "SPLIT\0"
+:KwReturn "RETURN\0"
 :Main . Main
 @CALL FCInit
 @PRTS MsgIntro @PRTNL
@@ -214,6 +251,7 @@ L lmath.ld
 @Locals
    @Local inptr
    @Local cmdcopy
+   @Local stmtlist
 @POPI inptr
 @Call(V) FCSkipWhite inptr @POPI inptr
 @Call(V) FCStringDup inptr @POPI cmdcopy
@@ -239,17 +277,25 @@ L lmath.ld
    @POPNULL @CALL FCMemStatement @JMP FCHandleDone
 @ENDIF
 @POPNULL
-@Call(VAA) strncmp cmdcopy KwPrint 5
-@IF_ZERO
-   @POPNULL @PUSHI inptr @ADD 5 @CALL FCPrintStatement @JMP FCHandleDone
-@ENDIF
-@POPNULL
 @Call(VAA) strncmp cmdcopy KwClean 5
 @IF_ZERO
    @POPNULL @PUSHI inptr @ADD 5 @CALL FCCleanStatement @JMP FCHandleDone
 @ENDIF
 @POPNULL
-@Call(V) FCAssignStatement inptr
+@Call(VAA) strncmp cmdcopy KwList 4
+@IF_ZERO
+   @POPNULL @PUSHI inptr @ADD 4 @CALL FCListStatement @JMP FCHandleDone
+@ENDIF
+@POPNULL
+@Call(VAA) strncmp cmdcopy KwExec 4
+@IF_ZERO
+   @POPNULL @PUSHI inptr @ADD 4 @CALL FCExecListStatement @JMP FCHandleDone
+@ENDIF
+@POPNULL
+@Call(V) FCCompileStatementList inptr @POPI stmtlist
+@MA2V 0 FCReturnFlag
+@Call(V) FCExecStatementList stmtlist
+@Call(V) FCFreeStatementList stmtlist
 :FCHandleDone
 @Call(V) FCFreeString cmdcopy
 @EndLocals
@@ -263,6 +309,8 @@ L lmath.ld
 @PRTLN "  PRINT expr"
 @PRTLN "  MEM"
 @PRTLN "  CLEAN [name]"
+@PRTLN "  LIST name=stmt[;stmt]"
+@PRTLN "  EXEC name"
 @PRTLN "  ABS(expr), MIN(expr,expr)"
 @PRTLN "  LEN(str), VAL(str), STR$(int)"
 @PRTLN "  SPLIT(str,start,stop)"
@@ -307,6 +355,82 @@ L lmath.ld
    @PRTLN "OK cleaned variable"
 @ENDIF
 :FCCleanDone
+@EndLocals
+@POPRETURN
+@RET
+
+:FCListStatement
+@PUSHRETURN
+@Locals
+   @Local argptr
+   @Local slot
+   @Local linked
+   @Local listptr
+@POPI argptr
+@Call(V) FCSkipWhite argptr @POPI argptr
+@Call(VA) strfndc argptr "=\0" @POPI EqPtr
+@PUSHI EqPtr
+@IF_ZERO
+   @POPNULL @PRTLN "ERR LIST expected name=statements"
+   @JMP FCListStmtDone
+@ENDIF
+@POPNULL
+@PUSHII EqPtr @AND 0xff00 @PUSHI EqPtr @POPS
+@MV2V argptr NamePtr
+@Call(V) FCTrimRight NamePtr
+@Call(V) FCValidName NamePtr
+@IF_ZERO
+   @POPNULL @PRTLN "ERR bad name"
+   @JMP FCListStmtDone
+@ENDIF
+@POPNULL
+@Call(V) FCFindOrAllocSlot NamePtr @POPI slot
+@PUSHI slot
+@IF_ZERO
+   @POPNULL @PRTLN "ERR variable table full"
+   @JMP FCListStmtDone
+@ENDIF
+@POPNULL
+@PUSHI EqPtr @ADD 1 @CALL FCSkipWhite @POPI argptr
+@Call(V) FCCompileStatementList argptr @POPI linked
+@Call(V) FCStatementLinkedToList linked @POPI listptr
+@Call(VAV) FCStorePointerValue slot FC_TYPE_LIST listptr
+@PRTS MsgOk @PRTNL
+:FCListStmtDone
+@EndLocals
+@POPRETURN
+@RET
+
+:FCExecListStatement
+@PUSHRETURN
+@Locals
+   @Local argptr
+   @Local slot
+   @Local valptr
+   @Local typev
+   @Local listptr
+@POPI argptr
+@Call(V) FCSkipWhite argptr @POPI argptr
+@Call(V) FCTrimRight argptr
+@Call(V) FCFindSlot argptr @POPI slot
+@PUSHI slot
+@IF_ZERO
+   @POPNULL @PRTLN "ERR no such list"
+   @JMP FCExecListDone
+@ENDIF
+@POPNULL
+@PUSHI slot @ADD FC_SLOT_VALUEPTR @PUSHS @POPI valptr
+@PUSHII valptr @AND 0xff @POPI typev
+@PUSHI typev
+@IF_EQ_A FC_TYPE_LIST
+   @POPNULL
+   @PUSHI valptr @ADD FC_VAL_LOW @PUSHS @POPI listptr
+   @MA2V 0 FCReturnFlag
+   @Call(V) FCExecCodeList listptr
+@ELSE
+   @POPNULL @PRTLN "ERR variable is not a list"
+@ENDIF
+:FCExecListDone
 @EndLocals
 @POPRETURN
 @RET
@@ -378,6 +502,396 @@ L lmath.ld
 @POPRETURN
 @RET
 
+
+
+:FCCompileStatementList
+@PUSHRETURN
+@Locals
+   @Local inptr
+   @Local sep
+   @Local seglen
+   @Local stmt
+   @Local head
+   @Local tail
+   @Local done
+@POPI inptr
+@MA2V 0 head
+@MA2V 0 tail
+@MA2V 0 done
+@PUSHI done
+@WHILE_ZERO
+   @POPNULL
+   @Call(V) FCSkipWhite inptr @POPI inptr
+   @Call(V) FCFindStatementSep inptr @POPI sep
+   @PUSHI sep
+   @IF_ZERO
+      @POPNULL
+      @Call(V) strlen inptr @POPI seglen
+      @MA2V 1 done
+   @ELSE
+      @POPNULL
+      @PUSHI sep @SUBI inptr @POPI seglen
+   @ENDIF
+   @PUSHI seglen
+   @IF_NOTZERO
+      @POPNULL
+      @Call(VV) FCCompileStatement inptr seglen @POPI stmt
+      @PUSHI stmt
+      @IF_NOTZERO
+         @POPNULL
+         @PUSHI head
+         @IF_ZERO
+            @POPNULL
+            @MV2V stmt head
+            @MV2V stmt tail
+         @ELSE
+            @POPNULL
+            @PUSHI stmt @PUSHI tail @ADD FC_STMT_NEXT @POPS
+            @MV2V stmt tail
+         @ENDIF
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @PUSHI done
+   @IF_ZERO
+      @POPNULL
+      @PUSHI sep @ADD 1 @POPI inptr
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @PUSHI done
+@ENDWHILE
+@POPNULL
+@PUSHI head
+@EndLocals
+@POPRETURN
+@RET
+
+:FCCompileStatement
+@PUSHRETURN
+@Locals
+   @Local src
+   @Local len
+   @Local text
+   @Local typeptr
+   @Local cmdcopy
+   @Local stmt
+   @Local typev
+@POPI len
+@POPI src
+@Call(VV) FCSubStringDup src len @POPI text
+@Call(V) FCTrimRight text
+@Call(V) FCSkipWhite text @POPI typeptr
+@Call(V) FCStringDup typeptr @POPI cmdcopy
+@Call(V) strUpCase cmdcopy
+@MA2V FC_STMT_EXPR typev
+@Call(VAA) strncmp cmdcopy KwPrint 5
+@IF_ZERO
+   @POPNULL
+   @MA2V FC_STMT_PRINT typev
+@ELSE
+   @POPNULL
+   @Call(VAA) strncmp cmdcopy KwReturn 6
+   @IF_ZERO
+      @POPNULL
+      @MA2V FC_STMT_RETURN typev
+   @ELSE
+      @POPNULL
+      @Call(VA) strfndc typeptr "=\0"
+      @IF_NOTZERO
+         @POPNULL
+         @MA2V FC_STMT_ASSIGN typev
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @ENDIF
+@ENDIF
+@Call(VA) HeapNewObject MainHeapID FC_STMT_SIZE @POPI stmt
+@PUSH 0 @PUSHI stmt @ADD FC_STMT_NEXT @POPS
+@PUSHI typev @PUSHI stmt @ADD FC_STMT_TYPE @POPS
+@PUSHI text @PUSHI stmt @ADD FC_STMT_TEXTPTR @POPS
+@PUSH 0 @PUSHI stmt @ADD FC_STMT_AUXPTR @POPS
+@Call(V) FCFreeString cmdcopy
+@PUSHI stmt
+@EndLocals
+@POPRETURN
+@RET
+
+:FCExecStatementList
+@PUSHRETURN
+@Locals
+   @Local stmt
+   @Local nextstmt
+@POPI stmt
+@PUSHI stmt
+@WHILE_NOTZERO
+   @POPI stmt
+   @PUSHI stmt @ADD FC_STMT_NEXT @PUSHS @POPI nextstmt
+   @Call(V) FCExecStatement stmt
+   @PUSHI FCReturnFlag
+   @IF_NOTZERO
+      @POPNULL
+      @PUSH 0
+   @ELSE
+      @POPNULL
+      @PUSHI nextstmt
+   @ENDIF
+@ENDWHILE
+@POPNULL
+@EndLocals
+@POPRETURN
+@RET
+
+:FCExecStatement
+@PUSHRETURN
+@Locals
+   @Local stmt
+   @Local typev
+   @Local text
+   @Local runptr
+   @Local workptr
+@POPI stmt
+@PUSHI stmt @ADD FC_STMT_TYPE @PUSHS @POPI typev
+@PUSHI stmt @ADD FC_STMT_TEXTPTR @PUSHS @POPI text
+@Call(V) FCSkipWhite text @POPI runptr
+@PUSHI typev
+@SWITCH
+   @CASE FC_STMT_ASSIGN
+      @POPNULL
+      @Call(V) FCStringDup runptr @POPI workptr
+      @Call(V) FCAssignStatement workptr
+      @Call(V) FCFreeString workptr
+      @CBREAK
+   @CASE FC_STMT_PRINT
+      @POPNULL
+      @PUSHI runptr @ADD 5 @CALL FCPrintStatement
+      @CBREAK
+   @CASE FC_STMT_RETURN
+      @POPNULL
+      @PUSHI runptr @ADD 6 @CALL FCEvalExpr
+      @MA2V 1 FCReturnFlag
+      @CBREAK
+   @CASE FC_STMT_EXPR
+      @POPNULL
+      @Call(V) FCEvalExpr runptr
+      @CALL FCReleaseEvalString
+      @CBREAK
+   @CDEFAULT
+      @POPNULL
+      @PRTLN "ERR bad statement"
+      @CBREAK
+@ENDCASE
+@EndLocals
+@POPRETURN
+@RET
+
+:FCFreeStatementList
+@PUSHRETURN
+@Locals
+   @Local stmt
+   @Local nextstmt
+   @Local objptr
+@POPI stmt
+@PUSHI stmt
+@WHILE_NOTZERO
+   @POPI stmt
+   @PUSHI stmt @ADD FC_STMT_NEXT @PUSHS @POPI nextstmt
+   @PUSHI stmt @ADD FC_STMT_TEXTPTR @PUSHS @POPI objptr
+   @PUSHI objptr
+   @IF_NOTZERO
+      @POPNULL
+      @Call(VV) HeapDeleteObject MainHeapID objptr @POPNULL
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @PUSHI stmt @ADD FC_STMT_AUXPTR @PUSHS @POPI objptr
+   @PUSHI objptr
+   @IF_NOTZERO
+      @POPNULL
+      @Call(VV) HeapDeleteObject MainHeapID objptr @POPNULL
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @Call(VV) HeapDeleteObject MainHeapID stmt @POPNULL
+   @PUSHI nextstmt
+@ENDWHILE
+@POPNULL
+@EndLocals
+@POPRETURN
+@RET
+
+:FCStatementLinkedToList
+@PUSHRETURN
+@Locals
+   @Local stmt
+   @Local nextstmt
+   @Local listptr
+@POPI stmt
+@Call(A) FCListNew 4 @POPI listptr
+@PUSHI stmt
+@WHILE_NOTZERO
+   @POPI stmt
+   @PUSHI stmt @ADD FC_STMT_NEXT @PUSHS @POPI nextstmt
+   @PUSH 0 @PUSHI stmt @ADD FC_STMT_NEXT @POPS
+   @Call(VV) FCListAppend listptr stmt @POPI listptr
+   @PUSHI nextstmt
+@ENDWHILE
+@POPNULL
+@PUSHI listptr
+@EndLocals
+@POPRETURN
+@RET
+
+:FCExecCodeList
+@PUSHRETURN
+@Locals
+   @Local listptr
+   @Local count
+   @Local idx
+   @Local itemslot
+   @Local stmt
+@POPI listptr
+@PUSHI listptr @ADD FC_LIST_COUNT @PUSHS @POPI count
+@MA2V 0 idx
+@PUSHI idx
+@WHILE_LT_V count
+   @POPNULL
+   @PUSHI idx @SHL @ADD FC_LIST_ITEMS @ADDI listptr @POPI itemslot
+   @PUSHI itemslot @PUSHS @POPI stmt
+   @Call(V) FCExecStatement stmt
+   @PUSHI FCReturnFlag
+   @IF_NOTZERO
+      @POPNULL
+      @MV2V count idx
+   @ELSE
+      @POPNULL
+      @INCI idx
+   @ENDIF
+   @PUSHI idx
+@ENDWHILE
+@POPNULL
+@EndLocals
+@POPRETURN
+@RET
+
+:FCFreeCodeList
+@PUSHRETURN
+@Locals
+   @Local listptr
+   @Local count
+   @Local idx
+   @Local itemslot
+   @Local stmt
+@POPI listptr
+@PUSHI listptr
+@IF_NOTZERO
+   @POPNULL
+   @PUSHI listptr @ADD FC_LIST_COUNT @PUSHS @POPI count
+   @MA2V 0 idx
+   @PUSHI idx
+   @WHILE_LT_V count
+      @POPNULL
+      @PUSHI idx @SHL @ADD FC_LIST_ITEMS @ADDI listptr @POPI itemslot
+      @PUSHI itemslot @PUSHS @POPI stmt
+      @Call(V) FCFreeStatementList stmt
+      @INCI idx
+      @PUSHI idx
+   @ENDWHILE
+   @POPNULL
+   @Call(VV) HeapDeleteObject MainHeapID listptr @POPNULL
+@ELSE
+   @POPNULL
+@ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+:FCFindStatementSep
+@PUSHRETURN
+@Locals
+   @Local ptr
+   @Local ch
+   @Local depth
+   @Local instr
+   @Local result
+   @Local done
+@POPI ptr
+@MA2V 0 depth
+@MA2V 0 instr
+@MA2V 0 result
+@MA2V 0 done
+@PUSHI done
+@WHILE_ZERO
+   @POPNULL
+   @PUSHII ptr @AND 0xff @POPI ch
+   @PUSHI ch
+   @IF_ZERO
+      @POPNULL
+      @MA2V 1 done
+   @ELSE
+      @POPNULL
+      @PUSHI instr
+      @IF_NOTZERO
+         @POPNULL
+         @PUSHI ch
+         @IF_EQ_A "\"\0"
+            @MA2V 0 instr
+         @ENDIF
+         @POPNULL
+      @ELSE
+         @POPNULL
+         @PUSHI ch
+         @IF_EQ_A "\"\0"
+            @MA2V 1 instr
+         @ENDIF
+         @POPNULL
+         @PUSHI ch
+         @IF_EQ_A "(\0"
+            @PUSHI depth @ADD 1 @POPI depth
+         @ENDIF
+         @POPNULL
+         @PUSHI ch
+         @IF_EQ_A ")\0"
+            @PUSHI depth
+            @IF_NOTZERO
+               @POPNULL
+               @PUSHI depth @SUB 1 @POPI depth
+            @ELSE
+               @POPNULL
+            @ENDIF
+         @ENDIF
+         @POPNULL
+         @PUSHI ch
+         @IF_EQ_A ";\0"
+            @PUSHI depth
+            @IF_ZERO
+               @POPNULL
+               @MV2V ptr result
+               @MA2V 1 done
+            @ELSE
+               @POPNULL
+            @ENDIF
+         @ENDIF
+         @POPNULL
+      @ENDIF
+   @ENDIF
+   @PUSHI done
+   @IF_ZERO
+      @POPNULL
+      @INCI ptr
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @PUSHI done
+@ENDWHILE
+@POPNULL
+@PUSHI result
+@EndLocals
+@POPRETURN
+@RET
 
 # FCEvalExpr(exprptr) sets EvalType/EvalI32/EvalStr.
 # Recursive descent entry point. Parse routines return the updated input pointer
@@ -1829,7 +2343,7 @@ L lmath.ld
 @PUSHI oldval
 @IF_NOTZERO
    @POPNULL
-   @Call(VV) HeapDeleteObject MainHeapID oldval @POPNULL
+   @Call(V) FCDeleteValue oldval
 @ELSE
    @POPNULL
 @ENDIF
@@ -1837,6 +2351,44 @@ L lmath.ld
 @PUSHI newval @PUSHI slot @ADD FC_SLOT_VALUEPTR @POPS
 @PUSHI EvalType @PUSHI slot @ADD FC_SLOT_TYPE @POPS
 @CALL FCReleaseEvalString
+@EndLocals
+@POPRETURN
+@RET
+
+:FCStorePointerValue
+@PUSHRETURN
+@Locals
+   @Local slot
+   @Local typev
+   @Local payload
+   @Local oldval
+   @Local newval
+@POPI payload
+@POPI typev
+@POPI slot
+@PUSHI slot @ADD FC_SLOT_FLAGS @PUSHS
+@IF_EQ_A FC_SLOT_ACTIVE
+   @POPNULL
+@ELSE
+   @POPNULL
+   @Call(V) FCStringDup NamePtr
+   @PUSHI slot @ADD FC_SLOT_NAMEPTR @POPS
+   @PUSH FC_SLOT_ACTIVE @PUSHI slot @ADD FC_SLOT_FLAGS @POPS
+@ENDIF
+@PUSHI slot @ADD FC_SLOT_VALUEPTR @PUSHS @POPI oldval
+@PUSHI oldval
+@IF_NOTZERO
+   @POPNULL
+   @Call(V) FCDeleteValue oldval
+@ELSE
+   @POPNULL
+@ENDIF
+@Call(VA) HeapNewObject MainHeapID FC_VAL_SIZE @POPI newval
+@PUSHI typev @POPII newval
+@PUSHI payload @PUSHI newval @ADD FC_VAL_LOW @POPS
+@PUSH 0 @PUSHI newval @ADD FC_VAL_HIGH @POPS
+@PUSHI newval @PUSHI slot @ADD FC_SLOT_VALUEPTR @POPS
+@PUSHI typev @PUSHI slot @ADD FC_SLOT_TYPE @POPS
 @EndLocals
 @POPRETURN
 @RET
@@ -1873,8 +2425,8 @@ L lmath.ld
 @PUSHI idx
 @WHILE_LT_V active
    @POPNULL
-   @PUSHI slot @ADD FC_SLOT_NAMEPTR @PUSHS @PUSHI name @CALL strcmp
-   @IF_ZERO
+   @PUSHI slot @ADD FC_SLOT_NAMEPTR @PUSHS @PUSHI name @CALL FCStrEq
+   @IF_NOTZERO
       @POPNULL
       @MV2V slot FoundSlot
       @PUSH 0
@@ -2011,6 +2563,42 @@ L lmath.ld
 @POPRETURN
 @RET
 
+
+:FCDeleteValue
+@PUSHRETURN
+@Locals
+   @Local valptr
+   @Local typev
+   @Local payload
+@POPI valptr
+@PUSHI valptr
+@IF_NOTZERO
+   @POPNULL
+   @PUSHII valptr @AND 0xff @POPI typev
+   @PUSHI typev
+   @IF_EQ_A FC_TYPE_LIST
+      @POPNULL
+      @PUSHI valptr @ADD FC_VAL_LOW @PUSHS @POPI payload
+      @Call(V) FCFreeCodeList payload
+   @ELSE
+      @POPNULL
+      @PUSHI typev
+      @IF_EQ_A FC_TYPE_FUNC
+         @POPNULL
+         @PUSHI valptr @ADD FC_VAL_LOW @PUSHS @POPI payload
+         @Call(V) FCFreeCodeList payload
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @ENDIF
+   @Call(VV) HeapDeleteObject MainHeapID valptr @POPNULL
+@ELSE
+   @POPNULL
+@ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
 :FCReleaseEvalString
 @PUSHI EvalStrOwned
 @IF_NOTZERO
@@ -2089,7 +2677,7 @@ L lmath.ld
    @PUSHI slot @ADD FC_SLOT_VALUEPTR @PUSHS @POPI objptr
    @PUSHI objptr
    @IF_NOTZERO
-      @POPNULL @Call(VV) HeapDeleteObject MainHeapID objptr @POPNULL
+      @POPNULL @Call(V) FCDeleteValue objptr
    @ELSE
       @POPNULL
    @ENDIF
@@ -2122,7 +2710,7 @@ L lmath.ld
 @PUSHI slot @ADD FC_SLOT_VALUEPTR @PUSHS @POPI objptr
 @PUSHI objptr
 @IF_NOTZERO
-   @POPNULL @Call(VV) HeapDeleteObject MainHeapID objptr @POPNULL
+   @POPNULL @Call(V) FCDeleteValue objptr
 @ELSE
    @POPNULL
 @ENDIF
@@ -2145,6 +2733,163 @@ L lmath.ld
 @PUSH 0 @PUSHI lastslot @ADD FC_SLOT_NAMEPTR @POPS
 @PUSH 0 @PUSHI lastslot @ADD FC_SLOT_VALUEPTR @POPS
 @PUSHI active @PUSHI VarTablePtr @ADD FC_TABLE_ACTIVE @POPS
+@EndLocals
+@POPRETURN
+@RET
+
+
+
+:FCListNew
+@PUSHRETURN
+@Locals
+   @Local capacity
+   @Local bytes
+   @Local listptr
+@POPI capacity
+@PUSHI capacity
+@IF_LT_A FC_LIST_MINCAP
+   @POPNULL
+   @MA2V FC_LIST_MINCAP capacity
+@ELSE
+   @POPNULL
+@ENDIF
+@PUSHI capacity @ADD 1 @SHL @ADD FC_LIST_ITEMS @POPI bytes
+@Call(VV) HeapNewObject MainHeapID bytes @POPI listptr
+@PUSH 0 @PUSHI listptr @ADD FC_LIST_COUNT @POPS
+@PUSHI capacity @PUSHI listptr @ADD FC_LIST_CAPACITY @POPS
+@PUSH 0 @PUSHI listptr @ADD FC_LIST_ITEMS @POPS
+@PUSHI listptr
+@EndLocals
+@POPRETURN
+@RET
+
+:FCListAppend
+@PUSHRETURN
+@Locals
+   @Local listptr
+   @Local itemptr
+   @Local count
+   @Local capacity
+   @Local newcap
+   @Local bytes
+   @Local itemslot
+   @Local newlist
+@POPI itemptr
+@POPI listptr
+@PUSHI listptr @ADD FC_LIST_COUNT @PUSHS @POPI count
+@PUSHI listptr @ADD FC_LIST_CAPACITY @PUSHS @POPI capacity
+@PUSHI count
+@IF_UGE_V capacity
+   @POPNULL
+   @PUSHI capacity @SHL @POPI newcap
+   @PUSHI newcap @ADD 1 @SHL @ADD FC_LIST_ITEMS @POPI bytes
+   @Call(VVV) HeapResizeObject MainHeapID listptr bytes @POPI newlist
+   @PUSHI newlist
+   @IF_ULT_A 100
+      @POPNULL
+      @PUSH 0
+      @JMP FCListAppendDone
+   @ENDIF
+   @POPNULL
+   @MV2V newlist listptr
+   @MV2V newcap capacity
+   @PUSHI capacity @PUSHI listptr @ADD FC_LIST_CAPACITY @POPS
+@ELSE
+   @POPNULL
+@ENDIF
+@PUSHI count @SHL @ADD FC_LIST_ITEMS @ADDI listptr @POPI itemslot
+@PUSHI itemptr @PUSHI itemslot @POPS
+@INCI count
+@PUSHI count @PUSHI listptr @ADD FC_LIST_COUNT @POPS
+@PUSHI count @SHL @ADD FC_LIST_ITEMS @ADDI listptr @POPI itemslot
+@PUSH 0 @PUSHI itemslot @POPS
+@PUSHI listptr
+:FCListAppendDone
+@EndLocals
+@POPRETURN
+@RET
+
+:FCListFree
+@PUSHRETURN
+@Locals
+   @Local listptr
+@POPI listptr
+@PUSHI listptr
+@IF_NOTZERO
+   @POPNULL
+   @Call(VV) HeapDeleteObject MainHeapID listptr @POPNULL
+@ELSE
+   @POPNULL
+@ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+:FCListFreeItems
+@PUSHRETURN
+@Locals
+   @Local listptr
+   @Local count
+   @Local idx
+   @Local itemslot
+   @Local itemptr
+@POPI listptr
+@PUSHI listptr
+@IF_NOTZERO
+   @POPNULL
+   @PUSHI listptr @ADD FC_LIST_COUNT @PUSHS @POPI count
+   @MA2V 0 idx
+   @PUSHI idx
+   @WHILE_LT_V count
+      @POPNULL
+      @PUSHI idx @SHL @ADD FC_LIST_ITEMS @ADDI listptr @POPI itemslot
+      @PUSHI itemslot @PUSHS @POPI itemptr
+      @PUSHI itemptr
+      @IF_NOTZERO
+         @POPNULL
+         @Call(VV) HeapDeleteObject MainHeapID itemptr @POPNULL
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @INCI idx
+      @PUSHI idx
+   @ENDWHILE
+   @POPNULL
+   @Call(VV) HeapDeleteObject MainHeapID listptr @POPNULL
+@ELSE
+   @POPNULL
+@ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+:FCStrEq
+@PUSHRETURN
+@Locals
+   @Local left
+   @Local right
+   @Local leftlen
+   @Local rightlen
+   @Local result
+@POPI right
+@POPI left
+@MA2V 0 result
+@Call(V) strlen left @POPI leftlen
+@Call(V) strlen right @POPI rightlen
+@PUSHI leftlen
+@IF_EQ_V rightlen
+   @POPNULL
+   @Call(VV) strcmp left right
+   @IF_ZERO
+      @POPNULL
+      @MA2V 1 result
+   @ELSE
+      @POPNULL
+   @ENDIF
+@ELSE
+   @POPNULL
+@ENDIF
+@PUSHI result
 @EndLocals
 @POPRETURN
 @RET
@@ -2261,10 +3006,25 @@ L lmath.ld
 
 # Future block parser entry points for the requested complete language:
 :FCParseStatementList
-@PRTLN "ERR statement lists not implemented yet"
+@PUSHRETURN
+@Locals
+   @Local inptr
+   @Local listptr
+@POPI inptr
+@Call(V) FCCompileStatementList inptr @POPI listptr
+@PUSHI listptr
+@EndLocals
+@POPRETURN
 @RET
+
 :FCParseExpression
-@PRTLN "ERR expressions not implemented yet"
+@PUSHRETURN
+@Locals
+   @Local exprptr
+@POPI exprptr
+@Call(V) FCEvalExpr exprptr
+@EndLocals
+@POPRETURN
 @RET
 :FCDefineFunction
 @PRTLN "ERR DEFUN not implemented yet"
