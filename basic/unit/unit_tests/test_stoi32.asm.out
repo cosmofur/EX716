@@ -1,0 +1,43 @@
+CPU State:
+0f38:    FCLR P1:0033 [I]:002d [II]:fff2 Z0 N0 C0 O0
+Line: test_stoi32.asm:16
+Stack Empty or Invalid SP: 00
+Error Number: 200 Empty stack. at PC:0x0f38
+Entering debugger due to fatal error.
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ Loading  lmath.ld 
+ "Require shift16.ld needs to be included." 
+ "Require string.ld needs to be included." 
+ "Including "  stoi32 
+ "ERROR: stoi32 requires string.ld to be loaded AFTER lmath.ld" 
+ "Including "  COMP232 
+ "Including "  MUL32U 
+ "Including "  ADD32U 
+ "Including "  MUL16x32U 
+ heapmgr.ref  Loaded.. 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  0  Bytes 
+ Module  lmath.ld  :  Size  3429  Bytes 
+ "Require div.ld needs to be included." 
+ "Require mul.ld needs to be included." 
+ Module  string.ld  :  Size  104  Bytes 
+ diskos.ref  Loaded.. 
+ Module  diskos.ld  :  Size  144  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 8 resolved= 310 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 52
+  Used symbols      : 8
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+Filename: start.ld:27
+start.ld:27
+0f38> >>End Debugging.
+[?1000l[?25h
+

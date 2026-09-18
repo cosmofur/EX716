@@ -130,6 +130,11 @@ M Local32 `\
   MF VarCount %EVAL {__LocalNum}+1 ; \
   MF VarLimit {__LocalNum} \
 `
+# Most Globals should be defined elsewhere but as a convience tool here is 'Global'
+# Unlike a block global outside any funciton, there is a wasted 3 bytes for the JMP required.
+M Global @JMP J%0 :%1 0 :J%0
+M Global32 @JMP J%0 :%1 0 0 :J%0
+   
 
 M EndLocals `\
   %REPEAT {VarLimit} \

@@ -1,0 +1,25 @@
+ 0444:Stack:(1):test_SUB32S.asm:20 [ 0000 ff9c ]
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ Loading  lmath.ld 
+ "Require shift16.ld needs to be included." 
+ "Require string.ld needs to be included." 
+ "Including "  SUB32S 
+ heapmgr.ref  Loaded.. 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  0  Bytes 
+ Module  lmath.ld  :  Size  834  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 3 resolved= 87 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 37
+  Used symbols      : 3
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+
+END of Run:(810 Opts)

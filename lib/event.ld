@@ -487,6 +487,9 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @Local CurVal
     @MA2V 0 LastMouseX
     @MA2V 0 LastMouseY
+    @MA2V 0 LastMouseBtn
+    @MA2V 0 LastMouseFlags
+    @MA2V 0 LastMouseTerm
     @MA2V 0 CurVal
     @MA2V -1 LastMouseRawB
     @PUSH 0
@@ -531,7 +534,10 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
           @POPNULL
           @MA2V -1 LastMouseX
           @MA2V -1 LastMouseY
-          @PUSH 1      # Break the look
+          @MA2V 0 LastMouseBtn
+          @MA2V 0 LastMouseFlags
+          @MA2V 0 LastMouseTerm
+          @PUSH 1      # Break the loop
           @CBREAK
        @ENDCASE
     @ENDWHILE

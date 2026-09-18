@@ -314,7 +314,6 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @Call32(VA) DIV32U ClockCalib $$$4000
 @POP32I(V) ClockCalib
 @POPNULL @POPNULL
-@PRT "Time Calibration: " @PRT32I ClockCalib @PRTNL
 @EndLocals
 @POPRETURN
 @RET

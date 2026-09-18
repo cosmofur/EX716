@@ -1,0 +1,398 @@
+
+EX716 Instruction	Hex	8086 Instruction(s)	8086 Bytes
+NOP	00	NOP	90
+PUSH	01	PUSH imm16	68 ll hh
+DUP	02	PUSH word [SP]	FF 34 24
+PUSHI	03	MOV BX,imm16 / PUSH [BX]	BB ll hh / FF 37
+PUSHII	04	MOV BX,imm16 / MOV BX,[BX] / PUSH [BX]	BB ll hh / 8B 1F / FF 37
+PUSHS	05	POP BX / PUSH [BX]	5B / FF 37
+POPNULL	06	ADD SP,2	83 C4 02
+SWP	07	POP AX / XCHG AX,[SP] / PUSH AX	58 / 87 04 24 / 50
+POPI	08	MOV BX,imm16 / POP [BX]	BB ll hh / 8F 07
+POPII	09	MOV BX,imm16 / MOV BX,[BX] / POP [BX]	BB ll hh / 8B 1F / 8F 07
+POPS	0A	POP BX / POP [BX]	5B / 8F 07
+CMP	0B	CMP word [SP], imm16	81 3C 24 ll hh
+CMPS	0C	POP AX / CMP [SP],AX	58 / 39 04 24
+CMPI	0D	MOV BX,imm16 / CMP [BX],[SP]	BB ll hh / 3B 1F
+CMPII	0E	MOV BX,imm16 / MOV BX,[BX] / CMP [BX],[SP]	BB ll hh / 8B 1F / 3B 1F
+ADD	0F	ADD word [SP], imm16	81 04 24 ll hh
+ADDS	10	POP AX / ADD [SP],AX	58 / 01 04 24
+SUB	13	SUB word [SP], imm16	81 2C 24 ll hh
+SUBS	14	POP AX / SUB [SP],AX	58 / 29 04 24
+OR	17	OR word [SP], imm16	81 0C 24 ll hh
+AND	1B	AND word [SP], imm16	81 24 24 ll hh
+XOR	1F	XOR word [SP], imm16	81 34 24 ll hh
+JMPZ	23	JZ rel16	0F 84 ll hh
+JMPN	24	JS rel16	0F 88 ll hh
+JMPC	25	JC rel16	0F 82 ll hh
+JMPO	26	JO rel16	0F 80 ll hh
+JMP	27	JMP rel16	E9 ll hh
+JMPI	28	MOV BX,imm16 / JMP BX	BB ll hh / FF E3
+JMPS	29	POP BX / JMP BX	5B / FF E3
+CAST	2A	INT imm8	CD nn
+POLL	2B	INT imm8	CD nn
+RRTC	2C	ROR word [SP],1	D1 1C 24
+RLTC	2D	ROL word [SP],1	D1 04 24
+SHR	2E	SHR word [SP],1	D1 2C 24
+SHL	2F	SHL word [SP],1	D1 24 24
+INV	30	NOT word [SP]	F7 14 24
+COMP2	31	NEG word [SP]	F7 1C 24
+FCLR	32	CLC / CLD / CLV / CL?	(multiple flag clears)
+FSAV	33	PUSHF	9C
+FLOD	34	POPF	9D
+ADM	35	INT imm8	CD nn
+SCLR	36	MOV SP,stack_base	BC ll hh
+SRPT	37	PUSH stack_depth	68 ll hh
+
+
+⭐ Notes on the 8086 mapping
+✔ Endianness is perfect
+All immediates and addresses (ll hh) are little‑endian, exactly like EX716.
+
+✔ Stack semantics match
+8086 stack grows downward
+
+PUSH/POP store words little‑endian
+
+TOS = [SP]
+
+This matches EX716 exactly.
+
+✔ Memory layout matches
+EX716’s 16‑bit address space maps directly into 8086’s 20‑bit space.
+
+✔ Flags match closely
+8086 Z, S, C, O flags map cleanly to EX716 Z, N, C, O.
+
+✔ CAST/POLL map cleanly to INT nn
+You can assign:
+
+CAST → INT 30h
+
+POLL → INT 31h
+
+ADM → INT 32h
+
+Or any layout you prefer.
+
+################################
+# Using INT to emulare in a DOS like box, the major CAST and POLL commands
+################################
+; -------------------------------
+; INT 30h — CAST Dispatcher
+; -------------------------------
+CAST_DISPATCH:
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    PUSH DI
+
+    MOV AL, [SP+14]     ; function ID pushed by EX716 code
+                        ; (you can choose any ABI you like)
+
+    CMP AL, 0
+    JE  CAST_PRINT_STR
+
+    CMP AL, 1
+    JE  CAST_PRINT_INT
+
+    CMP AL, 2
+    JE  CAST_END
+
+    CMP AL, 3
+    JE  CAST_STACK_DUMP
+
+    JMP CAST_DONE
+
+
+CAST_PRINT_STR:
+    POP BX              ; EX716 address
+    PUSH BX             ; restore stack after use
+
+    MOV DX, BX          ; DS:DX = pointer to string
+    MOV AH, 09h
+    INT 21h
+    JMP CAST_DONE
+
+
+CAST_PRINT_INT:
+    POP AX              ; value to print
+    PUSH AX             ; restore stack after use
+
+    CALL PRINT_INT16
+    JMP CAST_DONE
+
+
+PRINT_INT16:
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+
+    ; AX = number
+    ; Convert to decimal (unsigned for now)
+    XOR CX, CX          ; digit count
+    MOV BX, 10
+
+PI_LOOP:
+    XOR DX, DX
+    DIV BX              ; AX = AX/10, DX = remainder
+    PUSH DX             ; save digit
+    INC CX
+    CMP AX, 0
+    JNE PI_LOOP
+
+PI_OUT:
+    POP DX
+    ADD DL, '0'
+    MOV AH, 02h
+    INT 21h
+    LOOP PI_OUT
+
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+
+
+CAST_END:
+    MOV AH, 4Ch
+    MOV AL, 00h
+    INT 21h
+
+
+CAST_STACK_DUMP:
+    MOV SI, SP          ; start at current SP
+    MOV DI, STACK_BASE  ; end of EX716 stack
+
+CSD_LOOP:
+    CMP SI, DI
+    JAE CAST_DONE
+
+    MOV AX, [SI]
+    CALL PRINT_HEX16
+
+    MOV DL, 0Dh
+    MOV AH, 02h
+    INT 21h
+    MOV DL, 0Ah
+    INT 21h
+
+    ADD SI, 2
+    JMP CSD_LOOP
+
+
+PRINT_HEX16:
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+
+    MOV CX, 4
+PH_LOOP:
+    ROL AX, 4
+    MOV DL, AL
+    AND DL, 0Fh
+    CMP DL, 9
+    JBE PH_DIGIT
+    ADD DL, 7
+PH_DIGIT:
+    ADD DL, '0'
+    MOV AH, 02h
+    INT 21h
+    LOOP PH_LOOP
+
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+
+
+POLL_DISPATCH:
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    PUSH DI
+
+    MOV AL, [SP+14]     ; function ID
+
+    CMP AL, 0
+    JE  POLL_READ_INTI
+
+    CMP AL, 1
+    JE  POLL_READ_STRI
+
+    JMP POLL_DONE
+
+
+POLL_READ_INTI:
+    POP BX              ; EX716 address
+    PUSH BX
+
+    CALL READ_INT16
+    MOV [BX], AX
+    JMP POLL_DONE
+
+
+READ_INT16:
+    PUSH BX
+    PUSH CX
+    PUSH DX
+
+    MOV AH, 0Ah
+    MOV DX, OFFSET INPUT_BUFFER
+    INT 21h
+
+    ; parse decimal
+    MOV SI, OFFSET INPUT_BUFFER+2
+    XOR AX, AX
+RI_LOOP:
+    MOV DL, [SI]
+    CMP DL, 0Dh
+    JE  RI_DONE
+    SUB DL, '0'
+    MOV CX, AX
+    MOV AX, 10
+    MUL CX
+    ADD AX, DX
+    INC SI
+    JMP RI_LOOP
+
+RI_DONE:
+    POP DX
+    POP CX
+    POP BX
+    RET
+
+
+POLL_READ_STRI:
+    POP BX              ; EX716 address
+    POP CX              ; max length
+    PUSH CX
+    PUSH BX
+
+    MOV AH, 0Ah
+    MOV DX, OFFSET INPUT_BUFFER
+    INT 21h
+
+    ; copy into EX716 memory
+    MOV SI, OFFSET INPUT_BUFFER+2
+    MOV DI, BX
+    MOV CL, [INPUT_BUFFER+1] ; actual length
+    REP MOVSB
+
+    MOV BYTE PTR [DI], 0     ; zero-terminate
+    JMP POLL_DONE
+
+
+CAST_DONE:
+POLL_DONE:
+    POP DI
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    IRET
+
+
+Complete EX716 → 8086 Mapping Table
+(Little‑endian immediates: ll hh)  
+(Little‑endian addresses: aa bb)  
+(SP-relative addressing uses 32‑bit SIB form: [SP] = SS:SP)
+
+🟦 Stack & Data Movement
+EX716	Hex	8086 Equivalent	Bytes
+NOP	00	NOP	90
+PUSH imm16	01	PUSH imm16	68 ll hh
+DUP	02	PUSH word [SP]	FF 34 24
+PUSHI addr	03	MOV BX,addr / PUSH [BX]	BB aa bb / FF 37
+PUSHII addr	04	MOV BX,addr / MOV BX,[BX] / PUSH [BX]	BB aa bb / 8B 1F / FF 37
+PUSHS	05	POP BX / PUSH [BX]	5B / FF 37
+POPNULL	06	ADD SP,2	83 C4 02
+SWP	07	POP AX / XCHG AX,[SP] / PUSH AX	58 / 87 04 24 / 50
+POPI addr	08	MOV BX,addr / POP [BX]	BB aa bb / 8F 07
+POPII addr	09	MOV BX,addr / MOV BX,[BX] / POP [BX]	BB aa bb / 8B 1F / 8F 07
+POPS	0A	POP BX / POP [BX]	5B / 8F 07
+
+
+🟩 Comparison Instructions
+EX716	Hex	8086 Equivalent	Bytes
+CMP imm16	0B	CMP word [SP], imm16	81 3C 24 ll hh
+CMPS	0C	POP AX / CMP [SP],AX	58 / 39 04 24
+CMPI addr	0D	MOV BX,addr / CMP [BX],[SP]	BB aa bb / 3B 1F
+CMPII addr	0E	MOV BX,addr / MOV BX,[BX] / CMP [BX],[SP]	BB aa bb / 8B 1F / 3B 1F
+
+
+🟧 Arithmetic Instructions
+EX716	Hex	8086 Equivalent	Bytes
+ADD imm16	0F	ADD word [SP], imm16	81 04 24 ll hh
+ADDS	10	POP AX / ADD [SP],AX	58 / 01 04 24
+ADDI addr	11	MOV BX,addr / ADD [SP],[BX]	BB aa bb / 03 1F
+ADDII addr	12	MOV BX,addr / MOV BX,[BX] / ADD [SP],[BX]	BB aa bb / 8B 1F / 03 1F
+SUB imm16	13	SUB word [SP], imm16	81 2C 24 ll hh
+SUBS	14	POP AX / SUB [SP],AX	58 / 29 04 24
+SUBI addr	15	MOV BX,addr / SUB [SP],[BX]	BB aa bb / 2B 1F
+SUBII addr	16	MOV BX,addr / MOV BX,[BX] / SUB [SP],[BX]	BB aa bb / 8B 1F / 2B 1F
+
+
+🟨 Bitwise Logic
+EX716	Hex	8086 Equivalent	Bytes
+OR imm16	17	OR word [SP], imm16	81 0C 24 ll hh
+ORS	18	POP AX / OR [SP],AX	58 / 09 04 24
+ORI addr	19	MOV BX,addr / OR [SP],[BX]	BB aa bb / 0B 1F
+ORII addr	1A	MOV BX,addr / MOV BX,[BX] / OR [SP],[BX]	BB aa bb / 8B 1F / 0B 1F
+AND imm16	1B	AND word [SP], imm16	81 24 24 ll hh
+ANDS	1C	POP AX / AND [SP],AX	58 / 21 04 24
+ANDI addr	1D	MOV BX,addr / AND [SP],[BX]	BB aa bb / 23 1F
+ANDII addr	1E	MOV BX,addr / MOV BX,[BX] / AND [SP],[BX]	BB aa bb / 8B 1F / 23 1F
+XOR imm16	1F	XOR word [SP], imm16	81 34 24 ll hh
+XORS	20	POP AX / XOR [SP],AX	58 / 31 04 24
+XORI addr	21	MOV BX,addr / XOR [SP],[BX]	BB aa bb / 33 1F
+XORII addr	22	MOV BX,addr / MOV BX,[BX] / XOR [SP],[BX]	BB aa bb / 8B 1F / 33 1F
+
+
+🟥 Control Flow
+EX716	Hex	8086 Equivalent	Bytes
+JMPZ	23	JZ rel16	0F 84 ll hh
+JMPN	24	JS rel16	0F 88 ll hh
+JMPC	25	JC rel16	0F 82 ll hh
+JMPO	26	JO rel16	0F 80 ll hh
+JMP	27	JMP rel16	E9 ll hh
+JMPI addr	28	MOV BX,addr / JMP BX	BB aa bb / FF E3
+JMPS	29	POP BX / JMP BX	5B / FF E3
+
+
+🟪 I/O and System
+EX716	Hex	8086 Equivalent	Bytes
+CAST	2A	INT 30h	CD 30
+POLL	2B	INT 31h	CD 31
+
+
+🟫 Bit Shifts / Rotates / Unary
+EX716	Hex	8086 Equivalent	Bytes
+RRTC	2C	ROR word [SP],1	D1 1C 24
+RLTC	2D	ROL word [SP],1	D1 04 24
+SHR	2E	SHR word [SP],1	D1 2C 24
+SHL	2F	SHL word [SP],1	D1 24 24
+INV	30	NOT word [SP]	F7 14 24
+COMP2	31	NEG word [SP]	F7 1C 24
+
+
+🟦 Flags & Admin
+EX716	Hex	8086 Equivalent	Bytes
+FCLR	32	CLC / CLD / CLV (8086 has no CLV)	F8 / FC
+FSAV	33	PUSHF	9C
+FLOD	34	POPF	9D
+ADM	35	INT 32h	CD 32
+SCLR	36	MOV SP,stack_base	BC ll hh
+SRPT	37	PUSH stack_depth	68 ll hh
+
+
+

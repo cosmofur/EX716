@@ -11,7 +11,7 @@ I screen.ref
 # Exported Symbols
 # -----------------------------
 # Screen management
-G WinClear G WinResize G WinWidth G WinHeight G WinClearRect
+G WinClear G WinResize G WinWidth G WinHeight G WinClearRect G WinEraseScrollback
 
 # Cursor control
 G WinCursor G WinHideCursor G WinShowCursor
@@ -48,7 +48,18 @@ ENDBLOCK
 ? DEBUGSCREEN
    "<ESC>[" $$0
 ENDBLOCK
-
+# ----------------------------------------------------------------------
+# Function: WinEraseScrollback
+# Purpose: Clear any scroll back data out of buffer
+# Inputs: (none)
+# Outputs: (none)
+# SideFX: Clear saved/scrollback lines
+#-----------------------------------------------------------------------
+@FUNCTION WinEraseScrollback
+:WinEraseScrollback
+@PRTS CISCODE @PRT "3J"
+@RET
+@ENDFUNCTION
 
 # ----------------------------------------------------------------------
 # Function: WinClear
@@ -66,7 +77,6 @@ ENDBLOCK
 @CALL WinShowCursor
 @RET
 @ENDFUNCTION
-
 # ----------------------------------------------------------------------
 # Function: WinCursor
 # Purpose : Move cursor to (X, Y) on the screen.
@@ -928,6 +938,8 @@ G BOXMODE
 @RET
 @ENDFUNCTION
 
+
+# ----------------------------------------------------------------------
 ################################################################
 # WinClearRect(X1,Y1,X2,Y2)
 #

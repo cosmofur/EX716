@@ -1,0 +1,24 @@
+ 0237:Stack:(1):test_SetDiskHeap.asm:27 [ 0000 0000 ]
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ diskos.ref  Loaded.. 
+ "Require heapmgr.ld needs to be included." 
+ "Require string.ld needs to be included." 
+ Module  diskos.ld  :  Size  160  Bytes 
+ heapmgr.ref  Loaded.. 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  185  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 3 resolved= 29 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 38
+  Used symbols      : 3
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+
+END of Run:(188 Opts)

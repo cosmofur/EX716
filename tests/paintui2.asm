@@ -105,6 +105,11 @@ L display.ld
 =SELDIM_1D 1
 =SELDIM_2D 2
 
+=LOAD_LINE_ABORT -1
+=LOAD_LINE_EMPTY 0
+=LOAD_NUMBER_BAD   -1
+=LOAD_NUMBER_ABORT -2
+
 # formeditui.asm design notes:
 # - CanvasData remains the editable background buffer.
 # - SelectionMode tracks the shared two-corner selection resource.
@@ -970,7 +975,7 @@ L display.ld
    @ENDWHILE
    @POPNULL
    @PUSH 0
-   @POPII OutPtr
+   @STOREBII OutPtr
 @EndLocals
 @POPRETURN
 @RET
@@ -1161,6 +1166,61 @@ L display.ld
 @RET
 
 ########################################
+# SaveEmitEditorFieldMeta(EntryPtr)
+# Optional extension record.  Old imports can ignore this line;
+# new imports preserve the symbolic app variable used by generated code.
+########################################
+:SaveEmitEditorFieldMeta
+@PUSHRETURN
+@Locals
+   @Local EntryPtr
+   @Local Value
+   @Local ValueNamePtr
+
+   @POPI EntryPtr
+   @GET_FROM EntryPtr FORMOBJ_VALUE_PTR @POPI ValueNamePtr
+   @IF_NEQ_AV 0 ValueNamePtr
+      @CALL SaveLineClear
+      @STRSTACK "# FIELD "
+      @CALL SaveLineAppend
+      @GET_FROM EntryPtr FORMOBJ_ID @POPI Value
+      @Call(V) SaveLineAppendInt Value
+      @STRSTACK " VALUE "
+      @CALL SaveLineAppend
+      @Call(V) SaveLineAppend ValueNamePtr
+      @CALL SaveLineEmit
+   @ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# SaveEmitEditorFieldMetaRecords()
+########################################
+:SaveEmitEditorFieldMetaRecords
+@PUSHRETURN
+@Locals
+   @Local UsedCount
+   @Local Index
+   @Local EntryPtr
+
+   @GET_FROM FormTable FORMTABLE_USED @POPI UsedCount
+   @ForIA2V Index 0 UsedCount
+      @Call(VV) FormTableEntryPtr FormTable Index
+      @POPI EntryPtr
+      @GET_FROM EntryPtr FORMOBJ_TYPE
+      @IF_NEQ_A FORMOBJ_TYPE_NONE
+         @POPNULL
+         @Call(V) SaveEmitEditorFieldMeta EntryPtr
+      @ELSE
+         @POPNULL
+      @ENDIF
+   @Next Index
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
 # SaveEmitEditorCanvasLine(DataPtr)
 ########################################
 :SaveEmitEditorCanvasLine
@@ -1219,6 +1279,15 @@ L display.ld
       @ADDI WinWidth
       @POPI DataPtr
    @Next Row
+
+   ################################
+   # Explicit end of loadable data.
+   ################################
+   @CALL SaveLineClear
+   @STRSTACK "# END CANVAS"
+   @CALL SaveLineAppend
+   @CALL SaveLineEmit
+
 @EndLocals
 @POPRETURN
 @RET
@@ -1240,17 +1309,21 @@ L display.ld
 @RET
 
 ########################################
-# SaveEmitAsmCanvasLine(DataPtr, IsLast)
+# SaveEmitAsmCanvasLine(DataPtr, Row)
 ########################################
 :SaveEmitAsmCanvasLine
 @PUSHRETURN
 @Locals
    @Local DataPtr
-   @Local IsLast
+   @Local Row
+   @Local OutputRow
    @Local EndPtr
    @Local KeepIt
 
-   @POPI IsLast
+   @POPI Row
+   @PUSHI Row
+   @ADD 1
+   @POPI OutputRow
    @POPI DataPtr
    @PUSHI DataPtr
    @ADDI WinWidth
@@ -1261,11 +1334,13 @@ L display.ld
    @POPII EndPtr
 
    @CALL SaveLineClear
-   @IF_EQ_AV 0 IsLast
-      @STRSTACK "   @PRTLN \""
-   @ELSE
-      @STRSTACK "   @PRT \""
-   @ENDIF
+   @STRSTACK "   @Call(AA) WinCursor 1 "
+   @CALL SaveLineAppend
+   @Call(V) SaveLineAppendInt OutputRow
+   @CALL SaveLineEmit
+
+   @CALL SaveLineClear
+   @STRSTACK "   @PRT \""
    @CALL SaveLineAppend
    @Call(V) SaveLineAppend DataPtr
    @STRSTACK "\""
@@ -1286,32 +1361,19 @@ L display.ld
 @Locals
    @Local Row
    @Local CanvasRows
-   @Local LastRow
    @Local DataPtr
-   @Local IsLast
 
    @CALL SaveLineClear
    @STRSTACK ":DrawBackGround"
-   @CALL SaveLineAppend
-   @CALL SaveLineEmit
-   @CALL SaveLineClear
-   @STRSTACK "   @Call(AA) WinCursor 1 1"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
 
    @PUSHI WinHeight
    @SUB 1
    @POPI CanvasRows
-   @PUSHI CanvasRows
-   @SUB 1
-   @POPI LastRow
    @MV2V CanvasData DataPtr
    @ForIA2V Row 0 CanvasRows
-      @MA2V 0 IsLast
-      @IF_EQ_VV Row LastRow
-         @MA2V 1 IsLast
-      @ENDIF
-      @Call(VV) SaveEmitAsmCanvasLine DataPtr IsLast
+      @Call(VV) SaveEmitAsmCanvasLine DataPtr Row
       @PUSHI DataPtr
       @ADDI WinWidth
       @POPI DataPtr
@@ -1404,7 +1466,15 @@ L display.ld
    @CALL SaveLineEmit
 
    @CALL SaveLineClear
-   @STRSTACK "   @PUSH 0           # ValuePtr: replace with app variable/buffer"
+   @STRSTACK "   @PUSH "
+   @CALL SaveLineAppend
+   @GET_FROM EntryPtr FORMOBJ_VALUE_PTR @POPI Value
+   @IF_NEQ_AV 0 Value
+      @Call(V) SaveLineAppend Value
+      @STRSTACK "           # ValuePtr"
+   @ELSE
+      @STRSTACK "0           # ValuePtr: replace with app variable/buffer"
+   @ENDIF
    @CALL SaveLineAppend
    @CALL SaveLineEmit
 
@@ -1518,8 +1588,10 @@ L display.ld
 @Locals
    @CALL TermMouseDisable
    @CALL WinClear
+   @CALL WinEraseScrollback
    @CALL SaveEmitEditorHeader
    @CALL SaveEmitEditorForms
+   @CALL SaveEmitEditorFieldMetaRecords
    @CALL SaveEmitEditorCanvas
    @CALL SaveEmitAssemblyHeader
    @CALL SaveEmitAssemblyBackground
@@ -1532,6 +1604,7 @@ L display.ld
    @STRSTACK "Copy output from terminal; click or ESC returns"
    @CALL SaveLineAppend
    @CALL SaveLineEmit
+   @TTYRAW
    @CALL TermMouseEnable
    @MA2V 1 ReportActive
    @Call(V) EventSetActive CanvasEventTable
@@ -1539,30 +1612,321 @@ L display.ld
 @POPRETURN
 @RET
 
+
 ########################################
 # LoadWorkFile
-# Placeholder report view for the editable work-file input path.
+#
+# Reads the editable #PAINTUI portion generated by SaveWorkFile
+# from stdin.
+#
+# Expected input:
+#
+# #PAINTUI VER 1.0
+# # WIDTH: ...
+# # HEIGHT: ...
+# # CANVAS_SIZE: ...
+# # NEXT_FORM_ID: ...
+# # COUNT: ...
+# # <form records>
+# # Optional extension records may appear here.
+# # CANVAS:
+# # "<canvas row>"
+# ...
+#
+# LOAD stops after the final canvas row.  The generated assembler
+# portion of SAVE is intentionally not part of the input.
 ########################################
 :LoadWorkFile
 @PUSHRETURN
 @Locals
+   @Local FileWidth
+   @Local FileHeight
+   @Local FileCanvasSize
+   @Local FileNextFormID
+   @Local FileFormCount
+   @Local ExpectedHeight
+   @Local Index
+   @Local Status
+
    @CALL TermMouseDisable
+   @TTYRAWOFF
+   @TTYECHO
    @CALL WinClear
-   @CALL SaveLineClear
-   @STRSTACK "LOAD WORK: #PAINTUI parser pending"
-   @CALL SaveLineAppend
-   @CALL SaveLineEmit
-   @CALL SaveLineClear
-   @STRSTACK "Paste/read #PAINTUI comments first"
-   @CALL SaveLineAppend
-   @CALL SaveLineEmit
-   @CALL SaveLineClear
-   @STRSTACK "Click or ESC returns to editor"
-   @CALL SaveLineAppend
-   @CALL SaveLineEmit
+
+   @Call(AA) WinCursor 1 1
+   @PRTLN "LOAD WORK"
+   @PRTLN "Paste the #PAINTUI editor-data section now..."
+   @PRTNL
+
+   ####################################
+   # Signature
+   ####################################
+   @CALL LoadReadNonEmptyLine
+   @IF_EQ_A LOAD_LINE_ABORT
+      @POPNULL
+      @JMP LoadWorkAbort
+   @ENDIF   
+   @POPNULL
+
+   ####################################
+   # Header
+   ####################################
+   @STRSTACK "# WIDTH: "
+   @PUSH 9
+   @CALL LoadReadNumberLine
+   @IF_EQ_A LOAD_NUMBER_ABORT
+      @POPNULL
+      @JMP LoadWorkAbort
+   @ENDIF
+   @POPI FileWidth
+
+   @STRSTACK "# HEIGHT: "
+   @PUSH 10
+   @CALL LoadReadNumberLine
+   @IF_EQ_A LOAD_NUMBER_ABORT
+      @POPNULL
+      @JMP LoadWorkAbort
+   @ENDIF   
+   @POPI FileHeight
+
+   @STRSTACK "# CANVAS_SIZE: "
+   @PUSH 15
+   @CALL LoadReadNumberLine
+   @IF_EQ_A LOAD_NUMBER_ABORT
+      @POPNULL
+      @JMP LoadWorkAbort
+   @ENDIF   
+   @POPI FileCanvasSize
+
+   @STRSTACK "# NEXT_FORM_ID: "
+   @PUSH 16
+   @CALL LoadReadNumberLine
+   @IF_EQ_A LOAD_NUMBER_ABORT
+      @POPNULL
+      @JMP LoadWorkAbort
+   @ENDIF   
+   @POPI FileNextFormID
+
+   @STRSTACK "# COUNT: "
+   @PUSH 9
+   @CALL LoadReadNumberLine
+   @IF_EQ_A LOAD_NUMBER_ABORT
+      @POPNULL
+      @JMP LoadWorkAbort
+   @ENDIF   
+   @POPI FileFormCount
+
+   # Any -1 means a header label failed validation.
+   @IF_EQ_AV -1 FileWidth
+      @JMP LoadWorkBadFormat
+   @ENDIF
+   @IF_EQ_AV -1 FileHeight
+      @JMP LoadWorkBadFormat
+   @ENDIF
+   @IF_EQ_AV -1 FileCanvasSize
+      @JMP LoadWorkBadFormat
+   @ENDIF
+   @IF_EQ_AV -1 FileNextFormID
+      @JMP LoadWorkBadFormat
+   @ENDIF
+   @IF_EQ_AV -1 FileFormCount
+      @JMP LoadWorkBadFormat
+   @ENDIF
+
+   ####################################
+   # For version 1.0 require matching
+   # editor dimensions.
+   #
+   # This is preferable to silently
+   # reflowing a screen-oriented UI.
+   ####################################
+   @PUSHI WinHeight
+   @SUB 1
+   @POPI ExpectedHeight
+
+   @IF_NEQ_VV FileWidth WinWidth
+      @JMP LoadWorkWrongSize
+   @ENDIF
+
+   @IF_NEQ_VV FileHeight ExpectedHeight
+      @JMP LoadWorkWrongSize
+   @ENDIF
+
+   @IF_NEQ_VV FileCanvasSize CanvasSize
+      @JMP LoadWorkWrongSize
+   @ENDIF
+
+   ####################################
+   # Header is valid.  Commit to the
+   # new page from here onward.
+   ####################################
+   @CALL FormTableReset
+
+   ####################################
+   # Form records
+   ####################################
+   @ForIA2V Index 0 FileFormCount
+      @CALL LoadReadLine
+      @IF_EQ_A LOAD_LINE_ABORT
+         @POPNULL
+         @JMP LoadWorkAbort
+      @ENDIF
+      
+      @POPNULL
+
+      @CALL LoadParseFormLine
+      @POPI Status
+
+      @IF_EQ_AV 0 Status
+         @JMP LoadWorkBadData
+      @ENDIF
+   @Next Index
+
+   ####################################
+   # # CANVAS:
+   #
+   # Be liberal here so older files load and newer saves can add
+   # optional extension records, such as field names, between the
+   # counted form records and the canvas body.
+   ####################################
+   @MA2V 0 Status
+   @PUSHI Status
+   @WHILE_ZERO
+      @POPNULL
+
+      @CALL LoadReadLine
+      @IF_EQ_A LOAD_LINE_ABORT
+         @POPNULL
+         @JMP LoadWorkAbort
+      @ENDIF
+      @POPNULL
+
+      @PUSHI SaveLineBuffer
+      @STRSTACK "# CANVAS:"
+      @CALL strcmp
+      @IF_ZERO
+         @POPNULL
+         @MA2V 1 Status
+      @ELSE
+         @POPNULL
+         @CALL LoadParseOptionalMetaLine
+      @ENDIF
+
+      @PUSHI Status
+   @ENDWHILE
+   @POPNULL
+
+   ####################################
+   # Canvas
+   ####################################
+   @CALL LoadCanvasClear
+
+   @ForIA2V Index 0 FileHeight
+      @CALL LoadReadLine
+      @IF_EQ_A LOAD_LINE_ABORT
+         @POPNULL
+         @JMP LoadWorkAbort
+      @ENDIF
+
+      @POPNULL
+
+      @Call(V) LoadCanvasLine Index
+      @POPI Status
+
+      @IF_EQ_AV 0 Status
+         @JMP LoadWorkBadData
+      @ENDIF
+   @Next Index
+
+   ####################################
+   # Restore serialized editor state.
+   ####################################
+   @MV2V FileNextFormID NextFormID
+   @MA2V 0 CanvasCursor
+   @MA2V MODE_Default SelectionMode
+   @MA2V SELDIM_None SelectionDimensions
+   @MA2V SEL_None SelectionAction
+   @MA2V CR_EDIT CanvasCRHandler
+   @MA2V -1 SelectionX1
+   @MA2V -1 SelectionY1
+   @MA2V -1 SelectionX2
+   @MA2V -1 SelectionY2
+   @MA2V -1 SelectionCompleteX1
+   @MA2V -1 SelectionCompleteY1
+   @MA2V -1 SelectionCompleteX2
+   @MA2V -1 SelectionCompleteY2
+   @MA2V 0 FieldEditActive
+   @MA2V 0 SelectedFormEntry
+
+   ####################################
+   # Success report
+   ####################################
+   @CALL WinClear
+   @Call(AA) WinCursor 1 1
+   @PRT "LOAD OK: "
+   @PRTI FileFormCount
+   @PRTLN " form objects loaded"
+   @PRT "Canvas: "
+   @PRTI FileWidth
+   @PRT " x "
+   @PRTI FileHeight @PRTNL
+   @PRTNL
+   @PRTLN "Click or ESC returns to editor"
+
+   @TTYRAW
    @CALL TermMouseEnable
    @MA2V 1 ReportActive
    @Call(V) EventSetActive CanvasEventTable
+   @JMP LoadWorkDone
+
+
+:LoadWorkWrongSize
+   @CALL WinClear
+   @Call(AA) WinCursor 1 1
+   @PRTLN "LOAD FAILED: canvas size does not match editor"
+   @PRT "File: "
+   @PRTI FileWidth
+   @PRT " x "
+   @PRTI FileHeight @PRTNL
+   @PRT "Editor: "
+   @PRTI WinWidth
+   @PRT " x "
+   @PRTI ExpectedHeight @PRTNL
+   @PRTNL
+   @PRTLN "Click or ESC returns to editor"
+   @TTYRAW
+   @CALL TermMouseEnable
+   @MA2V 1 ReportActive
+   @Call(V) EventSetActive CanvasEventTable
+   @JMP LoadWorkDone
+
+
+:LoadWorkBadFormat
+   @CALL WinClear
+   @Call(AA) WinCursor 1 1
+   @PRTLN "LOAD FAILED: not a PAINTUI VER 1.0 file"
+   @PRTNL
+   @PRTLN "Click or ESC returns to editor"
+   @TTYRAW
+   @CALL TermMouseEnable
+   @MA2V 1 ReportActive
+   @Call(V) EventSetActive CanvasEventTable
+   @JMP LoadWorkDone
+
+
+:LoadWorkBadData
+   @CALL WinClear
+   @Call(AA) WinCursor 1 1
+   @PRTLN "LOAD FAILED: malformed PAINTUI data"
+   @PRTNL
+   @PRTLN "Page may be partially loaded."
+   @PRTLN "Click or ESC returns to editor"
+   @TTYRAW
+   @CALL TermMouseEnable
+   @MA2V 1 ReportActive
+   @Call(V) EventSetActive CanvasEventTable
+
+:LoadWorkDone
 @EndLocals
 @POPRETURN
 @RET
@@ -2739,8 +3103,827 @@ M SetupEventV \
 @POPRETURN
 @RET
 
-   
-               
+########################################
+# LoadReadLine():Length
+#
+# Returns:
+#   >= 0  line length
+#   -1    user pressed ESC
+#
+# Accepts CR, LF, or CR/LF.
+########################################
+:LoadReadLine
+@PUSHRETURN
+@Locals
+   @Local OutPtr
+   @Local Ch
+   @Local Count
+   @Local Done
+   @Local Aborted
+
+   @MV2V SaveLineBuffer OutPtr
+   @MA2V 0 Count
+   @MA2V 0 Done
+   @MA2V 0 Aborted
+
+   @PUSHI Done
+   @WHILE_ZERO
+      @POPNULL
+
+      @READC Ch
+      @PUSHI Ch
+      @AND 0xff
+      @POPI Ch
+
+      @PUSHI Ch
+      @IF_EQ_A 27
+         @POPNULL
+         @MA2V 1 Aborted
+         @MA2V 1 Done
+         @JMP LoadReadLineLoopDone
+      @ELSE
+         @POPNULL
+      @ENDIF
+
+      @PUSHI Ch
+      @IF_EQ_A 13
+         @POPNULL
+         @MA2V 1 Done
+      @ELSE
+         @POPNULL
+
+         @PUSHI Ch
+         @IF_EQ_A 10
+            @POPNULL
+            @MA2V 1 Done
+         @ELSE
+            @POPNULL
+
+            @PUSHI Count
+            @IF_LT_A 159
+               @POPNULL
+               @PUSHI Ch
+               @STOREBII OutPtr
+               @INCI OutPtr
+               @INCI Count
+            @ELSE
+               @POPNULL
+            @ENDIF
+         @ENDIF
+      @ENDIF
+
+:LoadReadLineLoopDone
+      @PUSHI Done
+   @ENDWHILE
+   @POPNULL
+
+   @PUSH 0
+   @STOREBII OutPtr
+
+   @IF_NEQ_AV 0 Aborted
+      @PUSH LOAD_LINE_ABORT
+   @ELSE
+      @PUSHI Count
+   @ENDIF
+
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# LoadReadNonEmptyLine():Length
+#
+# Signature synchronization helper.  Menu activation can leave a
+# blank CR/LF queued before the pasted PAINTUI data starts, so only
+# the first signature read tolerates leading empty lines.
+########################################
+:LoadReadNonEmptyLine
+@PUSHRETURN
+@Locals
+   @Local LineLen
+   @Local Done
+   @Local LeadingEscSkips
+   @Local Match
+
+   @MA2V 0 LineLen
+   @MA2V 0 Done
+   @MA2V 0 LeadingEscSkips
+   @MA2V 0 Match
+
+   @PUSHI Done
+   @WHILE_ZERO
+      @POPNULL
+
+      @CALL LoadReadLine
+      @IF_EQ_A LOAD_LINE_ABORT
+         @POPNULL
+         @PUSHI LeadingEscSkips
+         @IF_LT_A 3
+            @POPNULL
+            @INCI LeadingEscSkips
+            @MA2V 0 LineLen
+            @JMP LoadReadNonEmptyLineLoopDone
+         @ELSE
+            @POPNULL
+         @ENDIF
+         @MA2V LOAD_LINE_ABORT LineLen
+         @MA2V 1 Done
+         @JMP LoadReadNonEmptyLineLoopDone
+      @ENDIF
+
+      @POPI LineLen
+
+      @IF_NEQ_AV 0 LineLen
+         @PUSHII SaveLineBuffer
+         @AND 0xff
+         @IF_ZERO
+            @POPNULL
+            @MA2V 0 LineLen
+         @ELSE
+            @POPNULL
+            @PUSHI SaveLineBuffer
+            @STRSTACK "#PAINTUI VER 1.0"
+            @CALL strcmp
+            @POPI Match
+            @IF_EQ_AV 0 Match
+               @MA2V 1 Done
+            @ELSE
+               @MA2V 0 LineLen
+            @ENDIF
+         @ENDIF
+      @ENDIF
+
+:LoadReadNonEmptyLineLoopDone
+      @PUSHI Done
+   @ENDWHILE
+   @POPNULL
+
+   @PUSHI LineLen
+
+@EndLocals
+@POPRETURN
+@RET
+
+
+########################################
+# LoadReadNumberLine(PrefixPtr,PrefixLen):Value
+#
+# Reads:
+#
+#     <prefix><decimal integer>
+#
+# Returns -1 when the prefix does not match.
+#
+# All current SAVE header values are nonnegative, so -1
+# is available as the error result.
+########################################
+:LoadReadNumberLine
+@PUSHRETURN
+@Locals
+   @Local PrefixPtr
+   @Local PrefixLen
+   @Local ValuePtr
+   @Local Value
+   @Local Status
+
+   @POPI PrefixLen
+   @POPI PrefixPtr
+
+   @CALL LoadReadLine
+   @IF_EQ_A LOAD_LINE_ABORT
+      @POPNULL
+      @PUSH LOAD_NUMBER_ABORT
+      @JMP LoadReadNumberLineDone
+   @ENDIF
+   @POPNULL
+
+   @Call(VVV) strncmp SaveLineBuffer PrefixPtr PrefixLen
+   @IF_NOTZERO
+      @POPNULL
+      @PUSH -1
+      @JMP LoadReadNumberLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI SaveLineBuffer
+   @ADDI PrefixLen
+   @POPI ValuePtr
+
+   @Call(V) stoi ValuePtr
+   @POPI Value
+   @PUSHI Value
+
+:LoadReadNumberLineDone
+@EndLocals
+@POPRETURN
+@RET
+
+
+########################################
+# LoadParseUInt(Cursor):Value,NewCursor
+#
+# Small parser specifically for the form records emitted by SAVE.
+# Skips spaces, reads unsigned decimal, and leaves the cursor
+# immediately after the number.
+#
+# On parse failure:
+#
+#     Value = 0
+#     NewCursor = 0
+#
+########################################
+:LoadParseUInt
+@PUSHRETURN
+@Locals
+   @Local Cursor
+   @Local Value
+   @Local Digit
+   @Local HaveDigit
+   @Local Continue
+
+   @POPI Cursor
+   @MA2V 0 Value
+   @MA2V 0 HaveDigit
+
+   # Skip spaces.
+   @PUSHII Cursor
+   @AND 0xff
+   @WHILE_EQ_A " \0"
+      @POPNULL
+      @INCI Cursor
+      @PUSHII Cursor
+      @AND 0xff
+   @ENDWHILE
+   @POPNULL
+
+   @MA2V 1 Continue
+
+   @PUSHI Continue
+   @WHILE_NOTZERO
+      @POPNULL
+
+      @PUSHII Cursor
+      @AND 0xff
+
+      @IF_INRANGE_AB "0\0" "9\0"
+         @SUB "0\0"
+         @POPI Digit
+
+         # Value = Value * 10 + Digit
+         @PUSHI Value
+         @PUSH 10
+         @CALL MULU
+         @ADDI Digit
+         @POPI Value
+
+         @MA2V 1 HaveDigit
+         @INCI Cursor
+         @PUSH 1
+      @ELSE
+         @POPNULL
+         @PUSH 0
+      @ENDIF
+   @ENDWHILE
+   @POPNULL
+
+   @IF_EQ_AV 0 HaveDigit
+      @PUSH 0
+      @PUSH 0
+   @ELSE
+      @PUSHI Value
+      @PUSHI Cursor
+   @ENDIF
+
+@EndLocals
+@POPRETURN
+@RET
+
+
+########################################
+# FormTableReset()
+#
+# Clears every existing logical entry but retains the allocated
+# table and its current capacity.
+########################################
+:FormTableReset
+@PUSHRETURN
+@Locals
+   @Local UsedCount
+   @Local Index
+   @Local EntryPtr
+
+   @Call(A) FormSelectEntry 0
+   @GET_FROM FormTable FORMTABLE_USED
+   @POPI UsedCount
+
+   @ForIA2V Index 0 UsedCount
+      @Call(VV) FormTableEntryPtr FormTable Index
+      @POPI EntryPtr
+      @Call(V) FormEntryClear EntryPtr
+   @Next Index
+
+   @FILL_AT_A FormTable FORMTABLE_USED 0
+   @MA2V 0 SelectedFormEntry
+@EndLocals
+@POPRETURN
+@RET
+
+
+########################################
+# FormFindEntryByID(FormID):EntryPtr
+########################################
+:FormFindEntryByID
+@PUSHRETURN
+@Locals
+   @Local FormID
+   @Local UsedCount
+   @Local Index
+   @Local EntryPtr
+   @Local CurID
+
+   @POPI FormID
+   @MA2V 0 EntryPtr
+   @GET_FROM FormTable FORMTABLE_USED @POPI UsedCount
+   @ForIA2V Index 0 UsedCount
+      @Call(VV) FormTableEntryPtr FormTable Index
+      @POPI EntryPtr
+      @GET_FROM EntryPtr FORMOBJ_ID @POPI CurID
+      @IF_EQ_VV CurID FormID
+         @FORBREAK
+      @ELSE
+         @MA2V 0 EntryPtr
+      @ENDIF
+   @Next Index
+   @PUSHI EntryPtr
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# LoadCopySymbol(SymbolPtr):CopyPtr
+########################################
+:LoadCopySymbol
+@PUSHRETURN
+@Locals
+   @Local SymbolPtr
+   @Local CopyPtr
+   @Local Size
+
+   @POPI SymbolPtr
+   @Call(V) strlen SymbolPtr
+   @ADD 1
+   @POPI Size
+   @Call(VV) HeapNewObject MainHeap Size
+   @IF_ULT_A 100
+      @PRT "ERR:MEM"
+      @END
+   @ENDIF
+   @POPI CopyPtr
+   @PUSHI CopyPtr
+   @PUSHI SymbolPtr
+   @CALL strcpy
+   @PUSHI CopyPtr
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# LoadParseOptionalMetaLine()
+# Currently understands:
+#   # FIELD <id> VALUE <symbol>
+########################################
+:LoadParseOptionalMetaLine
+@PUSHRETURN
+@Locals
+   @Local Cursor
+   @Local FormID
+   @Local EntryPtr
+   @Local NamePtr
+   @Local PrefixPtr
+
+   @STRSTACK "# FIELD "
+   @POPI PrefixPtr
+   @Call(VVA) strncmp SaveLineBuffer PrefixPtr 8
+   @IF_NOTZERO
+      @POPNULL
+      @JMP LoadParseOptionalMetaDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI SaveLineBuffer
+   @ADD 8
+   @POPI Cursor
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI FormID
+   @IF_EQ_AV 0 Cursor
+      @JMP LoadParseOptionalMetaDone
+   @ENDIF
+
+   @PUSHII Cursor
+   @AND 0xff
+   @WHILE_EQ_A "  "
+      @POPNULL
+      @INCI Cursor
+      @PUSHII Cursor
+      @AND 0xff
+   @ENDWHILE
+   @POPNULL
+
+   @STRSTACK "VALUE "
+   @POPI PrefixPtr
+   @Call(VVA) strncmp Cursor PrefixPtr 6
+   @IF_NOTZERO
+      @POPNULL
+      @JMP LoadParseOptionalMetaDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI Cursor
+   @ADD 6
+   @POPI NamePtr
+   @PUSHII NamePtr
+   @AND 0xff
+   @IF_ZERO
+      @POPNULL
+      @JMP LoadParseOptionalMetaDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @Call(V) FormFindEntryByID FormID
+   @POPI EntryPtr
+   @IF_EQ_AV 0 EntryPtr
+      @JMP LoadParseOptionalMetaDone
+   @ENDIF
+
+   @Call(V) LoadCopySymbol NamePtr
+   @POPI NamePtr
+   @FILL_AT_V EntryPtr FORMOBJ_VALUE_PTR NamePtr
+
+:LoadParseOptionalMetaDone
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# LoadParseFormLine():Status
+#
+# Reads the current SaveLineBuffer:
+#
+#     # id type flags x y width height depth
+#
+# ValuePtr and FieldPtr deliberately become zero because SAVE
+# does not serialize runtime application pointers.
+########################################
+:LoadParseFormLine
+@PUSHRETURN
+@Locals
+   @Local Cursor
+   @Local EntryPtr
+   @Local FormID
+   @Local ObjType
+   @Local Flags
+   @Local X
+   @Local Y
+   @Local Width
+   @Local Height
+   @Local Depth
+
+   # Must start "# "
+   @PUSHII SaveLineBuffer
+   @AND 0xff
+   @IF_NEQ_A "#\0"
+      @POPNULL
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI SaveLineBuffer
+   @ADD 1
+   @PUSHS
+   @AND 0xff
+   @IF_NEQ_A " \0"
+      @POPNULL
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI SaveLineBuffer
+   @ADD 2
+   @POPI Cursor
+
+   # ID
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI FormID
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Type
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI ObjType
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Flags
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI Flags
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # X
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI X
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Y
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI Y
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Width
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI Width
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Height
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI Height
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Depth
+   @Call(V) LoadParseUInt Cursor
+   @POPI Cursor
+   @POPI Depth
+   @IF_EQ_AV 0 Cursor
+      @PUSH 0
+      @JMP LoadParseFormLineDone
+   @ENDIF
+
+   # Do not restore the transient SELECTED bit.
+   #
+   # Otherwise a saved selected field would paint as selected after
+   # load even though SelectedFormEntry itself is NULL.
+   @PUSHI Flags
+   @AND 0xfffd
+   @POPI Flags
+
+   @Call(V) FormTableAllocEntry FormTable
+   @POPI EntryPtr
+
+   @FILL_AT_V EntryPtr FORMOBJ_TYPE ObjType
+   @FILL_AT_V EntryPtr FORMOBJ_FLAGS Flags
+   @FILL_AT_V EntryPtr FORMOBJ_X X
+   @FILL_AT_V EntryPtr FORMOBJ_Y Y
+   @FILL_AT_V EntryPtr FORMOBJ_WIDTH Width
+   @FILL_AT_V EntryPtr FORMOBJ_HEIGHT Height
+   @FILL_AT_A EntryPtr FORMOBJ_VALUE_PTR 0
+   @FILL_AT_A EntryPtr FORMOBJ_FIELD_PTR 0
+   @FILL_AT_V EntryPtr FORMOBJ_ID FormID
+   @FILL_AT_V EntryPtr FORMOBJ_DEPTH Depth
+   @FILL_AT_A EntryPtr FORMOBJ_USER1 0
+   @FILL_AT_A EntryPtr FORMOBJ_USER2 0
+
+   # This also protects us if a legal file is loaded into a terminal
+   # whose dimensions have somehow changed since initialization.
+   @Call(V) FormEntryNormalizeGeometry EntryPtr
+
+   @PUSH 1
+
+:LoadParseFormLineDone
+@EndLocals
+@POPRETURN
+@RET
+
+
+########################################
+# LoadCanvasClear()
+########################################
+:LoadCanvasClear
+@PUSHRETURN
+@Locals
+   @Local Index
+   @Local Ptr
+
+   @MV2V CanvasData Ptr
+
+   @ForIA2V Index 0 CanvasSize
+      @PUSH " \0"
+      @POPII Ptr
+      @INCI Ptr
+   @Next Index
+
+   @PUSH 0
+   @PUSHI CanvasData
+   @ADDI CanvasSize
+   @POPS
+@EndLocals
+@POPRETURN
+@RET
+
+
+########################################
+# LoadCanvasLine(Row):Status
+#
+# SAVE emits exactly:
+#
+#     # "<WinWidth characters>"
+#
+# We deliberately copy a fixed WinWidth characters rather than looking
+# for the closing quote.  That means a literal '"' inside the painted
+# canvas does not confuse LOAD.
+########################################
+:LoadCanvasLine
+@PUSHRETURN
+@Locals
+   @Local Row
+   @Local SrcPtr
+   @Local DstPtr
+   @Local Index
+   @Local LineLen
+   @Local Ch
+
+   @POPI Row
+
+   @Call(V) strlen SaveLineBuffer
+   @POPI LineLen
+
+   # Minimum is:
+   #
+   #   # " + WinWidth chars + "
+   #
+   # i.e. WinWidth + 4.
+   @PUSHI WinWidth
+   @ADD 4
+   @IF_GT_V LineLen
+      @POPNULL
+      @PUSH 0
+      @JMP LoadCanvasLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   # Validate '# "'
+   @PUSHII SaveLineBuffer
+   @AND 0xff
+   @IF_NEQ_A "#\0"
+      @POPNULL
+      @PUSH 0
+      @JMP LoadCanvasLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI SaveLineBuffer
+   @ADD 1
+   @PUSHS
+   @AND 0xff
+   @IF_NEQ_A " \0"
+      @POPNULL
+      @PUSH 0
+      @JMP LoadCanvasLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   @PUSHI SaveLineBuffer
+   @ADD 2
+   @PUSHS
+   @AND 0xff
+   @IF_NEQ_A "\"\0"
+      @POPNULL
+      @PUSH 0
+      @JMP LoadCanvasLineDone
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   # Src points at first actual canvas character.
+   @PUSHI SaveLineBuffer
+   @ADD 3
+   @POPI SrcPtr
+
+   # Dst = CanvasData + Row * WinWidth
+   @Call(VV) MULU Row WinWidth
+   @ADDI CanvasData
+   @POPI DstPtr
+
+   @ForIA2V Index 0 WinWidth
+      @PUSHII SrcPtr
+      @AND 0xff
+      @POPI Ch
+
+      @PUSHI Ch
+      @POPII DstPtr
+
+      @INCI SrcPtr
+      @INCI DstPtr
+   @Next Index
+
+   @PUSH 1
+
+:LoadCanvasLineDone
+@EndLocals
+@POPRETURN
+@RET
+
+########################################
+# LoadReturnToEditor
+#
+# Emergency/safe exit from LOAD.
+#
+# Restores the editor's control state regardless
+# of where LOAD was interrupted.
+########################################
+:LoadReturnToEditor
+@PUSHRETURN
+
+   # Cancel report/load state.
+   @MA2V 0 ReportActive
+   @MA2V 0 FieldEditActive
+
+   # Cancel any selection state.
+   @MA2V MODE_Default SelectionMode
+   @MA2V SELDIM_None SelectionDimensions
+   @MA2V SEL_None SelectionAction
+   @MA2V CR_EDIT CanvasCRHandler
+
+   @MA2V -1 SelectionX1
+   @MA2V -1 SelectionY1
+   @MA2V -1 SelectionX2
+   @MA2V -1 SelectionY2
+
+   @MA2V -1 SelectionCompleteX1
+   @MA2V -1 SelectionCompleteY1
+   @MA2V -1 SelectionCompleteX2
+   @MA2V -1 SelectionCompleteY2
+
+   # Selection pointer should never survive an interrupted load.
+   @Call(A) FormSelectEntry 0
+
+   # Clamp cursor to something unquestionably valid.
+   @PUSHI CanvasCursor
+   @IF_UGE_V CanvasSize
+      @POPNULL
+      @MA2V 0 CanvasCursor
+   @ELSE
+      @POPNULL
+   @ENDIF
+
+   # Restore normal event processing.
+   @Call(V) EventSetActive CanvasEventTable
+
+   # LOAD had disabled mouse handling while reading.
+   @TTYRAW
+   @CALL TermMouseEnable
+
+   # Repaint from retained editor state.
+   @CALL DisplayCanvas
+   @CALL StatusLine
+
+@POPRETURN
+@RET
+
+:LoadWorkAbort
+   @CALL WinClear
+   @Call(AA) WinCursor 1 1
+   @PRTLN "LOAD CANCELLED"
+   @PRTLN ""
+   @PRTLN "Returning to editor..."
+   @CALL LoadReturnToEditor
+   @JMP LoadWorkDone
 
    
 ############################################
@@ -2937,7 +4120,9 @@ M SetupEventV \
              @CBREAK
           @CASE EV_CanvasKey
              @POPNULL
-             @CALL CanvasKeyEvent
+             @IF_EQ_AV 0 ReportActive
+               @CALL CanvasKeyEvent
+             @ENDIF
              @CBREAK
           @CASE EV_CanvasOpenMenuCtrl
              @POPNULL
@@ -2961,77 +4146,85 @@ M SetupEventV \
              @CBREAK
           @CASE EV_CanvasDel
              @POPNULL
-             @CALL CanvasDelEvent
+             @IF_EQ_AV 0 ReportActive
+                @CALL CanvasDelEvent
+             @ENDIF
              @CBREAK
           @CASE EV_CanvasNL
              @POPNULL
-             @CALL CanvasCREvent
-             @POPI CompletedAction
-             @IF_NEQ_AV SEL_None CompletedAction
-                @PUSHI CompletedAction
-                @SWITCH
-                @CASE SEL_DrawBox
-                   @CBREAK
-                @CASE SEL_NewInteger
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
+             @IF_EQ_AV 0 ReportActive
+                @CALL CanvasCREvent
+                @POPI CompletedAction
+                @IF_NEQ_AV SEL_None CompletedAction
+                   @PUSHI CompletedAction
+                   @SWITCH
+                   @CASE SEL_DrawBox
+                      @CBREAK
+                   @CASE SEL_NewInteger
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CASE SEL_NewLong
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CASE SEL_NewString
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CASE SEL_NewTextBox
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CDEFAULT
+                      @CBREAK
+                   @ENDCASE
                    @POPNULL
-                   @CBREAK
-                @CASE SEL_NewLong
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
-                   @POPNULL
-                   @CBREAK
-                @CASE SEL_NewString
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
-                   @POPNULL
-                   @CBREAK
-                @CASE SEL_NewTextBox
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
-                   @POPNULL
-                   @CBREAK
-                @CDEFAULT
-                   @CBREAK
-                @ENDCASE
-                @POPNULL
+                @ENDIF
+                @CALL DisplayCanvas
              @ENDIF
-             @CALL DisplayCanvas
           @CBREAK
           @CASE EV_CanvasCR
              @POPNULL
-             @CALL CanvasCREvent
-             @POPI CompletedAction
-             @IF_NEQ_AV SEL_None CompletedAction
-                @PUSHI CompletedAction
-                @SWITCH
-                @CASE SEL_DrawBox
-                   @CBREAK
-                @CASE SEL_NewInteger
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
+             @IF_EQ_AV 0 ReportActive
+                @CALL CanvasCREvent
+                @POPI CompletedAction
+                @IF_NEQ_AV SEL_None CompletedAction
+                   @PUSHI CompletedAction
+                   @SWITCH
+                   @CASE SEL_DrawBox
+                      @CBREAK
+                   @CASE SEL_NewInteger
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CASE SEL_NewLong
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CASE SEL_NewString
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CASE SEL_NewTextBox
+                      @Call(V) FormEntryCreateFromSelection CompletedAction
+                      @POPNULL
+                      @CBREAK
+                   @CDEFAULT
+                      @CBREAK
+                   @ENDCASE
                    @POPNULL
-                   @CBREAK
-                @CASE SEL_NewLong
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
-                   @POPNULL
-                   @CBREAK
-                @CASE SEL_NewString
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
-                   @POPNULL
-                   @CBREAK
-                @CASE SEL_NewTextBox
-                   @Call(V) FormEntryCreateFromSelection CompletedAction
-                   @POPNULL
-                   @CBREAK
-                @CDEFAULT
-                   @CBREAK
-                @ENDCASE
-                @POPNULL
+                @ENDIF
+                @CALL DisplayCanvas
              @ENDIF
-             @CALL DisplayCanvas
           @CBREAK             
           @CDEFAULT
              @POPNULL
              @CBREAK          
           @ENDCASE
-          @CALL StatusLine
+          @IF_EQ_AV 0 ReportActive
+             @CALL StatusLine
+          @ENDIF
        @ENDIF
    @ENDWHILE
    @CALL WinClear
@@ -3041,17 +4234,12 @@ M SetupEventV \
 
 :Main .ORG Main
    @CALL SetupStack
-   @PRTLN "1"
    @CALL SetupGlobals
-   @PRTLN "2"
    @CALL SetupEvents
-   @PRTLN "3"
    @CALL DisplayCanvas
-   @PRTLN "4"
    @CALL TermMouseEnable
-   @PRTLN "5"
+   @PRT "Hit ESC for menu"
    @CALL MainEventLoop
-   @PRTLN "6"
    @CALL TermMouseDisable
    @END
 
