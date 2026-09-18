@@ -1,0 +1,127 @@
+EX716 flight simulator
+======================
+
+Run from the tests directory:
+
+    python3 ../cpu.py flightsim.asm
+
+Use an 80-column terminal with mouse reporting. The simulation advances once
+per second. Press q or Q to quit.
+
+Controls
+--------
+
+Thrust bar (left, rows 15-21):
+    Click lower for more thrust; click higher for less. The ### marker shows
+    the setting. Thrust sets a target for speed rather than changing speed
+    instantly.
+
+Stick (center, rows 14-22):
+    Click below the center to pull back and command nose-up pitch. Click above
+    the center to push forward and command nose-down pitch. Horizontal stick
+    position also commands rudder: left for left yaw, right for right yaw.
+    The o marks the last stick position.
+
+Aileron (right, horizontal track):
+    Click left or right of the center mark to roll the aircraft. Moving the
+    control back to center stops the roll; it does not level an existing bank.
+    Apply opposite aileron to level the wings.
+
+Flaps (vertical guide):
+    Click lower for more flap, higher for less. Flaps add lift and drag in
+    the current simplified model.
+
+Keyboard controls
+-----------------
+
+Each keypress moves its control one notch. The mouse controls remain active,
+and both input methods update the same on-screen indicators.
+
+    4 / 6       Aileron left / right (^ on the horizontal track)
+    8 / 2       Pitch nose down / up (o on the stick)
+    5           Center aileron and rudder; pitch stays where it is
+    0 / .       Rudder left / right (^ on the rudder track and o on the stick)
+    + / -       More / less thrust (### on the thrust bar)
+    [ / ]       Raise / lower flaps (< on the flap guide)
+
+These are printable keys. A numeric keypad may send different escape
+sequences depending on the terminal; the ordinary number keys are supported.
+
+The upper panel shows altitude, compass heading, speed, roll, bank, pitch,
+turn rate, vertical velocity, engine, and fuel. X and Y at the lower left
+show the aircraft's current map position. Heading 0 is north, 90 east,
+180 south, and 270 west.
+
+World map
+---------
+
+Top-down view of the current fixed landmarks. North is up (negative Y);
+east is right (positive X). Each character cell is approximately 20 current
+map units in both directions. Symbols are rounded to the nearest cell, so
+use the coordinate list below for exact positions.
+
+    Y
+ -560 |       D             |
+ -540 |                     |
+ -520 |                     |
+ -500 |                     |
+ -480 |                     |
+ -460 |                     |
+ -440 |                     |
+ -420 |                   E |
+ -400 |                     |
+ -380 |                     |
+ -360 |            C        |
+ -340 |                     |
+ -320 |                     |
+ -300 |                     |
+ -280 |      ^              |
+ -260 |    B^^^^^           |
+ -240 | ^^^^    ^^^^        |
+ -220 |                     |
+ -200 |                     |
+ -180 |                     |
+ -160 |       A             |
+ -140 |                     |
+ -120 |                     |
+ -100 |                     |
+  -80 |                     |
+  -60 |                     |
+  -40 |                     |
+  -20 |                     |
+    0 |       S             |
+      +-------|-------------+
+       -140   0          +260 X (approx.)
+
+S is the starting position (0, 0), facing north. A-E are the current
+letter markers for planned airport locations. They are ground markers only:
+there are no runway surfaces or landing rules yet. The ^ symbols form one
+connected mountain ridge, drawn as a coarse line silhouette in the forward
+viewport. The ridge is not solid terrain and has no collision detection.
+
+Exact marker positions:
+
+    Marker     X      Y
+       A        0    -160
+       B      -60    -260
+       C       95    -360
+       D        0    -560
+       E      240    -420
+
+Mountain ridge vertices, in line order:
+
+    Vertex     X      Y    Elevation
+       1     -120   -230     1450
+       2      -85   -245     1750
+       3      -50   -250     2100
+       4      -20   -270     1850
+       5       10   -265     2400
+       6       40   -250     1950
+       7       75   -240     1650
+       8      110   -230     1400
+
+Coordinates and flight units are still provisional. The proposed scale of
+1/1,000 nautical mile per X/Y unit, speed in knots, and an altitude ceiling
+of 10,000 feet have not yet been applied to the flight math. The listed
+ridge elevations are stored as feet, but the projection is an intentionally
+coarse integer approximation for the text viewport.

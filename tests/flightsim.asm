@@ -26,6 +26,7 @@ L display.ld
 =EV_AILERON    13
 =EV_NOOP       14
 =EV_SIMTICK    15
+=EV_CONTROL_KEY 16
 
 ############################################################
 # Program globals
@@ -158,6 +159,10 @@ L display.ld
 :RidgeAbs 0
 :RidgeDeltaZ 0
 :RidgeGlyph "*\0"
+# Stick columns matching rudder commands -5..+5. Mouse stick scaling
+# maps these columns back to the corresponding RudderX positions.
+:RudderStickX
+   32 33 34 36 37 39 41 42 44 45 46
 :LandmarkLetters
    65 66 67 68 69
 :LandmarkMapX
@@ -185,9 +190,9 @@ I horizon_pointer_blocks.inc
 
 
 :GrowEventTable
-   # EventRecordSize is 12, so 16 records is a fixed 192 bytes.
+   # EventRecordSize is 12; 32 records need 384 bytes.
    # Avoid MUL here because this runs during startup before events are active.
-   @PUSH 192
+   @PUSH 384
    @ADD EventTableHeaderSize
    @POPI RegTableBytes
 
@@ -202,7 +207,7 @@ I horizon_pointer_blocks.inc
    @POPI EventTable
    @MV2V EventTable ActiveEventTable
    @Call(V) EventSetActive EventTable
-   @FILL_AT_A ActiveEventTable EventMaxUsedHeadOff 16
+   @FILL_AT_A ActiveEventTable EventMaxUsedHeadOff 32
 @RET
 
 :AddEventFromVars
@@ -353,7 +358,7 @@ I horizon_pointer_blocks.inc
       @ADDI HorizonBlockPtr
       @PUSHS
       @POPI HorizonRowPtr
-      @Call(AV) WinCursor 22 HorizonY
+      @Call(AV) WinCursor 21 HorizonY
       @PRTSI HorizonRowPtr
       @INCI HorizonRowIndex
    @Next HorizonY
@@ -464,7 +469,7 @@ I horizon_pointer_blocks.inc
    @PUSHS
    @POPI LandmarkRowPtr
    @PUSHI LandmarkScreenX
-   @SUB 22
+   @SUB 21
    @ADDI LandmarkRowPtr
    @PUSHS
    @AND 0xff
@@ -590,7 +595,7 @@ I horizon_pointer_blocks.inc
    @ENDIF
    @POPNULL
 
-   # Scale sideways position into the 39-column viewport (center X=41).
+   # Scale sideways position into the 39-column viewport (center X=40).
    @PUSHI LandmarkWidth @SHR @SHR @SHR @SHR
    @POPI LandmarkDivisor
    @PUSHI LandmarkAbs @PUSHI LandmarkDivisor @CALL DIVU
@@ -599,11 +604,23 @@ I horizon_pointer_blocks.inc
    @PUSHI LandmarkRight
    @IF_LT_A 0
       @POPNULL
-      @PUSH 41 @SUBI LandmarkScreenX @POPI LandmarkScreenX
+      @PUSH 40 @SUBI LandmarkScreenX @POPI LandmarkScreenX
    @ELSE
       @POPNULL
-      @PUSH 41 @ADDI LandmarkScreenX @POPI LandmarkScreenX
+      @PUSH 40 @ADDI LandmarkScreenX @POPI LandmarkScreenX
    @ENDIF
+   @PUSHI LandmarkScreenX
+   @IF_LT_A 21
+      @POPNULL
+      @RET
+   @ENDIF
+   @POPNULL
+   @PUSHI LandmarkScreenX
+   @IF_GT_A 59
+      @POPNULL
+      @RET
+   @ENDIF
+   @POPNULL
 
    # Coarse distance bands place distant letters close to the horizon.
    @MA2V 12 LandmarkScreenY
@@ -761,9 +778,9 @@ I horizon_pointer_blocks.inc
       @POPI RidgeSX
       @PUSHI RidgeRight
       @IF_LT_A 0
-         @POPNULL @PUSH 41 @SUBI RidgeSX @POPI RidgeSX
+         @POPNULL @PUSH 40 @SUBI RidgeSX @POPI RidgeSX
       @ELSE
-         @POPNULL @PUSH 41 @ADDI RidgeSX @POPI RidgeSX
+         @POPNULL @PUSH 40 @ADDI RidgeSX @POPI RidgeSX
       @ENDIF
 
       @PUSHI RidgeIndex @SHL @ADD RidgeZ @PUSHS
@@ -789,12 +806,12 @@ I horizon_pointer_blocks.inc
 
       # WinPlot does not clip; only fully visible segments are passed in.
       @PUSHI RidgeSX
-      @IF_LT_A 22
+      @IF_LT_A 21
          @POPNULL @JMP RidgeNext
       @ENDIF
       @POPNULL
       @PUSHI RidgeSX
-      @IF_GT_A 60
+      @IF_GT_A 59
          @POPNULL @JMP RidgeNext
       @ENDIF
       @POPNULL
@@ -1642,6 +1659,123 @@ I horizon_pointer_blocks.inc
 @RET
 
 
+# Keyboard controls change the same retained UI positions as mouse clicks.
+# Each keypress moves one display notch and then redraws the indicators.
+:HandleControlKey
+   @PUSHI LastKeyChar
+   @SWITCH
+   @CASE 52                 # 4: left aileron
+      @POPNULL
+      @PUSHI AileronX
+      @IF_GT_A 64
+         @POPNULL @DECI AileronX
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 54                 # 6: right aileron
+      @POPNULL
+      @PUSHI AileronX
+      @IF_LT_A 72
+         @POPNULL @INCI AileronX
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 56                 # 8: nose down
+      @POPNULL
+      @PUSHI StickY
+      @IF_GT_A 14
+         @POPNULL @DECI StickY @DECI PitchValue
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 50                 # 2: nose up
+      @POPNULL
+      @PUSHI StickY
+      @IF_LT_A 22
+         @POPNULL @INCI StickY @INCI PitchValue
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 53                 # 5: center aileron and rudder
+      @POPNULL
+      @MA2V 68 AileronX
+      @MA2V 68 RudderX
+      @MA2V 39 StickX
+      @CBREAK
+   @CASE 48                 # 0: left rudder
+      @POPNULL
+      @PUSHI RudderX
+      @IF_GT_A 63
+         @POPNULL @DECI RudderX
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 46                 # .: right rudder
+      @POPNULL
+      @PUSHI RudderX
+      @IF_LT_A 73
+         @POPNULL @INCI RudderX
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 43                 # +: more thrust (lower marker)
+      @POPNULL
+      @PUSHI ThrustY
+      @IF_LT_A 21
+         @POPNULL @INCI ThrustY
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 45                 # -: less thrust
+      @POPNULL
+      @PUSHI ThrustY
+      @IF_GT_A 15
+         @POPNULL @DECI ThrustY
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 91                 # [: raise flaps
+      @POPNULL
+      @PUSHI FlapY
+      @IF_GT_A 14
+         @POPNULL @DECI FlapY
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CASE 93                 # ]: lower flaps
+      @POPNULL
+      @PUSHI FlapY
+      @IF_LT_A 22
+         @POPNULL @INCI FlapY
+      @ELSE
+         @POPNULL
+      @ENDIF
+      @CBREAK
+   @CDEFAULT
+      @POPNULL
+      @CBREAK
+   @ENDCASE
+
+   # Keep the stick marker in sync when a rudder key changes its slider.
+   @PUSHI RudderX @SUB 63 @SHL @ADD RudderStickX @PUSHS
+   @POPI StickX
+   @PUSH 21 @SUBI ThrustY
+   @SHLN 4
+   @POPI ThrustValue
+   @CALL FlightControlsToDisplayValues
+   @CALL DrawControls
+   @CALL RefreshDisplay
+@RET
+
 :DrawMouseClick
    # The middle of the instrument panel is free on row 2. Capture only
    # dispatched mouse clicks so timer and keyboard events cannot erase it.
@@ -1686,11 +1820,11 @@ I horizon_pointer_blocks.inc
    @Call(AA) WinCursor 2 10
    @PRT "X:               "
    @Call(AA) WinCursor 5 10
-   @PRTI PosX
+   @PRTSGNI PosX
    @Call(AA) WinCursor 2 11
    @PRT "Y:               "
    @Call(AA) WinCursor 5 11
-   @PRTI PosY
+   @PRTSGNI PosY
 @RET
 
 :DrawControls
@@ -1779,6 +1913,96 @@ I horizon_pointer_blocks.inc
    @MA2V 0 RegX2
    @MA2V 0 RegY2
    @MA2V EV_EXIT RegEventID
+   @CALL AddEventFromVars
+
+   # Printable keyboard controls; dedicated numeric keypad escape
+   # sequences are terminal-dependent and are not assumed here.
+   @MA2V KeyRangeEvent RegType
+   @MA2V "4\0" RegX1
+   @MA2V "4\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "6\0" RegX1
+   @MA2V "6\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "8\0" RegX1
+   @MA2V "8\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "2\0" RegX1
+   @MA2V "2\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "5\0" RegX1
+   @MA2V "5\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "0\0" RegX1
+   @MA2V "0\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V ".\0" RegX1
+   @MA2V ".\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "+\0" RegX1
+   @MA2V "+\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "-\0" RegX1
+   @MA2V "-\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "[\0" RegX1
+   @MA2V "[\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
+   @CALL AddEventFromVars
+
+   @MA2V KeyRangeEvent RegType
+   @MA2V "]\0" RegX1
+   @MA2V "]\0" RegY1
+   @MA2V 0 RegX2
+   @MA2V 0 RegY2
+   @MA2V EV_CONTROL_KEY RegEventID
    @CALL AddEventFromVars
 
    # Repeating one-second simulation timer.
@@ -1879,6 +2103,10 @@ I horizon_pointer_blocks.inc
       @CASE EV_SIMTICK
          @POPNULL
          @CALL SimTick
+         @CBREAK
+      @CASE EV_CONTROL_KEY
+         @POPNULL
+         @CALL HandleControlKey
          @CBREAK
       @CASE EV_BG_CLICK
          @POPNULL
