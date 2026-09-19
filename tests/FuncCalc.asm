@@ -114,6 +114,9 @@ L lmath.ld
 # FCDebugStatement(argptr):void "Turns temporary function debug tracing ON or OFF."
 # FCParamListFromText(paramptr):[listptr] "Builds a list of parameter-name strings."
 # FCBindArgsToParams(funcptr,argcount):[ok] "Binds parsed call args to stored parameter names."
+# FCInvokeFunction(funcptr,argcount):[ok] "Invokes a stored function using parsed args and leaves return in Eval."
+# FCExprCleanupAdd(ptr):void "Adds one heap string/object to the expression cleanup pool."
+# FCReleaseExprCleanup():void "Frees expression-scoped temporary strings."
 # FCSetEvalFromArg(type,low,high,flags):void "Copies one parsed argument record into Eval storage."
 # FCFramePush():[frameptr] "Creates a new local frame and makes it current."
 # FCFramePop():void "Destroys the current local frame and restores the previous one."
@@ -195,7 +198,7 @@ L lmath.ld
 :EvalStrObj 0
 :EvalStrOwned 0
 :EvalValueFlags 0
-:FCArgCleanupList 0
+:FCExprCleanupList 0
 :ExprOpPtr 0
 :FCArgEndPtr 0
 :FCReturnFlag 0
@@ -210,6 +213,7 @@ L lmath.ld
 :KwExit "EXIT\0"
 :KwPrint "PRINT\0"
 :KwMem "MEM\0"
+:KwMemVar "MEMVAR\0"
 :KwClean "CLEAN\0"
 :KwHelp "HELP\0"
 :KwList "LIST\0"
@@ -331,8 +335,13 @@ L lmath.ld
    @POPNULL @CALL FCHelpStatement @JMP FCHandleDone
 @ENDIF
 @POPNULL
-@Call(VA) strcmp cmdcopy KwMem
-@IF_ZERO
+@Call(VA) FCStrEq cmdcopy KwMemVar
+@IF_NOTZERO
+   @POPNULL @CALL FCMemVarStatement @JMP FCHandleDone
+@ENDIF
+@POPNULL
+@Call(VA) FCStrEq cmdcopy KwMem
+@IF_NOTZERO
    @POPNULL @CALL FCMemStatement @JMP FCHandleDone
 @ENDIF
 @POPNULL
@@ -387,6 +396,7 @@ L lmath.ld
 @PRTLN "  NAME=number|string|expr"
 @PRTLN "  PRINT expr"
 @PRTLN "  MEM"
+@PRTLN "  MEMVAR"
 @PRTLN "  CLEAN [name]"
 @PRTLN "  LIST name=stmt[;stmt]"
 @PRTLN "  EXEC name"
@@ -418,6 +428,16 @@ L lmath.ld
    @POPNULL @PRTLN "Locals: <none>"
 @ENDIF
 @Call(V) HeapListMap MainHeapID
+@RET
+
+:FCMemVarStatement
+@Call(AV) FCMemPrintFrameVars MemGlobalsLabel GlobalFramePtr
+@PUSHI CurrentFramePtr
+@IF_NOTZERO
+   @POPNULL @Call(AV) FCMemPrintFrameVars MemLocalsLabel CurrentFramePtr
+@ELSE
+   @POPNULL @PRTLN "Locals: <none>"
+@ENDIF
 @RET
 
 :FCMemPrintFrameVars
@@ -846,54 +866,30 @@ L lmath.ld
 @PUSHI valptr @ADD FC_VAL_LOW @PUSHS @POPI funcptr
 @Call(V) FCParseArgList argptr
 @POPI argcount
-@MA2V 0 FCArgCleanupList
-@CALL FCFramePush @POPNULL
-@Call(VV) FCBindArgsToParams funcptr argcount @POPI ok
+@Call(VV) FCInvokeFunction funcptr argcount @POPI ok
 @PUSHI ok
 @IF_NOTZERO
    @POPNULL
-   @PUSHI FCDebugFlag
-   @IF_NOTZERO
-      @POPNULL @PRT "FUNC " @PRTSI NamePtr @PRTNL
-   @ELSE
+   @PUSHI EvalType
+   @IF_EQ_A FC_TYPE_I32
       @POPNULL
-   @ENDIF
-   @MA2V 0 FCReturnFlag
-   @PUSHI funcptr @ADD FC_FUNC_BODY @PUSHS @CALL FCExecCodeList
-   @PUSHI FCReturnFlag
-   @IF_NOTZERO
+      @Call(AVVA) i32tos PrintBuff EvalI32 EvalI32+2 10
+      @PRTS PrintBuff @PRTNL
+   @ELSE
       @POPNULL
       @PUSHI EvalType
-      @IF_EQ_A FC_TYPE_I32
+      @IF_EQ_A FC_TYPE_STR
          @POPNULL
-         @Call(AVVA) i32tos PrintBuff EvalI32 EvalI32+2 10
-         @PRTS PrintBuff @PRTNL
+         @PRTSI EvalStr @PRTNL
+         @CALL FCReleaseEvalString
       @ELSE
          @POPNULL
-         @PUSHI EvalType
-         @IF_EQ_A FC_TYPE_STR
-            @POPNULL
-            @PRTSI EvalStr @PRTNL
-            @CALL FCReleaseEvalString
-         @ELSE
-            @POPNULL
-         @ENDIF
       @ENDIF
-   @ELSE
-      @POPNULL
    @ENDIF
 @ELSE
    @POPNULL
 @ENDIF
-@CALL FCFramePop
-@PUSHI FCArgCleanupList
-@IF_NOTZERO
-   @POPNULL
-   @Call(V) FCListFreeItems FCArgCleanupList
-   @MA2V 0 FCArgCleanupList
-@ELSE
-   @POPNULL
-@ENDIF
+@CALL FCReleaseExprCleanup
 :FCCallFuncDone
 @EndLocals
 @POPRETURN
@@ -931,7 +927,9 @@ L lmath.ld
 @ENDIF
 @POPNULL
 @Call(V) FCEvalExpr ValuePtr
+@MV2V inptr NamePtr
 @Call(V) FCStoreEval TargetSlot
+@CALL FCReleaseExprCleanup
 @PRTS MsgOk @PRTNL
 :FCAssignDone
 @EndLocals
@@ -971,6 +969,7 @@ L lmath.ld
    @CDEFAULT
       @POPNULL @PRTLN "ERR nothing to print" @CBREAK
 @ENDCASE
+@CALL FCReleaseExprCleanup
 @EndLocals
 @POPRETURN
 @RET
@@ -1592,6 +1591,7 @@ L lmath.ld
    @Local namecopy
    @Local closeptr
    @Local result
+   @Local callend
 @POPI inptr
 @Call(V) FCSkipWhite inptr @POPI inptr
 @PUSHII inptr @AND 0xff
@@ -1616,6 +1616,9 @@ L lmath.ld
       @MV2V EvalStr EvalStrObj
       @MA2V 1 EvalStrOwned
       @MA2V FC_TYPE_STR EvalType
+      @Call(V) FCExprCleanupAdd EvalStrObj
+      @MA2V 0 EvalStrOwned
+      @MA2V 0 EvalStrObj
       @CBREAK
    @CASE "(\0"
       @POPNULL
@@ -1628,6 +1631,12 @@ L lmath.ld
          @INCI inptr
       @ELSE
          @POPNULL
+         @PUSHI FCDebugFlag
+         @IF_NOTZERO
+            @POPNULL @PRT "DBG ERR group expected ) at " @PRTHEXI inptr @PRT " ch=" @PUSHII inptr @AND 0xff @PRTHEXTOP @POPNULL @PRTNL
+         @ELSE
+            @POPNULL
+         @ENDIF
          @PRTLN "ERR expected )"
          @MA2V FC_TYPE_EMPTY EvalType
       @ENDIF
@@ -1668,19 +1677,33 @@ L lmath.ld
             @PUSHI closeptr
             @IF_NOTZERO
                @POPNULL
+               @PUSHI FCDebugFlag
+               @IF_NOTZERO
+                  @POPNULL
+                  @PRT "DBG CALL " @PRTSI namecopy @PRT " arg=" @PRTHEXI ValuePtr @PRT " close=" @PRTHEXI closeptr @PRTNL
+               @ELSE
+                  @POPNULL
+               @ENDIF
                @Call(VVV) FCDispatchLazyFunction namecopy ValuePtr closeptr @POPI result
                @PUSHI result
                @IF_ZERO
                   @POPNULL
                   @Call(V) FCParseArgList ValuePtr
+                  @MV2V FCArgEndPtr callend
                   @PUSHI namecopy @CALL FCDispatchFunctionParsed @POPI result
-                  @MV2V FCArgEndPtr inptr
+                  @MV2V callend inptr
                @ELSE
                   @POPNULL
                   @PUSHI closeptr @ADD 1 @POPI inptr
                @ENDIF
             @ELSE
                @POPNULL
+               @PUSHI FCDebugFlag
+               @IF_NOTZERO
+                  @POPNULL @PRT "DBG ERR call expected ) name=" @PRTSI namecopy @PRT " open=" @PRTHEXI endptr @PRTNL
+               @ELSE
+                  @POPNULL
+               @ENDIF
                @PRTLN "ERR expected )"
                @MA2V FC_TYPE_EMPTY EvalType
             @ENDIF
@@ -2116,10 +2139,7 @@ L lmath.ld
    @POPNULL @PRTLN "ERR IF expects three args" @MA2V FC_TYPE_EMPTY EvalType @JMP FCBuiltinIfLazyDone
 @ENDIF
 @POPNULL
-@PUSHII comma1 @POPI save1
-@PUSH 0 @POPII comma1
 @Call(V) FCEvalExpr argptr
-@PUSHI save1 @POPII comma1
 @PUSHI EvalType
 @IF_NEQ_A FC_TYPE_I32
    @POPNULL @PRTLN "ERR IF condition expects number" @MA2V FC_TYPE_EMPTY EvalType @JMP FCBuiltinIfLazyDone
@@ -2128,26 +2148,40 @@ L lmath.ld
 @CALL FCReleaseEvalString
 @PUSHI comma1 @ADD 1 @POPI branchptr
 @Call(V) FCFindArgComma branchptr @POPI comma2
+@PUSHI FCDebugFlag
+@IF_NOTZERO
+   @POPNULL
+   @PRT "DBG IF arg=" @PRTHEXI argptr @PRT " close=" @PRTHEXI closeptr @PRT " c1=" @PRTHEXI comma1 @PRT " c2=" @PRTHEXI comma2 @PRTNL
+@ELSE
+   @POPNULL
+@ENDIF
 @PUSHI comma2
 @IF_ZERO
    @POPNULL @PRTLN "ERR IF expects three args" @MA2V FC_TYPE_EMPTY EvalType @JMP FCBuiltinIfLazyDone
 @ENDIF
 @POPNULL
-@PUSHII comma2 @POPI save2
-@PUSHII closeptr @POPI saveclose
+# Lazy IF does not mutate shared statement text; expression parsing stops at commas/paren.
 @PUSHI EvalI32 @ORI EvalI32+2
 @IF_NOTZERO
    @POPNULL
-   @PUSH 0 @POPII comma2
+   @PUSHI FCDebugFlag
+   @IF_NOTZERO
+      @POPNULL @PRT "DBG IF TRUE branch=" @PRTHEXI comma1 @PRTNL
+   @ELSE
+      @POPNULL
+   @ENDIF
    @PUSHI comma1 @ADD 1 @POPI branchptr
    @Call(V) FCEvalExpr branchptr
-   @PUSHI save2 @POPII comma2
 @ELSE
    @POPNULL
-   @PUSH 0 @POPII closeptr
+   @PUSHI FCDebugFlag
+   @IF_NOTZERO
+      @POPNULL @PRT "DBG IF FALSE branch=" @PRTHEXI comma2 @PRTNL
+   @ELSE
+      @POPNULL
+   @ENDIF
    @PUSHI comma2 @ADD 1 @POPI branchptr
    @Call(V) FCEvalExpr branchptr
-   @PUSHI saveclose @POPII closeptr
 @ENDIF
 :FCBuiltinIfLazyDone
 @EndLocals
@@ -2205,9 +2239,46 @@ L lmath.ld
 @RET
 
 :FCDispatchUserFunctionParsed
-# Placeholder hook for the future DEFUN label table. ArgCount is already on stack.
+@PUSHRETURN
+@Locals
+   @Local name
+   @Local argcount
+   @Local slot
+   @Local valptr
+   @Local typev
+   @Local funcptr
+   @Local ok
+@POPI name
+@POPI argcount
+@Call(V) FCFindSlot name @POPI slot
+@PUSHI slot
+@IF_ZERO
+   @POPNULL
+   @PRTLN "ERR unknown function"
+   @Call(V) FCDiscardArgs argcount
+   @MA2V FC_TYPE_EMPTY EvalType
+   @PUSH 1
+   @JMP FCDispatchUserFunctionParsedDone
+@ENDIF
 @POPNULL
-@PUSH 0
+@PUSHI slot @ADD FC_SLOT_VALUEPTR @PUSHS @POPI valptr
+@PUSHII valptr @AND 0xff @POPI typev
+@PUSHI typev
+@IF_NEQ_A FC_TYPE_FUNC
+   @POPNULL
+   @PRTLN "ERR variable is not a function"
+   @Call(V) FCDiscardArgs argcount
+   @MA2V FC_TYPE_EMPTY EvalType
+   @PUSH 1
+   @JMP FCDispatchUserFunctionParsedDone
+@ENDIF
+@POPNULL
+@PUSHI valptr @ADD FC_VAL_LOW @PUSHS @POPI funcptr
+@Call(VV) FCInvokeFunction funcptr argcount @POPI ok
+@PUSHI ok
+:FCDispatchUserFunctionParsedDone
+@EndLocals
+@POPRETURN
 @RET
 
 :FCDispatchBuiltinParsed
@@ -3870,6 +3941,76 @@ L lmath.ld
 @POPRETURN
 @RET
 
+
+:FCInvokeFunction
+@PUSHRETURN
+@Locals
+   @Local funcptr
+   @Local argcount
+   @Local ok
+@POPI argcount
+@POPI funcptr
+@MA2V 0 ok
+@CALL FCFramePush @POPNULL
+@Call(VV) FCBindArgsToParams funcptr argcount @POPI ok
+@PUSHI ok
+@IF_NOTZERO
+   @POPNULL
+   @MA2V 0 FCReturnFlag
+   @PUSHI funcptr @ADD FC_FUNC_BODY @PUSHS @CALL FCExecCodeList
+   @PUSHI FCReturnFlag
+   @IF_ZERO
+      @POPNULL
+      @MA2V FC_TYPE_EMPTY EvalType
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @MA2V 0 FCReturnFlag
+@ELSE
+   @POPNULL
+@ENDIF
+@CALL FCFramePop
+@PUSHI ok
+@EndLocals
+@POPRETURN
+@RET
+
+:FCExprCleanupAdd
+@PUSHRETURN
+@Locals
+   @Local objptr
+@POPI objptr
+@PUSHI objptr
+@IF_NOTZERO
+   @POPNULL
+   @PUSHI FCExprCleanupList
+   @IF_ZERO
+      @POPNULL
+      @Call(A) FCListNew 4 @POPI FCExprCleanupList
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @Call(VV) FCListAppend FCExprCleanupList objptr @POPI FCExprCleanupList
+@ELSE
+   @POPNULL
+@ENDIF
+@EndLocals
+@POPRETURN
+@RET
+
+:FCReleaseExprCleanup
+@PUSHRETURN
+@PUSHI FCExprCleanupList
+@IF_NOTZERO
+   @POPNULL
+   @Call(V) FCListFreeItems FCExprCleanupList
+   @MA2V 0 FCExprCleanupList
+@ELSE
+   @POPNULL
+@ENDIF
+@POPRETURN
+@RET
+
 :FCBindArgsToParams
 @PUSHRETURN
 @Locals
@@ -3937,14 +4078,7 @@ L lmath.ld
       @PUSHI flags
       @IF_EQ_A FC_ARG_HEAP
          @POPNULL
-         @PUSHI FCArgCleanupList
-         @IF_ZERO
-            @POPNULL
-            @Call(A) FCListNew 4 @POPI FCArgCleanupList
-         @ELSE
-            @POPNULL
-         @ENDIF
-         @Call(VV) FCListAppend FCArgCleanupList low @POPI FCArgCleanupList
+         @Call(V) FCExprCleanupAdd low
       @ELSE
          @POPNULL
       @ENDIF
