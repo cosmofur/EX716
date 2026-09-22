@@ -1,4 +1,17 @@
+? CPU24
+MF FUNCCALC_CPU24 1
+M FC_TARGET_ENTER @PUSH 1 @SSET SegDS @PUSH 1 @ADM
+M FC_TARGET_EXIT @PUSH 0 @ADM
+M FC_TARGET_HEAP_INIT @PUSH __DEND @PUSH 0xf800 @SUB __DEND
+.DATA 1
+I commonDS.mc
+ENDBLOCK
+! CPU24
+M FC_TARGET_ENTER
+M FC_TARGET_EXIT
+M FC_TARGET_HEAP_INIT @PUSH END__ @PUSH 0xf800 @SUB END__
 I common.mc
+ENDBLOCK
 L softstack.ld
 L heapmgr.ld
 L string.ld
@@ -179,6 +192,70 @@ L lmath.ld
 =FC_STMT_EXPR 3
 =FC_STMT_RETURN 4
 
+? FUNCCALC_CPU24
+;MainHeapID 2 0
+;LinePtr 2 0
+;QuitFlag 2 0
+;EqPtr 2 0
+;NamePtr 2 0
+;ValuePtr 2 0
+;FoundSlot 2 0
+;FreeSlot 2 0
+;VarTablePtr 2 0
+;GlobalFramePtr 2 0
+;CurrentFramePtr 2 0
+;ValueObjPtr 2 0
+;EvalType 2 0
+;EvalI32 4 0 0
+;LeftI32 4 0 0
+;EvalStr 2 0
+;EvalStrObj 2 0
+;EvalStrOwned 2 0
+;EvalValueFlags 2 0
+;FCExprCleanupList 2 0
+;ExprOpPtr 2 0
+;FCArgEndPtr 2 0
+;FCReturnFlag 2 0
+;FCDebugFlag 2 0
+;PrintBuff 12 "00000000000\0"
+;FcPrompt 5 "FC> \0"
+;FcContPrompt 5 "... \0"
+;MsgIntro 41 "FuncCalc assembly prototype. QUIT exits.\0"
+;MsgErr 4 "ERR\0"
+;MsgOk 3 "OK\0"
+;KwQuit 5 "QUIT\0"
+;KwExit 5 "EXIT\0"
+;KwPrint 6 "PRINT\0"
+;KwMem 4 "MEM\0"
+;KwMemVar 7 "MEMVAR\0"
+;KwClean 6 "CLEAN\0"
+;KwHelp 5 "HELP\0"
+;KwList 5 "LIST\0"
+;KwExec 5 "EXEC\0"
+;KwDefun 6 "DEFUN\0"
+;KwEndDef 7 "ENDDEF\0"
+;KwListFunc 9 "LISTFUNC\0"
+;KwCallFunc 9 "CALLFUNC\0"
+;KwDebug 6 "DEBUG\0"
+;MemGlobalsLabel 8 "Globals\0"
+;MemLocalsLabel 7 "Locals\0"
+;KwOn 3 "ON\0"
+;KwOff 4 "OFF\0"
+;MetaCommentA 11 "COMMENT(0)\0"
+;MetaCommentB 2 ")\0"
+;SemiText 2 0x003b
+;KwAbs 4 "ABS\0"
+;KwMin 4 "MIN\0"
+;KwLen 4 "LEN\0"
+;KwVal 4 "VAL\0"
+;KwStr 5 "STR$\0"
+;KwSplit 6 "SPLIT\0"
+;KwComment 8 "COMMENT\0"
+;KwIf 3 "IF\0"
+;KwBlock 6 "BLOCK\0"
+;KwReturn 7 "RETURN\0"
+ENDBLOCK
+! FUNCCALC_CPU24
 :MainHeapID 0
 :LinePtr 0
 :QuitFlag 0
@@ -240,7 +317,9 @@ L lmath.ld
 :KwIf "IF\0"
 :KwBlock "BLOCK\0"
 :KwReturn "RETURN\0"
+ENDBLOCK
 :Main . Main
+@FC_TARGET_ENTER
 @CALL FCInit
 @PRTS MsgIntro @PRTNL
 @MA2V 0  QuitFlag
@@ -258,10 +337,11 @@ L lmath.ld
 @ENDWHILE
 @POPNULL
 @PRTLN "Bye."
+@FC_TARGET_EXIT
 @END
 
 :FCInit
-@PUSH END__ @PUSH 0xf800 @SUB END__
+@FC_TARGET_HEAP_INIT
 @CALL HeapDefineMemory
 @POPI MainHeapID
 @PUSHI MainHeapID @PUSH 0x600
