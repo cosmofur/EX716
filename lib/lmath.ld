@@ -2317,7 +2317,12 @@ JMP SUB32S
 @RET
 @ENDFUNCTION
 
-:WorkBuff "00000000000" $$0   # 11 bytes for max length int32 string.
+? CPU24
+;WorkBuff 12 "00000000000" $$0
+ENDBLOCK
+! CPU24
+:WorkBuff "00000000000" $$0
+ENDBLOCK
 # ============================================================
 # Function : stoi32
 # Purpose  : string to 32 bit integer
@@ -2452,13 +2457,20 @@ JMP SUB32S
 
 ########################
 # Common Local Storage. Non-Reentrent
-:Flags32 0   # Flags32 CNZO  (C<<3 | N<<2 | Z<<1 | O)
-:OVF32 0 0 # Stores overflow High 32 bits for cases when 32bit mul requires 64 bit result
-#
-# Some common fixed numbers to save some memory
+? CPU24
+;Flags32 2 0
+;OVF32 4 0 0
+;ONE32 4 $$$01
+;ZERO32 4 $$$0
+;TWO32 4 $$$2
+ENDBLOCK
+! CPU24
+:Flags32 0
+:OVF32 0 0
 :ONE32 $$$01
 :ZERO32 $$$0
 :TWO32 $$$2
+ENDBLOCK
 
 @SIZESINCE
 ENDBLOCK

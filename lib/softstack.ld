@@ -73,9 +73,16 @@ G RestoreSSStack
 # USE __MOVE_HW_SS
 # USE __MOVE_SS_HW
 
-:__SS_TOP 0xfff0   # Default stack is top of mem 0xff00 to 0xfff0 about 240 bytes
-:__SS_SP 0xfff2    # The First time we push, we dec SP to TOP
+? CPU24
+;__SS_TOP 2 0xfff0
+;__SS_SP 2 0xfff2
+;__SS_BOTTOM 2 0xff00
+ENDBLOCK
+! CPU24
+:__SS_TOP 0xfff0
+:__SS_SP 0xfff2
 :__SS_BOTTOM 0xff00
+ENDBLOCK
 
 #
 # Define PUSHRETURN
@@ -279,5 +286,3 @@ M RestoreSSStackI @PUSHI %1 @CALL RestoreSSStack
 M SIZESINCECOMMENT softstack.ld
 @SIZESINCE
 ENDBLOCK
-
-
