@@ -71,7 +71,7 @@ M IF32_UGT         @PUSHI Z32Flag @ANDI Flags32 \
 M IF32_GT @PUSHI Flags32 \
           @AND N32Flag \
           @PUSHI Flags32 \
-          @AND O32Flag \
+          @AND O32Flag @SHR @SHR \
           @XORS \
           @PUSHI Flags32 \
           @AND Z32Flag \
@@ -80,21 +80,21 @@ M IF32_GT @PUSHI Flags32 \
           @IF_ZFLAG
 # A < B : (N ≠ O)
 M IF32_LT @PUSHI Flags32 @AND N32Flag \
-          @PUSHI Flags32 @AND O32Flag \
+          @PUSHI Flags32 @AND O32Flag @SHR @SHR \
           @XORS \
           @CMP 0 @POPNULL \
           @IF_NOTZF
 
 # A >= B : (N = O)
 M IF32_GE @PUSHI Flags32 @AND N32Flag \
-          @PUSHI Flags32 @AND O32Flag \
+          @PUSHI Flags32 @AND O32Flag @SHR @SHR \
           @XORS \
           @CMP 0 @POPNULL \
           @IF_ZFLAG
 
 # A <= B : (N ≠ O) or Z=1
 M IF32_LE @PUSHI Flags32 @AND N32Flag \
-          @PUSHI Flags32 @AND O32Flag \
+          @PUSHI Flags32 @AND O32Flag @SHR @SHR \
           @XORS \
           @PUSHI Flags32 @AND Z32Flag \
           @ORS \
@@ -2317,10 +2317,10 @@ JMP SUB32S
 @RET
 @ENDFUNCTION
 
-? CPU24
-;WorkBuff 12 "00000000000" $$0
+? CPU24_SEGMENTED
+::WorkBuff "00000000000\0"
 ENDBLOCK
-! CPU24
+! CPU24_SEGMENTED
 :WorkBuff "00000000000" $$0
 ENDBLOCK
 # ============================================================
@@ -2457,14 +2457,14 @@ ENDBLOCK
 
 ########################
 # Common Local Storage. Non-Reentrent
-? CPU24
-;Flags32 2 0
-;OVF32 4 0 0
-;ONE32 4 $$$01
-;ZERO32 4 $$$0
-;TWO32 4 $$$2
+? CPU24_SEGMENTED
+::Flags32 0
+::OVF32 $$$0
+::ONE32 $$$01
+::ZERO32 $$$0
+::TWO32 $$$2
 ENDBLOCK
-! CPU24
+! CPU24_SEGMENTED
 :Flags32 0
 :OVF32 0 0
 :ONE32 $$$01

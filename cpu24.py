@@ -162,6 +162,8 @@ COMMAND_SPEC = {
     "MA": {"arity":2,"arg_kind":["word"]},
     ".": {"arity":1,"arg_kind":["word"]},
     ".ORG": {"arity":1,"arg_kind":["word"]},
+    ".CODE": {"arity":1,"arg_kind":["word"]},
+    ".ENTRY": {"arity":1,"arg_kind":["word"]},
     ".DATA": {"arity":1,"arg_kind":["word"]},
     ".DATACOPY": {"arity":1,"arg_kind":["word"]},
     ":": {"arity":-1,"arg_kind":["word"]},
@@ -310,6 +312,14 @@ class AssemblerContext:
         self.highwater = 0
         self.codehighaddress = 0
         self.Entry = 0
+        self.EntryBank = 0
+        self.EntryExplicit = False
+        self.LegacyEntry = None
+        self.LegacyEntryBank = 0
+        self.CodeSegment = 0
+        self.CodeAddresses = {0: 0}
+        self.CodeLabelBanks = {}
+        self.DataLabelBanks = {}
         self.DEFMEMSIZE = MAXPHYSMEM
         self.InitialDS = 0
         self.DataCopyBank = None
@@ -566,6 +576,7 @@ for i in SymToValMap:
 for _op in (
     [56, "CSO", 1], [57, "DSO", 1], [58, "ESO", 1],
     [59, "SSO", 1], [60, "SGET", 3], [61, "SSET", 3],
+    [62, "FJMPS", 1],
 ):
     OPTLIST.append(_op[0])
     while len(OPTSYM) <= _op[0]:
@@ -776,19 +787,20 @@ def UpdateVarHistory(varname, value, address):
 
     history = LocVarHist.setdefault(varname, [])
 
-    # If there is an existing open lifetime for this symbol,
-    # close it before starting a new one.
-    if history:
-        last = history[-1]
-        if last.get("end") is None:
-            # Close the previous lifetime just before this definition
-            last["end"] = address - 1
+    # Lifetimes are scoped to one code bank. Close only the latest open
+    # definition in this bank; an offset in another CS is unrelated.
+    bank = address >> 16
+    for previous in reversed(history):
+        if (previous["start"] >> 16) != bank:
+            continue
+        if previous.get("end") == ((bank << 16) | 0xffff):
+            previous["end"] = address - 1
+        break
 
-    # Start a new lifetime
     history.append({
         "value": value,
         "start": address,
-        "end": None,   # Open-ended for now
+        "end": (bank << 16) | 0xffff,
     })
     dprint(DBG_INTERNAL,f"HIST {varname} value={value} address={address}")
 
@@ -869,50 +881,87 @@ def Sort_And_Combine_Labels(inboundtext):
     groups["other"]=sorted(set(groups["other"]))
     return " ".join(groups["other"]+groups["M"])
 
-def handle_semicolon(line, filename, context, CPU):
-    # line is already after the leading ';'
-
+def handle_data_label(line, filename, context, CPU):
+    # line is already after the leading '::'
     label, used = nextword(line)
     if not label:
-        CPU.raiseerror(f"150 Missing label in ';' directive {filename}:{context.FileLineNum}")
+        CPU.raiseerror(f"150 Missing label in '::' directive {filename}:{context.FileLineNum}")
 
     rest = line[used:].lstrip()
-
-    size_expr, used = nextwordequation(rest)
-    if not size_expr:
-        CPU.raiseerror(f"160 Missing size for ';' {label}")
-
     workingaddress = (
         context.dataaddress
         if context.DataSegment != -1
         else context.address
     )
 
-    size_value = DecodeStr(size_expr, workingaddress, CPU, True, context)
-
-    if not isinstance(size_value, int):
-        CPU.raiseerror(
-            f"170 Size expression '{size_expr}' must resolve on first pass of ';' {label}"
+    if label != "__":
+        sym = IsLocalVar(label, context)
+        logical_address = (
+            workingaddress & 0xffff
+            if context.DataSegment != -1
+            else workingaddress
         )
+        context.FileLabels[sym] = logical_address
+        if context.DataSegment != -1:
+            context.DataLabelBanks[sym] = context.DataSegment
+        context.DefinedSymbols.add(sym)
 
-    if size_value < 0:
-        CPU.raiseerror(
-            f"180 Size expression '{size_expr}' cannot be negative in ';' {label}"
+        if label in context.GlobalDeclarations:
+            context.GlobeLabels[label] = logical_address
+            if context.DataSegment != -1:
+                context.DataLabelBanks[label] = context.DataSegment
+            context.DefinedSymbols.add(label)
+
+        UpdateVarHistory(sym, logical_address, context.address)
+
+    if not rest:
+        CPU.raiseerror(f"160 Missing initializer for '::' {label}")
+
+    initializer, used = nextwordplus(rest)
+    if not initializer:
+        CPU.raiseerror(f"160 Missing initializer for '::' {label}")
+    rest = rest[used:].lstrip()
+
+    repeat = 1
+    marker, marker_used = nextword(rest)
+    if marker == "*":
+        rest = rest[marker_used:].lstrip()
+        count_expr, count_used = nextwordequation(rest)
+        if not count_expr:
+            CPU.raiseerror(f"170 Missing repeat count for '::' {label}")
+        count_expr = expand_brace_refs(
+            count_expr, filename, context, CPU, preserve_unresolved=False
         )
+        repeat = DecodeStr(count_expr, workingaddress, CPU, True, context)
+        if not isinstance(repeat, int):
+            CPU.raiseerror(
+                f"180 Repeat count '{count_expr}' must resolve on first pass "
+                f"of '::' {label}"
+            )
+        if repeat < 0:
+            CPU.raiseerror(
+                f"190 Repeat count '{count_expr}' cannot be negative in '::' {label}"
+            )
+        rest = rest[count_used:].lstrip()
 
-    sym = IsLocalVar(label, context)
-    logical_address = (
-        workingaddress & 0xffff
-        if context.DataSegment != -1
-        else workingaddress
+    initializer = expand_brace_refs(
+        initializer, filename, context, CPU, preserve_unresolved=True
     )
-    context.FileLabels[sym] = logical_address
-    context.DefinedSymbols.add(sym)
+    for _ in range(repeat):
+        workingaddress = DecodeStr(
+            initializer, workingaddress, CPU, False, context
+        )
 
-    UpdateVarHistory(sym, logical_address, context.address)
+    if context.DataSegment != -1:
+        context.dataaddress = workingaddress
+        if context.dataaddress > context.highaddress:
+            context.highaddress = context.dataaddress
+    else:
+        context.address = workingaddress
+        if context.address > context.codehighaddress:
+            context.codehighaddress = context.address
 
-    context.ExpectData = size_value
-    return rest[used:].lstrip()
+    return rest
 
 
 class InputFileData:
@@ -1080,19 +1129,30 @@ class microcpu:
             else:
                 print(f"{i:03}: 0x{val:04x}")
 
-    def FindWhatLineInfo(self, address):
+    def physical_code_location(self, address, bank=None):
+        address = int(address)
+        if address > MAXMEMSP:
+            return address
+        if bank is None:
+            bank = self.CS if self.SegmentMode else 0
+        return self.physical_address(bank, address)
+
+    def FindWhatLineInfo(self, address, bank=None):
         global FileLineData
-        tresult = FileLineData.get_line_info(address, False)
+        tresult = FileLineData.get_line_info(
+            self.physical_code_location(address, bank), False
+        )
         if tresult is None or len(tresult) < 2:
             return None
         return tresult  # (filename, line)
     
-    def FindWhatLine(self, address):
+    def FindWhatLine(self, address, bank=None):
         global FileLineData
-        tresult = FileLineData.get_line_info(address, False)
+        physical = self.physical_code_location(address, bank)
+        tresult = FileLineData.get_line_info(physical, False)
 
         if tresult is None or len(tresult) < 2:
-            print("No good line match found for address %04x" % address)
+            print(f"No good line match found for address {physical:06x}")
             return ""
 
         return "%s:%d" % tresult
@@ -1596,6 +1656,19 @@ class microcpu:
         newaddress = self.fetchStack(0)
         self.hwstacksp -= 1
         self.pc = newaddress
+
+    def optFJMPS(self, address):
+        if not self.SegmentMode:
+            self.raiseerror("589 FJMPS requires Ring 1")
+        if self.hwstacksp < 2:
+            self.raiseerror("590 FJMPS requires bank and offset on stack")
+        newoffset = self.fetchStack(0)
+        newsegment = self.fetchStack(1)
+        if newsegment > 0xff:
+            self.raiseerror("591 FJMPS code bank exceeds 8 bits")
+        self.hwstacksp -= 2
+        self.CS = int(newsegment)
+        self.pc = int(newoffset)
 
     def optCAST(self, address):
         global Debug,  PrevPC
@@ -2831,10 +2904,11 @@ def DissAsm(start, length, CPU):
     while i < endstop:
         OUTLINE = ""
         FoundLabels = ""
-        optcode = CPU.memspace[i]
+        physical_i = CPU.physical_address(CPU.CS, i)
+        optcode = CPU.memspace[physical_i]
         if str(optcode) in OPTDICT:
             if (OPTDICT[str(optcode)][2] == 3):
-                P1 = CPU.getwordat(i+1)
+                P1 = CPU.getwordmem(physical_i + 1)
                 PI = CPU.getwordat(P1)
                 PII = CPU.getwordat(PI)
             else:
@@ -2854,7 +2928,11 @@ def DissAsm(start, length, CPU):
         DispRef = False
         # We are trying to find if the Direct value, Indirect and double indirect values are Labeled
         # File labels for current PC
-        Group1 = getkeyfromval(i, context.FileLabels).strip()
+        code_labels = {
+            name: value for name, value in context.FileLabels.items()
+            if context.CodeLabelBanks.get(name, CPU.CS) == CPU.CS
+        }
+        Group1 = getkeyfromval(i, code_labels).strip()
         FoundLabels += " " + Group1
         # File labels for existing optcode argument
         if P1 != 0:
@@ -2864,13 +2942,13 @@ def DissAsm(start, length, CPU):
             Group3 = getkeyfromval(PI, context.FileLabels).strip()
             FoundLabels += " " + Group3
         FoundLabels=Sort_And_Combine_Labels(FoundLabels)
-        FoundLabels = CPU.FindWhatLine(i)+" " + FoundLabels
+        FoundLabels = CPU.FindWhatLine(physical_i)+" " + FoundLabels
 
         if (optcode in OPTLIST):
             tos = f"{CPU.fetchStack(0):04x}" if CPU.hwstacksp > 0 else "----"
             sft = f"{CPU.fetchStack(1):04x}" if CPU.hwstacksp > 1 else "----"
-            OUTLINE = "%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%s,%s] Z%1d N%1d C%1d O%1d SS(%d)" % (
-                i, OPTSYM[optcode], P1, PI, PII,
+            OUTLINE = "%02x:%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%s,%s] Z%1d N%1d C%1d O%1d SS(%d)" % (
+                CPU.CS, i, OPTSYM[optcode], P1, PI, PII,
                 tos, sft, ZF, NF, CF, OF, addr
             )
         if FoundLabels != "":
@@ -2878,13 +2956,13 @@ def DissAsm(start, length, CPU):
         if not (optcode in OPTLIST):
             bestmatch = 0xffff
             bestmatchcode=""
-            for name, iaddr in context.FileLabels.items():
+            for name, iaddr in code_labels.items():
                 if isinstance(iaddr,int):
                     if iaddr > i and iaddr < bestmatch:
                         bestmatch=iaddr
                         bestmatchcode=name
             safeprint("DATA-Segment:")
-            hexdump(i,min(i+15,bestmatch)-i,CPU)
+            hexdump(physical_i,min(i+15,bestmatch)-i,CPU)
             i = bestmatch
         else:
             i = i + OPTDICT[str(optcode)][2]
@@ -2896,7 +2974,7 @@ def DissAsm(start, length, CPU):
             for idx in range(0, len(ii_list), 1):
                 ii = ii_list[idx]
                 value = CPU.memspace[ii] | (CPU.memspace[ii+1].astype(int) << 8)
-                rstring += " %04x:[%04x]" % (ii, value)
+                rstring += f" {(ii >> 16) & 0xff:02x}:{ii & 0xffff:04x}:[{value:04x}]"
 
         safeprint("%s %s" % (OUTLINE, rstring),file=DebugOut)
     return i
@@ -4657,6 +4735,11 @@ def execute_assembler_command(cmd, CPU, context):
             return rest
         CPU.raiseerror(f"Invalid debug directive {key!r}")
 
+    if key.startswith("::"):
+        if len(key) > 2:
+            rest = key[2:] + (" " + rest if rest else "")
+        return handle_data_label(rest, filename, context, CPU)
+
     if key[0] == ":":
         # Supports both ":FOO" and ": FOO"
         if len(key) > 1:
@@ -4669,7 +4752,8 @@ def execute_assembler_command(cmd, CPU, context):
                     f"Missing label name after ':' {filename}:{cmd.line_num}"
                 )
 
-        SrcVal = context.address
+        SrcPhysical = context.address
+        SrcVal = SrcPhysical & 0xffff
 
         dprint(
             DBG_INTERNAL,
@@ -4683,14 +4767,16 @@ def execute_assembler_command(cmd, CPU, context):
         context.FileLabels.pop(auto_label, None)
 
         context.FileLabels[newitem] = SrcVal
+        context.CodeLabelBanks[newitem] = context.CodeSegment
         context.DefinedSymbols.add(newitem)
 
         if DestKey in context.GlobalDeclarations:
             context.GlobeLabels[DestKey] = SrcVal
+            context.CodeLabelBanks[DestKey] = context.CodeSegment
             context.DefinedSymbols.add(DestKey)
             dprint(DBG_ASM, f"[LABEL] {DestKey} = {SrcVal:04x}")
 
-        UpdateVarHistory(newitem, SrcVal, SrcVal)
+        UpdateVarHistory(newitem, SrcVal, SrcPhysical)
 
         dprint(
             DBG_ASM,
@@ -4700,11 +4786,6 @@ def execute_assembler_command(cmd, CPU, context):
 
         return rest[used:].lstrip()
     
-    elif key.startswith(";"):
-        if len(key) > 1:
-            rest=key[1:]+rest
-        rest=handle_semicolon(rest, filename, context, CPU)
-        return rest.lstrip()
     elif key[0] == "=":
         if len(key) > 1:
             DestKey = key[1:]
@@ -4767,8 +4848,11 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
 
-        context.address = Str2Word(value)
-        context.Entry = context.address
+        offset = Str2Word(value)
+        context.address = (context.CodeSegment << 16) | offset
+        context.CodeAddresses[context.CodeSegment] = offset
+        context.LegacyEntry = offset
+        context.LegacyEntryBank = context.CodeSegment
         return
 
     elif (key == ".") and context.Entry != 0:
@@ -4789,7 +4873,9 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
 
-        context.address = Str2Word(value)
+        offset = Str2Word(value)
+        context.address = (context.CodeSegment << 16) | offset
+        context.CodeAddresses[context.CodeSegment] = offset
         return
     
     elif key.upper() == ".ORG":
@@ -4810,9 +4896,60 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
 
-        context.address = Str2Word(value)
-        context.Entry = context.address
+        offset = Str2Word(value)
+        context.address = (context.CodeSegment << 16) | offset
+        context.CodeAddresses[context.CodeSegment] = offset
+        context.LegacyEntry = offset
+        context.LegacyEntryBank = context.CodeSegment
         return
+
+    elif key.upper() == ".CODE":
+        if not rest:
+            CPU.raiseerror(f"Missing bank for .CODE {filename}:{context.FileLineNum}")
+        value, used = FirstPassVal(
+            rest, context, filename=filename, allow_braces=True
+        )
+        trailing = rest[used:].lstrip()
+        if trailing:
+            CPU.raiseerror(
+                f"Unexpected trailing text after .CODE: {trailing!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+        value = Str2Word(value)
+        if value > 0xff:
+            CPU.raiseerror(
+                f".CODE bank must be 0..255, got {value} "
+                f"{filename}:{context.FileLineNum}"
+            )
+        context.CodeAddresses[context.CodeSegment] = context.address & 0xffff
+        context.CodeSegment = value
+        offset = context.CodeAddresses.get(value, 0)
+        context.address = (value << 16) | offset
+        return ""
+
+    elif key.upper() == ".ENTRY":
+        if not rest:
+            CPU.raiseerror(f"Missing target for .ENTRY {filename}:{context.FileLineNum}")
+        target, used = nextwordequation(rest)
+        trailing = rest[used:].lstrip()
+        if trailing:
+            CPU.raiseerror(
+                f"Unexpected trailing text after .ENTRY: {trailing!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+        expanded = expand_brace_refs(
+            target, filename, context, CPU, preserve_unresolved=False
+        )
+        value = DecodeStr(expanded, context.address, CPU, True, context)
+        if not isinstance(value, int):
+            CPU.raiseerror(f".ENTRY target must resolve on first pass: {target}")
+        symbol = IsLocalVar(target, context)
+        context.Entry = Str2Word(value)
+        context.EntryBank = context.CodeLabelBanks.get(
+            symbol, context.CodeLabelBanks.get(target, context.CodeSegment)
+        )
+        context.EntryExplicit = True
+        return ""
 
     elif key.upper() == ".DATA":
         if not rest:
@@ -5213,9 +5350,36 @@ def debugger(passline, context: AssemblerContext):
     InDebugger = True
     size = 0
     cmdword = ""
+
+    def code_target(value, raw=None):
+        bank = CPU.CS if CPU.SegmentMode else 0
+        if raw:
+            symbol = IsLocalVar(raw, context)
+            bank = context.CodeLabelBanks.get(
+                symbol, context.CodeLabelBanks.get(raw, bank)
+            )
+        return CPU.physical_address(bank, value)
+
+    def data_target(value, raw=None):
+        bank = CPU.active_data_segment()
+        if raw:
+            symbol = IsLocalVar(raw, context)
+            bank = context.DataLabelBanks.get(
+                symbol, context.DataLabelBanks.get(raw, bank)
+            )
+        return CPU.physical_address(bank, value)
+
+    def set_code_target(value, raw=None):
+        physical = code_target(value, raw)
+        CPU.CS = (physical >> 16) & 0xff
+        if CPU.CS != 0:
+            CPU.SegmentMode = 1
+        CPU.pc = physical & 0xffff
+        return physical
+
     # Main Loop of debugger
     while True:
-        sys.stdout.write("%04x> " % CPU.pc)
+        sys.stdout.write(f"{CPU.CS:02x}:{CPU.pc:04x}> ")
         _fd = sys.stdin.fileno()
         if EchoFlag:
             restore_tty()
@@ -5251,7 +5415,9 @@ def debugger(passline, context: AssemblerContext):
         while thisword != "":            
             rawlist.append(thisword)
             if not looks_numeric(thisword) and (thisword[0].isalpha() or thisword[0] == "_"):
-                varval = FindHistoricVal(thisword, CPU.pc, context)
+                varval = FindHistoricVal(
+                    thisword, CPU.code_address(CPU.pc), context
+                )
                 if varval != None:
                     arglist.append(varval)
                     argcnt += 1
@@ -5390,7 +5556,8 @@ def debugger(passline, context: AssemblerContext):
         if cmdword == "p":
             if argcnt > 0:
                 # For each argument, print that address independently.
-                for arg in arglist:
+                for index, arg in enumerate(arglist):
+                    raw = rawlist[index] if index < len(rawlist) else None
                     try:
                         if isinstance(arg, int):
                             v = int(arg)
@@ -5400,10 +5567,11 @@ def debugger(passline, context: AssemblerContext):
                         safeprint(f"ERR: Invalid address: {arg} ({e})")
                         continue
 
-                    # Build the print string (existing logic preserved)
-                    SInfo = "%04x:" % v
-                    w1 = CPU.getwordat(v)
-                    w2 = CPU.getwordat(w1)
+                    physical = data_target(v, raw)
+                    bank = (physical >> 16) & 0xff
+                    SInfo = f"{bank:02x}:{v:04x}:"
+                    w1 = CPU.getwordmem(physical)
+                    w2 = CPU.getwordmem(CPU.physical_address(bank, w1))
 
                     SInfo += "[%02x]" % w1
                     SInfo += "[[%02x]]" % w2
@@ -5479,7 +5647,7 @@ def debugger(passline, context: AssemblerContext):
                         re.search(pattern, key) or re.search(pattern, value_str)
                     for pattern in rawlist
                 ):
-                    active = "Y" if IsLabelActive(key, CPU.pc) else "N"
+                    active = "Y" if IsLabelActive(key, CPU.code_address(CPU.pc)) else "N"
                     rows.append((key, f"{int(value):04x}", active))
 
             # Determine column widths
@@ -5682,7 +5850,7 @@ def debugger(passline, context: AssemblerContext):
             if argcnt > 0:
                 stepcnt = arglist[0]
             for i in range(stepcnt):
-                oldpc=CPU.pc
+                oldpc=CPU.code_address(CPU.pc)
                 CPU.evalpc(context,1)
                 DissAsm(CPU.pc, 1, CPU)
                 if watchbreaks:
@@ -5691,10 +5859,11 @@ def debugger(passline, context: AssemblerContext):
                             safeprint("Watch Point(n) Triggered CPU:%04x Memory:%04x TestVal:%04x Now %04x" % (CPU.pc,addr1,value1,CPU.getwordat(addr1)))
                             tempbreakpoints.append(oldpc)
                             break
+                current_location = CPU.code_address(CPU.pc)
                 if oldpc in breakpoints or oldpc in tempbreakpoints:
-                    safeprint("Break Point %04x" % CPU.pc)
-                    if CPU.pc in tempbreakpoints:
-                        tempbreakpoints.remove(CPU.pc)
+                    safeprint(f"Break Point {CPU.CS:02x}:{CPU.pc:04x}")
+                    if current_location in tempbreakpoints:
+                        tempbreakpoints.remove(current_location)
                     break                
             continue
         if cmdword == "s":
@@ -5719,15 +5888,16 @@ def debugger(passline, context: AssemblerContext):
                 # At this time we'll not worry about CALLZ and CALLNZ as they are rare.
                 while CPU.pc <= 0xffff:
                     # We only care about JMP if the previous call was PUSH addr.
-                    if CPU.memspace[CPU.pc] != JMPCODE and StateCtrl == 1:
+                    physical_pc = CPU.code_address(CPU.pc)
+                    if CPU.memspace[physical_pc] != JMPCODE and StateCtrl == 1:
                         StateCtrl = 0
 
-                    if CPU.memspace[CPU.pc] == JMPCODE and StateCtrl == 1:
+                    if CPU.memspace[physical_pc] == JMPCODE and StateCtrl == 1:
                         is_call = True
                         StateCtrl = 0
 
-                    if CPU.memspace[CPU.pc] == PUSHCODE:
-                        PossAddress = CPU.getwordmem(CPU.pc + 1)
+                    if CPU.memspace[physical_pc] == PUSHCODE:
+                        PossAddress = CPU.getwordmem(physical_pc + 1)
                         if CPU.pc <= PossAddress <= CPU.pc + 12:
                             StateCtrl = 1
 
@@ -5765,12 +5935,13 @@ def debugger(passline, context: AssemblerContext):
                     for addr1, (value1, oper1) in watchbreaks.items():
                         if OPS[oper1](CPU.getwordat(addr1), value1):
                             safeprint("Watch Point(c) Triggered CPU:%04x Memory:%04x TestVal:%04x Now %04x" % (CPU.pc,addr1,value1,CPU.getwordat(addr1)))
-                            tempbreakpoints.append(CPU.pc)
+                            tempbreakpoints.append(CPU.code_address(CPU.pc))
                             break
-                if (CPU.pc in breakpoints or CPU.pc in tempbreakpoints) and AtLeastOne != 1:
-                    safeprint("Break Point %04x" % CPU.pc)
-                    if ( CPU.pc in tempbreakpoints):
-                        tempbreakpoints.remove(CPU.pc)
+                current_location = CPU.code_address(CPU.pc)
+                if (current_location in breakpoints or current_location in tempbreakpoints) and AtLeastOne != 1:
+                    safeprint(f"Break Point {CPU.CS:02x}:{CPU.pc:04x}")
+                    if current_location in tempbreakpoints:
+                        tempbreakpoints.remove(current_location)
                     DissAsm(CPU.pc, 1, CPU)
                     break                
                 AtLeastOne = 0
@@ -5779,14 +5950,15 @@ def debugger(passline, context: AssemblerContext):
         if cmdword == "r":
             stoprange = 0
             if argcnt < 1:
+                CPU.CS = context.EntryBank
                 CPU.pc = context.Entry
                 CPU.hwstacksp = 0
-                safeprint("PC set to %0x4" % context.Entry)
+                safeprint(f"PC set to {CPU.CS:02x}:{CPU.pc:04x}")
                 CPU.flags = 0
             else:
-                CPU.pc = arglist[0]
+                set_code_target(arglist[0], rawlist[0] if rawlist else None)
                 CPU.address = CPU.pc
-                safeprint("PC set to %04x" % arglist[0])
+                safeprint(f"PC set to {CPU.CS:02x}:{CPU.pc:04x}")
             CPU.flags = 0
             CPU.hwstacksp = 0
             continue
@@ -5796,15 +5968,16 @@ def debugger(passline, context: AssemblerContext):
                 safeprint("Need to provide an address to go to.")
                 cmdword = "Null"
                 continue
-            CPU.pc = arglist[0]
-            safeprint("PC set to %04x" % arglist[0])
+            set_code_target(arglist[0], rawlist[0] if rawlist else None)
+            safeprint(f"PC set to {CPU.CS:02x}:{CPU.pc:04x}")
             continue
         if cmdword == "tb":
             if argcnt < 1:
                 cmdword = "b"
             else:
-                for ii in arglist:
-                    tempbreakpoints.append(ii)
+                for index, ii in enumerate(arglist):
+                    raw = rawlist[index] if index < len(rawlist) else None
+                    tempbreakpoints.append(code_target(ii, raw))
                 continue
         if cmdword == "b":
             if argcnt < 1:
@@ -5813,13 +5986,14 @@ def debugger(passline, context: AssemblerContext):
                 else:
                     safeprint("Break Points:")
                     for ii in breakpoints:
-                        safeprint("%04x" % int(ii))
+                        safeprint(f"{(int(ii) >> 16) & 0xff:02x}:{int(ii) & 0xffff:04x}")
                 if len(tempbreakpoints) != 0:
                     for ii in tempbreakpoints:
-                        safeprint("Temp Break:%04x" % ii)
+                        safeprint(f"Temp Break:{(int(ii) >> 16) & 0xff:02x}:{int(ii) & 0xffff:04x}")
             else:
-                for ii in arglist:
-                    breakpoints.append(ii)
+                for index, ii in enumerate(arglist):
+                    raw = rawlist[index] if index < len(rawlist) else None
+                    breakpoints.append(code_target(ii, raw))
             continue
 
         if cmdword == "cb":
@@ -5847,7 +6021,7 @@ def debugger(passline, context: AssemblerContext):
                 safeprint("Break When requires add cond val, cond={==,!=,b==,b!=}",argcnt)
             else:
                 # Format is address test value
-                Oaddr=arglist[0]
+                Oaddr=data_target(arglist[0], rawlist[0] if rawlist else None)
                 value=arglist[2]
                 OSTR=rawlist[1]
                 if OSTR=="==":
@@ -5871,8 +6045,9 @@ def debugger(passline, context: AssemblerContext):
             if argcnt < 1:
                 safeprint(context.watchpoints)
             else:
-                for ii in arglist:
-                    context.watchpoints.append(Str2Word(ii))
+                for index, ii in enumerate(arglist):
+                    raw = rawlist[index] if index < len(rawlist) else None
+                    context.watchpoints.append(data_target(Str2Word(ii), raw))
         if cmdword == "cw":
             safeprint("Clearing watchs")
             context.watchpoints.clear()
@@ -6371,7 +6546,7 @@ def main():
         for gkey in context.GlobeLabels:
             if gkey in context.FileLabels:
                 f.write("=%s %s\nG %s\n" % (gkey, context.FileLabels[gkey], gkey))
-        f.write("\n# Set Entry:\n. 0x%04x\n" % (context.Entry))
+        f.write("\n# Set Entry:\n.ENTRY 0x%04x\n" % (context.Entry))
         f.close()
         sys.exit()
     if BinaryOutFlag:
@@ -6398,7 +6573,19 @@ def main():
         copy_length = context.codehighaddress & 0xffff
         copy_base = context.DataCopyBank << 16
         CPU.memspace[copy_base:copy_base + copy_length] = CPU.memspace[:copy_length]
+    if not context.EntryExplicit:
+        if context.LegacyEntry is not None:
+            context.Entry = context.LegacyEntry
+            context.EntryBank = context.LegacyEntryBank
+        safeprint(
+            "Warning: no .ENTRY directive; using legacy .ORG entry "
+            f"{context.EntryBank:02x}:{context.Entry:04x}"
+        )
+
     CPU.DS = context.InitialDS
+    CPU.CS = context.EntryBank
+    if context.EntryBank != 0:
+        CPU.SegmentMode = 1
     CPU.pc = context.Entry
     if context.Debug > 1:
         dprint(DBG_ASM,"Start of Run: Debug: %s: Watch: %s" % (context.Debug, context.watchword))

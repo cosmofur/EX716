@@ -168,6 +168,48 @@ D string.ld
 D heapmgr.ld
 ```
 
+## Data-segment labels
+
+Use `::` to define initialized storage at the current data-segment position:
+
+```assembly
+.DATA 1
+
+::Flag       $$0
+::Counter    0
+::Total      $$$0
+::Message    "Hello\0"
+::ByteBuffer $$0 * 64
+```
+
+The initializer determines the element size: `$$` emits one byte, an
+unprefixed value (or `$`) emits a 16-bit word, `$$$` emits a 32-bit long, and a
+string emits its encoded bytes. An optional `* count` repeats that initializer;
+the count must resolve on the first assembler pass and cannot be negative.
+
+`:` continues to define a label at the current code position. `::` defines a
+label at the current data position and emits exactly one initializer.
+
+### Throw-away data labels
+
+Use `::__` when an initializer belongs to the preceding data block but does
+not need its own field label. This is useful for structures, extension fields,
+padding, and user data that will only be accessed through the block's head:
+
+```assembly
+::MyCityInfo "New York\0"
+::__ "123 -Pie Avenue\0"
+::__ "01001\0"
+::__ "Two dogs and three cats\0"
+```
+
+Each `::__` emits its initializer at the current data position without adding
+`__` to the symbol table or label history. It may be repeated as often as
+needed, consumes no symbol-table entry, and cannot be referenced later. The
+initializer itself still occupies its normally inferred amount of memory.
+Only the exact name `__` has this meaning after `::`; names such as `__DEND`
+remain ordinary symbols.
+
 ---
 
 # Dynamic Libraries
@@ -593,4 +635,3 @@ It exists as part of the processor's long-term roadmap and is intended to provid
 * Future operating system services
 
 The exact capabilities of Administrative Mode are expected to evolve as the EX716 architecture continues to mature.
-

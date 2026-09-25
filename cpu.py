@@ -852,45 +852,78 @@ def Sort_And_Combine_Labels(inboundtext):
     groups["other"]=sorted(set(groups["other"]))
     return " ".join(groups["other"]+groups["M"])
 
-def handle_semicolon(line, filename, context, CPU):
-    # line is already after the leading ';'
-
+def handle_data_label(line, filename, context, CPU):
+    # line is already after the leading '::'
     label, used = nextword(line)
     if not label:
-        CPU.raiseerror(f"150 Missing label in ';' directive {filename}:{context.FileLineNum}")
+        CPU.raiseerror(f"150 Missing label in '::' directive {filename}:{context.FileLineNum}")
 
     rest = line[used:].lstrip()
-
-    size_expr, used = nextwordequation(rest)
-    if not size_expr:
-        CPU.raiseerror(f"160 Missing size for ';' {label}")
-
     workingaddress = (
         context.dataaddress
         if context.DataSegment != -1
         else context.address
     )
 
-    size_value = DecodeStr(size_expr, workingaddress, CPU, True, context)
+    if label != "__":
+        sym = IsLocalVar(label, context)
+        context.FileLabels[sym] = workingaddress
+        context.DefinedSymbols.add(sym)
 
-    if not isinstance(size_value, int):
-        CPU.raiseerror(
-            f"170 Size expression '{size_expr}' must resolve on first pass of ';' {label}"
+        if label in context.GlobalDeclarations:
+            context.GlobeLabels[label] = workingaddress
+            context.DefinedSymbols.add(label)
+
+        UpdateVarHistory(sym, workingaddress, workingaddress)
+
+    if not rest:
+        CPU.raiseerror(f"160 Missing initializer for '::' {label}")
+
+    initializer, used = nextwordplus(rest)
+    if not initializer:
+        CPU.raiseerror(f"160 Missing initializer for '::' {label}")
+    rest = rest[used:].lstrip()
+
+    repeat = 1
+    marker, marker_used = nextword(rest)
+    if marker == "*":
+        rest = rest[marker_used:].lstrip()
+        count_expr, count_used = nextwordequation(rest)
+        if not count_expr:
+            CPU.raiseerror(f"170 Missing repeat count for '::' {label}")
+        count_expr = expand_brace_refs(
+            count_expr, filename, context, CPU, preserve_unresolved=False
+        )
+        repeat = DecodeStr(count_expr, workingaddress, CPU, True, context)
+        if not isinstance(repeat, int):
+            CPU.raiseerror(
+                f"180 Repeat count '{count_expr}' must resolve on first pass "
+                f"of '::' {label}"
+            )
+        if repeat < 0:
+            CPU.raiseerror(
+                f"190 Repeat count '{count_expr}' cannot be negative in '::' {label}"
+            )
+        rest = rest[count_used:].lstrip()
+
+    initializer = expand_brace_refs(
+        initializer, filename, context, CPU, preserve_unresolved=True
+    )
+    for _ in range(repeat):
+        workingaddress = DecodeStr(
+            initializer, workingaddress, CPU, False, context
         )
 
-    if size_value < 0:
-        CPU.raiseerror(
-            f"180 Size expression '{size_expr}' cannot be negative in ';' {label}"
-        )
+    if context.DataSegment != -1:
+        context.dataaddress = workingaddress
+        if context.dataaddress > context.highaddress:
+            context.highaddress = context.dataaddress
+    else:
+        context.address = workingaddress
+        if context.address > context.codehighaddress:
+            context.codehighaddress = context.address
 
-    sym = IsLocalVar(label, context)
-    context.FileLabels[sym] = workingaddress
-    context.DefinedSymbols.add(sym)
-
-    UpdateVarHistory(sym, workingaddress, workingaddress)
-
-    context.ExpectData = size_value
-    return rest[used:].lstrip()
+    return rest
 
 
 class InputFileData:
@@ -4546,6 +4579,11 @@ def execute_assembler_command(cmd, CPU, context):
             return rest
         CPU.raiseerror(f"Invalid debug directive {key!r}")
 
+    if key.startswith("::"):
+        if len(key) > 2:
+            rest = key[2:] + (" " + rest if rest else "")
+        return handle_data_label(rest, filename, context, CPU)
+
     if key[0] == ":":
         # Supports both ":FOO" and ": FOO"
         if len(key) > 1:
@@ -4589,11 +4627,6 @@ def execute_assembler_command(cmd, CPU, context):
 
         return rest[used:].lstrip()
     
-    elif key.startswith(";"):
-        if len(key) > 1:
-            rest=key[1:]+rest
-        rest=handle_semicolon(rest, filename, context, CPU)
-        return rest.lstrip()
     elif key[0] == "=":
         if len(key) > 1:
             DestKey = key[1:]

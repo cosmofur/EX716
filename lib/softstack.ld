@@ -73,12 +73,12 @@ G RestoreSSStack
 # USE __MOVE_HW_SS
 # USE __MOVE_SS_HW
 
-? CPU24
-;__SS_TOP 2 0xfff0
-;__SS_SP 2 0xfff2
-;__SS_BOTTOM 2 0xff00
+? CPU24_SEGMENTED
+::__SS_TOP 0xfff0
+::__SS_SP 0xfff2
+::__SS_BOTTOM 0xff00
 ENDBLOCK
-! CPU24
+! CPU24_SEGMENTED
 :__SS_TOP 0xfff0
 :__SS_SP 0xfff2
 :__SS_BOTTOM 0xff00

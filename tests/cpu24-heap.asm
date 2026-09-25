@@ -3,8 +3,8 @@ I commonDS.mc
 L softstack.ld
 L heapmgr.ld
 
-;MainHeapID 2 0
-;ObjectID 2 0
+::MainHeapID 0
+::ObjectID 0
 
 .ORG 0x2000
 :Main

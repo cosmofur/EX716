@@ -2,7 +2,7 @@
 # 16-bit offsets while their bytes are emitted into that physical bank.
 .DATA 1
 I commonDS.mc
-;BankValue 2 0x1234
+::BankValue 0x1234
 
 .ORG 0x0100
 :Main

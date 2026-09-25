@@ -54,6 +54,11 @@ The arithmetic operators, from highest to lowest precedence, are:
 2. Unary negation: `-value`
 3. Multiplication, division, and remainder: `*`, `/`, `%`
 4. Addition and subtraction: `+`, `-`
+5. Signed comparisons: `<`, `<=`, `>`, `>=`
+6. Logical AND: `&&`
+7. Logical OR: `||`
+
+Comparisons and logical operators return integer `1` for true and `0` for false. Logical operands use zero as false and any nonzero integer as true.
 
 All arithmetic uses signed 32-bit integers. Arithmetic operators do not
 concatenate strings. Division or remainder by zero reports an error.
@@ -63,6 +68,9 @@ PRINT 2+3*4
 PRINT (2+3)*4
 PRINT -12/5
 PRINT 17%5
+PRINT 10 >= 2
+PRINT 1 < 2 && 3 < 4
+PRINT 0 || 7
 
 A=100
 B=A/4+3
@@ -344,9 +352,6 @@ FC> EXEC TOTAL
 ## Current limitations
 
 - `WHILE` support is only a placeholder and is not part of the usable language.
-- There are no comparison operators yet. Numeric zero/nonzero values are used
-  as conditions.
-- There are no Boolean operators.
 - Arithmetic operators accept integers only; strings are not concatenated.
 - String literals do not support escape sequences.
 - Integer literals are decimal only.

@@ -44,6 +44,9 @@ L lmath.ld
 # FCAssignStatement(inptr):void "Parses NAME=expression and stores the result."
 # FCPrintStatement(inptr):void "Evaluates and prints an expression."
 # FCEvalExpr(exprptr):void "Evaluates an expression into EvalType/EvalI32/EvalStr."
+# FCParseLogicalOr(inptr):[newptr] "Parses logical OR expressions."
+# FCParseLogicalAnd(inptr):[newptr] "Parses logical AND expressions."
+# FCParseComparison(inptr):[newptr] "Parses signed comparisons."
 # FCParseExpr(inptr):[newptr] "Parses additive numeric expressions."
 # FCParseTerm(inptr):[newptr] "Parses multiplicative numeric expressions."
 # FCParseUnary(inptr):[newptr] "Parses unary negation."
@@ -180,67 +183,67 @@ L lmath.ld
 =FC_STMT_EXPR 3
 =FC_STMT_RETURN 4
 
-;MainHeapID 2 0
-;LinePtr 2 0
-;QuitFlag 2 0
-;EqPtr 2 0
-;NamePtr 2 0
-;ValuePtr 2 0
-;FoundSlot 2 0
-;FreeSlot 2 0
-;VarTablePtr 2 0
-;GlobalFramePtr 2 0
-;CurrentFramePtr 2 0
-;ValueObjPtr 2 0
-;EvalType 2 0
-;EvalI32 4 0 0
-;LeftI32 4 0 0
-;EvalStr 2 0
-;EvalStrObj 2 0
-;EvalStrOwned 2 0
-;EvalValueFlags 2 0
-;FCExprCleanupList 2 0
-;ExprOpPtr 2 0
-;FCArgEndPtr 2 0
-;FCReturnFlag 2 0
-;FCDebugFlag 2 0
-;PrintBuff 12 "00000000000\0"
-;FcPrompt 5 "FC> \0"
-;FcContPrompt 5 "... \0"
-;MsgIntro 41 "FuncCalc assembly prototype. QUIT exits.\0"
-;MsgErr 4 "ERR\0"
-;MsgOk 3 "OK\0"
-;KwQuit 5 "QUIT\0"
-;KwExit 5 "EXIT\0"
-;KwPrint 6 "PRINT\0"
-;KwMem 4 "MEM\0"
-;KwMemVar 7 "MEMVAR\0"
-;KwClean 6 "CLEAN\0"
-;KwHelp 5 "HELP\0"
-;KwList 5 "LIST\0"
-;KwExec 5 "EXEC\0"
-;KwDefun 6 "DEFUN\0"
-;KwEndDef 7 "ENDDEF\0"
-;KwListFunc 9 "LISTFUNC\0"
-;KwCallFunc 9 "CALLFUNC\0"
-;KwDebug 6 "DEBUG\0"
-;MemGlobalsLabel 8 "Globals\0"
-;MemLocalsLabel 7 "Locals\0"
-;KwOn 3 "ON\0"
-;KwOff 4 "OFF\0"
-;MetaCommentA 11 "COMMENT(0)\0"
-;MetaCommentB 2 ")\0"
-;SemiText 2 0x003b
-;KwAbs 4 "ABS\0"
-;KwMin 4 "MIN\0"
-;KwLen 4 "LEN\0"
-;KwVal 4 "VAL\0"
-;KwStr 5 "STR$\0"
-;KwSplit 6 "SPLIT\0"
-;KwComment 8 "COMMENT\0"
-;KwIf 3 "IF\0"
-;KwBlock 6 "BLOCK\0"
-;KwReturn 7 "RETURN\0"
+::MainHeapID 0
+::LinePtr 0
+::QuitFlag 0
+::EqPtr 0
+::NamePtr 0
+::ValuePtr 0
+::FoundSlot 0
+::FreeSlot 0
+::VarTablePtr 0
+::GlobalFramePtr 0
+::CurrentFramePtr 0
+::ValueObjPtr 0
+::EvalType 0
+::EvalI32 $$$0
+::LeftI32 $$$0
+::EvalStr 0
+::EvalStrObj 0
+::EvalStrOwned 0
+::EvalValueFlags 0
+::FCExprCleanupList 0
+::ExprOpPtr 0
+::FCArgEndPtr 0
+::FCReturnFlag 0
+::FCDebugFlag 0
+::PrintBuff "00000000000\0"
+::FcPrompt "FC> \0"
+::FcContPrompt "... \0"
+::MsgIntro "FuncCalc assembly prototype. QUIT exits.\0"
+::MsgErr "ERR\0"
+::MsgOk "OK\0"
+::KwQuit "QUIT\0"
+::KwExit "EXIT\0"
+::KwPrint "PRINT\0"
+::KwMem "MEM\0"
+::KwMemVar "MEMVAR\0"
+::KwClean "CLEAN\0"
+::KwHelp "HELP\0"
+::KwList "LIST\0"
+::KwExec "EXEC\0"
+::KwDefun "DEFUN\0"
+::KwEndDef "ENDDEF\0"
+::KwListFunc "LISTFUNC\0"
+::KwCallFunc "CALLFUNC\0"
+::KwDebug "DEBUG\0"
+::MemGlobalsLabel "Globals\0"
+::MemLocalsLabel "Locals\0"
+::KwOn "ON\0"
+::KwOff "OFF\0"
+::MetaCommentA "COMMENT(0)\0"
+::MetaCommentB ")\0"
+::SemiText 0x003b
+::KwAbs "ABS\0"
+::KwMin "MIN\0"
+::KwLen "LEN\0"
+::KwVal "VAL\0"
+::KwStr "STR$\0"
+::KwSplit "SPLIT\0"
+::KwComment "COMMENT\0"
+::KwIf "IF\0"
+::KwBlock "BLOCK\0"
+::KwReturn "RETURN\0"
 :Main . Main
 @PUSH 1
 @SSET SegDS
@@ -412,6 +415,7 @@ L lmath.ld
 @PRTLN "  CALLFUNC name(args)"
 @PRTLN "  DEBUG ON|OFF"
 @PRTLN "  ABS(expr), MIN(expr,expr)"
+@PRTLN "  < <= > >= && || return 1 or 0"
 @PRTLN "  IF(cond,true,false), BLOCK(stmt[;stmt])"
 @PRTLN "  LEN(str), VAL(str), STR$(int)"
 @PRTLN "  SPLIT(str,start,stop)"
@@ -1393,7 +1397,239 @@ L lmath.ld
    @Local expr
    @Local endptr
 @POPI expr
-@Call(V) FCParseExpr expr @POPI endptr
+@Call(V) FCParseLogicalOr expr @POPI endptr
+@EndLocals
+@POPRETURN
+@RET
+
+:FCParseLogicalOr
+@PUSHRETURN
+@Locals
+   @Local inptr
+   @Local ch
+   @Local lefttruth
+   @Local done
+@POPI inptr
+@MA2V 0 done
+@Call(V) FCParseLogicalAnd inptr @POPI inptr
+@PUSHI done
+@WHILE_ZERO
+   @POPNULL
+   @Call(V) FCSkipWhite inptr @POPI inptr
+   @PUSHII inptr @AND 0xff @POPI ch
+   @PUSHI ch
+   @IF_EQ_A "|\0"
+      @POPNULL
+      @PUSHI inptr @ADD 1 @PUSHS @AND 0xff
+      @IF_EQ_A "|\0"
+         @POPNULL
+         @IF_NEQ_AV FC_TYPE_I32 EvalType
+            @PRTLN "ERR || expects numbers"
+            @MA2V FC_TYPE_EMPTY EvalType
+            @MA2V 1 done
+         @ELSE
+            @MA2V 0 lefttruth
+            @PUSHI EvalI32 @ORI EvalI32+2
+            @IF_NOTZERO
+               @MA2V 1 lefttruth
+            @ENDIF
+            @POPNULL
+            @PUSHI inptr @ADD 2 @POPI inptr
+            @Call(V) FCParseLogicalAnd inptr @POPI inptr
+            @IF_NEQ_AV FC_TYPE_I32 EvalType
+               @PRTLN "ERR || expects numbers"
+               @MA2V FC_TYPE_EMPTY EvalType
+               @MA2V 1 done
+            @ELSE
+               @PUSHI EvalI32 @ORI EvalI32+2 @ORI lefttruth
+               @IF_NOTZERO
+                  @MA2V 1 EvalI32 @MA2V 0 EvalI32+2
+               @ELSE
+                  @MA2V 0 EvalI32 @MA2V 0 EvalI32+2
+               @ENDIF
+               @POPNULL
+               @MA2V FC_TYPE_I32 EvalType
+            @ENDIF
+         @ENDIF
+      @ELSE
+         @POPNULL
+         @MA2V 1 done
+      @ENDIF
+   @ELSE
+      @POPNULL
+      @MA2V 1 done
+   @ENDIF
+   @PUSHI done
+@ENDWHILE
+@POPNULL
+@PUSHI inptr
+@EndLocals
+@POPRETURN
+@RET
+
+:FCParseLogicalAnd
+@PUSHRETURN
+@Locals
+   @Local inptr
+   @Local ch
+   @Local lefttruth
+   @Local done
+@POPI inptr
+@MA2V 0 done
+@Call(V) FCParseComparison inptr @POPI inptr
+@PUSHI done
+@WHILE_ZERO
+   @POPNULL
+   @Call(V) FCSkipWhite inptr @POPI inptr
+   @PUSHII inptr @AND 0xff @POPI ch
+   @PUSHI ch
+   @IF_EQ_A "&\0"
+      @POPNULL
+      @PUSHI inptr @ADD 1 @PUSHS @AND 0xff
+      @IF_EQ_A "&\0"
+         @POPNULL
+         @IF_NEQ_AV FC_TYPE_I32 EvalType
+            @PRTLN "ERR && expects numbers"
+            @MA2V FC_TYPE_EMPTY EvalType
+            @MA2V 1 done
+         @ELSE
+            @MA2V 0 lefttruth
+            @PUSHI EvalI32 @ORI EvalI32+2
+            @IF_NOTZERO
+               @MA2V 1 lefttruth
+            @ENDIF
+            @POPNULL
+            @PUSHI inptr @ADD 2 @POPI inptr
+            @Call(V) FCParseComparison inptr @POPI inptr
+            @IF_NEQ_AV FC_TYPE_I32 EvalType
+               @PRTLN "ERR && expects numbers"
+               @MA2V FC_TYPE_EMPTY EvalType
+               @MA2V 1 done
+            @ELSE
+               @PUSHI EvalI32 @ORI EvalI32+2
+               @IF_NOTZERO
+                  @PUSHI lefttruth
+                  @IF_NOTZERO
+                     @MA2V 1 EvalI32 @MA2V 0 EvalI32+2
+                  @ELSE
+                     @MA2V 0 EvalI32 @MA2V 0 EvalI32+2
+                  @ENDIF
+                  @POPNULL
+               @ELSE
+                  @MA2V 0 EvalI32 @MA2V 0 EvalI32+2
+               @ENDIF
+               @POPNULL
+               @MA2V FC_TYPE_I32 EvalType
+            @ENDIF
+         @ENDIF
+      @ELSE
+         @POPNULL
+         @MA2V 1 done
+      @ENDIF
+   @ELSE
+      @POPNULL
+      @MA2V 1 done
+   @ENDIF
+   @PUSHI done
+@ENDWHILE
+@POPNULL
+@PUSHI inptr
+@EndLocals
+@POPRETURN
+@RET
+
+:FCParseComparison
+@PUSHRETURN
+@Locals
+   @Local inptr
+   @Local ch
+   @Local nextch
+   @Local op
+   @Local oplen
+   @Local leftlow
+   @Local lefthigh
+   @Local done
+@POPI inptr
+@MA2V 0 done
+@Call(V) FCParseExpr inptr @POPI inptr
+@PUSHI done
+@WHILE_ZERO
+   @POPNULL
+   @Call(V) FCSkipWhite inptr @POPI inptr
+   @PUSHII inptr @AND 0xff @POPI ch
+   @PUSHI inptr @ADD 1 @PUSHS @AND 0xff @POPI nextch
+   @MA2V 0 op
+   @MA2V 1 oplen
+   @PUSHI ch
+   @IF_EQ_A "<\0"
+      @MA2V 1 op
+      @IF_EQ_AV "=\0" nextch
+         @MA2V 2 op
+         @MA2V 2 oplen
+      @ENDIF
+   @ENDIF
+   @POPNULL
+   @PUSHI ch
+   @IF_EQ_A ">\0"
+      @MA2V 3 op
+      @IF_EQ_AV "=\0" nextch
+         @MA2V 4 op
+         @MA2V 2 oplen
+      @ENDIF
+   @ENDIF
+   @POPNULL
+   @PUSHI op
+   @IF_ZERO
+      @POPNULL
+      @MA2V 1 done
+   @ELSE
+      @POPNULL
+      @IF_NEQ_AV FC_TYPE_I32 EvalType
+         @PRTLN "ERR comparison expects numbers"
+         @MA2V FC_TYPE_EMPTY EvalType
+         @MA2V 1 done
+      @ELSE
+         @M32V2V EvalI32 leftlow
+         @PUSHI inptr @ADDI oplen @POPI inptr
+         @Call(V) FCParseExpr inptr @POPI inptr
+         @IF_NEQ_AV FC_TYPE_I32 EvalType
+            @PRTLN "ERR comparison expects numbers"
+            @MA2V FC_TYPE_EMPTY EvalType
+            @MA2V 1 done
+         @ELSE
+            @Call32(VV) CMP32S leftlow EvalI32
+            @MA2V 0 EvalI32 @MA2V 0 EvalI32+2
+            @PUSHI op
+            @IF_EQ_A 1
+               @IF32_LT
+                  @MA2V 1 EvalI32 @MA2V 0 EvalI32+2
+               @ENDIF
+            @ELSE
+               @IF_EQ_A 2
+                  @IF32_LE
+                     @MA2V 1 EvalI32 @MA2V 0 EvalI32+2
+                  @ENDIF
+               @ELSE
+                  @IF_EQ_A 3
+                     @IF32_GT
+                        @MA2V 1 EvalI32 @MA2V 0 EvalI32+2
+                     @ENDIF
+                  @ELSE
+                     @IF32_GE
+                        @MA2V 1 EvalI32 @MA2V 0 EvalI32+2
+                     @ENDIF
+                  @ENDIF
+               @ENDIF
+            @ENDIF
+            @POPNULL
+            @MA2V FC_TYPE_I32 EvalType
+         @ENDIF
+      @ENDIF
+   @ENDIF
+   @PUSHI done
+@ENDWHILE
+@POPNULL
+@PUSHI inptr
 @EndLocals
 @POPRETURN
 @RET
@@ -1630,7 +1866,7 @@ L lmath.ld
    @CASE "(\0"
       @POPNULL
       @INCI inptr
-      @Call(V) FCParseExpr inptr @POPI inptr
+      @Call(V) FCParseLogicalOr inptr @POPI inptr
       @Call(V) FCSkipWhite inptr @POPI inptr
       @PUSHII inptr @AND 0xff
       @IF_EQ_A ")\0"
@@ -2001,7 +2237,7 @@ L lmath.ld
 @PUSHI done
 @WHILE_ZERO
    @POPNULL
-   @Call(V) FCParseExpr inptr @POPI inptr
+   @Call(V) FCParseLogicalOr inptr @POPI inptr
    @CALL FCPushEvalArg
    @INCI count
    @Call(V) FCSkipWhite inptr @POPI inptr

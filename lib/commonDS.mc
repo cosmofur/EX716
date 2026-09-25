@@ -4,12 +4,14 @@ MF COMMON_SEEN 1
 # cpu24.py defines CPU24 before loading this file. Legacy cpu.py leaves the
 # overrides as zero-byte macros, preserving the Ring 0 instruction stream.
 ? CPU24
+MF CPU24_SEGMENTED 1
 M CSO $$56
 M DSO $$57
 M ESO $$58
 M SSO $$59
 M SGET $$60 %1
 M SSET $$61 %1
+M FJMPS $$62
 =SegCS 0
 =SegDS 1
 =SegES 2
@@ -34,35 +36,35 @@ G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
 G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 G Var1 G Var2 G Var3 G Var4 G Var5 G Var6 G Var7 G Var8 G Var9
 ? CPU24
-;Var01 2 0
+::Var01 0
 =Var1 {Var01}
-;Var02 2 0
+::Var02 0
 =Var2 {Var02}
-;Var03 2 0
+::Var03 0
 =Var3 {Var03}
-;Var04 2 0
+::Var04 0
 =Var4 {Var04}
-;Var05 2 0
+::Var05 0
 =Var5 {Var05}
-;Var06 2 0
+::Var06 0
 =Var6 {Var06}
-;Var07 2 0
+::Var07 0
 =Var7 {Var07}
-;Var08 2 0
+::Var08 0
 =Var8 {Var08}
-;Var09 2 0
+::Var09 0
 =Var9 {Var09}
-;Var10 2 0
-;Var11 2 0
-;Var12 2 0
-;Var13 2 0
-;Var14 2 0
-;Var15 2 0
-;Var16 2 0
-;Var17 2 0
-;Var18 2 0
-;Var19 2 0
-;Var20 2 0
+::Var10 0
+::Var11 0
+::Var12 0
+::Var13 0
+::Var14 0
+::Var15 0
+::Var16 0
+::Var17 0
+::Var18 0
+::Var19 0
+::Var20 0
 ENDBLOCK
 ! CPU24
 :Var1
@@ -544,6 +546,18 @@ M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
 M CALLI @PUSH $_%0A @PUSHI %1 @JMPS :_%0A
 
 M RET @JMPS
+M FJMP @PUSH %1 @PUSH %2 @FJMPS
+M FCALL @SGET SegCS @PUSH $_%0A @PUSH %1 @PUSH %2 @FJMPS :_%0A
+
+# Far wrappers temporarily keep their two-word return pair on the software
+# stack so an ordinary local implementation can return values on the hardware
+# stack without obscuring the far return address.
+M FENTER @DEC2I __SS_SP @POPII __SS_SP @DEC2I __SS_SP @POPII __SS_SP
+M FRET @PUSHII __SS_SP @INC2I __SS_SP @PUSHII __SS_SP @INC2I __SS_SP @FJMPS
+
+# Defines a public far entry named %1 followed by a near-call implementation
+# named LOC_%1. The caller supplies the implementation body and ordinary RET.
+M FUNCTION(F) :%1 @FENTER @CALL LOC_%1 @FRET :LOC_%1 @FUNCTION LOC_%1
 M JNZ @JMPZ _%0J @JMP %1 :_%0J
 M JZ @JMPZ %1                           # Just an abbriviation as its really commonly used.
 # Simple Text output for headers or labels, LN includes linefeed.
