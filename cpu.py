@@ -6100,6 +6100,14 @@ def CreateTempFilename(origfilename):
     os.close(fd)
     return path
 
+
+def save_readline_history(histfile):
+    try:
+        readline.write_history_file(histfile)
+    except OSError:
+        pass
+
+
 def main():
     global CPU,  DebugOut, current_context
 
@@ -6131,16 +6139,19 @@ def main():
     UseDebugger = False
     breakafter = ()
 
-    histfile = os.path.join(os.path.expanduser("~"), ".cpu_history")
+    histfile = os.environ.get(
+        "CPU_HISTORY_FILE",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cpu_history"),
+    )
     if HAS_READLINE:
         try:
             readline.read_history_file(histfile)
             # default history len is -1 (infinite), which may grow unruly
             readline.set_history_length(1000)
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             pass
 
-        atexit.register(readline.write_history_file, histfile)
+        atexit.register(save_readline_history, histfile)
     atexit.register(FilterLibraryExitCleanUp, context)
     firstcmd=[]
     for i, arg in enumerate(sys.argv[1:]):

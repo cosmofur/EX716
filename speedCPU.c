@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
@@ -16,6 +17,7 @@
 #include "speedCPU.h"
 
 #define MAXMEM 0x10000
+#define MAXPHYSMEM 0x1000000
 #define MAXHWSTACK (0xff - 2)
 #define BLOCK_SIZE 512
 
@@ -35,6 +37,19 @@
 #define RC_DEVICE_WRITE_FAIL -9
 #define RC_DEVICE_GENERAL_FAIL -10
 #define RC_DEBUG_TOGGLE    -11
+
+/* CPU24 execution state. Logical operands remain 16-bit; this state maps
+ * them to 24-bit physical memory addresses. A NULL state means legacy mode. */
+typedef struct {
+    int segment_mode;
+    uint8_t cs;
+    uint8_t ds;
+    uint8_t es;
+    int segment_override;
+    int prefix_just_set;
+} VM24State;
+
+static VM24State *g_vm24 = NULL;
 
 /* CAST commands */
 #define CastPrintStr 1
@@ -91,6 +106,8 @@ static FILE *g_tape = NULL;
 static int g_disk_ptr = 0;
 static struct termios g_saved_attrs;
 static int g_saved_valid = 0;
+static int g_saved_flags = 0;
+static int g_saved_flags_valid = 0;
 
 /*
  * What it does:
@@ -121,9 +138,35 @@ static void handle_ctrl_c(int sig) {
  * Parent/call mechanism:
  * - Internal helper called by step_once(), handle_cast(), and handle_poll().
  */
+static inline uint32_t vm_data_address(int addr) {
+    uint16_t offset = (uint16_t)(addr & 0xFFFF);
+    if (g_vm24 == NULL || !g_vm24->segment_mode) {
+        return offset;
+    }
+    uint8_t bank = g_vm24->ds;
+    if (g_vm24->segment_override >= 0) {
+        bank = (uint8_t)g_vm24->segment_override;
+    }
+    return ((uint32_t)bank << 16) | offset;
+}
+
+static inline uint32_t vm_code_address(int addr) {
+    uint16_t offset = (uint16_t)(addr & 0xFFFF);
+    if (g_vm24 == NULL || !g_vm24->segment_mode) {
+        return offset;
+    }
+    return ((uint32_t)g_vm24->cs << 16) | offset;
+}
+
 static inline uint16_t get16(const uint8_t *mem, int addr) {
-    uint16_t a = (uint16_t)(addr & 0xFFFF);
-    uint16_t b = (uint16_t)((a + 1) & 0xFFFF);
+    uint32_t a = vm_data_address(addr);
+    uint32_t b = vm_data_address((addr & 0xFFFF) + 1);
+    return (uint16_t)(mem[a] | ((uint16_t)mem[b] << 8));
+}
+
+static inline uint16_t get16_code(const uint8_t *mem, int addr) {
+    uint32_t a = vm_code_address(addr);
+    uint32_t b = vm_code_address((addr & 0xFFFF) + 1);
     return (uint16_t)(mem[a] | ((uint16_t)mem[b] << 8));
 }
 
@@ -140,10 +183,18 @@ static inline uint16_t get16(const uint8_t *mem, int addr) {
  * - Internal helper called by step_once() and handle_poll().
  */
 static inline void put16(uint8_t *mem, int addr, uint16_t val) {
-    uint16_t a = (uint16_t)(addr & 0xFFFF);
-    uint16_t b = (uint16_t)((a + 1) & 0xFFFF);
+    uint32_t a = vm_data_address(addr);
+    uint32_t b = vm_data_address((addr & 0xFFFF) + 1);
     mem[a] = (uint8_t)(val & 0xFF);
     mem[b] = (uint8_t)((val >> 8) & 0xFF);
+}
+
+static inline uint8_t vm_getbyte(const uint8_t *mem, int addr) {
+    return mem[vm_data_address(addr)];
+}
+
+static inline void vm_putbyte(uint8_t *mem, int addr, uint8_t value) {
+    mem[vm_data_address(addr)] = value;
 }
 
 /*
@@ -322,8 +373,27 @@ static inline void set_cf_of_sub(int *flags, uint16_t a, uint16_t b, uint16_t r)
  * - Internal helper called by handle_poll() for char input operations.
  */
 static int read_one_char_nowait(void) {
+    struct termios saved, attrs;
+    int restore = tcgetattr(STDIN_FILENO, &saved) == 0;
+    if (restore) {
+        attrs = saved;
+        attrs.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+        attrs.c_cc[VMIN] = 0;
+        attrs.c_cc[VTIME] = 0;
+        tcsetattr(STDIN_FILENO, TCSANOW, &attrs);
+    }
+    fd_set readable;
+    FD_ZERO(&readable);
+    FD_SET(STDIN_FILENO, &readable);
+    struct timeval timeout = {0, 0};
     unsigned char ch;
-    ssize_t n = read(STDIN_FILENO, &ch, 1);
+    ssize_t n = -1;
+    if (select(STDIN_FILENO + 1, &readable, NULL, NULL, &timeout) > 0) {
+        n = read(STDIN_FILENO, &ch, 1);
+    }
+    if (restore) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &saved);
+    }
     if (n == 1) {
         return (int)ch;
     }
@@ -382,12 +452,22 @@ static void enable_raw(void) {
             g_saved_valid = 1;
         }
     }
+    if (!g_saved_flags_valid) {
+        int flags = fcntl(STDIN_FILENO, F_GETFL);
+        if (flags >= 0) {
+            g_saved_flags = flags;
+            g_saved_flags_valid = 1;
+        }
+    }
     struct termios raw;
     if (tcgetattr(STDIN_FILENO, &raw) == 0) {
         cfmakeraw(&raw);
         raw.c_cc[VMIN] = 0;
         raw.c_cc[VTIME] = 1;
         tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+    }
+    if (g_saved_flags_valid) {
+        fcntl(STDIN_FILENO, F_SETFL, g_saved_flags | O_NONBLOCK);
     }
 }
 
@@ -402,9 +482,14 @@ static void enable_raw(void) {
  * - Internal helper invoked by handle_poll() for PollReSetRaw.
  */
 static void disable_raw(void) {
+    tcflush(STDIN_FILENO, TCIFLUSH);
     if (g_saved_valid) {
         tcsetattr(STDIN_FILENO, TCSADRAIN, &g_saved_attrs);
         g_saved_valid = 0;
+    }
+    if (g_saved_flags_valid) {
+        fcntl(STDIN_FILENO, F_SETFL, g_saved_flags);
+        g_saved_flags_valid = 0;
     }
 }
 
@@ -459,8 +544,8 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
     switch (cmd) {
         case CastPrintStr: {
             uint16_t i = arg;
-            while (i < 0xFFFF && mem[i] != 0) {
-                unsigned char c = mem[i++];
+            while (i < 0xFFFF && vm_getbyte(mem, i) != 0) {
+                unsigned char c = vm_getbyte(mem, i++);
                 if ((c < 32) && c != 7 && c != 8 && c !=9  && c != 10 && c!=13 && c != 27 && c != 30) {
                     printf("%02x", c);
                 } else {
@@ -471,8 +556,8 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
         }
         case CastPrintErrMsg: {
             uint16_t i = arg;
-            while (i < 0xFFFF && mem[i] != 0) {
-                unsigned char c = mem[i++];
+            while (i < 0xFFFF && vm_getbyte(mem, i) != 0) {
+                unsigned char c = vm_getbyte(mem, i++);
                 if ((c < 32 || c > 127) && c != 7 && c != 9 && c != 10 && c != 27 && c != 30) {
                     fprintf(stderr, "%02x", c);
                 } else {
@@ -498,14 +583,14 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             break;
         }
         case CastPrintChar: {
-            unsigned char c = mem[arg & 0xFFFFu];
+            unsigned char c = vm_getbyte(mem, arg);
             putchar((int)c);
             break;
         }
         case CastPrintStrI: {
             uint16_t i = argi;
-            while (i < 0xFFFF && mem[i] != 0) {
-                unsigned char c = mem[i++];
+            while (i < 0xFFFF && vm_getbyte(mem, i) != 0) {
+                unsigned char c = vm_getbyte(mem, i++);
                 if ((c < 32) && c != 7 && c != 8 && c !=9  && c != 10 && c!=13 && c != 27 && c != 30) {                
                     printf("%02x", c);
                 } else {
@@ -712,7 +797,7 @@ static int handle_poll(uint8_t *mem, uint16_t *stack, int *sp, uint16_t arg) {
             char *res = fgets(line, sizeof(line), stdin);
             uint16_t dst = arg;
             if (!res) {
-                mem[dst] = 0;
+                vm_putbyte(mem, dst, 0);
                 break;
             }
             size_t len = strlen(line);
@@ -725,13 +810,18 @@ static int handle_poll(uint8_t *mem, uint16_t *stack, int *sp, uint16_t arg) {
                     if (dst >= 0xFFFFu) {
                         return RC_DEVICE_MEM_FAIL;
                     }
-                    mem[dst++] = c;
+                    vm_putbyte(mem, dst++, c);
                 }
             }
-            mem[dst] = 0;
+            vm_putbyte(mem, dst, 0);
             break;
         }
-        case PollReadCharI:
+        case PollReadCharI: {
+            unsigned char ch;
+            int c = read(STDIN_FILENO, &ch, 1) == 1 ? ch : 0;
+            put16(mem, arg, (uint16_t)c);
+            break;
+        }
         case PollReadCINoWait: {
             int c = read_one_char_nowait();
             if (c < 0) {
@@ -851,6 +941,8 @@ static const uint8_t OP_SIZE[256] = {
     [OptValJMPI] = 3,
     [OptValCAST] = 3,
     [OptValPOLL] = 3,
+    [60] = 3,
+    [61] = 3,
 };
 
 /*
@@ -869,9 +961,12 @@ static const uint8_t OP_SIZE[256] = {
  */
 static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp) {
     uint16_t cur_pc = (uint16_t)(*pc & 0xFFFF);
-    uint8_t op = mem[cur_pc];
+    if (g_vm24 != NULL) {
+        g_vm24->prefix_just_set = 0;
+    }
+    uint8_t op = mem[vm_code_address(cur_pc)];
     uint8_t size = OP_SIZE[op] == 0 ? 1 : OP_SIZE[op];
-    uint16_t arg = (size == 3) ? get16(mem, (int)cur_pc + 1) : 0;
+    uint16_t arg = (size == 3) ? get16_code(mem, (int)cur_pc + 1) : 0;
     uint16_t argi = get16(mem, arg);
     uint16_t argii = get16(mem, argi);
     uint16_t a, b, r;
@@ -1158,6 +1253,62 @@ static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp
             *flags = (int)(a & 0xFFFFu);
             break;
         case OptValADM:
+            if (g_vm24 != NULL) {
+                if (pop16(stack, sp, &a) != 0) return RC_STACK_UNDERFLOW;
+                if (a == 0) {
+                    g_vm24->segment_mode = 0;
+                    g_vm24->cs = g_vm24->ds = g_vm24->es = 0;
+                    g_vm24->segment_override = -1;
+                } else if (a == 1) {
+                    g_vm24->segment_mode = 1;
+                    g_vm24->segment_override = -1;
+                } else {
+                    return RC_DEVICE_GENERAL_FAIL;
+                }
+            }
+            break;
+        case 56: /* CSO */
+            if (g_vm24 != NULL) {
+                g_vm24->segment_override = g_vm24->segment_mode ? g_vm24->cs : 0;
+                g_vm24->prefix_just_set = 1;
+            }
+            break;
+        case 57: /* DSO */
+            if (g_vm24 != NULL) {
+                g_vm24->segment_override = g_vm24->segment_mode ? g_vm24->ds : 0;
+                g_vm24->prefix_just_set = 1;
+            }
+            break;
+        case 58: /* ESO */
+            if (g_vm24 != NULL) {
+                g_vm24->segment_override = g_vm24->segment_mode ? g_vm24->es : 0;
+                g_vm24->prefix_just_set = 1;
+            }
+            break;
+        case 59: /* SSO, reserved for Ring 2 */
+            return RC_DEVICE_GENERAL_FAIL;
+        case 60: /* SGET */
+            if (g_vm24 == NULL || arg > 2) return RC_DEVICE_GENERAL_FAIL;
+            if (push16(stack, sp,
+                       arg == 0 ? g_vm24->cs : (arg == 1 ? g_vm24->ds : g_vm24->es)) != 0) {
+                return RC_STACK_OVERFLOW;
+            }
+            break;
+        case 61: /* SSET */
+            if (g_vm24 == NULL || arg > 2 || arg == 0) return RC_DEVICE_GENERAL_FAIL;
+            if (pop16(stack, sp, &a) != 0) return RC_STACK_UNDERFLOW;
+            if (a > 0xff) return RC_DEVICE_GENERAL_FAIL;
+            if (arg == 1) g_vm24->ds = (uint8_t)a;
+            else g_vm24->es = (uint8_t)a;
+            break;
+        case 62: /* FJMPS */
+            if (g_vm24 == NULL || *sp < 2) return RC_STACK_UNDERFLOW;
+            a = stack[*sp - 1];
+            b = stack[*sp - 2];
+            if (b > 0xff) return RC_DEVICE_GENERAL_FAIL;
+            g_vm24->cs = (uint8_t)b;
+            *pc = a;
+            *sp -= 2;
             break;
         case OptValSCLR:
             *sp = 0;
@@ -1170,7 +1321,32 @@ static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp
             return RC_DEVICE_GENERAL_FAIL;
     }
 
+    if (g_vm24 != NULL && !g_vm24->prefix_just_set) {
+        g_vm24->segment_override = -1;
+    }
+
     return 0;
+}
+
+/* The emulator always owns contiguous NumPy arrays. Requiring that contract
+ * lets the hot path borrow the arrays directly instead of calling
+ * PyArray_FROM_OTF with INOUT_ARRAY on every instruction (which may create a
+ * temporary and later perform a writeback). */
+static PyArrayObject *borrow_array(PyObject *obj, int typenum, const char *name) {
+    if (!PyArray_Check(obj)) {
+        PyErr_Format(PyExc_TypeError, "%s must be a NumPy array", name);
+        return NULL;
+    }
+    PyArrayObject *arr = (PyArrayObject *)obj;
+    if (PyArray_TYPE(arr) != typenum || PyArray_NDIM(arr) != 1 ||
+        !PyArray_ISCARRAY(arr)) {
+        PyErr_Format(PyExc_TypeError,
+                     "%s must be a 1-D C-contiguous NumPy array of the expected dtype",
+                     name);
+        return NULL;
+    }
+    Py_INCREF(arr);
+    return arr;
 }
 
 /*
@@ -1210,19 +1386,8 @@ static PyObject *c_EvalOne(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    PyArrayObject *mem_arr =
-        (PyArrayObject *)PyArray_FROM_OTF(
-            mem_obj,
-            NPY_UINT8,
-            NPY_ARRAY_INOUT_ARRAY2
-        );
-
-    PyArrayObject *stack_arr =
-        (PyArrayObject *)PyArray_FROM_OTF(
-            stack_obj,
-            NPY_UINT16,
-            NPY_ARRAY_INOUT_ARRAY2
-        );
+    PyArrayObject *mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
+    PyArrayObject *stack_arr = borrow_array(stack_obj, NPY_UINT16, "stack");
 
     if (mem_arr == NULL || stack_arr == NULL) {
         Py_XDECREF(mem_arr);
@@ -1284,8 +1449,89 @@ static PyObject *c_EvalOne(PyObject *self, PyObject *args)
     return Py_BuildValue("iiii", pc, flags, sp, return_code);
 }
 
+/* CPU24 variant. Logical instruction operands are still 16-bit, while the
+ * VM state selects the 24-bit physical bank used for code and data accesses. */
+static PyObject *c_EvalOne24(PyObject *self, PyObject *args)
+{
+    (void)self;
+    PyObject *mem_obj, *stack_obj;
+    int pc, flags, sp, cs, ds, es, segment_mode, segment_override, steps, in_rc;
+
+    if (!PyArg_ParseTuple(args, "OOiiiiiiiiii", &mem_obj, &stack_obj,
+                          &pc, &flags, &sp, &cs, &ds, &es, &segment_mode,
+                          &segment_override, &steps, &in_rc)) {
+        return NULL;
+    }
+
+    PyArrayObject *mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
+    PyArrayObject *stack_arr = borrow_array(stack_obj, NPY_UINT16, "stack");
+    if (mem_arr == NULL || stack_arr == NULL) {
+        Py_XDECREF(mem_arr);
+        Py_XDECREF(stack_arr);
+        return NULL;
+    }
+    if (PyArray_SIZE(mem_arr) < MAXPHYSMEM) {
+        PyErr_SetString(PyExc_ValueError,
+                        "CPU24 memory array must contain at least 16 MiB");
+        PyArray_DiscardWritebackIfCopy(mem_arr);
+        PyArray_DiscardWritebackIfCopy(stack_arr);
+        Py_DECREF(mem_arr);
+        Py_DECREF(stack_arr);
+        return NULL;
+    }
+    if (PyArray_SIZE(stack_arr) < MAXHWSTACK) {
+        PyErr_SetString(PyExc_ValueError,
+                        "stack array is too small for EX716 hardware stack");
+        PyArray_DiscardWritebackIfCopy(mem_arr);
+        PyArray_DiscardWritebackIfCopy(stack_arr);
+        Py_DECREF(mem_arr);
+        Py_DECREF(stack_arr);
+        return NULL;
+    }
+
+    uint8_t *mem = (uint8_t *)PyArray_DATA(mem_arr);
+    uint16_t *stack = (uint16_t *)PyArray_DATA(stack_arr);
+    VM24State state = {
+        .segment_mode = segment_mode != 0,
+        .cs = (uint8_t)cs,
+        .ds = (uint8_t)ds,
+        .es = (uint8_t)es,
+        .segment_override = segment_override,
+        .prefix_just_set = 0,
+    };
+    g_vm24 = &state;
+
+    PyOS_sighandler_t old_sigint = PyOS_setsig(SIGINT, handle_ctrl_c);
+    int return_code = in_rc;
+    g_interrupt_requested = 0;
+    if (steps == -1) {
+        while (return_code == 0 && !g_interrupt_requested) {
+            return_code = step_once(mem, stack, &pc, &flags, &sp);
+        }
+    } else if (steps > 0) {
+        for (int i = 0; i < steps && return_code == 0 &&
+             !g_interrupt_requested; ++i) {
+            return_code = step_once(mem, stack, &pc, &flags, &sp);
+        }
+    }
+    if (g_interrupt_requested && return_code == 0) {
+        return_code = RC_USER_HALT;
+    }
+    PyOS_setsig(SIGINT, old_sigint);
+    g_vm24 = NULL;
+
+    PyArray_ResolveWritebackIfCopy(mem_arr);
+    PyArray_ResolveWritebackIfCopy(stack_arr);
+    Py_DECREF(mem_arr);
+    Py_DECREF(stack_arr);
+    return Py_BuildValue("iiiiiiiii", pc, flags, sp, return_code,
+                         (int)state.cs, (int)state.ds, (int)state.es,
+                         state.segment_mode, state.segment_override);
+}
+
 static PyMethodDef cpuCfuncMethods[] = {
     {"EvalOne", c_EvalOne, METH_VARARGS, "Evaluate one or more EX716 instructions"},
+    {"EvalOne24", c_EvalOne24, METH_VARARGS, "Evaluate CPU24 instructions"},
     {NULL, NULL, 0, NULL}
 };
 

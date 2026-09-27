@@ -2271,7 +2271,10 @@ class microcpu:
                 # --- run C version with its own copies ---
                 memC = mem0[:]            # independent copy for C
                 mbC  = mb0.copy()
-                pcC, flagsC, spC, rcC = cpuCfunc.EvalOne(memC, mbC, pc0, flags0, sp0, 1, 0)
+                pcC, flagsC, spC, rcC, csC, dsC, esC, modeC, overrideC = cpuCfunc.EvalOne24(
+                    memC, mbC, pc0, flags0, sp0, self.CS, self.DS, self.ES,
+                    self.SegmentMode, self.segment_override if self.segment_override is not None else -1,
+                    1, 0)
 
                 # --- run Python version with its own copies ---
                 self.pc, self.flags, self.hwstacksp = pc0, flags0, sp0
@@ -2316,6 +2319,20 @@ class microcpu:
         PrevPC = self.pc
         ReturnCode = 0
 
+        def run_c(step_count, in_rc):
+            result = cpuCfunc.EvalOne24(
+                self.memspace, self.hwstack, self.pc, self.flags,
+                self.hwstacksp, self.CS, self.DS, self.ES,
+                self.SegmentMode,
+                self.segment_override if self.segment_override is not None else -1,
+                step_count, in_rc)
+            (self.pc, self.flags, self.hwstacksp, rc,
+             self.CS, self.DS, self.ES, self.SegmentMode,
+             self.segment_override) = result
+            if self.segment_override < 0:
+                self.segment_override = None
+            return rc
+
         # --------------------------------------------------------------
         # Helper: single instruction step
         # --------------------------------------------------------------
@@ -2329,15 +2346,7 @@ class microcpu:
                 DissAsm(self.pc, 1, self)
                 context.GlobalOptCnt += 1
 
-            (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
-                self.memspace,
-                self.hwstack,
-                self.pc,
-                self.flags,
-                self.hwstacksp,
-                1,
-                ReturnCode
-            )
+            ReturnCode = run_c(1, ReturnCode)
 
             return ReturnCode
 
@@ -2360,15 +2369,7 @@ class microcpu:
                 # Unlimited normal execution: let C run until completion,
                 # interruption, or a debug-toggle event.
                 if steps_remaining is None:
-                    (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
-                        self.memspace,
-                        self.hwstack,
-                        self.pc,
-                        self.flags,
-                        self.hwstacksp,
-                        -1,
-                        ReturnCode
-                    )
+                    ReturnCode = run_c(-1, ReturnCode)
 
                     if ReturnCode == -11:
                         context.Debug = 1
@@ -2385,15 +2386,7 @@ class microcpu:
                 # Finite multi-step execution
                 if steps_remaining > 1:
                     batch = steps_remaining
-                    (self.pc, self.flags, self.hwstacksp, ReturnCode) = cpuCfunc.EvalOne(
-                        self.memspace,
-                        self.hwstack,
-                        self.pc,
-                        self.flags,
-                        self.hwstacksp,
-                        batch,
-                        ReturnCode
-                    )
+                    ReturnCode = run_c(batch, ReturnCode)
                     context.GlobalOptCnt += batch
 
                     if ReturnCode == -11:
@@ -6386,6 +6379,14 @@ def CreateTempFilename(origfilename):
     os.close(fd)
     return path
 
+
+def save_readline_history(histfile):
+    try:
+        readline.write_history_file(histfile)
+    except OSError:
+        pass
+
+
 def main():
     global CPU,  DebugOut, current_context
 
@@ -6394,8 +6395,8 @@ def main():
     context = AssemblerContext()
     current_context = context        # GLobal for the functions that are too deeep to pass context too.
     context.define_macro("CPU24", "1", "cpu24.py", __file__, 0)
-    CPU = microcpu(0, context.DEFMEMSIZE)
     context.DEFMEMSIZE = MAXPHYSMEM
+    CPU = microcpu(0, context.DEFMEMSIZE)
     context.address = 0
     context.ActiveFile = "start.ld"
     context.LocalID = "main"
@@ -6418,16 +6419,19 @@ def main():
     UseDebugger = False
     breakafter = ()
 
-    histfile = os.path.join(os.path.expanduser("~"), ".cpu_history")
+    histfile = os.environ.get(
+        "CPU_HISTORY_FILE",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cpu_history"),
+    )
     if HAS_READLINE:
         try:
             readline.read_history_file(histfile)
             # default history len is -1 (infinite), which may grow unruly
             readline.set_history_length(1000)
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             pass
 
-        atexit.register(readline.write_history_file, histfile)
+        atexit.register(save_readline_history, histfile)
     atexit.register(FilterLibraryExitCleanUp, context)
     firstcmd=[]
     for i, arg in enumerate(sys.argv[1:]):
@@ -6456,11 +6460,15 @@ def main():
             elif arg == "-K":
                 context.KeepDynamicLibraries = True
             elif arg == "-f":
-                safeprint("cpu24.py currently supports only the Python execution backend.", file=DebugOut)
-                sys.exit(1)
+                if not HAS_CPUCFUNC:
+                    safeprint("Fast mode requires the optional cpuCfunc extension. Run make to build it.", file=DebugOut)
+                    sys.exit(1)
+                context.Fast = True
             elif arg == "-X":
-                safeprint("cpu24.py cross-check is unavailable until cpuCfunc supports segmented memory.", file=DebugOut)
-                sys.exit(1)
+                if not HAS_CPUCFUNC:
+                    safeprint("Cross-check mode requires the optional cpuCfunc extension. Run make to build it.", file=DebugOut)
+                    sys.exit(1)
+                context.CrossCheck = True
             elif arg == "-c":
                 OptCodeFlag = True
                 safeprint("Optcode flag set")
