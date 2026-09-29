@@ -99,6 +99,18 @@ name=expression
 The expression may produce an integer or string. Stored lists and functions are
 created with `LIST` and `DEFUN` rather than ordinary assignment.
 
+New names created by assignment are global. Inside a function, parameters are
+implicitly local and assignment to a parameter updates that local value. Use
+`LOCAL` to create another name in the current function frame:
+
+```text
+LOCAL temporary=expression
+```
+
+`LOCAL` outside a function reports an error. A `BLOCK` uses the current frame,
+so its unmarked assignments are global unless they update an existing local or
+parameter; `LOCAL` explicitly creates a local name.
+
 ### Printing
 
 Both forms below are accepted:
@@ -179,6 +191,53 @@ PRINT SPLIT("EX716 computer",1,5)
 PRINT SPLIT("abcdef",2,4)
 ```
 
+### `INPUT([prompt])`
+
+Reads one line from the console and returns it as a string. The optional
+prompt must be a string and is printed without adding a newline.
+
+```text
+NAME=INPUT("Name: ")
+PRINT NAME
+```
+
+### `INPUTINT([prompt])`
+
+Reads one line from the console and converts it to a signed 32-bit integer.
+The optional prompt must be a string and is printed without adding a newline.
+
+```text
+COUNT=INPUTINT("Count: ")
+PRINT COUNT+1
+```
+
+### `GETKEY([wait])`
+
+Reads one character without echo and returns it as a one-character string.
+With no argument, or with a nonzero numeric argument, `GETKEY` waits for a
+key. With a zero argument it polls and returns an empty string when no key is
+ready. `TRUE` and `FALSE` can be used for clarity. Interactive polling depends
+on raw terminal mode; call `TTYRAW()` once before a polling loop and restore
+the terminal afterward with `TTYCOOKED()`.
+
+```text
+KEY=GETKEY()
+KEY=GETKEY(TRUE)
+KEY=GETKEY(FALSE)
+```
+
+### `TTYRAW()` and `TTYCOOKED()`
+
+`TTYRAW()` puts the terminal into raw, no-echo mode for responsive calls to
+`GETKEY(FALSE)`. The setting persists instead of being toggled for every key
+poll. `TTYCOOKED()` restores cooked input and echo.
+
+```text
+TTYRAW()
+WHILE(TRUE,{KEY=GETKEY(FALSE); IF(KEY="Q",BREAK,COMMENT("no key"))})
+TTYCOOKED()
+```
+
 ### `IF(condition, true-expression, false-expression)`
 
 Evaluates the numeric condition and then evaluates only the selected branch.
@@ -202,6 +261,96 @@ BLOCK(A=5; B=A*2; PRINT B)
 
 `RETURN` is primarily intended for user-defined functions. A return stops the
 remaining statements in the current compiled block.
+
+Braces are an alternate spelling of `BLOCK(` and its closing `)`:
+
+```text
+{ A=5; B=A*2; PRINT B }
+```
+
+This has the same execution and scope rules as
+`BLOCK(A=5; B=A*2; PRINT B)`.
+
+A brace block may also span input lines; FuncCalc uses the continuation prompt
+until the closing brace:
+
+```text
+{
+A=5
+B=A*2; PRINT B
+}
+```
+
+### `WHILE(test, statement; ...)`
+
+Repeatedly evaluates the numeric test and executes the statement body while it
+is nonzero. The body is compiled once and may contain semicolon-separated
+statements.
+
+```text
+I=0
+WHILE(I<5,I=I+1; PRINT I)
+```
+
+### `FOR({initialize}, test, {statement; ...})`
+
+Executes the initialization block once, evaluates the numeric test before each
+iteration, and executes the body while the test is nonzero. The entire loop is
+written inline; it does not use a separate definition/end structure.
+
+```text
+FOR({I=0},I<5,{I=I+1; PRINT I})
+```
+
+Initialization and body blocks are compiled once. Assignments follow the same
+scope rules as `BLOCK`: existing parameters and explicit `LOCAL` names remain
+local, while previously unknown names are global. `RETURN`, `BREAK`, nested
+`BREAK(depth)`, and `CONTINUE` use the same behavior as in `WHILE`.
+
+`CONTINUE` skips the remaining statements in the current loop body. `BREAK`
+exits the current loop. `BREAK(depth)` exits the requested number of nested
+loops, where the default depth is one:
+
+```text
+I=0
+WHILE(I<10,I=I+1; IF(I>=5,BLOCK(BREAK),0); PRINT I)
+```
+
+```text
+WHILE(1,WHILE(1,BREAK(2)))
+```
+
+`BREAK` and `CONTINUE` outside an active `WHILE` or `FOR` report an error. A
+break depth must be positive and cannot exceed the current loop nesting depth.
+
+### `SWITCH(value, case, statement, ..., default)`
+
+Evaluates `value` once, then evaluates case expressions in order. The statement
+or brace block belonging to the first equal case is executed. If no case
+matches, the final statement or block is executed as the default. Unselected
+statements are lazy and have no side effects.
+
+```text
+SWITCH(1,
+       1, PRINT "one",
+       2, {PRINT "two"; PRINT X},
+       PRINT "default")
+```
+
+Selectors and cases may be numeric or string expressions. `TRUE` and `FALSE`
+are numeric constants `1` and `0`, allowing a switch to replace an `ELSE IF`
+tree:
+
+```text
+COW="COW"
+SWITCH(TRUE,
+       1>X,       {PRINT "X<1"},
+       10>X,      {PRINT "X<10"},
+       ANIMAL=COW,{PRINT "Its a cow"},
+       PRINT "Nothing fit")
+```
+
+Numeric and string equality accept `=` or `==`; inequality uses `!=`.
 
 ### `COMMENT(value, ...)`
 
@@ -245,8 +394,9 @@ RETURN X*2
 ENDDEF
 ```
 
-Parameters are stored in a local frame. A function can read global variables,
-but assignments to parameter or local names remain in its current frame.
+Parameters are implicitly stored in a local frame. A function can read global
+variables, and assignments to parameter or explicitly `LOCAL` names remain in
+its current frame. Assigning a previously unknown name creates a global.
 Arguments are evaluated before the function is invoked. The number of supplied
 arguments must exactly match the parameter count.
 
@@ -351,7 +501,6 @@ FC> EXEC TOTAL
 
 ## Current limitations
 
-- `WHILE` support is only a placeholder and is not part of the usable language.
 - Arithmetic operators accept integers only; strings are not concatenated.
 - String literals do not support escape sequences.
 - Integer literals are decimal only.
