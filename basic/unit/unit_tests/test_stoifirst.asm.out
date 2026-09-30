@@ -1,0 +1,38 @@
+CPU State:
+0586:    FCLR P1:0033 [I]:002d [II]:fff2 Z0 N0 C0 O0
+Line: test_stoifirst.asm:14
+Stack Empty or Invalid SP: 00
+Error Number: 200 Empty stack. at PC:0x0586
+Entering debugger due to fatal error.
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ "Require div.ld needs to be included." 
+ "Require heapmgr.ld needs to be included." 
+ "Require mul.ld needs to be included." 
+ "Including "  stoifirst 
+ "Including "  stoi 
+ "ERROR: stoi requires mul.ld to be loaded AFTER string.ld" 
+ Module  string.ld  :  Size  1219  Bytes 
+ heapmgr.ref  Loaded.. 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  0  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 2 resolved= 106 unresolved= 1
+
+=== Declared Global but NOT Defined ===
+  MULU  (used 10 times)
+     declared at string.ref:86
+
+=== Summary ===
+  Defined symbols   : 31
+  Used symbols      : 2
+  Unresolved symbols: 1
+Filename: start.ld:25
+start.ld:25
+0586> >>End Debugging.
+[?1000l[?25h
+

@@ -1,22 +1,48 @@
 #!/usr/bin/env python3
 
 import signal
-import termios
-import tty
 import select
 import numpy as np
 import itertools
 import sys
 import os
-import cpuCfunc
+try:
+    import cpuCfunc
+    HAS_CPUCFUNC = True
+except ImportError:
+    cpuCfunc = None
+    HAS_CPUCFUNC = False
 import re as re
 import json
 import atexit
-import readline
-import readchar
+try:
+    import readline
+    HAS_READLINE = True
+except ImportError:
+    readline = None
+    HAS_READLINE = False
+try:
+    import readchar
+    HAS_READCHAR = True
+except ImportError:
+    readchar = None
+    HAS_READCHAR = False
 import time
 import bisect
 import tempfile
+import glob
+
+try:
+    import termios
+    import tty
+    import fcntl
+    HAS_POSIX_TTY = True
+except ImportError:
+    termios = None
+    tty = None
+    fcntl = None
+    HAS_POSIX_TTY = False
+
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -173,10 +199,17 @@ if sys.platform == "win32":
         # Windows: nothing to restore
         pass
 
-else:  # POSIX (Linux, macOS, etc.)
-    import termios, fcntl, os
+else:  # POSIX (Linux, macOS, Termux, etc.)
 
-    def setup_raw(fd=sys.stdin.fileno()):
+    def setup_raw(fd=None):
+        if not HAS_POSIX_TTY or not sys.stdin.isatty():
+            return None
+        if fd is None:
+            try:
+                fd = sys.stdin.fileno()
+            except (AttributeError, OSError):
+                return None
+
         old_attrs = termios.tcgetattr(fd)
         old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
 
@@ -200,13 +233,18 @@ else:  # POSIX (Linux, macOS, etc.)
         return (fd, old_attrs, old_flags)
 
     def restore_tty(state):
-        if state:
+        if state and HAS_POSIX_TTY:
             fd, old_attrs, old_flags = state
             termios.tcsetattr(fd, termios.TCSANOW, old_attrs)
             fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
 
 
-    def get_key(fd=sys.stdin.fileno()):
+    def get_key(fd=None):
+        if fd is None:
+            try:
+                fd = sys.stdin.fileno()
+            except (AttributeError, OSError):
+                return None
         if CPU.char_queue:
             return ord(CPU.char_queue.pop(0))
         try:
@@ -287,12 +325,12 @@ class AssemblerContext:
         self.DefinedSymbols = set()
         from collections import defaultdict
         self.UsedSymbols = defaultdict(int)
-        self.GlobalDeclarations=set()
+        self.GlobalDeclarations={"END__"}
         self.GlobalDeclInfo={}
         self.StructStack = []
         self.UseRequested = set()
-        
-        self.KeepDynamicLibraries = True
+        self.KeepDynamicLibraries = False
+        self.DynamicLibraryTempFiles = []
         
 
         # Macro state
@@ -499,10 +537,11 @@ CPUPATH = os.getenv('CPUPATH')
 JSONFNAME = "CPU.json"
 
 if CPUPATH is None:
-    CPUPATH = ".:../lib/:./lib/"
-for testpath in CPUPATH.split(":"):
-    if os.path.exists(testpath + "/" + JSONFNAME):
-        JSONFNAME = testpath + "/" + JSONFNAME
+    CPUPATH = os.pathsep.join((".", "../lib/", "./lib/"))
+for testpath in CPUPATH.split(os.pathsep):
+    candidate_json = os.path.join(testpath, JSONFNAME)
+    if os.path.exists(candidate_json):
+        JSONFNAME = candidate_json
 with open(JSONFNAME, "r") as openfile:
     SymToValMap = json.load(openfile)
 OPTLIST = []
@@ -518,16 +557,22 @@ for i in SymToValMap:
     OPTDICT[str(i[0])] = [i[0], i[1].encode(
         'ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
 
-_fd = sys.stdin.fileno()
+try:
+    _fd = sys.stdin.fileno()
+except (AttributeError, OSError):
+    _fd = None
 old_settings = None
 _saved_attrs = None
-if sys.stdin.isatty():
+if _fd is not None and HAS_POSIX_TTY and sys.stdin.isatty():
     old_settings = termios.tcgetattr(_fd)
     def restore_tty():
         try:
             termios.tcsetattr(_fd, termios.TCSADRAIN, old_settings)
         except Exception:
-            pass    
+            pass
+elif sys.platform == "win32":
+    def restore_tty():
+        pass
 else:
     def restore_tty():
         pass
@@ -540,12 +585,16 @@ else:
 # --- Echo toggle only ---
 def PollSetNoEchoFunc(arg=None):
     """Turn echo off, leave canonical mode as-is."""
+    if _fd is None or not HAS_POSIX_TTY or not sys.stdin.isatty():
+        return
     attrs = termios.tcgetattr(_fd)
     attrs[3] &= ~termios.ECHO
     termios.tcsetattr(_fd, termios.TCSANOW, attrs)
 
 def PollSetEchoFunc(arg=None):
     """Turn echo back on, leave canonical mode as-is."""
+    if _fd is None or not HAS_POSIX_TTY or not sys.stdin.isatty():
+        return
     attrs = termios.tcgetattr(_fd)
     attrs[3] |= termios.ECHO
     termios.tcsetattr(_fd, termios.TCSANOW, attrs)
@@ -557,8 +606,11 @@ _saved_flags = None
 
 
 def PollSetRawFunc(arg=None):
-    """Put terminal into raw, non-blocking mode."""
+    """Put terminal into raw, non-blocking mode when supported."""
     global _saved_attrs, _saved_flags
+
+    if _fd is None or not HAS_POSIX_TTY or not sys.stdin.isatty():
+        return
 
     if _saved_attrs is None:
         _saved_attrs = termios.tcgetattr(_fd)
@@ -582,6 +634,9 @@ def PollSetRawFunc(arg=None):
 def PollReSetRawFunc(arg=None):
     """Restore terminal state from before PollSetRawFunc."""
     global _saved_attrs, _saved_flags
+
+    if not HAS_POSIX_TTY:
+        return
 
     if _saved_attrs is None and _saved_flags is None:
         return
@@ -614,7 +669,10 @@ def PollReSetRawFunc(arg=None):
         
 
 def PollTTYStateFunc(arg=None):
-    print("PollTTYState")    
+    print("PollTTYState")
+    if _fd is None or not HAS_POSIX_TTY or not sys.stdin.isatty():
+        print("TTY state is not available in this Python environment.")
+        return
     attrs = termios.tcgetattr(_fd)
     iflag, oflag, cflag, lflag, ispeed, ospeed, cc = attrs
     print("iflag:", hex(iflag))
@@ -794,45 +852,78 @@ def Sort_And_Combine_Labels(inboundtext):
     groups["other"]=sorted(set(groups["other"]))
     return " ".join(groups["other"]+groups["M"])
 
-def handle_semicolon(line, filename, context, CPU):
-    # line is already after the leading ';'
-
+def handle_data_label(line, filename, context, CPU):
+    # line is already after the leading '::'
     label, used = nextword(line)
     if not label:
-        CPU.raiseerror(f"150 Missing label in ';' directive {filename}:{context.FileLineNum}")
+        CPU.raiseerror(f"150 Missing label in '::' directive {filename}:{context.FileLineNum}")
 
     rest = line[used:].lstrip()
-
-    size_expr, used = nextwordequation(rest)
-    if not size_expr:
-        CPU.raiseerror(f"160 Missing size for ';' {label}")
-
     workingaddress = (
         context.dataaddress
         if context.DataSegment != -1
         else context.address
     )
 
-    size_value = DecodeStr(size_expr, workingaddress, CPU, True, context)
+    if label != "__":
+        sym = IsLocalVar(label, context)
+        context.FileLabels[sym] = workingaddress
+        context.DefinedSymbols.add(sym)
 
-    if not isinstance(size_value, int):
-        CPU.raiseerror(
-            f"170 Size expression '{size_expr}' must resolve on first pass of ';' {label}"
+        if label in context.GlobalDeclarations:
+            context.GlobeLabels[label] = workingaddress
+            context.DefinedSymbols.add(label)
+
+        UpdateVarHistory(sym, workingaddress, workingaddress)
+
+    if not rest:
+        CPU.raiseerror(f"160 Missing initializer for '::' {label}")
+
+    initializer, used = nextwordplus(rest)
+    if not initializer:
+        CPU.raiseerror(f"160 Missing initializer for '::' {label}")
+    rest = rest[used:].lstrip()
+
+    repeat = 1
+    marker, marker_used = nextword(rest)
+    if marker == "*":
+        rest = rest[marker_used:].lstrip()
+        count_expr, count_used = nextwordequation(rest)
+        if not count_expr:
+            CPU.raiseerror(f"170 Missing repeat count for '::' {label}")
+        count_expr = expand_brace_refs(
+            count_expr, filename, context, CPU, preserve_unresolved=False
+        )
+        repeat = DecodeStr(count_expr, workingaddress, CPU, True, context)
+        if not isinstance(repeat, int):
+            CPU.raiseerror(
+                f"180 Repeat count '{count_expr}' must resolve on first pass "
+                f"of '::' {label}"
+            )
+        if repeat < 0:
+            CPU.raiseerror(
+                f"190 Repeat count '{count_expr}' cannot be negative in '::' {label}"
+            )
+        rest = rest[count_used:].lstrip()
+
+    initializer = expand_brace_refs(
+        initializer, filename, context, CPU, preserve_unresolved=True
+    )
+    for _ in range(repeat):
+        workingaddress = DecodeStr(
+            initializer, workingaddress, CPU, False, context
         )
 
-    if size_value < 0:
-        CPU.raiseerror(
-            f"180 Size expression '{size_expr}' cannot be negative in ';' {label}"
-        )
+    if context.DataSegment != -1:
+        context.dataaddress = workingaddress
+        if context.dataaddress > context.highaddress:
+            context.highaddress = context.dataaddress
+    else:
+        context.address = workingaddress
+        if context.address > context.codehighaddress:
+            context.codehighaddress = context.address
 
-    sym = IsLocalVar(label, context)
-    context.FileLabels[sym] = workingaddress
-    context.DefinedSymbols.add(sym)
-
-    UpdateVarHistory(sym, workingaddress, workingaddress)
-
-    context.ExpectData = size_value
-    return rest[used:].lstrip()
+    return rest
 
 
 class InputFileData:
@@ -1803,7 +1894,7 @@ class microcpu:
         if cmd == PollReadCharI:
             self.optPOPNULL(address)                 # consume POLL arg
             if not self.char_queue:
-                if sys.stdin.isatty():
+                if sys.stdin.isatty() and HAS_READCHAR:
                     try:
                         c = readchar.readkey()
                     except:
@@ -2804,11 +2895,11 @@ def fileonpath(filename):
 
     cpupath = os.environ.get("CPUPATH")
     if cpupath is None:
-        cpupath = ".:lib:test:."
+        cpupath = os.pathsep.join((".", "lib", "test", "."))
     else:
-        cpupath = ".:" + cpupath   # prepend cwd
+        cpupath = os.pathsep.join((".", cpupath))   # prepend cwd
 
-    for testpath in cpupath.split(":"):
+    for testpath in cpupath.split(os.pathsep):
         candidate = os.path.join(testpath, filename)
         # Debugging
         # print("DEBUG trying", candidate)
@@ -2916,6 +3007,8 @@ def expand_brace_refs(text, filename, context, CPU, preserve_unresolved=True):
 
         if name in context.MacroData:
             resolved = context.MacroData[name]
+        elif name in context.GlobeLabels:
+            resolved = context.GlobeLabels[name]
         else:
             resolved = FindHistoricVal(name, context.address, context)
 
@@ -3342,6 +3435,9 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
 
     if labelname in context.FileLabels:
         return ("value", Str2Word(context.FileLabels[labelname]))
+
+    if labelname in context.GlobeLabels:
+        return ("value", Str2Word(context.GlobeLabels[labelname]))
 
     localkey = IsLocalVar(labelname, context)
 
@@ -4483,6 +4579,11 @@ def execute_assembler_command(cmd, CPU, context):
             return rest
         CPU.raiseerror(f"Invalid debug directive {key!r}")
 
+    if key.startswith("::"):
+        if len(key) > 2:
+            rest = key[2:] + (" " + rest if rest else "")
+        return handle_data_label(rest, filename, context, CPU)
+
     if key[0] == ":":
         # Supports both ":FOO" and ": FOO"
         if len(key) > 1:
@@ -4526,11 +4627,6 @@ def execute_assembler_command(cmd, CPU, context):
 
         return rest[used:].lstrip()
     
-    elif key.startswith(";"):
-        if len(key) > 1:
-            rest=key[1:]+rest
-        rest=handle_semicolon(rest, filename, context, CPU)
-        return rest.lstrip()
     elif key[0] == "=":
         if len(key) > 1:
             DestKey = key[1:]
@@ -4928,7 +5024,16 @@ def resolve_all_forward_references(context, CPU):
     # Resolve forward references (FWORDLIST)
     # --------------------------------------------------
 
-    context.GlobeLabels["_END_"] = context.highwater
+    end_address = max(
+        context.highwater,
+        context.highaddress,
+        context.address,
+        context.dataaddress if context.DataSegment >= 0 else 0,
+    )
+    context.GlobeLabels["END__"] = end_address
+    context.FileLabels["END__"] = end_address
+    context.DefinedSymbols.add("END__")
+    LocVarHist["END__"] = [{"value": end_address, "start": 0, "end": None}]
 
     # Ensure tracking structures exist
     if not hasattr(context, "UsedSymbols"):
@@ -5871,7 +5976,8 @@ def FilterLibrary(origfilename, context):
         
 
 
-    newfilename = CreateTempFilename(origfilename)  
+    newfilename = CreateTempFilename(origfilename)
+    context.DynamicLibraryTempFiles.append(newfilename)
 
     current = None
 
@@ -5943,20 +6049,47 @@ def FilterLibraryCleanUp(filename, context):
     if not filename:
         return
 
-    # Optional debug escape hatch
     if getattr(context, "KeepDynamicLibraries", False):
         return
 
     try:
         os.remove(filename)
+        if hasattr(context, "DynamicLibraryTempFiles"):
+            try:
+                context.DynamicLibraryTempFiles.remove(filename)
+            except ValueError:
+                pass
     except FileNotFoundError:
         pass
     except OSError as e:
         print(f"Warning: could not remove dynamic library temp file {filename}: {e}")
 
 
+def FilterLibraryExitCleanUp(context):
+    if getattr(context, "KeepDynamicLibraries", False):
+        return
+
+    for filename in list(getattr(context, "DynamicLibraryTempFiles", [])):
+        FilterLibraryCleanUp(filename, context)
+
+
+def PruneOldDynamicLibraries(origfilename):
+    base = os.path.basename(origfilename)
+    pattern = os.path.join(tempfile.gettempdir(), f"dynlib_{base}_*.ld")
+
+    for filename in glob.glob(pattern):
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"Warning: could not remove old dynamic library temp file {filename}: {e}")
+
+
 def CreateTempFilename(origfilename):
     base = os.path.basename(origfilename)
+
+    PruneOldDynamicLibraries(origfilename)
 
     fd, path = tempfile.mkstemp(
         prefix=f"dynlib_{base}_",
@@ -5966,6 +6099,14 @@ def CreateTempFilename(origfilename):
 
     os.close(fd)
     return path
+
+
+def save_readline_history(histfile):
+    try:
+        readline.write_history_file(histfile)
+    except OSError:
+        pass
+
 
 def main():
     global CPU,  DebugOut, current_context
@@ -5998,15 +6139,20 @@ def main():
     UseDebugger = False
     breakafter = ()
 
-    histfile = os.path.join(os.path.expanduser("~"), ".cpu_history")
-    try:
-        readline.read_history_file(histfile)
-        # default history len is -1 (infinite), which may grow unruly
-        readline.set_history_length(1000)
-    except FileNotFoundError:
-        pass
+    histfile = os.environ.get(
+        "CPU_HISTORY_FILE",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cpu_history"),
+    )
+    if HAS_READLINE:
+        try:
+            readline.read_history_file(histfile)
+            # default history len is -1 (infinite), which may grow unruly
+            readline.set_history_length(1000)
+        except (FileNotFoundError, OSError):
+            pass
 
-    atexit.register(readline.write_history_file, histfile)
+        atexit.register(save_readline_history, histfile)
+    atexit.register(FilterLibraryExitCleanUp, context)
     firstcmd=[]
     for i, arg in enumerate(sys.argv[1:]):
         if skipone:
@@ -6031,9 +6177,17 @@ def main():
             elif arg == "-g":
                 UseDebugger = True
                 DebugOut=sys.stdout
+            elif arg == "-K":
+                context.KeepDynamicLibraries = True
             elif arg == "-f":
+                if not HAS_CPUCFUNC:
+                    safeprint("Fast mode requires the optional cpuCfunc extension. Run make to build it.", file=DebugOut)
+                    sys.exit(1)
                 context.Fast = True
             elif arg == "-X":
+                if not HAS_CPUCFUNC:
+                    safeprint("Cross-check mode requires the optional cpuCfunc extension. Run make to build it.", file=DebugOut)
+                    sys.exit(1)
                 context.CrossCheck = True            
             elif arg == "-c":
                 OptCodeFlag = True
@@ -6052,7 +6206,7 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
@@ -6158,8 +6312,7 @@ def main():
 if __name__ == '__main__':
     main()
 
-    if sys.stdin.isatty():
-        _fd = sys.stdin.fileno()
+    if _fd is not None and HAS_POSIX_TTY and sys.stdin.isatty():
         try:
             new = termios.tcgetattr(_fd)
             new[3] = new[3] | termios.ECHO   # turn echo back on

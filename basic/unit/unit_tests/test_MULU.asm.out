@@ -1,0 +1,23 @@
+ 046d:Stack:(0):test_MULU.asm:18 [ 0000 ]
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ Before  MULU 
+ MULU  is  defined  here 
+ Module  mul.ld  :  Size  921  Bytes 
+ heapmgr.ref  Loaded.. 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  0  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 1 resolved= 112 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 29
+  Used symbols      : 1
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+
+END of Run:(167 Opts)

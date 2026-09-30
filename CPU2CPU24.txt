@@ -1,0 +1,305 @@
+CPU2CPU24 PORTING NOTES
+=======================
+
+This file describes the source changes needed to move a cpu.py program into
+cpu24.py Ring 1, where code and data can occupy separate 64 KiB banks in a
+larger 24-bit physical address space.
+
+The short version is:
+
+  1. Keep code in the normal code bank (CS, normally bank 0).
+  2. Put program data in a bank with .DATA, usually bank 1.
+  3. Include commonDS.mc instead of common.mc.
+  4. Change data labels from ':' definitions to ':: initializer' definitions.
+  5. Enter Ring 1 after setting DS, and leave Ring 1 before @END.
+  6. Port every included file that defines data, not only the main file.
+
+The original cpu.py source remains Ring 0 source. Do not add these changes to
+the original program unless it is intended to run only on cpu24.py.
+
+
+1. Select a data bank
+---------------------
+
+Ring 1 uses a 24-bit physical address formed from an 8-bit segment bank and a
+16-bit logical offset:
+
+    physical address = (segment << 16) | offset
+
+Code instructions still use CS. Data operands use DS unless a CSO, DSO, or ESO
+prefix selects another segment for one instruction. A typical program starts
+with:
+
+    .DATA 1
+    I commonDS.mc
+    L softstack.ld
+    L heapmgr.ld
+
+    .ORG 0x0100
+    :Main
+    @PUSH 1
+    @SSET SegDS
+    @PUSH 1
+    @ADM
+    ...
+    @PUSH 0
+    @ADM
+    @END
+
+.DATA selects the default data bank and makes data labels logical 16-bit
+offsets within that bank. SegDS is selector 1; SegCS is selector 0 and SegES
+is selector 2.
+
+The @SSET instruction consumes the value on the stack. CS cannot be changed by
+SSET. @ADM with 1 enables Ring 1; @ADM with 0 returns to Ring 0 and clears the
+segment registers.
+
+
+2. Use the segmented common library
+-----------------------------------
+
+Replace:
+
+    I common.mc
+
+with:
+
+    .DATA 1
+    I commonDS.mc
+
+commonDS.mc supplies the CPU24 opcodes and segmented versions of the standard
+printing/input macros. It also includes structureDS.ld. The ordinary
+common.mc must remain in use for a Ring 0 build.
+
+The CPU24 library branches are enabled by commonDS.mc's CPU24_SEGMENTED marker.
+This means a normal cpu24.py Ring 0 program can still use common.mc and retain
+the old storage layout.
+
+
+3. Convert data labels
+----------------------
+
+Ring 0 data is commonly declared with a colon and an implicit word:
+
+    :MainHeapID 0
+    :Rows 0
+    :Title "Flight Simulator\0"
+
+In Ring 1, use a double-colon label. The assembler infers the amount of
+storage from each initializer:
+
+    ::MainHeapID 0
+    ::Rows 0
+    ::Title "Flight Simulator\0"
+
+Initializer widths follow the normal raw-data rules:
+
+    ::byteValue $$0          # one byte
+    ::wordValue 0            # one 16-bit word
+    ::longValue $$$0         # one 32-bit long
+    ::buffer $$0 * 64        # 64 repetitions of one zero byte
+    ::words 0 * 16           # 16 repetitions of one zero word
+    ::message "Hello\0"      # six-byte null-terminated string
+
+The optional `* count` repeats the initializer. The count must resolve during
+the first assembler pass and cannot be negative. Each declaration has exactly
+one initializer; use one string literal or the appropriate numeric width for a
+compound value.
+
+Throw-away data labels
+~~~~~~~~~~~~~~~~~~~~~~
+
+Use `::__` for an additional initializer that belongs to a data block but does
+not need a field label. This is useful for structures, extension fields,
+padding, and user data accessed relative to the block's head:
+
+    ::MyCityInfo "New York\0"
+    ::__ "123 -Pie Avenue\0"
+    ::__ "01001\0"
+    ::__ "Two dogs and three cats\0"
+
+The `__` placeholder is not entered in the symbol table or label history and
+may be repeated. It cannot be referenced later and consumes no symbol-table
+entry; only the emitted initializer occupies memory. This special behavior
+applies only to the exact name `__` after `::`. Names such as `__DEND` remain
+ordinary symbols.
+
+The label remains a 16-bit logical offset. References such as @PUSHI word and
+@POPI word continue to use that offset while DS supplies the bank.
+
+Every included source file must be checked. A main file can be converted while
+an included .inc or library file still emits ':' data into the code stream.
+
+
+4. Segment overrides
+--------------------
+
+Most commonDS macros already select CS when they need to read a literal message
+or temporary code-bank storage. For hand-written instructions use:
+
+    @CSO   # next memory instruction uses CS
+    @DSO   # next memory instruction uses DS
+    @ESO   # next memory instruction uses ES
+
+The prefix applies to the immediately following memory instruction. Examples:
+
+    @ESO @POPI 0x0200       # write ES:0200
+    @ESO @PUSHI 0x0200      # read ES:0200
+    @SGET SegDS             # push the current DS bank
+
+Do not add CSO to every instruction. Use it only when a logical address must be
+read from the code bank while Ring 1 data addressing is active.
+
+
+5. Heap and software stack
+--------------------------
+
+Heap IDs and object IDs are logical offsets in the active data segment. Set DS
+before calling HeapDefineMemory, HeapNewObject, HeapResizeObject, or other heap
+functions. Reserve the software stack at the top of the data bank and keep the
+heap below it, for example:
+
+    @PUSH 0x0100
+    @PUSH 0xe000
+    @SUB 0x0100
+    @CALL HeapDefineMemory
+
+The heap manager reserves values below 100 as error returns; use a heap start
+above that range. __DEND is the end of fixed data in Ring 1 and is independent
+of the code high-water mark. It can be used when the data section is large
+enough:
+
+    @PUSH __DEND
+    @PUSH 0xf800
+    @SUB __DEND
+    @CALL HeapDefineMemory
+
+For a small test with __DEND below 100, choose an explicit start such as
+0x0100 instead.
+
+
+6. Flightsim example
+--------------------
+
+The Ring 0 header in tests/flightsim.asm is:
+
+    I common.mc
+    L softstack.ld
+    ...
+
+The Ring 1 header should become:
+
+    .DATA 1
+    I commonDS.mc
+    L softstack.ld
+    ...
+
+Its program globals, currently declared as ':' labels near the top of the
+file, must be converted to explicit ';' declarations. For example:
+
+    :Columns       0
+    :Altitude      1000
+    :PanelText     "\0"
+
+becomes:
+
+    ::Columns 0
+    ::Altitude 1000
+    ::PanelText "\0"
+
+The same conversion is required in flightsim.inc and any included display or
+horizon data files. The existing `:Main .ORG Main` entry can remain in the code
+bank, but startup must set DS and enter Ring 1 before calling routines that use
+those globals:
+
+    :Main .ORG Main
+    @PUSH 1
+    @SSET SegDS
+    @PUSH 1
+    @ADM
+    ...
+    @PUSH 0
+    @ADM
+    @END
+
+Run from the tests directory because flightsim.asm includes flightsim.inc by
+relative name:
+
+    cd tests
+    python3 ../cpu24.py flightsim.asm
+
+If it assembles successfully, the summary should show zero unresolved symbols.
+The interactive simulator may continue running until its normal event loop is
+stopped.
+
+
+7. BASIC v2 example
+--------------------
+
+basic/v2/basic_main.asm is a larger example because its data and code are split
+across several included files:
+
+    I basic_common.h
+    I basic_header.asm
+    I basic_storage.asm
+    I basic_support.asm
+    I basic_eval.asm
+
+For a Ring 1 port, change the common include and add a data bank at the top:
+
+    .DATA 1
+    I commonDS.mc
+    I basic_common.h
+    L softstack.ld
+    D heapmgr.ld
+    ...
+
+Then convert every data declaration in basic_common.h, basic_storage.asm,
+basic_support.asm, basic_eval.asm, and basic_header.asm. Declarations that are
+currently ':' labels need explicit sizes and ';' labels. Keep procedures and
+code labels as ':' labels in the code bank.
+
+The existing :MainLoop entry can remain code-resident. Add Ring 1 setup in the
+actual entry routine before SystemInit/ProgramInit if those routines access
+data:
+
+    :BasicMain
+        @PUSH 1
+        @SSET SegDS
+        @PUSH 1
+        @ADM
+        @CALL SystemInit
+        @CALL ProgramInit
+        ...
+
+Before the final @END, leave Ring 1:
+
+        @PUSH 0
+        @ADM
+        @END
+
+The BASIC editor performs extensive string and heap operations, so all buffers,
+tables, and heap globals must be in DS. Its READSI/printing paths should use
+the commonDS macros; do not mix common.mc's Ring 0 output macros with DS data.
+
+
+8. Build and test checklist
+----------------------------
+
+For each port:
+
+  * Start with .DATA and commonDS.mc.
+  * Convert all data declarations in the complete include graph.
+  * Set DS with SSET before ADM 1.
+  * Keep code labels and instruction entry points in CS.
+  * Use CSO/DSO/ESO only for explicit cross-segment accesses.
+  * Keep heap storage below the software-stack reservation.
+  * Use __DEND for data-based heap placement, not END__ or __CEND.
+  * Assemble and require zero unresolved symbols.
+  * Exercise strings, heap allocation, input, and any event loop.
+  * Run the original cpu.py build separately to ensure the Ring 0 source was
+    not accidentally changed.
+
+Reference tests are tests/cpu24-segments.asm and tests/cpu24-heap.asm. They
+show bank selection, segment overrides, DS-local variables, heap allocation,
+and returning to Ring 0.

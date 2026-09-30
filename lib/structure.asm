@@ -552,7 +552,7 @@ M WHILE_ULT_V \
 # execution between Do and ENDWHEN
 # WHEN is good for cases where there no existing WHILE condition prewired.
 # Its important to remember the condition block will leave a condition value
-# on the stack, that will need to be POPNULL'ed to keep the stack from growing.
+# on the stack, that will need to be POPNULL 'ed to keep the stack from growing.
 #
 M WHEN \
   %S \
@@ -848,6 +848,7 @@ M ENDCASE \
 #  Next Index       : 1 Args must match Index name from For Loop (Inc var is default +1)
 #  NextBy Index A   : 2 Args Index name and Increment value, which can be negative
 #  NextByI Index V  : 2 Args Index name and variable for increment
+#  NextByV Index V  : 2 Args Index name and variable for increment ( both I and V are legal here)
 #                       Just make sure that Index will eventually equal the stop value.
 #             For cases when your lookint to stop loop when index is >= stop value.
 # All For Termination tests are Unsigned, so not sutitble if range includes negative numbers.
@@ -1040,7 +1041,7 @@ M NextByI \
   @JMP _%V_ForTop \
   :_%V_NextEnd \
   %P
-
+M NextByV @NextByI %1 %2
   
 
   

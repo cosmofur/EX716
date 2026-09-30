@@ -77,6 +77,7 @@ G ActiveEventTable
 =KeyEvent 0x0200
 =KeyRangeEvent 0x300
 =MouseEventDetected 1
+=ReadKeyTimeOutPolls 8
 #
 #
 # Strucure of Event Table entries.
@@ -85,6 +86,7 @@ G ActiveEventTable
 =EventMaxUsedHeadOff  2
 =EventBackupHeapOff   4
 =EventRecordSize 12
+=EventTableGrowBy 20
 =EventDataOneOff 0
 =EventDataTwoOff 2
 =EventIDOff 4
@@ -217,6 +219,9 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 #   (Type=KeyEvent, StrPtr, 0, 0, 0, EventID)
 #     - StrPtr points to string of keys to watch for
 #
+# For KeyRangeEvent:
+#   (Type=KeyRangeEvent, Low ASCII, High ASCII, 0, 0, EventID)
+#
 # For TimerEvents:
 #   (Type=TimerEvent, Duration(sec), RepeatFlag, 0, 0, EventID)
 #     - RepeatFlag = 0 one-shot, 1 periodic
@@ -273,7 +278,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
            @PUSHI MTHeapID
            @PUSHI ActiveEventTable
            @PUSHI MAEMaxSize       # Need to turn max size into bytes in table space.
-           @ADD 10                # Allocate 10 new cells for growth.
+           @ADD EventTableGrowBy   # Allocate new cells for growth.
            @PUSH EventRecordSize
            @CALL MUL              # Multiply
            @ADD EventTableHeaderSize     # Add the Header part.
@@ -283,7 +288,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
                @END
            @ENDIF
            @POPI ActiveEventTable
-           @PUSHI MAEMaxSize @ADD 10     # Reset Max size record to new size
+           @PUSHI MAEMaxSize @ADD EventTableGrowBy # Reset Max size record to new size
            @FILL_AT_S ActiveEventTable EventMaxUsedHeadOff
            #
        @ENDIF
@@ -372,7 +377,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @Locals
 @Local CHin
    @PUSH 0
-   @WHILE_LT_A 3
+   @WHILE_LT_A ReadKeyTimeOutPolls
       @READCNW CHin
       @IF_EQ_AV 0 CHin
          @ADD 1
@@ -380,7 +385,7 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
          @WHILEBREAK
       @ENDIF
    @ENDWHILE
-   @IF_LT_A 3
+   @IF_LT_A ReadKeyTimeOutPolls
       @POPNULL
       @PUSHI CHin @AND 0xff
    @ELSE
@@ -482,6 +487,9 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
 @Local CurVal
     @MA2V 0 LastMouseX
     @MA2V 0 LastMouseY
+    @MA2V 0 LastMouseBtn
+    @MA2V 0 LastMouseFlags
+    @MA2V 0 LastMouseTerm
     @MA2V 0 CurVal
     @MA2V -1 LastMouseRawB
     @PUSH 0
@@ -526,7 +534,10 @@ M EncodeLoc @PUSHI %2 @SHL @SHL @SHL @SHL @SHL @SHL @SHL @SHL @PUSHI %1 @AND 0xf
           @POPNULL
           @MA2V -1 LastMouseX
           @MA2V -1 LastMouseY
-          @PUSH 1      # Break the look
+          @MA2V 0 LastMouseBtn
+          @MA2V 0 LastMouseFlags
+          @MA2V 0 LastMouseTerm
+          @PUSH 1      # Break the loop
           @CBREAK
        @ENDCASE
     @ENDWHILE

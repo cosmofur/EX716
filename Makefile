@@ -1,52 +1,65 @@
-CC          = gcc
-PYTHON      ?= python3
-DEBUG  = 1
+PYTHON ?= python3
+DEBUG ?= 1
 
-# Python/NumPy include paths
-PY_CFLAGS   := $(shell $(PYTHON)-config --cflags 2>/dev/null || $(PYTHON) -c "from sysconfig import get_paths; print('-I' + get_paths()['include'])")
-PY_LDFLAGS  := $(shell $(PYTHON)-config --ldflags 2>/dev/null || echo "")
+EXT_SRC := speedCPU.c
+EXT_NAME := cpuCfunc
+PLATFORM := $(shell $(PYTHON) -c "import os; print(os.name)")
+EXT_SUFFIX := $(shell $(PYTHON) -c "import os, sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or ('.pyd' if os.name == 'nt' else '.so'))")
+EXT_TARGET := $(EXT_NAME)$(EXT_SUFFIX)
+LEGACY_EXT_TARGET := $(EXT_NAME).so
+
+CC ?= $(shell $(PYTHON) -c "import shlex, sysconfig; print(shlex.split(sysconfig.get_config_var('CC') or 'cc')[0])")
+PY_CFLAGS := $(shell $(PYTHON) -c "import sysconfig; print(' '.join('-I' + p for p in dict.fromkeys(filter(None, [sysconfig.get_path('include'), sysconfig.get_path('platinclude')]))))")
+PY_LDFLAGS := $(shell $(PYTHON) -c "import sysconfig; print((sysconfig.get_config_var('LDFLAGS') or '') + ' ' + (sysconfig.get_config_var('LIBS') or '') + ' ' + (sysconfig.get_config_var('SYSLIBS') or ''))")
 NUMPY_INCLUDE := $(shell $(PYTHON) -c "import numpy; print(numpy.get_include())")
 
-# Build flags
-DEBUGFLAGS  = -O0 -g
-OPTFLAGS    = -O2 -DNDEBUG -Wno-cpp
+WARNFLAGS := -Wall -Werror
+DEBUGFLAGS := -O0 -g
+OPTFLAGS := -O2 -DNDEBUG -Wno-cpp
+COMMON_CFLAGS := $(WARNFLAGS) $(PY_CFLAGS) -I$(NUMPY_INCLUDE) -DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
 
 ifeq ($(DEBUG),1)
-  CFLAGS = $(DEBUGFLAGS) -Wall -Werror
+  BUILD_CFLAGS := $(DEBUGFLAGS)
 else
-  CFLAGS = $(OPTFLAGS) -Wall -Werror
+  BUILD_CFLAGS := $(OPTFLAGS)
 endif
 
-LDFLAGS     = $(PY_LDFLAGS)
+ifeq ($(PLATFORM),nt)
+  EXTENSION_SUPPORTED := 0
+  SHARED_FLAGS := -shared
+else
+  EXTENSION_SUPPORTED := 1
+  SHARED_FLAGS := -shared -fPIC
+endif
 
-# Targets
-EXT_TARGET  = cpuCfunc.so
-EXT_SRC     = speedCPU.c
+.PHONY: all extension check clean help
 
-.PHONY: all clean check
+all: extension
 
-all: $(EXT_TARGET) $(BIN_TARGET)
+extension: $(EXT_TARGET)
 
-# Python extension
-$(EXT_TARGET): $(EXT_SRC)
-	$(CC) -shared -fPIC $(EXT_SRC) \
-		$(PY_CFLAGS) -I$(NUMPY_INCLUDE) \
-		-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION \
-		$(LDFLAGS) $(CFLAGS) -o $@
-
-# Standalone binary
-$(BIN_TARGET): $(BIN_OBJ)
-	$(CC) $(BIN_OBJ) $(CFLAGS) -o $@
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(EXT_TARGET): $(EXT_SRC) speedCPU.h
+ifeq ($(EXTENSION_SUPPORTED),0)
+	$(error Native Windows builds of $(EXT_NAME) are not supported yet because $(EXT_SRC) uses POSIX terminal APIs. Use WSL/Linux/Termux, or run cpu.py without -f)
+else
+	$(CC) $(SHARED_FLAGS) $(EXT_SRC) $(COMMON_CFLAGS) $(BUILD_CFLAGS) $(PY_LDFLAGS) -o $@
+	$(PYTHON) -c "import pathlib, shutil; src=pathlib.Path('$(EXT_TARGET)'); dst=pathlib.Path('$(LEGACY_EXT_TARGET)'); shutil.copyfile(src, dst) if src.name != dst.name else None"
+endif
 
 check:
 	@echo "Python: $(PYTHON)"
-	@$(PYTHON) -c "import sys; print('version:', sys.version)"
-	@$(PYTHON) -c "import numpy; print('numpy:', numpy.__version__)"
-	@$(PYTHON) -c "import numpy; print('include:', numpy.get_include())"
+	@$(PYTHON) -c "import os, sys, sysconfig; print('version:', sys.version); print('platform:', sys.platform, 'os.name:', os.name); print('ext suffix:', sysconfig.get_config_var('EXT_SUFFIX'))"
+	@$(PYTHON) -c "import numpy; print('numpy:', numpy.__version__); print('include:', numpy.get_include())"
+	@echo "CC: $(CC)"
+	@echo "target: $(EXT_TARGET)"
+	@echo "supported: $(EXTENSION_SUPPORTED)"
 
 clean:
-	rm -f $(BIN_OBJ) $(BIN_TARGET) $(EXT_TARGET)
+	$(PYTHON) -c "import pathlib; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.so') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.pyd') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.dll') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('*.o') if p.is_file()]"
 
+help:
+	@echo "Targets:"
+	@echo "  make check      Show detected Python, NumPy, compiler, and target settings"
+	@echo "  make            Build the optional $(EXT_NAME) extension for fast mode"
+	@echo "  make DEBUG=0    Build optimized extension"
+	@echo "  make clean      Remove built extension artifacts"

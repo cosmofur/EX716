@@ -1,0 +1,34 @@
+ 0dac:Stack:(1):test_MUL32S.asm:22 [ 4e20 0000 ]
+ Enable  USE_ONLY  all  library  functions  must  be  specified. 
+ Assemble  with  USE_ONLY  Enabled. 
+ Module  common.mc  :  Size  40  Bytes 
+ Loading  lmath.ld 
+ "Require shift16.ld needs to be included." 
+ "Require string.ld needs to be included." 
+ "Including "  MUL32S 
+ "Including "  COMP232 
+ "Including "  MUL32U 
+ "Including "  ADD32U 
+ "Including "  MUL16x32U 
+ heapmgr.ref  Loaded.. 
+ Loading  softstack.ld 
+ Module  softstack.ld  :  Size  146  Bytes 
+ Loading  heapmgr.ld 
+ Module  heapmgr.ld  :  Size  0  Bytes 
+ Module  lmath.ld  :  Size  3072  Bytes 
+ "Require div.ld needs to be included." 
+ "Require mul.ld needs to be included." 
+ Module  string.ld  :  Size  2  Bytes 
+ diskos.ref  Loaded.. 
+ Module  diskos.ld  :  Size  144  Bytes 
+
+=== Symbol Resolution Report ===
+DEBUG: used= 7 resolved= 283 unresolved= 0
+
+=== Summary ===
+  Defined symbols   : 51
+  Used symbols      : 7
+  Unresolved symbols: 0
+  ✔ All symbols resolved
+
+END of Run:(9768 Opts)

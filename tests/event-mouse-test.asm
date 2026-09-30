@@ -41,7 +41,7 @@ M Call(VVVVVV) @PUSHI %2     @PUSHI %3     @PUSHI %4     @PUSHI %5  @PUSHI %6   
    @Local SoftStackStart
    @Local SoftStackEnd
 
-:Main .Org Main
+:Main .ORG Main
 
    @MA2V 0 ClickCount
 

@@ -3,6 +3,7 @@
 M __LIB_STRING_LOADED 1
 P Load string.ld
 I string.ref
+L heapmgr.ld
 L mul.ld
 L div.ld
 
@@ -120,7 +121,12 @@ M SafeMove(VVV) \
 
 # Function strlen
 # strlen(str_var) returns length of string
-:WorkBuff "00000000" $$0       # Long enough for -32000 to +32000
+? CPU24_SEGMENTED
+::WorkBuff "00000000\0"
+ENDBLOCK
+! CPU24_SEGMENTED
+:WorkBuff "00000000" $$0
+ENDBLOCK
 
 #
 # Function
@@ -1006,7 +1012,12 @@ M SafeMove(VVV) \
 # strtok(InString, Delim) searchs string and replaces delim(s) with null
 # keeps an internal pointer so when string is null it will continue from
 # where it last left off. When original string is complete, will also return null
+? CPU24_SEGMENTED
+::int_sptr 0
+ENDBLOCK
+! CPU24_SEGMENTED
 :int_sptr 0
+ENDBLOCK
 @FUNCTION strtok
 :strtok
 @PUSHRETURN
@@ -1303,4 +1314,3 @@ M SIZESINCECOMMENT string.ld
 @SIZESINCE
 
 ENDBLOCK
-

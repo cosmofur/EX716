@@ -73,6 +73,45 @@ Rather than hiding assembly language, EX716 attempts to make assembly programmin
 
 ---
 
+# Command-Line Options
+
+Common `cpu.py` options include:
+
+| Option | Purpose |
+| ------ | ------- |
+| `-g` | Run the interactive debugger. Generated dynamic-library temp files are cleaned up when the debugger exits. |
+| `-K` | Keep generated dynamic-library temp files in the system temp directory for deeper debugging. |
+| `-d` | Increase assembly or runtime debug output. May be repeated for more detail. |
+| `-l` | Print an assembled source listing. |
+| `-c` | Write a hex dump of the assembled image. |
+| `-O` | Write a binary dump of the assembled image. |
+| `-w addr` | Add a watch address to the debug listing. |
+| `-b addr` | Set a debugger breakpoint. |
+| `-e command` | Pass an initial command to the debugger. |
+
+---
+
+# Platform Notes
+
+EX716 is primarily developed on Linux and WSL, and also runs in POSIX-like Python environments such as Termux. Native Windows support is best-effort: assembler and non-interactive emulator paths should import cleanly, while terminal raw-mode features are limited compared with POSIX terminals.
+
+`CPUPATH` uses the host platform path separator: `:` on Linux, WSL, macOS, and Termux; `;` on native Windows.
+
+## Optional C Fast Mode
+
+The `-f` fast emulator path uses the optional `cpuCfunc` Python extension built from `speedCPU.c`:
+
+```sh
+make check
+make
+```
+
+The Makefile derives Python include paths, NumPy include paths, and the extension suffix from the selected `PYTHON`, so the built file uses the host Python ABI name such as `cpuCfunc.cpython-312-x86_64-linux-gnu.so`. A compatibility `cpuCfunc.so` copy is also written on POSIX builds.
+
+The current C backend still uses POSIX terminal APIs, so native Windows builds are intentionally rejected by the Makefile. Use WSL/Linux/Termux for `-f`, or run `cpu.py` without `-f` on native Windows.
+
+---
+
 # Project Layout
 
 | Directory       | Purpose                               |
@@ -129,6 +168,48 @@ D string.ld
 D heapmgr.ld
 ```
 
+## Data-segment labels
+
+Use `::` to define initialized storage at the current data-segment position:
+
+```assembly
+.DATA 1
+
+::Flag       $$0
+::Counter    0
+::Total      $$$0
+::Message    "Hello\0"
+::ByteBuffer $$0 * 64
+```
+
+The initializer determines the element size: `$$` emits one byte, an
+unprefixed value (or `$`) emits a 16-bit word, `$$$` emits a 32-bit long, and a
+string emits its encoded bytes. An optional `* count` repeats that initializer;
+the count must resolve on the first assembler pass and cannot be negative.
+
+`:` continues to define a label at the current code position. `::` defines a
+label at the current data position and emits exactly one initializer.
+
+### Throw-away data labels
+
+Use `::__` when an initializer belongs to the preceding data block but does
+not need its own field label. This is useful for structures, extension fields,
+padding, and user data that will only be accessed through the block's head:
+
+```assembly
+::MyCityInfo "New York\0"
+::__ "123 -Pie Avenue\0"
+::__ "01001\0"
+::__ "Two dogs and three cats\0"
+```
+
+Each `::__` emits its initializer at the current data position without adding
+`__` to the symbol table or label history. It may be repeated as often as
+needed, consumes no symbol-table entry, and cannot be referenced later. The
+initializer itself still occupies its normally inferred amount of memory.
+Only the exact name `__` has this meaning after `::`; names such as `__DEND`
+remain ordinary symbols.
+
 ---
 
 # Dynamic Libraries
@@ -153,6 +234,8 @@ Only the requested functions and the routines they depend upon are included in t
 Unused code is never assembled into the application.
 
 This allows large libraries to remain practical while keeping executables compact.
+
+When a dynamic library is filtered, `cpu.py` creates a generated `dynlib_*` copy in the system temporary directory and assembles that generated file. Normal runs, including `-g` debugger sessions, remove these generated files on exit and prune older generated copies for the same source library when creating a new one. Use `-K` with `-g` when you intentionally want to keep the generated `dynlib_*` file for deeper inspection. On Linux, WSL, and Termux these files normally live under `/tmp`; on native Windows they use Python's system temp directory.
 
 ---
 
@@ -296,7 +379,7 @@ Instead of:
 prefer:
 
 ```assembly
-@POPI2 Source Dest
+@POPI2 Dest Source
 ```
 
 Likewise:
@@ -308,6 +391,8 @@ Likewise:
 is generally preferred over three individual `@PUSHI` instructions.
 
 Grouped parameter macros improve readability while reducing repetitive code.
+
+Keep in mind that order matters, POP in reverse order as PUSH.
 
 ---
 
@@ -550,4 +635,3 @@ It exists as part of the processor's long-term roadmap and is intended to provid
 * Future operating system services
 
 The exact capabilities of Administrative Mode are expected to evolve as the EX716 architecture continues to mature.
-

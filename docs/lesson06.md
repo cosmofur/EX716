@@ -30,7 +30,7 @@ Example:
 This is simple, compact, and ideal for low-level instructions.
 
 ---
-But when more complex macros need to distinguish between Variables and Direct/Imediate values, we use V for variables and A or B for the direct values. 
+But when more complex macros need to distinguish between Variables and direct/immediate values, we use V for variables and A or B for the direct values. 
 Examples:
 - `@ADDVV` — Add variable to variable
 - `@CMPVA` — Compare variable to direct value
@@ -90,7 +90,7 @@ logic and higher abstraction.
 | @PUSHII     | Core        | Push Value at Ptr with TOS        |
 | @PUSHS      | Core        | Replace TOS with value @ address  |
 | @RLTC       | Core        | Rotate Left Through Carry         |
-| @RRTC       | Core        | Rotage Right Through Carry        |
+| @RRTC       | Core        | Rotate Right Through Carry        |
 | @SCLR       | Core        | Clear HW stack                    |
 | @SHL        | Core        | Logical shift left                |
 | @SHR        | Core        | Logical shift right               |
@@ -98,7 +98,7 @@ logic and higher abstraction.
 | @SUB        | Core        | Subtract TOS from Direct value    |
 | @SUBI       | Core        | Subtract TOS from Variable value  |
 | @SUBII      | Core        | Subtract TOS from Value at Ptr    |
-| @SUBS       | Core        | Subtrace top two stack items      |
+| @SUBS       | Core        | Subtract top two stack items      |
 | @SWP        | Core        | Swap top two stack items          |
 | @XOR        | Core        | Bitwise XOR                       |
 | @XORI       | Core        | XOR Variable value with TOS       |
@@ -181,6 +181,8 @@ These macros improve readability by abstracting flag logic into common forms lik
 
 The idea behind these is, the core instructions do not provide negative versions of the core 'JMPZ' and other flags, here are their logical reverse as well as somewhat clearer terms for dealing with Greater and Less than tests than the NF by itself expresses.
 
+For ordinary function calls after the early lessons, prefer the friendlier `@Call(...)` forms when the function takes one to five simple arguments. The signature letters are `A` for direct/immediate, `V` for variable value, and `P` for pointer value. For example, `@Call(VV) MULU Width Height` expands to pushing both variables and then calling `MULU`. Use plain `@CALL` for zero-argument functions and for calls with more than five arguments.
+
 
 Following table is the core output macros that handle all the major IO though 'device driver' like calls.
 
@@ -191,7 +193,7 @@ These simulate external smart printers or terminals that can handle full numbers
 
 | Instruction     | Core Opcode | Description                                 |
 |-----------------|-------------|---------------------------------------------|
-| @PRT            | Compound    | Print following quoted strin                |
+| @PRT            | Compound    | Print following quoted string                |
 | @PRTI           | Compound    | Print value of variable as signed integer   |
 | @PRTUI          | Compound    | Print value as unsigned integer             |
 | @PRTHEXI        | Compound    | Print variable as hexadecimal               |

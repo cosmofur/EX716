@@ -112,7 +112,7 @@ M StackCheck @SRTP @PUSHI StackInfo @ADD %1 @CMPS @IF_ZFLAG @ELSE @PRT "Stack Of
 # Main
 ############################################################
 
-:Main .Org Main
+:Main .ORG Main
 
    @MA2V 1 Running
 
