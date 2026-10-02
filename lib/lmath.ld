@@ -340,7 +340,7 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 # Outputs  : [ ... R_low R_high ]
 # Notes    :
 #   - Uses shared workspace (A32_*, B32_*, R32_*).
-#   - Carry flag acts as "no borrow" flag.
+#   - C32Flag records unsigned borrow: set when A < B.
 #   - Discards borrow out of high word.
 # ===========================================================
 @FUNCTION SUB32
@@ -404,9 +404,9 @@ JMP SUB32S
 # Inputs   : [ ... A_low A_high B_low B_high ]
 # Outputs  : [ ... R_low R_high ]
 # Notes    :
-#   - Carry flag is set if *no borrow* occurred (C=1 => A >= B)
-#   - Uses workspace A32_*, B32_*, R32_*
-#   - Sets Flags32 via CMP32U
+#   - C32Flag is intended to record unsigned borrow (C=1 => A < B).
+#   - Uses local UCA_*, UCB_*, and UCR_* workspace.
+#   - Sets Flags32 via SetFlags32 after preserving borrow across both words.
 # ===========================================================
 @FUNCTION SUB32U
 :SUB32U
@@ -418,7 +418,8 @@ JMP SUB32S
 @Local UCB_High
 @Local UCR_Low
 @Local UCR_High
-@Local BorrowFlag
+@Local LowBorrowFlag
+@Local FinalBorrowFlag
 =UCA UCA_Low
 =UCB UCB_Low
 #USE SetFlags32
@@ -427,31 +428,39 @@ JMP SUB32S
     # --- Low word subtraction ---
     @PUSHI UCA_Low    @SUBI  UCB_Low    @POPI  UCR_Low
 
-    # --- Adjust high word for borrow ---
+    # --- Record low-word borrow ---
     @IF_CARRY
-        @MA2V 1 BorrowFlag
+        @MA2V 1 LowBorrowFlag
     @ELSE
-        @MA2V 0 BorrowFlag
+        @MA2V 0 LowBorrowFlag
     @ENDIF
+
     # --- High word subtraction ---
     @PUSHI UCA_High
     @SUBI UCB_High
-
-    @IF_EQ_AV 1 BorrowFlag
-       @SUB 1
-    @ENDIF
     @POPI UCR_High
 
-    # Re-evaluate final borrow after high-word subtraction.
+    # Capture high-word borrow before another operation changes hardware flags.
     @IF_CARRY
-       @MA2V 1 BorrowFlag
+       @MA2V 1 FinalBorrowFlag
     @ELSE
-       @MA2V 0 BorrowFlag
+       @MA2V 0 FinalBorrowFlag
+    @ENDIF
+
+    # Propagate the low-word borrow. This decrement can itself borrow when the
+    # unadjusted high-word result is zero.
+    @IF_EQ_AV 1 LowBorrowFlag
+       @PUSHI UCR_High
+       @SUB 1
+       @POPI UCR_High
+       @IF_CARRY
+          @MA2V 1 FinalBorrowFlag
+       @ENDIF
     @ENDIF
 
     @PUSHI UCR_Low @PUSHI UCR_High
     @PUSH 2   # Mode 2 = SUB/CMP
-    @PUSHI BorrowFlag
+    @PUSHI FinalBorrowFlag
     @PUSH 0   # OverFlowIn
     @CALL SetFlags32
 
@@ -604,8 +613,8 @@ JMP SUB32S
 # Inputs   : [ ... A_low A_high B_low B_high ]
 # Outputs  : none (sets Z, C, N flags)
 # Notes    :
-#   - Carry flag set if borrow (A >= B)
-#   - Uses hardware CF=1 ⇒ no borrow convention
+#   - C32Flag is set when unsigned borrow occurs (A < B).
+#   - The EX716 hardware carry flag is treated as a borrow indication after SUB
 #   - Overflow flag cleared (not meaningful for unsigned)
 # ===========================================================
 @FUNCTION CMP32U
