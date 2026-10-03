@@ -15,11 +15,11 @@ G ADD32S G ADD32U G SUB32S G SUB32U                   # Core math functoins Sign
 G ADD32_BASE
 G ADD16U G ADD32 G SUB32
 G MUL32U G MUL32S
-G DIV32U G DIV32S
+G DIV32U G DIV32S G DIV32U_Q G DIV32S_Q
 G CMP32S G CMP32U                                   # Compair Signed Unsigned
 G CMP32
 G AND32 G OR32 G XOR32 G INV32                      # Boolean operations.
-G SHL32 G SHR32                                     # Multi bit shifts
+G SHL32 G SHR32 G SAR32                             # Multi bit shifts
 G SHL32_1 G SHR32_1 G SHL32_8 G SHR32_8             # fixed bit shifts
 G SHL32_small G SHR32_small
 G SetBit32 G ClearBit32                             # Bit operations
@@ -245,6 +245,46 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @PUSHRETURN
 #USE ADD32S
 @CALL ADD32S
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+# ===========================================================
+# Quotient-only wrappers used by expression-oriented callers.
+# DIV32U and DIV32S return remainder followed by quotient.
+# ===========================================================
+@FUNCTION DIV32U_Q
+:DIV32U_Q
+@PUSHRETURN
+@Locals
+    @Local Quotient
+    @Local Quotient_High
+    @Local Remainder
+    @Local Remainder_High
+#USE DIV32U
+    @CALL DIV32U
+    @POP32I(V) Quotient
+    @POP32I(V) Remainder
+    @PUSH32I(V) Quotient
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION DIV32S_Q
+:DIV32S_Q
+@PUSHRETURN
+@Locals
+    @Local Quotient
+    @Local Quotient_High
+    @Local Remainder
+    @Local Remainder_High
+#USE DIV32S
+    @CALL DIV32S
+    @POP32I(V) Quotient
+    @POP32I(V) Remainder
+    @PUSH32I(V) Quotient
+@EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
@@ -1356,6 +1396,69 @@ JMP SUB32S
 @POPRETURN
 @RET
 @ENDFUNCTION
+
+# ===========================================================
+# Function : SAR32
+# Purpose  : Arithmetic right shift of a signed 32-bit value
+# Inputs   : [... Low High Count ]
+# Outputs  : [... NewLow NewHigh ]
+# ===========================================================
+@FUNCTION SAR32
+:SAR32
+@PUSHRETURN
+@Locals
+    @Local Low
+    @Local High
+    @Local Count
+    @Local Sign
+    @Local Carry
+    @Local _I
+
+    @POPI Count
+    @POP32I(V) Low
+    @PUSHI High @AND 0x8000 @POPI Sign
+
+    # Counts are normalized by the compiler, but keep the runtime helper
+    # well-defined when called directly with a count outside 0..31.
+    @PUSHI Count
+    @IF_UGE_A 32
+        @POPNULL
+        @PUSHI Sign
+        @IF_ZERO
+            @POPNULL
+            @MA2V 0 Low
+            @MA2V 0 High
+        @ELSE
+            @POPNULL
+            @MA2V 0xffff Low
+            @MA2V 0xffff High
+        @ENDIF
+        @JMP SAR32_End
+    @ENDIF
+    @POPNULL
+
+    @ForIA2V _I 0 Count
+        # Cascade High bit 0 into Low bit 15, while retaining the sign.
+        @PUSHI High @AND 1
+        @IF_NOTZERO
+            @POPNULL
+            @MA2V 0x8000 Carry
+        @ELSE
+            @POPNULL
+            @MA2V 0 Carry
+        @ENDIF
+
+        @PUSHI Low @SHR @ORI Carry @POPI Low
+        @PUSHI High @SHR @ORI Sign @POPI High
+    @Next _I
+
+:SAR32_End
+    @PUSH32I(V) Low
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
 # ===========================================================
 # Function : SHR32_small
 # Purpose  : Shift 32-bit value right by 1..7 bits (unsigned)

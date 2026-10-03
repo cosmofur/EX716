@@ -183,31 +183,39 @@ M SIZESINCECOMMENT mul.ld
 :MUL
 @PUSHRETURN
 @Locals
+    @Local A_VAL
+    @Local B_VAL
     @Local SIGN
 #USE MULU
 
-    @MA2V 0 SIGN     # sign = +1
+    @POPI B_VAL
+    @POPI A_VAL
+    @MA2V 0 SIGN
 
     # --- Check first operand ---
+    @PUSHI A_VAL
     @IF_LT_A 0
-        @INV
-        @POPI SIGN
+        @PUSHI SIGN @INV @POPI SIGN
+        @PUSHI A_VAL @COMP2 @POPI A_VAL
     @ENDIF
-    @SWP
+    @POPNULL
 
     # --- Check second operand ---
+    @PUSHI B_VAL
     @IF_LT_A 0
-        @INV
-        @POPI SIGN
+        @PUSHI SIGN @INV @POPI SIGN
+        @PUSHI B_VAL @COMP2 @POPI B_VAL
     @ENDIF
-    @SWP
+    @POPNULL
 
     # --- Do unsigned multiply ---
+    @PUSHI A_VAL
+    @PUSHI B_VAL
     @CALL MULU
 
     # --- Apply sign if needed ---
     @PUSHI SIGN
-    @IF_GT_A 0
+    @IF_NOTZERO
         @POPNULL
         @COMP2
     @ELSE

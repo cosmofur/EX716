@@ -64,11 +64,11 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N G BITMASK16
     @POPNULL
 
     # Loop N times: A <<= 1
-    @ForIA2B I1 N -1
+    @ForIA2V I1 0 N
         @PUSHI A
         @SHL        # built-in 16-bit one-bit shift
         @POPI A
-    @NextBy I1 -1
+    @Next I1
 
     @PUSHI A
     @RestoreVar 03
@@ -115,11 +115,11 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N G BITMASK16
     @ENDIF
     @POPNULL
 
-    @ForIA2B I1 N -1
+    @ForIA2V I1 0 N
         @PUSHI A
         @SHR        # built-in 16-bit logical shift right
         @POPI A
-    @NextBy I1 -1
+    @Next I1
 
     @PUSHI A
     @RestoreVar 03
@@ -182,7 +182,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N G BITMASK16
         @POPRETURN @RET
     @ENDIF
     @POPNULL
-    @ForIA2B I1 N -1
+    @ForIA2V I1 0 N
         @PUSHI A
         @SHR           # logical right shift
         @POPI A
@@ -194,7 +194,7 @@ G SHL16_BY_N G SHR16_BY_N G SAR16_BY_N G BITMASK16
         @ELSE
             @POPNULL
         @ENDIF
-    @NextBy I1 -1
+    @Next I1
 
     @PUSHI A
     @RestoreVar 04
