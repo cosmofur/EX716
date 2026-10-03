@@ -57,11 +57,11 @@ M IF32_NE @PUSHI Flags32 @AND Z32Flag @CMP Z32Flag @POPNULL @IF_NOTZF
 #
 M IF32_ULT         @PUSHI Flags32 @AND C32Flag @CMP 0 @POPNULL @IF_NOTZF     # A < B  (borrow)
 M IF32_UGE         @PUSHI Flags32 @AND C32Flag @CMP 0 @POPNULL @IF_ZFLAG     # A ≥ B  (no borrow)
-M IF32_ULE         @PUSHI Z32Flag @ANDI Flags32 \
-                   @PUSHI C32Flag @ANDI Flags32 \
+M IF32_ULE         @PUSH Z32Flag @ANDI Flags32 \
+                   @PUSH C32Flag @ANDI Flags32 \
                    @ORS @CMP 0 @POPNULL @IF_NOTZF                     # (A < B or A == B)
-M IF32_UGT         @PUSHI Z32Flag @ANDI Flags32 \
-                   @PUSHI C32Flag @ANDI Flags32 \
+M IF32_UGT         @PUSH Z32Flag @ANDI Flags32 \
+                   @PUSH C32Flag @ANDI Flags32 \
                    @ORS @CMP 0 @POPNULL @IF_ZFLAG                     # (A > B)  no borrow and not equal
 #
 #
@@ -176,7 +176,12 @@ M POP32II(V) @PUSHI %1 @ADD 2 @POPS @PUSHI %1 @POPS
 M PUSH32I(V) @PUSHI %1 @PUSHI %1+2
 # Push 32 value based on ptr to word rather than address of word.
 M PUSH32II(V) PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS
+? CPU24_SEGMENTED
+M PUSH32(A) @JMP _%0_Skip :_%0_Val %1 :_%0_Skip @CSO @PUSHI _%0_Val @CSO @PUSHI _%0_Val+2
+ENDBLOCK
+! CPU24_SEGMENTED
 M PUSH32(A) @JMP _%0_Skip :_%0_Val %1 :_%0_Skip @PUSHI _%0_Val @PUSHI _%0_Val+2
+ENDBLOCK
 M M32A2V @PUSH32(A) %1 @POP32I(V) %2
 M M32V2V @PUSH32I(V) %1 @POP32I(V) %2
 M M32P2V `@PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS @POP32I(V) %2`
