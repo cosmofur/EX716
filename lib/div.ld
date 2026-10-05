@@ -42,12 +42,14 @@ G DIVU G DIV
           @POPNULL
        @ENDIF
        @PUSHI Remainder @PUSHI B_VAL 
-       @IF_GE_S
+       # Remainder and divisor are unsigned bit patterns.  IF_ULT_S uses the
+       # unsigned carry branch; skip subtraction when Remainder < B_VAL.
+       @IF_ULT_S
+          @POPNULL @POPNULL
+       @ELSE
           @POPNULL @POPNULL
           @PUSHI Remainder @PUSHI B_VAL @SUBS @POPI Remainder
           @PUSHI QVal @PUSHI MASK @ORS @POPI QVal
-       @ELSE
-          @POPNULL @POPNULL
        @ENDIF
        @PUSHI MASK @SHR @POPI MASK  # Shift Mask to next bit from left to right
    @Next Index
@@ -69,15 +71,18 @@ G DIVU G DIV
     @Local A_VAL
     @Local B_VAL
     @Local SIGN
+    @Local A_SIGN
 #
 #USE DIVU
    #
    @POPI B_VAL
    @POPI A_VAL
    @MA2V 0 SIGN
+   @MA2V 0 A_SIGN
    @PUSH 0
    @PUSHI A_VAL
    @IF_GT_S
+      @MA2V 1 A_SIGN
       @PUSHI SIGN @INV @POPI SIGN
       @PUSHI A_VAL @COMP2 @POPI A_VAL
    @ENDIF
@@ -101,6 +106,13 @@ G DIVU G DIV
       @PUSHI A_VAL @COMP2 @POPI A_VAL   # If Signed use 2s compliment
    @ENDIF
    @POPNULL
+   # C's truncation-toward-zero remainder has the dividend's sign, not the
+   # quotient's sign.  Keep that independent from SIGN (the quotient XOR).
+   @PUSHI A_SIGN
+   @IF_NOTZERO
+      @PUSHI B_VAL @COMP2 @POPI B_VAL
+   @ENDIF
+   @POPNULL
    @PUSHI B_VAL
    @PUSHI A_VAL
    :DIVEXIT
@@ -111,4 +123,3 @@ G DIVU G DIV
 M SIZESINCECOMMENT div.ld
 @SIZESINCE
 ENDBLOCK
-

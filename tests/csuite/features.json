@@ -1,0 +1,1215 @@
+{
+  "schema": 1,
+  "scope": "EX716 practical integer C subset: 16-bit int, 32-bit long, 16-bit DS near pointers; C90-derived syntax with selected C99 library extensions. Not an ISO conformance suite.",
+  "features": [
+    {
+      "id": "LANG-001",
+      "priority": "P0",
+      "title": "EX716 integer and pointer model",
+      "acceptance": [
+        "Assert byte/short/int/long/pointer widths and signed plain char; public limits must agree."
+      ],
+      "source": "int main(void){return sizeof(char)!=1 || sizeof(short)!=2 || sizeof(int)!=2 || sizeof(long)!=4 || sizeof(void*)!=2 || (char)-1>=0;}"
+    },
+    {
+      "id": "LANG-002",
+      "priority": "P0",
+      "title": "Existing mixed-width calls",
+      "file": "cases/calls/mixed_width.c",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ]
+    },
+    {
+      "id": "LANG-003",
+      "priority": "P0",
+      "title": "Existing integer math",
+      "file": "cases/math/integer_widths.c",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ]
+    },
+    {
+      "id": "LANG-004",
+      "priority": "P0",
+      "title": "Existing local arrays",
+      "file": "cases/memory/local_arrays.c",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ]
+    },
+    {
+      "id": "LANG-005",
+      "priority": "P0",
+      "title": "Existing aggregate return",
+      "file": "cases/abi/struct_return.c",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ]
+    },
+    {
+      "id": "LANG-006",
+      "priority": "P0",
+      "title": "Unsigned comparisons across sign bit",
+      "acceptance": [
+        "Exercise all six comparisons at 0,32767,32768,65535, with both operand orders."
+      ],
+      "source": "int main(void){unsigned int a,b; a=65535U;b=32768U; if(a<=b||a<b||b>=a||b>a)return 1; if(!(a>0U)||!(0U<a))return 2; return 0;}"
+    },
+    {
+      "id": "LANG-007",
+      "priority": "P0",
+      "title": "Signed comparisons at both extremes",
+      "acceptance": [
+        "Exercise all signed comparisons without relying on signed overflow."
+      ],
+      "source": "int main(void){int a,b; a=-32767-1;b=32767; if(a>=b||b<=a||a==b||!(a<b)||!(b>a))return 1;return 0;}"
+    },
+    {
+      "id": "LANG-008",
+      "priority": "P0",
+      "title": "Integer conversions and promotions",
+      "acceptance": [
+        "8-to-16 sign/zero extension,16-to-32,32-to-16, mixed signed/unsigned promotions."
+      ],
+      "source": "int main(void){signed char a; unsigned char b; int i; long l; a=-128;b=255;i=-123;l=i; if(l!=-123L||a!=-128||b!=255)return 1; l=65535L;i=(int)l;if(i!=-1)return 2;return 0;}"
+    },
+    {
+      "id": "LANG-009",
+      "priority": "P0",
+      "title": "Signed quotient and remainder",
+      "acceptance": [
+        "Use positive/negative dividends/divisors; quotient/remainder identity; excludes division by zero and signed-min / -1."
+      ],
+      "source": "int main(void){int a,b;long x,y;a=-17;b=5;x=-123456L;y=100L;if(a/b!=-3||a%b!=-2)return 1;if(x/y!=-1234L||x%y!=-56L)return 2;return 0;}"
+    },
+    {
+      "id": "LANG-010",
+      "priority": "P0",
+      "title": "Long comparisons across word boundaries",
+      "acceptance": [
+        "Signed and unsigned 32-bit EQ/NE/LT/LE/GT/GE, equal low words and different high words."
+      ],
+      "source": "int main(void){long a,b;unsigned long u,v;a=-65537L;b=65536L;u=4294967295UL;v=2147483648UL;if(a>=b||b<=a||a==b)return 1;if(u<=v||v>=u)return 2;return 0;}"
+    },
+    {
+      "id": "LANG-011",
+      "priority": "P0",
+      "title": "Short-circuit side effects",
+      "acceptance": [
+        "RHS runs exactly when required; skipped RHS must not change state."
+      ],
+      "source": "int main(void){int n,x;n=0;x=0;if(x&&(++n))return 1;if(!x||(++n)){}if(n)return 2;x=1;if(x&&(++n)){}if(!x||(++n)){}return n!=2;}"
+    },
+    {
+      "id": "LANG-012",
+      "priority": "P0",
+      "title": "Loop and jump control flow",
+      "acceptance": [
+        "for/while/do,break,continue,goto,early return, nested branches."
+      ],
+      "source": "int main(void){int i,n;i=0;n=0;do{++i;if(i==2)continue;n+=i;if(i==4)break;}while(i<9);if(n!=8)return 1;for(i=0;i<3;i++)n++;while(n<12)n++;goto done;return 2;done:return n!=12;}"
+    },
+    {
+      "id": "LANG-013",
+      "priority": "P0",
+      "title": "Sparse switch",
+      "acceptance": [
+        "Cases/default, negative labels, fall-through and nested break."
+      ],
+      "source": "int f(int x){switch(x){case -4:return 1;case 10:return 2;case 1000:return 3;default:return 4;}}int main(void){return f(-4)!=1||f(10)!=2||f(1000)!=3||f(7)!=4;}"
+    },
+    {
+      "id": "LANG-014",
+      "priority": "P1",
+      "title": "Dense switch and jump-table lowering",
+      "acceptance": [
+        "Dense switch must either work or use a correct branch-chain fallback; inspect any emitted table."
+      ],
+      "source": "int f(int x){switch(x){case 0:return 4;case 1:return 7;case 2:return 3;case 3:return 8;case 4:return 9;case 5:return 11;case 6:return 12;case 7:return 13;default:return 99;}}int main(void){return f(0)!=4||f(3)!=8||f(7)!=13||f(8)!=99;}"
+    },
+    {
+      "id": "LANG-015",
+      "priority": "P0",
+      "title": "Recursive frame lifetime",
+      "acceptance": [
+        "Local addresses remain valid across calls; bounded recursion restores software stack."
+      ],
+      "source": "int sum(int n){int saved;int *p;saved=n;p=&saved;if(n==0)return 0;return sum(n-1)+*p;}int main(void){return sum(6)!=21;}"
+    },
+    {
+      "id": "LANG-016",
+      "priority": "P0",
+      "title": "Local-name shadowing",
+      "acceptance": [
+        "Nested and sibling blocks with identical names must have distinct storage/aliases."
+      ],
+      "source": "int main(void){int x,y;x=1;y=0;{int x;x=2;y=x;}{int x;x=3;if(x!=3)return 2;}return x!=1||y!=2;}"
+    },
+    {
+      "id": "LANG-017",
+      "priority": "P0",
+      "title": "Adjacent byte stores",
+      "acceptance": [
+        "Odd/even byte stores preserve neighbors; add segment-end byte case separately."
+      ],
+      "source": "int main(void){unsigned char b[4];b[0]=0x12;b[1]=0x34;b[2]=0x56;b[3]=0x78;b[1]=255;return b[0]!=0x12||b[1]!=255||b[2]!=0x56||b[3]!=0x78;}"
+    },
+    {
+      "id": "LANG-018",
+      "priority": "P0",
+      "title": "Pointer difference and scaling",
+      "acceptance": [
+        "Positive/negative ptrdiff within same object, byte/int/long element strides."
+      ],
+      "source": "int char_diff(void){char a[5];char *p,*q;p=a+4;q=a+1;return p-q!=3||q-p!=-3;}int long_diff(void){long a[5];long *p,*q;p=a+4;q=a+1;return p-q!=3||q-p!=-3;}int assigned_diff(void){int a[5];int *p,*q;long d;p=a+1;q=a+4;d=p-q;return d!=-3L;}int main(void){int a[5];int *p,*q;p=a+4;q=a+1;return p-q!=3||q-p!=-3||!(q<p)||char_diff()||long_diff()||assigned_diff();}"
+    },
+    {
+      "id": "LANG-019",
+      "priority": "P0",
+      "title": "Local initialized array",
+      "acceptance": [
+        "Automatic aggregate initializers, partial zero fill, and string-initialized char arrays."
+      ],
+      "source": "int main(void){int a[3]={11,22,33};return a[0]!=11||a[1]!=22||a[2]!=33;}"
+    },
+    {
+      "id": "LANG-020",
+      "priority": "P0",
+      "title": "Global initialized data",
+      "acceptance": [
+        "Emit writable scalar, array, struct, and string objects in DS; preserve initial values, layout, address-of and later writes."
+      ],
+      "source": "struct R{char c;int n;};int g=7;unsigned char b=255;long wide=-123456L;int values[3]={2,4,6};struct R record={'A',0x1234};char message[]=\"x\\n\";int main(void){if(g!=7||b!=255||wide!=-123456L||values[0]!=2||values[1]!=4||values[2]!=6||record.c!='A'||record.n!=0x1234||message[0]!='x'||message[1]!=10||message[2]!=0)return 1;g=9;b=1;wide=100000L;return g!=9||b!=1||wide!=100000L;}"
+    },
+    {
+      "id": "LANG-021",
+      "priority": "P0",
+      "title": "Global zero-initialized storage",
+      "acceptance": [
+        "Tentative definitions/zeroed BSS, arrays, pointers and aggregate layout."
+      ],
+      "source": "struct S{char c;int i;};int g;int a[3];int *p;struct S s;int main(void){if(g||a[0]||a[1]||a[2]||p||s.c||s.i)return 1;p=a;a[2]=9;s.c=0x34;s.i=0x1234;return (g?1:0)|(p[2]!=9?2:0)|(s.c!=0x34?4:0)|(s.i!=0x1234?8:0);}"
+    },
+    {
+      "id": "LANG-022",
+      "priority": "P0",
+      "title": "Static local persistence",
+      "acceptance": [
+        "Initialized static locals persist across calls and distinct same-spelling statics do not alias."
+      ],
+      "source": "int next(void){static int n=5;n++;return n;}int other(void){static int n=2;n+=2;return n;}int main(void){return next()!=6||other()!=4||next()!=7||other()!=6;}"
+    },
+    {
+      "id": "LANG-023",
+      "priority": "P0",
+      "title": "String literals in DS",
+      "acceptance": [
+        "NUL terminator, escapes, distinct literals; DS access with CS != DS."
+      ],
+      "source": "int main(void){char *p,*q;p=\"a\\nc\";q=\"abd\";return p[0]!='a'||p[1]!=10||p[2]!='c'||p[3]!=0||q[0]!='a'||q[2]!='d'||q[3]!=0;}"
+    },
+    {
+      "id": "LANG-024",
+      "priority": "P0",
+      "title": "Global address initializer",
+      "acceptance": [
+        "Relocations for object/function addresses and object-plus-offset."
+      ],
+      "source": "int a[3]={3,4,5};int *p=&a[1];static int target(void){return 7;}int (*fp)(void)=target;int main(void){return (*p!=4?1:0)|(p!=a+1?2:0)|(fp!=target?4:0);}"
+    },
+    {
+      "id": "LANG-025",
+      "priority": "P1",
+      "title": "Indirect function call",
+      "acceptance": [
+        "Function pointer stored locally and passed as callback; return values and argument cleanup."
+      ],
+      "file": "probes/indirect_call.c"
+    },
+    {
+      "id": "LANG-026",
+      "priority": "P0",
+      "title": "Variadic caller stack discipline",
+      "acceptance": [
+        "Extra arguments use the caller-owned packet; empty packets and fixed calls retain correct stack/result behavior."
+      ],
+      "source": "int f(int n,...){return n;}int fixed(int n){return n+1;}int main(void){return f(7,11,123456L)!=7||f(5)!=5||fixed(3)!=4;}"
+    },
+    {
+      "id": "LANG-027",
+      "priority": "P0",
+      "title": "Public stdarg mixed-width traversal",
+      "acceptance": [
+        "va_start/va_arg/va_end, promoted narrow values, mixed widths, pointers, nested variadic calls and cursor advancement."
+      ],
+      "source": "#include <stdarg.h>\nlong f(int n,...){va_list ap;int a,b;long c;va_start(ap,n);a=va_arg(ap,int);b=va_arg(ap,int);c=va_arg(ap,long);va_end(ap);return a+b+c;}long outer(int n,...){va_list ap;long x;va_start(ap,n);x=va_arg(ap,long);va_end(ap);return n+x;}char *pick(int n,...){va_list ap;char *p;va_start(ap,n);p=va_arg(ap,char *);va_end(ap);return p;}int mixed_test(void){return f(3,(char)7,11,100000L)!=100018L;}int nested_test(void){return outer(1,f(3,9,0,100000L))!=100010L;}int pointer_test(void){return pick(1,\"ok\")[1]!='k';}int main(void){return mixed_test()+2*nested_test()+4*pointer_test();}"
+    },
+    {
+      "id": "LANG-028",
+      "priority": "P1",
+      "title": "Function frame above 40 bytes",
+      "acceptance": [
+        "At least a 64-byte automatic buffer; configurable bounded stack; diagnostic rather than corrupt frame."
+      ],
+      "source": "int main(void){unsigned char b[64];b[0]=1;b[63]=2;return b[0]+b[63]!=3;}"
+    },
+    {
+      "id": "LANG-029",
+      "priority": "P1",
+      "title": "Small aggregate copy (2 bytes)",
+      "acceptance": [
+        "Exact block copies of 1, 2, and 3 bytes; block assignment must not be confused with scalar value load."
+      ],
+      "source": "struct A{char x;};struct B{char x,y;};struct C{char x,y,z;};int main(void){struct A a,b;struct B c,d;struct C e,f;a.x=7;b=a;c.x=8;c.y=9;d=c;e.x=10;e.y=11;e.z=12;f=e;return b.x!=7||d.x!=8||d.y!=9||f.x!=10||f.y!=11||f.z!=12;}"
+    },
+    {
+      "id": "LANG-030",
+      "priority": "P1",
+      "title": "Small aggregate copy (4 bytes)",
+      "acceptance": [
+        "Copy exact four bytes and preserve surrounding fields."
+      ],
+      "source": "struct S{int x,y;};int main(void){struct S a,b;a.x=7;a.y=9;b=a;return b.x!=7||b.y!=9;}"
+    },
+    {
+      "id": "LANG-031",
+      "priority": "P1",
+      "title": "Union and bit-fields",
+      "acceptance": [
+        "Union layout and read/modify/write bit-fields; add signed fields and packing boundaries."
+      ],
+      "source": "union U{unsigned int w;unsigned char b[2];};struct B{unsigned int a:3;unsigned int b:5;};int main(void){union U u;struct B f;u.w=0x1234;f.a=5;f.b=17;return u.b[0]!=0x34||u.b[1]!=0x12||f.a!=5||f.b!=17;}"
+    },
+    {
+      "id": "LANG-032",
+      "priority": "P1",
+      "title": "Multiple translation units",
+      "acceptance": [
+        "Compile units separately and combine assembly without duplicate private labels; external function resolves."
+      ],
+      "units": [
+        "int helper(int);int main(void){return helper(6)!=7;}",
+        "int helper(int x){if(x)return x+1;return 0;}"
+      ]
+    },
+    {
+      "id": "LANG-033",
+      "priority": "P1",
+      "title": "Internal-linkage function names",
+      "acceptance": [
+        "Two units may each define static helper with different behavior; emitted names must be unique."
+      ],
+      "units": [
+        "static int f(void){return 1;}int other(void);int main(void){return f()!=1||other()!=2;}",
+        "static int f(void){return 2;}int other(void){return f();}"
+      ]
+    },
+    {
+      "id": "LANG-034",
+      "priority": "P2",
+      "title": "Floating-point operations",
+      "acceptance": [
+        "Conversions, arithmetic and comparisons must preserve declared float/double semantics; fail loudly until supported."
+      ],
+      "file": "probes/floating_point.c"
+    },
+    {
+      "id": "LANG-035",
+      "priority": "P0",
+      "title": "Float must not silently use integer arithmetic",
+      "acceptance": [
+        "Float is four bytes but ADD/F and ADD/I require different code; reject unsupported float with nonzero compiler exit."
+      ],
+      "source": "int main(void){float a,b;a=1.5f;b=2.25f;return a==b || a+b!=3.75f || a+b==4.0f;}"
+    },
+    {
+      "id": "SAFE-unsupported-indirect-call",
+      "priority": "P0",
+      "title": "Unsupported indirect call fails compilation",
+      "acceptance": [
+        "Valid function-pointer C receives an EX716 backend diagnostic and nonzero compiler exit; supported direct-call controls remain executable."
+      ],
+      "file": "probes/indirect_call.c",
+      "kind": "backend-reject",
+      "diagnostic": "EX716: unsupported indirect call"
+    },
+    {
+      "id": "SAFE-unsupported-float",
+      "priority": "P0",
+      "title": "Unsupported floating-point expression fails compilation",
+      "acceptance": [
+        "Valid float arithmetic receives an EX716 backend diagnostic and nonzero compiler exit; it must not be silently lowered as integer arithmetic."
+      ],
+      "file": "probes/floating_point.c",
+      "kind": "backend-reject",
+      "diagnostic": "EX716: unhandled expression"
+    },
+    {
+      "id": "SAFE-unsupported-small-aggregate",
+      "priority": "P0",
+      "title": "Unsupported small aggregate copy fails compilation",
+      "acceptance": [
+        "Valid two-byte struct assignment receives an EX716 backend diagnostic and nonzero compiler exit."
+      ],
+      "source": "struct S{int x;};int main(void){struct S a,b;a.x=7;b=a;return b.x!=7;}",
+      "kind": "backend-reject",
+      "diagnostic": "EX716: unhandled expression"
+    },
+    {
+      "id": "SAFE-unsupported-dense-switch",
+      "priority": "P0",
+      "title": "Malformed dense-switch lowering fails compilation",
+      "acceptance": [
+        "The current malformed branch target is reported as a backend error and causes nonzero exit; sparse-switch control remains executable."
+      ],
+      "source": "int f(int x){switch(x){case 0:return 4;case 1:return 7;case 2:return 3;case 3:return 8;case 4:return 9;case 5:return 11;case 6:return 12;case 7:return 13;default:return 99;}}int main(void){return f(3)!=8;}",
+      "kind": "backend-reject",
+      "diagnostic": "EX716: malformed jump"
+    },
+    {
+      "id": "LANG-036",
+      "priority": "P0",
+      "title": "Front-end invalid source diagnostic",
+      "acceptance": [
+        "Nonzero compiler exit for invalid C; never assemble rejected translation."
+      ],
+      "source": "int main(void){int x;return missing_name;}",
+      "kind": "reject"
+    },
+    {
+      "id": "LANG-037",
+      "priority": "P0",
+      "title": "Preprocessing with target-only includes",
+      "acceptance": [
+        "Bundled cpp macro expansion and conditionals; no host system-header fallback."
+      ],
+      "source": "#define TWICE(x) ((x)+(x))\n#if defined(__EX716__)\nint main(void){return TWICE(3)!=6;}\n#else\n#error wrong target\n#endif"
+    },
+    {
+      "id": "HEADER-stddef",
+      "priority": "P0",
+      "title": "Target public <stddef.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <stddef.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-limits",
+      "priority": "P0",
+      "title": "Target public <limits.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <limits.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-stdarg",
+      "priority": "P0",
+      "title": "Target public <stdarg.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <stdarg.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-stdio",
+      "priority": "P0",
+      "title": "Target public <stdio.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-stdlib",
+      "priority": "P1",
+      "title": "Target public <stdlib.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <stdlib.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-string",
+      "priority": "P1",
+      "title": "Target public <string.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <string.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-ctype",
+      "priority": "P1",
+      "title": "Target public <ctype.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <ctype.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-errno",
+      "priority": "P1",
+      "title": "Target public <errno.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <errno.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-assert",
+      "priority": "P1",
+      "title": "Target public <assert.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <assert.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-float",
+      "priority": "P1",
+      "title": "Target public <float.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <float.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-time",
+      "priority": "P1",
+      "title": "Target public <time.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <time.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-setjmp",
+      "priority": "P1",
+      "title": "Target public <setjmp.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <setjmp.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-signal",
+      "priority": "P1",
+      "title": "Target public <signal.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <signal.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "HEADER-locale",
+      "priority": "P1",
+      "title": "Target public <locale.h>",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "source": "#include <locale.h>\nint main(void){return 0;}",
+      "kind": "header"
+    },
+    {
+      "id": "IO-putchar",
+      "priority": "P0",
+      "title": "putchar",
+      "acceptance": [
+        "Return unsigned byte or EOF; test 0x80/0xff.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int r;r=putchar('A');return r!='A';}",
+      "stdout": "A"
+    },
+    {
+      "id": "IO-getchar",
+      "priority": "P0",
+      "title": "getchar",
+      "acceptance": [
+        "Distinguish 0xff from EOF; consume deterministic piped input.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int a,b;a=getchar();b=getchar();return a!='Q'||b!=EOF;}",
+      "stdout": "",
+      "stdin": "Q"
+    },
+    {
+      "id": "IO-puts",
+      "priority": "P0",
+      "title": "puts",
+      "acceptance": [
+        "Append exactly one newline; empty string and write error.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return puts(\"ok\")<0;}",
+      "stdout": "ok\n"
+    },
+    {
+      "id": "IO-fputc",
+      "priority": "P0",
+      "title": "fputc",
+      "acceptance": [
+        "stdout/stderr and file stream; error flag on failure.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return fputc('B',stdout)!='B';}",
+      "stdout": "B"
+    },
+    {
+      "id": "IO-fgetc",
+      "priority": "P0",
+      "title": "fgetc",
+      "acceptance": [
+        "EOF/error states and unsigned character result.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return fgetc(stdin)!='R';}",
+      "stdout": "",
+      "stdin": "R"
+    },
+    {
+      "id": "IO-fputs",
+      "priority": "P0",
+      "title": "fputs",
+      "acceptance": [
+        "No automatic newline; negative result on write failure.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return fputs(\"ok\",stdout)<0;}",
+      "stdout": "ok"
+    },
+    {
+      "id": "IO-fgets",
+      "priority": "P0",
+      "title": "fgets",
+      "acceptance": [
+        "Retain newline, bound n, NUL terminate; test final unterminated line, EOF, and n=1.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[8];if(fgets(b,8,stdin)!=b)return 1;return b[0]!='x'||b[1]!='\\n'||b[2]!=0;}",
+      "stdout": "",
+      "stdin": "x\n"
+    },
+    {
+      "id": "IO-printf",
+      "priority": "P0",
+      "title": "printf",
+      "acceptance": [
+        "Integer formats and promotions, literal percent, width/precision/sign, exact return count.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return printf(\"%d %ld %u %x %c %s\",-7,100000L,65535U,255U,'Z',\"ok\")!=23;}",
+      "stdout": "-7 100000 65535 ff Z ok"
+    },
+    {
+      "id": "IO-fprintf",
+      "priority": "P1",
+      "title": "fprintf",
+      "acceptance": [
+        "Same formatting engine; stream errors and stderr independently.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return fprintf(stdout,\"%d\",42)!=2;}",
+      "stdout": "42"
+    },
+    {
+      "id": "IO-sprintf",
+      "priority": "P1",
+      "title": "sprintf",
+      "acceptance": [
+        "Return count excludes NUL; caller owns adequate storage.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[8];return sprintf(b,\"%d\",42)!=2||b[0]!='4'||b[1]!='2'||b[2]!=0;}",
+      "stdout": ""
+    },
+    {
+      "id": "IO-snprintf",
+      "priority": "P0",
+      "title": "snprintf",
+      "acceptance": [
+        "Truncation, would-have-written count, size zero, n=1; C99 extension to initial C90 subset.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[4];int n;n=snprintf(b,4,\"%d\",12345);return n!=5||b[0]!='1'||b[2]!='3'||b[3]!=0;}",
+      "stdout": ""
+    },
+    {
+      "id": "IO-fflush",
+      "priority": "P0",
+      "title": "fflush",
+      "acceptance": [
+        "Flush writable streams/NULL, preserve error state; avoid undefined use on input streams.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){if(fputs(\"F\",stdout)<0)return 1;return fflush(stdout)!=0;}",
+      "stdout": "F"
+    },
+    {
+      "id": "IO-feof",
+      "priority": "P0",
+      "title": "feof",
+      "acceptance": [
+        "Flag set only after failed read at end, independent of ferror.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);return c!=EOF||!feof(stdin);}",
+      "stdout": ""
+    },
+    {
+      "id": "IO-ferror",
+      "priority": "P0",
+      "title": "ferror",
+      "acceptance": [
+        "Initially clear; injected failed read/write must set it, EOF alone must not.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return ferror(stdin)!=0;}",
+      "stdout": ""
+    },
+    {
+      "id": "IO-clearerr",
+      "priority": "P0",
+      "title": "clearerr",
+      "acceptance": [
+        "Clear both indicators; preserve cursor.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!=EOF)return 1;clearerr(stdin);return feof(stdin)||ferror(stdin);}",
+      "stdout": ""
+    },
+    {
+      "id": "IO-ungetc",
+      "priority": "P1",
+      "title": "ungetc",
+      "acceptance": [
+        "At least one character pushback, clears EOF; EOF argument fails.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!='A')return 1;if(ungetc('Z',stdin)!='Z')return 2;return fgetc(stdin)!='Z';}",
+      "stdout": "",
+      "stdin": "A"
+    },
+    {
+      "id": "IO-getc",
+      "priority": "P1",
+      "title": "getc",
+      "acceptance": [
+        "Equivalent byte/EOF behavior to fgetc.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return getc(stdin)!='G';}",
+      "stdout": "",
+      "stdin": "G"
+    },
+    {
+      "id": "IO-putc",
+      "priority": "P1",
+      "title": "putc",
+      "acceptance": [
+        "Equivalent byte/error behavior to fputc.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return putc('P',stdout)!='P';}",
+      "stdout": "P"
+    },
+    {
+      "id": "IO-perror",
+      "priority": "P1",
+      "title": "perror",
+      "acceptance": [
+        "Capture stderr separately; errno message and newline; no claim of passed output semantics from this smoke test.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){perror(\"audit\");return 0;}",
+      "stderr_pattern": "^audit: .+\\n"
+    },
+    {
+      "id": "IO-sscanf",
+      "priority": "P1",
+      "title": "sscanf",
+      "acceptance": [
+        "Assignment count, mismatch/EOF distinction, suppressed conversions and bounded %s.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int a;long b;return sscanf(\"7 100000\",\"%d %ld\",&a,&b)!=2||a!=7||b!=100000L;}",
+      "stdout": ""
+    },
+    {
+      "id": "IO-scanf",
+      "priority": "P2",
+      "title": "scanf",
+      "acceptance": [
+        "Deterministic input, assignment count and recovery after malformed input.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "source": "#include <stdio.h>\nint main(void){int a;return scanf(\"%d\",&a)!=1||a!=7;}",
+      "stdout": "",
+      "stdin": "7\n"
+    },
+    {
+      "id": "IO-fopen",
+      "priority": "P0",
+      "title": "fopen",
+      "acceptance": [
+        "r/rb,w/wb,a/ab,r+,w+,a+; missing file, create, truncate, append each write, invalid mode and allocation failure.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fclose",
+      "priority": "P0",
+      "title": "fclose",
+      "acceptance": [
+        "Commit final size, release every handle/buffer, return 0/EOF, flush failure; repeated opens must not leak.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fread",
+      "priority": "P0",
+      "title": "fread",
+      "acceptance": [
+        "Return complete element count; size/count zero; partial final element; NUL/0xff binary payload; multiplication overflow.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fwrite",
+      "priority": "P0",
+      "title": "fwrite",
+      "acceptance": [
+        "Return complete element count; short/error writes; read-only stream; sector crossings and 65535/65536 boundary.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fseek",
+      "priority": "P1",
+      "title": "fseek",
+      "acceptance": [
+        "SEEK_SET/CUR/END, negative/invalid positions, long offset, clears EOF and pushback; update-stream direction barriers.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-ftell",
+      "priority": "P1",
+      "title": "ftell",
+      "acceptance": [
+        "Long cursor after read/write/seek, error returns -1L; binary offsets and text-position rules.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-rewind",
+      "priority": "P1",
+      "title": "rewind",
+      "acceptance": [
+        "Return void, cursor zero and both indicators clear; implicit seek errors need testing.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fgetpos",
+      "priority": "P2",
+      "title": "fgetpos",
+      "acceptance": [
+        "Capture opaque fpos_t; restore after read including required text conversion state.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fsetpos",
+      "priority": "P2",
+      "title": "fsetpos",
+      "acceptance": [
+        "Restore fpos_t round trip and clear EOF/pushback; update stream transitions.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-freopen",
+      "priority": "P2",
+      "title": "freopen",
+      "acceptance": [
+        "Rebind stream and mode; success/failure, standard stream redirection and cleanup.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-setbuf",
+      "priority": "P2",
+      "title": "setbuf",
+      "acceptance": [
+        "Before I/O: NULL/unbuffered and supplied buffer lifetime; size BUFSIZ.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-setvbuf",
+      "priority": "P2",
+      "title": "setvbuf",
+      "acceptance": [
+        "Before I/O: full/line/no buffering, invalid modes and buffer ownership.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-remove",
+      "priority": "P2",
+      "title": "remove",
+      "acceptance": [
+        "Delete missing/existing file; report failure without halting emulator.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-rename",
+      "priority": "P2",
+      "title": "rename",
+      "acceptance": [
+        "Rename existing file, missing source, destination policy, atomic metadata consistency.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-tmpfile",
+      "priority": "P2",
+      "title": "tmpfile",
+      "acceptance": [
+        "Binary update stream, temporary file cleanup at close/termination.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-tmpnam",
+      "priority": "P2",
+      "title": "tmpnam",
+      "acceptance": [
+        "Unique filename within target constraints; capacity and failure; prefer tmpfile for applications.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-fscanf",
+      "priority": "P2",
+      "title": "fscanf",
+      "acceptance": [
+        "Read file fixture; assignment count, EOF/mismatch and width limits.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vprintf",
+      "priority": "P1",
+      "title": "vprintf",
+      "acceptance": [
+        "Traverse va_list from target stdarg ABI and verify count/output.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vfprintf",
+      "priority": "P1",
+      "title": "vfprintf",
+      "acceptance": [
+        "Share formatting engine and va_list traversal with explicit stream.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vsprintf",
+      "priority": "P1",
+      "title": "vsprintf",
+      "acceptance": [
+        "Share formatting engine and terminate caller buffer.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vsnprintf",
+      "priority": "P1",
+      "title": "vsnprintf",
+      "acceptance": [
+        "Would-have-written count, bounded write, n=0, variadic list; C99 subset extension.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vfscanf",
+      "priority": "P2",
+      "title": "vfscanf",
+      "acceptance": [
+        "Variadic input argument forwarding, conversion count and errors.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vscanf",
+      "priority": "P2",
+      "title": "vscanf",
+      "acceptance": [
+        "Variadic stdin forwarding, conversion count and errors.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "IO-vsscanf",
+      "priority": "P2",
+      "title": "vsscanf",
+      "acceptance": [
+        "Variadic string input forwarding, conversion count and errors.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ],
+      "kind": "planned",
+      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+    },
+    {
+      "id": "LIB-malloc",
+      "priority": "P1",
+      "title": "malloc/free",
+      "acceptance": [
+        "Target ABI wrapper, normal result; add allocation exhaustion or ERANGE edge vectors respectively."
+      ],
+      "source": "#include <stdlib.h>\nint main(void){void *p;p=malloc(8);if(!p)return 1;free(p);return 0;}"
+    },
+    {
+      "id": "LIB-strtol",
+      "priority": "P1",
+      "title": "strtol",
+      "acceptance": [
+        "Target ABI wrapper, normal result; add allocation exhaustion or ERANGE edge vectors respectively."
+      ],
+      "source": "#include <stdlib.h>\nint main(void){char *e;long n;n=strtol(\"-123x\",&e,10);return n!=-123L||*e!='x';}"
+    },
+    {
+      "id": "LIB-strlen",
+      "priority": "P1",
+      "title": "strlen",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "source": "#include <string.h>\nint main(void){return strlen(\"abc\")!=3;}"
+    },
+    {
+      "id": "LIB-strcmp",
+      "priority": "P1",
+      "title": "strcmp",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "source": "#include <string.h>\nint main(void){return strcmp(\"abc\",\"abc\")!=0||strcmp(\"a\",\"b\")>=0;}"
+    },
+    {
+      "id": "LIB-memcpy",
+      "priority": "P1",
+      "title": "memcpy",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "source": "#include <string.h>\nint main(void){char a[4],b[4];a[0]='Q';a[1]=0;a[2]=(char)255;a[3]='Z';return memcpy(b,a,4)!=b||b[0]!='Q'||b[1]!=0||b[3]!='Z';}"
+    },
+    {
+      "id": "LIB-memmove",
+      "priority": "P1",
+      "title": "memmove",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "source": "#include <string.h>\nint main(void){char b[5];b[0]='a';b[1]='b';b[2]='c';b[3]=0;return memmove(b+1,b,3)!=b+1||b[1]!='a'||b[3]!='c';}"
+    },
+    {
+      "id": "LIB-memset",
+      "priority": "P1",
+      "title": "memset",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "source": "#include <string.h>\nint main(void){unsigned char b[4];return memset(b,255,4)!=b||b[0]!=255||b[3]!=255;}"
+    },
+    {
+      "id": "LANG-038",
+      "priority": "P2",
+      "title": "64-bit integer execution",
+      "acceptance": [
+        "long long arithmetic/conversions/calls require eight-byte values; until available, issue a nonzero diagnostic."
+      ],
+      "kind": "planned",
+      "reason": "No eight-byte expression/load/store support; not required for the initial C90-derived integer subset."
+    },
+    {
+      "id": "SYS-001",
+      "priority": "P0",
+      "title": "Application startup and shutdown",
+      "acceptance": [
+        "Initialize zero storage, DS, stack and optional heap; main(void) and defined argv contract; exit status, fflush/atexit cleanup."
+      ],
+      "kind": "planned",
+      "reason": "Audit supplies test startup and main result markers; production crt0 and exit lifecycle remain untested."
+    },
+    {
+      "id": "SYS-002",
+      "priority": "P0",
+      "title": "Public build/assemble workflow",
+      "acceptance": [
+        "One reproducible target-only cpp/rcc/runtime command; multiple units and internal symbols; tool errors propagate."
+      ],
+      "kind": "planned",
+      "reason": "Audit assembles test harnesses; no EX716-configured production lcc driver located."
+    },
+    {
+      "id": "SYS-003",
+      "priority": "P1",
+      "title": "Stack and segment bounds",
+      "acceptance": [
+        "Frame reservation checks bottom before writing; valid near-pointer segment model; exhaustion diagnosed; no CS/DS/heap/stack overlap."
+      ],
+      "kind": "planned",
+      "reason": "Normal frame restoration is checked; negative exhaustion and segment-end fixtures still required."
+    },
+    {
+      "id": "MATH-div16-signed",
+      "priority": "P0",
+      "title": "MATH-div16-signed",
+      "source": "int main(void){int a,b;a=17;b=5;if(a/b!=3)return 1;a=-17;b=5;if(a/b!=-3)return 2;a=17;b=-5;if(a/b!=-3)return 3;a=-17;b=-5;if(a/b!=3)return 4;a=-20;b=5;if(a/b!=-4)return 5;return 0;}",
+      "acceptance": [
+        "Signed 16-bit quotient; all sign combinations, exact and inexact divisions."
+      ]
+    },
+    {
+      "id": "MATH-mod16-signed",
+      "priority": "P0",
+      "title": "MATH-mod16-signed",
+      "source": "int main(void){int a,b;a=17;b=5;if(a%b!=2)return 1;a=-17;b=5;if(a%b!=-2)return 2;a=17;b=-5;if(a%b!=2)return 3;a=-17;b=-5;if(a%b!=-2)return 4;a=-20;b=5;if(a%b!=0)return 5;return 0;}",
+      "acceptance": [
+        "Signed 16-bit remainder matches dividend sign; choose truncation toward zero for the practical subset."
+      ]
+    },
+    {
+      "id": "MATH-div32-signed",
+      "priority": "P0",
+      "title": "MATH-div32-signed",
+      "source": "int main(void){long a,b;a=-123456L;b=100L;return a/b!=-1234L;}",
+      "acceptance": [
+        "Signed 32-bit quotient, independently tested."
+      ]
+    },
+    {
+      "id": "MATH-mod32-signed",
+      "priority": "P0",
+      "title": "MATH-mod32-signed",
+      "source": "int main(void){long a,b;a=-123456L;b=100L;return a%b!=-56L;}",
+      "acceptance": [
+        "Signed 32-bit remainder, independently tested."
+      ]
+    },
+    {
+      "id": "MATH-div16-high",
+      "priority": "P0",
+      "title": "MATH-div16-high",
+      "source": "int main(void){unsigned int a,b;a=65535U;b=40000U;if(a/b!=1U||a%b!=25535U)return 1;a=40000U;b=65535U;if(a/b!=0U||a%b!=40000U)return 2;a=65535U;b=32768U;if(a/b!=1U||a%b!=32767U)return 3;a=32768U;b=65535U;if(a/b!=0U||a%b!=32768U)return 4;return 0;}",
+      "acceptance": [
+        "Unsigned high-bit divisors and remainders."
+      ]
+    },
+    {
+      "id": "MATH-shift-boundary",
+      "priority": "P0",
+      "title": "MATH-shift-boundary",
+      "source": "int main(void){unsigned int a;unsigned long b;long c;int n;a=32768U;b=2147483648UL;c=-2147483647L-1L;n=15;if(a>>n!=1U)return 1;n=31;return b>>n!=1UL||c>>n!=-1L;}",
+      "acceptance": [
+        "Legal computed shifts at width-1; arithmetic signed right shift is the chosen target behavior."
+      ]
+    },
+    {
+      "id": "MATH-wrap",
+      "priority": "P0",
+      "title": "MATH-wrap",
+      "source": "int main(void){unsigned int a;unsigned long b;a=65535U;b=4294967295UL;return a+1U!=0U||b+1UL!=0UL;}",
+      "acceptance": [
+        "Unsigned wrapping for both widths."
+      ]
+    },
+    {
+      "id": "MEM-pointer-negative",
+      "priority": "P0",
+      "title": "MEM-pointer-negative",
+      "source": "int main(void){int a[5];int *p,*q;p=a+4;q=a+1;return q-p!=-3;}",
+      "acceptance": [
+        "Negative pointer difference isolated from combined comparison context."
+      ]
+    },
+    {
+      "id": "MEM-pointer-positive",
+      "priority": "P0",
+      "title": "MEM-pointer-positive",
+      "source": "int main(void){int a[5];int *p,*q;p=a+4;q=a+1;return p-q!=3;}",
+      "acceptance": [
+        "Positive pointer difference isolated."
+      ]
+    }
+  ]
+}

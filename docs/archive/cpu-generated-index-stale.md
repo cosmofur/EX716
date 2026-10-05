@@ -1,4 +1,7 @@
-# Function Index for `cpu.py`
+# Function Index for `cpu.py` (Archived, Stale)
+
+> This generated index has stale line numbers and misaligned descriptions. Use
+> the Python source and the current programming guide instead.
 
 Auto-generated from source + `.info`.
 
@@ -564,4 +567,3 @@ Restore terminal state saved by tty_setraw.
 ### `escape_for_reinsertion(s)`  
 *Line 182*
 - **Description:** TODO: describe escape_for_reinsertion
-

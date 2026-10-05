@@ -1,0 +1,1584 @@
+{
+  "schema": 1,
+  "scope": "EX716 practical integer C subset: 16-bit int, 32-bit long, 16-bit DS near pointers; C90-derived syntax with selected C99 library extensions. Not an ISO conformance suite.",
+  "counts": {
+    "PASS": 22,
+    "FAIL": 23,
+    "MISSING": 43,
+    "NOT_TESTED": 28
+  },
+  "tools": {
+    "/home/backs1/github/personal/lcc/build/rcc": "ef2a9dfe925f4a85569f137705166d0d11b603cdcdb3395485784d2ff0d81cbe",
+    "/home/backs1/github/personal/lcc/build/cpp": "24cf085dd0cd1ba9c97fe17b371dffcc6e82255f5dcbc22f1ad1653afe30e7d0",
+    "/home/backs1/github/personal/EX716/cpu24.py": "50fe196333f4e9435f314cccac0729259045169dd2d1c9b9869fe83fd9f79c87"
+  },
+  "manifest_sha256": "5fe33454d6f18b2d2bf5d544e78bc739fa1da898047052d1f294323cb366f2bc",
+  "source_sha256": {
+    "lcc/src/ex716.c": "e1748226a3326954825b6fd7213b637b2e1ac7b054695d1286163285e7f01309",
+    "EX716/cpu.py": "3b813bf57cf4cbeb81230faeb5830df60b20af066b00178324d5e252b653de27",
+    "EX716/cpu24.py": "50fe196333f4e9435f314cccac0729259045169dd2d1c9b9869fe83fd9f79c87",
+    "EX716/lib/clocals.ld": "58a2e131e119c4f243e889ae5cd42c282abdcbb157bdfd94f55adb407cf8a3fc",
+    "EX716/lib/diskos.ld": "a8ad6cac3c1022ce49adb0a6583512ef35750c8d578315709333442e66d37816",
+    "EX716/lib/display.ld": "53baf414c9db19a94d633f5d47d859166ffb84ff133991248c04d1d5b867c546",
+    "EX716/lib/div.ld": "843c4ef87b23ef01c7421d3ba7a0f2ba44a95e6c8cf3ee9c4751ad4978a3a186",
+    "EX716/lib/event.ld": "98a9b9cc606d9a0790fe27bc0db1309e5333d2712d4728b555244e6f04e33e2d",
+    "EX716/lib/ex716_memmove.ld": "ab157d36f73b9e856a3042838fcd7976ebb6edd17a19c6759a05491baa44516f",
+    "EX716/lib/fixedpoint.ld": "305de6fdb956c95bf057f9559c7cd251392603186633ea659c97e686f5966861",
+    "EX716/lib/fixedpoint_io.ld": "35f6ebd573a835305155940da771d4d170e7febc9d5f346cdffadffc499a832d",
+    "EX716/lib/foo.ld": "9aa3038fc2fdd709489f22bfd5ed4d3c9e0572d64790a2f3a784049dbb97c20a",
+    "EX716/lib/heapmgr.ld": "4c79f430744f7c8f3c12ddf5ed07a7606a68bc4e3b7d68bfa1d94e9b7d0200ab",
+    "EX716/lib/hexdump.ld": "13f416fa5e6c0892c6a8280b907398ce9e4c712f3597578c1e7fa17d3bbdcfc3",
+    "EX716/lib/io.ld": "43acc44824858b5e607322ac0d8c55657fec442d6a35877a9817d6fcbb2af502",
+    "EX716/lib/lmath.ld": "d7d6f78ddafd4a32f4a6554366fe55d1efb259484f97c501c2730c5bbcb8449b",
+    "EX716/lib/mul.ld": "cf454022da1669a251dca3293c480f321a67a49eca38893fd95a2d52d96b7abc",
+    "EX716/lib/random.ld": "df4cf62ba4327c52fc75a838742f329409d58f086cf6d310fbc81b8f312b79d7",
+    "EX716/lib/screen.ld": "71a2dc5d8a5a8d0920bff599dd88e059eeb0ae9a8818791ad64ef7881d6bbfde",
+    "EX716/lib/shift16.ld": "d5eeb9c58e9bc7f1a48df05b38945935c0ce76dabbcdd0e49b6516de02b35079",
+    "EX716/lib/softstack.ld": "56fb7f3cfac58f501dbb8f696047b114ac2f3a3f7e105a23b1da7b4f167eff8e",
+    "EX716/lib/stacktool.ld": "a3255b55363aba9626aac3b4f611d518732fd7a9ed0561620da6b0ffdc171c67",
+    "EX716/lib/string.ld": "eda8ce8689ccbce670711ab999a4fac8c7beff00175185580619e606970e114a",
+    "EX716/lib/structureDS.ld": "03a28fd37c3c0821f28de9138863fc11cc8e489e0d83962ca75b0d1e79aa289a",
+    "EX716/lib/timetool.ld": "a57fdcecbbbb0d412ec1ffd88f9a6f2f1a3e95bc65fbe343cb2358be3e3550df",
+    "EX716/lib/widget.ld": "fa60ab16dd6f42148acee071c3c47c59c7eeb546b21b4267f6f3217b9ad61807",
+    "EX716/lib/common-reloc.mc": "872ec274a46c04cfee0fe34643acadb12eaa08023bb62ec5ccefd94fc49dabf7",
+    "EX716/lib/common-z80.mc": "3063475e81191c9f104b14ef521c2c718519f7d94fc95bafdc118fce399fe1f1",
+    "EX716/lib/common.mc": "e94ea2c60985e8bf2477e6261360f8d724646d7871ab050ab02cb60c09e2690e",
+    "EX716/lib/commonDS.mc": "96b634fcb064c3d182a65fd938c3f6e5a0aca4740f7d5077cdb754b7a5942a83",
+    "EX716/lib/tcc_common.mc": "e29d7abd18b2f9b4b76793a3c85d9ff30016f5a8aae6db3b340c138c0494a766",
+    "EX716/lib/z80-base.mc": "2f4579a8470286836b4510ca61b75a541e6d2c4971a15a67fc9bb80658ce8a43",
+    "EX716/tests/csuite/cases/abi/struct_return.c": "9148489cbd10b9d2562b8be2a8bb776f0544412244d49a596226c78441838b58",
+    "EX716/tests/csuite/cases/calls/mixed_width.c": "ca96c61e9c29079e1619eadc6a9ae45f682f2bf36ba05d19357a9fa77f0e40b1",
+    "EX716/tests/csuite/cases/math/integer_widths.c": "23e0c946542680164faf26507e8828ff0eb576862393568e5cfa669b8f82db6e",
+    "EX716/tests/csuite/cases/memory/local_arrays.c": "d922faf19ff90744c9c069f1a916ee3eec609ff6ccf163d1cdf99314b0d79ad9",
+    "EX716/tests/csuite/probes/floating_point.c": "1ccbf89e0607c686535de245e0a53c14b86f511000e1c565e4cea159bb1dc51a",
+    "EX716/tests/csuite/probes/indirect_call.c": "47f3c0b7c8a7aa19b7935117290d6167bf1db5dc0e1ab393a6037e439d50dd80"
+  },
+  "results": [
+    {
+      "id": "LANG-001",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "EX716 integer and pointer model",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Assert byte/short/int/long/pointer widths and signed plain char; public limits must agree."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-001/segmented"
+    },
+    {
+      "id": "LANG-002",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Existing mixed-width calls",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-002/segmented"
+    },
+    {
+      "id": "LANG-003",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Existing integer math",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-003/segmented"
+    },
+    {
+      "id": "LANG-004",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Existing local arrays",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-004/segmented"
+    },
+    {
+      "id": "LANG-005",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Existing aggregate return",
+      "status": "FAIL",
+      "stage": "abi",
+      "detail": "hardware stack not empty after result pop",
+      "acceptance": [
+        "Existing regression must pass; verify frame restoration and empty hardware stack in all three modes."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-005/segmented"
+    },
+    {
+      "id": "LANG-006",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Unsigned comparisons across sign bit",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Exercise all six comparisons at 0,32767,32768,65535, with both operand orders."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-006/segmented"
+    },
+    {
+      "id": "LANG-007",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Signed comparisons at both extremes",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Exercise all signed comparisons without relying on signed overflow."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-007/segmented"
+    },
+    {
+      "id": "LANG-008",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Integer conversions and promotions",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "8-to-16 sign/zero extension,16-to-32,32-to-16, mixed signed/unsigned promotions."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-008/segmented"
+    },
+    {
+      "id": "LANG-009",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Signed quotient and remainder",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Use positive/negative dividends/divisors; quotient/remainder identity; excludes division by zero and signed-min / -1."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-009/segmented"
+    },
+    {
+      "id": "LANG-010",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Long comparisons across word boundaries",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Signed and unsigned 32-bit EQ/NE/LT/LE/GT/GE, equal low words and different high words."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-010/segmented"
+    },
+    {
+      "id": "LANG-011",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Short-circuit side effects",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "RHS runs exactly when required; skipped RHS must not change state."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-011/segmented"
+    },
+    {
+      "id": "LANG-012",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Loop and jump control flow",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "for/while/do,break,continue,goto,early return, nested branches."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-012/segmented"
+    },
+    {
+      "id": "LANG-013",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Sparse switch",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Cases/default, negative labels, fall-through and nested break."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-013/segmented"
+    },
+    {
+      "id": "LANG-014",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Dense switch and jump-table lowering",
+      "status": "FAIL",
+      "stage": "codegen",
+      "detail": "compiler exited 0: EX716: malformed jump",
+      "acceptance": [
+        "Dense switch must either work or use a correct branch-chain fallback; inspect any emitted table."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-014/segmented"
+    },
+    {
+      "id": "LANG-015",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Recursive frame lifetime",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Local addresses remain valid across calls; bounded recursion restores software stack."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-015/segmented"
+    },
+    {
+      "id": "LANG-016",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Local-name shadowing",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Nested and sibling blocks with identical names must have distinct storage/aliases."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-016/segmented"
+    },
+    {
+      "id": "LANG-017",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Adjacent byte stores",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Odd/even byte stores preserve neighbors; add segment-end byte case separately."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-017/segmented"
+    },
+    {
+      "id": "LANG-018",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Pointer difference and scaling",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Positive/negative ptrdiff within same object, byte/int/long element strides."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-018/segmented"
+    },
+    {
+      "id": "LANG-019",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Local initialized array",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Automatic aggregate initializers, partial zero fill, and string-initialized char arrays."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-019/segmented"
+    },
+    {
+      "id": "LANG-020",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Global initialized data",
+      "status": "FAIL",
+      "stage": "assemble",
+      "detail": "g  (used 1 times)\n     References:\n       #   Address  Source\n       --  -------  ------------------------------\n       1   0x52b5   /tmp/ex716-readiness-mfum0x37/harness.asm:15",
+      "acceptance": [
+        "Emit named writable DS object with correct initializer; verify read/write and address-of."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-020/segmented"
+    },
+    {
+      "id": "LANG-021",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Global zero-initialized storage",
+      "status": "FAIL",
+      "stage": "assemble",
+      "detail": "g  (used 2 times)\n     References:\n       #   Address  Source\n       --  -------  ------------------------------\n       1   0x52b5   /tmp/ex716-readiness-pqhrn05x/harness.asm:24\n       2   0x52c8   /tmp/ex716-readiness-pqhrn05x/harness.asm:34",
+      "acceptance": [
+        "Tentative definitions/zeroed BSS, arrays, pointers and aggregate layout."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-021/segmented"
+    },
+    {
+      "id": "LANG-022",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Static local persistence",
+      "status": "FAIL",
+      "stage": "assemble",
+      "detail": "n  (used 1 times)\n     References:\n       #   Address  Source\n       --  -------  ------------------------------\n       1   0x52b5   /tmp/ex716-readiness-kaq6rdlx/harness.asm:18",
+      "acceptance": [
+        "Static local persists across calls and has a unique internal symbol."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-022/segmented"
+    },
+    {
+      "id": "LANG-023",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "String literals in DS",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "NUL terminator, escapes, distinct literals; DS access with CS != DS."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-023/segmented"
+    },
+    {
+      "id": "LANG-024",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Global address initializer",
+      "status": "FAIL",
+      "stage": "assemble",
+      "detail": "p  (used 1 times)\n     References:\n       #   Address  Source\n       --  -------  ------------------------------\n       1   0x52b5   /tmp/ex716-readiness-xnk_0c77/harness.asm:15",
+      "acceptance": [
+        "Relocations for object/function addresses and object-plus-offset."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-024/segmented"
+    },
+    {
+      "id": "LANG-025",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Indirect function call",
+      "status": "FAIL",
+      "stage": "codegen",
+      "detail": "compiler exited 0: EX716: unsupported indirect call",
+      "acceptance": [
+        "Function pointer stored locally and passed as callback; return values and argument cleanup."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-025/segmented"
+    },
+    {
+      "id": "LANG-026",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Variadic caller stack discipline",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Extra arguments must be removed or callee-accessible; mixed-width promotions; no stack leak."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-026/segmented"
+    },
+    {
+      "id": "LANG-027",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Public stdarg mixed-width traversal",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-8x585yan/unit0.c:1 Could not find include file <stdarg.h>\n",
+      "acceptance": [
+        "va_start/va_arg/va_end, mixed widths and nested variadic calls; vprintf depends on this."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-027/segmented"
+    },
+    {
+      "id": "LANG-028",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Function frame above 40 bytes",
+      "status": "FAIL",
+      "stage": "compile",
+      "detail": "/tmp/ex716-readiness-adutcjtk/unit0.c:1: EX716: function local storage exceeds 40 bytes",
+      "acceptance": [
+        "At least a 64-byte automatic buffer; configurable bounded stack; diagnostic rather than corrupt frame."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-028/segmented"
+    },
+    {
+      "id": "LANG-029",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Small aggregate copy (2 bytes)",
+      "status": "FAIL",
+      "stage": "codegen",
+      "detail": "compiler exited 0: EX716: unhandled expression op=73 generic=64 size=0",
+      "acceptance": [
+        "Block copy sizes 1,2,3,4 and >4; block assignment must not be confused with scalar value load."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-029/segmented"
+    },
+    {
+      "id": "LANG-030",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Small aggregate copy (4 bytes)",
+      "status": "FAIL",
+      "stage": "codegen",
+      "detail": "compiler exited 0: EX716: unhandled expression op=73 generic=64 size=0",
+      "acceptance": [
+        "Copy exact four bytes and preserve surrounding fields."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-030/segmented"
+    },
+    {
+      "id": "LANG-031",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Union and bit-fields",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Union layout and read/modify/write bit-fields; add signed fields and packing boundaries."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-031/segmented"
+    },
+    {
+      "id": "LANG-032",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Multiple translation units",
+      "status": "FAIL",
+      "stage": "execute",
+      "detail": "2 Size 180 Bytes\nFunction: INV32 Size 133 Bytes\nFunction: COMP232 Size 161 Bytes\nFunction: SetFlags32 Size 436 Bytes\nFunction: SHL32_8 Size 90 Bytes\nFunction: SHR32_8 Size 104 Bytes\nFunction: SHL32 Size 397 Bytes\nFunction: SHL32_small Size 267 Bytes\nFunction: SHL32_1 Size 22 Bytes\nFunction: SHR32 Size 397 Bytes\nFunction: SAR32 Size 294 Bytes\nFunction: SHR32_small Size 237 Bytes\nFunction: SHR32_1 Size 71 Bytes\nFunction: MUL32U Size 510 Bytes\nFunction: MUL16x32U Size 488 Bytes\nFunction: ADD16U Size 127 Bytes\nFunction: SHL16x32 Size 184 Bytes\nFunction: SHR16x32 Size 156 Bytes\nFunction: MUL32S Size 355 Bytes\nFunction: DIV32U Size 637 Bytes\nFunction: DIV32S Size 697 Bytes\nFunction: SHL3264 Size 240 Bytes\nFunction: SetBit32 Size 174 Bytes\nFunction: ClearBit32 Size 196 Bytes\nFunction: DIV10_32U Size 32 Bytes\nFunction: i32tos Size 601 Bytes\nFunction: stoi32 Size 715 Bytes\nModule lmath.ld : Size 10458 Bytes\nFunction: main Size 117 Bytes\nFunction: helper Size 95 Bytes\n\n=== Symbol Resolution Report ===\nDEBUG: used= 145 resolved= 1864 unresolved= 0\n\n=== Summary ===\n  Defined symbols   : 116\n  Used symbols      : 145\n  Unresolved symbols: 0\n  \u2714 All symbols resolved\nEX716_AUDIT_OUTPUT_BEGIN\nEX716_AUDIT_OUTPUT_BEGIN\nFilename: /tmp/ex716-readiness-o2ru1ro4/harness.asm:1\n/tmp/ex716-readiness-o2ru1ro4/harness.asm:1\n00:000a> >>CPU State:\n000a:     DUP P1:0000 [I]:0000 [II]:0000 Z0 N1 C0 O0\nLine: softstack.ld:158\nStack Empty or Invalid SP: 00\nError Number: 200 Empty stack. at PC:0x000a\nEntering debugger due to fatal error.\nDebugger failed: EOF when reading a line\nFalling back to sys.exit(200)\n",
+      "acceptance": [
+        "Compile units separately and combine assembly without duplicate private labels; external function resolves."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-032/segmented"
+    },
+    {
+      "id": "LANG-033",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Internal-linkage function names",
+      "status": "FAIL",
+      "stage": "codegen",
+      "detail": "translation-unit function names collide: f",
+      "acceptance": [
+        "Two units may each define static helper with different behavior; emitted names must be unique."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-033/segmented"
+    },
+    {
+      "id": "LANG-034",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "Floating-point operations",
+      "status": "FAIL",
+      "stage": "codegen",
+      "detail": "compiler exited 0: EX716: unhandled expression op=8497 generic=304 size=8",
+      "acceptance": [
+        "Conversions, arithmetic and comparisons must preserve declared float/double semantics; fail loudly until supported."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-034/segmented"
+    },
+    {
+      "id": "LANG-035",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Float must not silently use integer arithmetic",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Float is four bytes but ADD/F and ADD/I require different code; reject unsupported float with nonzero compiler exit."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-035/segmented"
+    },
+    {
+      "id": "LANG-036",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Front-end invalid source diagnostic",
+      "status": "PASS",
+      "stage": "diagnostic",
+      "detail": "compiler rejected invalid C",
+      "acceptance": [
+        "Nonzero compiler exit for invalid C; never assemble rejected translation."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-036/segmented"
+    },
+    {
+      "id": "LANG-037",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Preprocessing with target-only includes",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Bundled cpp macro expansion and conditionals; no host system-header fallback."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LANG-037/segmented"
+    },
+    {
+      "id": "HEADER-stddef",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Target public <stddef.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-ic5ixjiq/unit0.c:1 Could not find include file <stddef.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-stddef/segmented"
+    },
+    {
+      "id": "HEADER-limits",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Target public <limits.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-jxo9y5wx/unit0.c:1 Could not find include file <limits.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-limits/segmented"
+    },
+    {
+      "id": "HEADER-stdarg",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Target public <stdarg.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-c98b2wdk/unit0.c:1 Could not find include file <stdarg.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-stdarg/segmented"
+    },
+    {
+      "id": "HEADER-stdio",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Target public <stdio.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-dz6utg3f/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-stdio/segmented"
+    },
+    {
+      "id": "HEADER-stdlib",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <stdlib.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-4lo_co3m/unit0.c:1 Could not find include file <stdlib.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-stdlib/segmented"
+    },
+    {
+      "id": "HEADER-string",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <string.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-imh4etjo/unit0.c:1 Could not find include file <string.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-string/segmented"
+    },
+    {
+      "id": "HEADER-ctype",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <ctype.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-r1pl4loq/unit0.c:1 Could not find include file <ctype.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-ctype/segmented"
+    },
+    {
+      "id": "HEADER-errno",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <errno.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-sx1bjzj0/unit0.c:1 Could not find include file <errno.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-errno/segmented"
+    },
+    {
+      "id": "HEADER-assert",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <assert.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-jwh_3egv/unit0.c:1 Could not find include file <assert.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-assert/segmented"
+    },
+    {
+      "id": "HEADER-float",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <float.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-79umnfjf/unit0.c:1 Could not find include file <float.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-float/segmented"
+    },
+    {
+      "id": "HEADER-time",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <time.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-cntazxyz/unit0.c:1 Could not find include file <time.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-time/segmented"
+    },
+    {
+      "id": "HEADER-setjmp",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <setjmp.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-ri9iq_t0/unit0.c:1 Could not find include file <setjmp.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-setjmp/segmented"
+    },
+    {
+      "id": "HEADER-signal",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <signal.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-98czzvrj/unit0.c:1 Could not find include file <signal.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-signal/segmented"
+    },
+    {
+      "id": "HEADER-locale",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Target public <locale.h>",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-3cuur542/unit0.c:1 Could not find include file <locale.h>\n",
+      "acceptance": [
+        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/HEADER-locale/segmented"
+    },
+    {
+      "id": "IO-putchar",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "putchar",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-gbsozbx6/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Return unsigned byte or EOF; test 0x80/0xff.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-putchar/segmented"
+    },
+    {
+      "id": "IO-getchar",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "getchar",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-1xvi3ifh/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Distinguish 0xff from EOF; consume deterministic piped input.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-getchar/segmented"
+    },
+    {
+      "id": "IO-puts",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "puts",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-fo_vgfcf/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Append exactly one newline; empty string and write error.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-puts/segmented"
+    },
+    {
+      "id": "IO-fputc",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fputc",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-kc55edfh/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "stdout/stderr and file stream; error flag on failure.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-fputc/segmented"
+    },
+    {
+      "id": "IO-fgetc",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fgetc",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-1gz19c_b/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "EOF/error states and unsigned character result.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-fgetc/segmented"
+    },
+    {
+      "id": "IO-fputs",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fputs",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-f6ngl17l/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "No automatic newline; negative result on write failure.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-fputs/segmented"
+    },
+    {
+      "id": "IO-fgets",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fgets",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-f5gn8txy/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Retain newline, bound n, NUL terminate; test final unterminated line, EOF, and n=1.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-fgets/segmented"
+    },
+    {
+      "id": "IO-printf",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "printf",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-rxpswvyq/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Integer formats and promotions, literal percent, width/precision/sign, exact return count.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-printf/segmented"
+    },
+    {
+      "id": "IO-fprintf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "fprintf",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-odminqyp/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Same formatting engine; stream errors and stderr independently.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-fprintf/segmented"
+    },
+    {
+      "id": "IO-sprintf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "sprintf",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-_9yeu__z/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Return count excludes NUL; caller owns adequate storage.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-sprintf/segmented"
+    },
+    {
+      "id": "IO-snprintf",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "snprintf",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-yvxvtchh/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Truncation, would-have-written count, size zero, n=1; C99 extension to initial C90 subset.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-snprintf/segmented"
+    },
+    {
+      "id": "IO-fflush",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fflush",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-cqm7mavx/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Flush writable streams/NULL, preserve error state; avoid undefined use on input streams.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-fflush/segmented"
+    },
+    {
+      "id": "IO-feof",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "feof",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-7vfcxfi3/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Flag set only after failed read at end, independent of ferror.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-feof/segmented"
+    },
+    {
+      "id": "IO-ferror",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "ferror",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-grhyjri7/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Initially clear; injected failed read/write must set it, EOF alone must not.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-ferror/segmented"
+    },
+    {
+      "id": "IO-clearerr",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "clearerr",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-6uyl3ic_/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Clear both indicators; preserve cursor.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-clearerr/segmented"
+    },
+    {
+      "id": "IO-ungetc",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "ungetc",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-pmhvs7e3/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "At least one character pushback, clears EOF; EOF argument fails.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-ungetc/segmented"
+    },
+    {
+      "id": "IO-getc",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "getc",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-9lyewlr2/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Equivalent byte/EOF behavior to fgetc.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-getc/segmented"
+    },
+    {
+      "id": "IO-putc",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "putc",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-0ux7syrn/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Equivalent byte/error behavior to fputc.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-putc/segmented"
+    },
+    {
+      "id": "IO-perror",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "perror",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-w6f8k1vh/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Capture stderr separately; errno message and newline; no claim of passed output semantics from this smoke test.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-perror/segmented"
+    },
+    {
+      "id": "IO-sscanf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "sscanf",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-qx944kdn/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Assignment count, mismatch/EOF distinction, suppressed conversions and bounded %s.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-sscanf/segmented"
+    },
+    {
+      "id": "IO-scanf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "scanf",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-5kdoq2jy/unit0.c:1 Could not find include file <stdio.h>\n",
+      "acceptance": [
+        "Deterministic input, assignment count and recovery after malformed input.",
+        "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/IO-scanf/segmented"
+    },
+    {
+      "id": "IO-fopen",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fopen",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "r/rb,w/wb,a/ab,r+,w+,a+; missing file, create, truncate, append each write, invalid mode and allocation failure.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fclose",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fclose",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Commit final size, release every handle/buffer, return 0/EOF, flush failure; repeated opens must not leak.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fread",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fread",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Return complete element count; size/count zero; partial final element; NUL/0xff binary payload; multiplication overflow.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fwrite",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "fwrite",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Return complete element count; short/error writes; read-only stream; sector crossings and 65535/65536 boundary.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fseek",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "fseek",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "SEEK_SET/CUR/END, negative/invalid positions, long offset, clears EOF and pushback; update-stream direction barriers.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-ftell",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "ftell",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Long cursor after read/write/seek, error returns -1L; binary offsets and text-position rules.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-rewind",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "rewind",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Return void, cursor zero and both indicators clear; implicit seek errors need testing.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fgetpos",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "fgetpos",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Capture opaque fpos_t; restore after read including required text conversion state.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fsetpos",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "fsetpos",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Restore fpos_t round trip and clear EOF/pushback; update stream transitions.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-freopen",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "freopen",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Rebind stream and mode; success/failure, standard stream redirection and cleanup.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-setbuf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "setbuf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Before I/O: NULL/unbuffered and supplied buffer lifetime; size BUFSIZ.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-setvbuf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "setvbuf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Before I/O: full/line/no buffering, invalid modes and buffer ownership.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-remove",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "remove",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Delete missing/existing file; report failure without halting emulator.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-rename",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "rename",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Rename existing file, missing source, destination policy, atomic metadata consistency.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-tmpfile",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "tmpfile",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Binary update stream, temporary file cleanup at close/termination.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-tmpnam",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "tmpnam",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Unique filename within target constraints; capacity and failure; prefer tmpfile for applications.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-fscanf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "fscanf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Read file fixture; assignment count, EOF/mismatch and width limits.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vprintf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "vprintf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Traverse va_list from target stdarg ABI and verify count/output.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vfprintf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "vfprintf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Share formatting engine and va_list traversal with explicit stream.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vsprintf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "vsprintf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Share formatting engine and terminate caller buffer.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vsnprintf",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "vsnprintf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Would-have-written count, bounded write, n=0, variadic list; C99 subset extension.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vfscanf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "vfscanf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Variadic input argument forwarding, conversion count and errors.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vscanf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "vscanf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Variadic stdin forwarding, conversion count and errors.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "IO-vsscanf",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "vsscanf",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree.",
+      "acceptance": [
+        "Variadic string input forwarding, conversion count and errors.",
+        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+      ]
+    },
+    {
+      "id": "LIB-malloc",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "malloc/free",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-u4qadv3o/unit0.c:1 Could not find include file <stdlib.h>\n",
+      "acceptance": [
+        "Target ABI wrapper, normal result; add allocation exhaustion or ERANGE edge vectors respectively."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-malloc/segmented"
+    },
+    {
+      "id": "LIB-strtol",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "strtol",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-l7wg1kft/unit0.c:1 Could not find include file <stdlib.h>\n",
+      "acceptance": [
+        "Target ABI wrapper, normal result; add allocation exhaustion or ERANGE edge vectors respectively."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-strtol/segmented"
+    },
+    {
+      "id": "LIB-strlen",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "strlen",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-tybn8hdn/unit0.c:1 Could not find include file <string.h>\n",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-strlen/segmented"
+    },
+    {
+      "id": "LIB-strcmp",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "strcmp",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-taj946w8/unit0.c:1 Could not find include file <string.h>\n",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-strcmp/segmented"
+    },
+    {
+      "id": "LIB-memcpy",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "memcpy",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-0rfd6w4u/unit0.c:1 Could not find include file <string.h>\n",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-memcpy/segmented"
+    },
+    {
+      "id": "LIB-memmove",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "memmove",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-1wsizt62/unit0.c:1 Could not find include file <string.h>\n",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-memmove/segmented"
+    },
+    {
+      "id": "LIB-memset",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "memset",
+      "status": "MISSING",
+      "stage": "preprocess",
+      "detail": "cpp: /tmp/ex716-readiness-n3vkij_9/unit0.c:1 Could not find include file <string.h>\n",
+      "acceptance": [
+        "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/LIB-memset/segmented"
+    },
+    {
+      "id": "LANG-038",
+      "mode": "segmented",
+      "priority": "P2",
+      "title": "64-bit integer execution",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "No eight-byte expression/load/store support; not required for the initial C90-derived integer subset.",
+      "acceptance": [
+        "long long arithmetic/conversions/calls require eight-byte values; until available, issue a nonzero diagnostic."
+      ]
+    },
+    {
+      "id": "SYS-001",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Application startup and shutdown",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "Audit supplies test startup and main result markers; production crt0 and exit lifecycle remain untested.",
+      "acceptance": [
+        "Initialize zero storage, DS, stack and optional heap; main(void) and defined argv contract; exit status, fflush/atexit cleanup."
+      ]
+    },
+    {
+      "id": "SYS-002",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "Public build/assemble workflow",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "Audit assembles test harnesses; no EX716-configured production lcc driver located.",
+      "acceptance": [
+        "One reproducible target-only cpp/rcc/runtime command; multiple units and internal symbols; tool errors propagate."
+      ]
+    },
+    {
+      "id": "SYS-003",
+      "mode": "segmented",
+      "priority": "P1",
+      "title": "Stack and segment bounds",
+      "status": "NOT_TESTED",
+      "stage": "coverage",
+      "detail": "Normal frame restoration is checked; negative exhaustion and segment-end fixtures still required.",
+      "acceptance": [
+        "Frame reservation checks bottom before writing; valid near-pointer segment model; exhaustion diagnosed; no CS/DS/heap/stack overlap."
+      ]
+    },
+    {
+      "id": "MATH-div16-signed",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-div16-signed",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Signed 16-bit quotient; all sign combinations, exact and inexact divisions."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-div16-signed/segmented"
+    },
+    {
+      "id": "MATH-mod16-signed",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-mod16-signed",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Signed 16-bit remainder matches dividend sign; choose truncation toward zero for the practical subset."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-mod16-signed/segmented"
+    },
+    {
+      "id": "MATH-div32-signed",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-div32-signed",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Signed 32-bit quotient, independently tested."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-div32-signed/segmented"
+    },
+    {
+      "id": "MATH-mod32-signed",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-mod32-signed",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Signed 32-bit remainder, independently tested."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-mod32-signed/segmented"
+    },
+    {
+      "id": "MATH-div16-high",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-div16-high",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Unsigned high-bit divisors and remainders."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-div16-high/segmented"
+    },
+    {
+      "id": "MATH-shift-boundary",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-shift-boundary",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Legal computed shifts at width-1; arithmetic signed right shift is the chosen target behavior."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-shift-boundary/segmented"
+    },
+    {
+      "id": "MATH-wrap",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MATH-wrap",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Unsigned wrapping for both widths."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MATH-wrap/segmented"
+    },
+    {
+      "id": "MEM-pointer-negative",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MEM-pointer-negative",
+      "status": "FAIL",
+      "stage": "result",
+      "detail": "main returned 1",
+      "acceptance": [
+        "Negative pointer difference isolated from combined comparison context."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MEM-pointer-negative/segmented"
+    },
+    {
+      "id": "MEM-pointer-positive",
+      "mode": "segmented",
+      "priority": "P0",
+      "title": "MEM-pointer-positive",
+      "status": "PASS",
+      "stage": "execute",
+      "detail": "result, frame restoration, and stack balance passed",
+      "acceptance": [
+        "Positive pointer difference isolated."
+      ],
+      "artifacts": "/tmp/ex716-readiness-baseline-final/MEM-pointer-positive/segmented"
+    }
+  ],
+  "changes": []
+}

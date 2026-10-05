@@ -6,7 +6,6 @@ M __LIB_TIMETOOL_LOADED 1
 M SIZESINCECOMMENT timetool.ld
 I timetool.ref
 L lmath.ld
-I lmath.md
 L mul.ld
 L div.ld
 :ClockCalib 0 0   # 32 bit Calibration value

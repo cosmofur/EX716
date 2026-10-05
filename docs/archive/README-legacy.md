@@ -1,4 +1,7 @@
-# EX716
+# EX716 (Legacy README)
+
+> Archived historical description. For the current project overview and
+> programming documentation, start with [`../../README.md`](../../README.md).
 
 An experimental toy CPU emulator inspired by fictional 1970s microcomputers.  
 EX716 aims to make assembly/machine code experimentation approachable by avoiding the complexity and legacy quirks of real CPUs from the era.

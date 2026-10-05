@@ -640,6 +640,30 @@ I common.mc
 @ENDIF
 @POPNULL @POPNULL
 
+@PUSH 0x8000 @PUSH 1
+@IF_UGE_S
+  @PRT "PASS IF_UGE_S unsigned high A" @PRTNL
+@ELSE
+  @PRT "FAIL IF_UGE_S unsigned high A" @PRTNL
+@ENDIF
+@POPNULL @POPNULL
+
+@PUSH 1 @PUSH 0x8000
+@IF_UGE_S
+  @PRT "FAIL IF_UGE_S unsigned high B" @PRTNL
+@ELSE
+  @PRT "PASS IF_UGE_S unsigned high B" @PRTNL
+@ENDIF
+@POPNULL @POPNULL
+
+@PUSH 0x8000 @PUSH 0x8000
+@IF_UGE_S
+  @PRT "PASS IF_UGE_S equal high A" @PRTNL
+@ELSE
+  @PRT "FAIL IF_UGE_S equal high A" @PRTNL
+@ENDIF
+@POPNULL @POPNULL
+
 
 # === TEST IF_UGE_A ===
 @PUSH 2
@@ -806,4 +830,3 @@ I common.mc
 @PRTNL
 
 @END
-

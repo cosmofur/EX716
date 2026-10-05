@@ -201,4 +201,5 @@ MF DEBUG ""    # Clears DEBUG by assigning it an empty value
 
 ---
 
-For more examples, study the included `common.mc` and `structures.ld` files in the EX716 toolkit.
+For more examples, study `lib/common.mc`, `lib/commonDS.mc`,
+`lib/structure.asm`, and `lib/structureDS.ld`.

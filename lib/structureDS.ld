@@ -312,7 +312,7 @@ M IF_ULE_V \
 M IF_UGE_S \
    %S \
    @CMPS \
-   @JLT _%V_ENDIF
+   @JULT _%V_ENDIF
 # True if TOS >= A
 M IF_UGE_A \
    %S \

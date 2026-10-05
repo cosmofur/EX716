@@ -2,12 +2,18 @@
 
 `ex716disk.py` manages EX716 `Disk##.disk` images.
 
+> **Runtime compatibility:** `lib/diskos.ld` currently accepts magic `0x3044`,
+> while this tool's provisional format default is `0x0716`. Always pass
+> `--magic 0x3044` when formatting an image for the EX716 runtime. The tool can
+> create linked extents, but runtime DiskOS currently reads only one 64-KiB
+> block per file. See [the DiskOS guide](../docs/diskos-guide.md) for details.
+
 ## Commands
 
 ```sh
 chmod +x ex716disk.py
 
-./ex716disk.py format Disk01.disk --disk-id 1
+./ex716disk.py format Disk01.disk --disk-id 1 --magic 0x3044
 ./ex716disk.py info Disk01.disk
 ./ex716disk.py dir Disk01.disk
 ./ex716disk.py import Disk01.disk local.bin --name PROGRAM.BIN
@@ -21,12 +27,14 @@ chmod +x ex716disk.py
 
 Mutating operations create `Disk01.disk.bak` unless `--no-backup` is used.
 
-## Current assumptions that should be checked against `FSFormat`
+## Host-tool assumptions and extensions
 
 1. Multi-byte integers are little-endian.
-2. The default magic value is `0x0716`.
+2. The tool default magic is `0x0716`; runtime `FSReadHeader` requires an
+   explicit `--magic 0x3044` image.
 3. Timestamps are 32-bit Unix UTC timestamps.
-4. The first 16-bit word of `DIR_RESERVE` is the next-extent FileNum.
+4. The first 16-bit word of `DIR_RESERVE` is treated as the next-extent
+   FileNum by this tool; current runtime DiskOS does not follow it.
 5. Bitmap bit numbering is least-significant-bit first.
 6. FileNum 0 is marked allocated in the filesystem bitmap.
 7. The filesystem active-file count counts visible root files, not continuation

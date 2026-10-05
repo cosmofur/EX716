@@ -38,7 +38,7 @@ Rather than hiding assembly language, EX716 attempts to make assembly programmin
 ## CPU
 
 * 16-bit stack-oriented architecture
-* 64K word address space
+* 64 KiB byte-addressed memory space (`0x0000` through `0xffff`)
 * Compact instruction encoding
 * Hardware evaluation stack
 * Indirect addressing
@@ -117,15 +117,28 @@ The current C backend still uses POSIX terminal APIs, so native Windows builds a
 | Directory       | Purpose                               |
 | --------------- | ------------------------------------- |
 | `cpu.py`        | Assembler, linker, emulator, debugger |
-| `common.mc`     | Core macro library                    |
-| `structure.asm` | Structured programming macros         |
+| `lib/common.mc` | Core Ring 0 macro library              |
+| `lib/commonDS.mc` | CPU24 segmented macro library        |
+| `lib/structure.asm` | Ring 0 structured programming macros |
+| `lib/structureDS.ld` | CPU24 structured programming macros |
 | `lib/`          | Standard libraries                    |
 | `tests/`        | Example programs and regression tests |
-| `docs/`         | Project documentation (planned)       |
+| `docs/`         | Lessons and current programming guides |
 
 ---
 
 # Writing Programs
+
+The current reader-oriented documentation is split by task:
+
+* [Documentation Map](docs/README.md) identifies every active guide, tutorial,
+  subsystem note, and archived document by purpose and authority.
+* [Programming EX716: CPU, Instructions, and Style](docs/programming-guide.md)
+  explains the `cpu.py` and `cpu24.py` programming models.
+* [Macro and Library Appendix](docs/library-appendix.md) summarizes the common
+  and structured macro families plus the major runtime libraries.
+* [DiskOS Guide](docs/diskos-guide.md) documents the on-disk format and shows
+  complete open/read/write/close patterns.
 
 A minimal EX716 program looks like this:
 
@@ -448,7 +461,8 @@ Common options include:
 | `-d`   | Debug output (repeat for additional verbosity) |
 | `-l`   | Generate listing file                          |
 | `-c`   | Produce object file                            |
-| `-r`   | Remote debugger                                |
+| `-K`   | Keep filtered dynamic-library files for inspection |
+| `-f`   | Use the optional compiled execution backend    |
 
 The debugger supports:
 

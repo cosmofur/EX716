@@ -64,10 +64,18 @@ M CLocal32 `\
   MF __CLocalOffset %EVAL {__CLocalOffset}+2 \
 `
 
+# Compiler-facing explicit frame offsets.  These make it possible to reserve
+# byte arrays and aggregates while retaining C's alignment and layout rules.
+M CLocalAt = %1 %2
+M CLocal32At `= %1 %2 ; = %1.high %2+2`
+
 # Address, load, and store operations for frame-relative objects.
 M CPUSHADDR @PUSHI __C_FP @ADD %1
 M CPUSHI @CPUSHADDR %1 @PUSHS
 M CPOPI @CPUSHADDR %1 @POPS
+# Derive the high-word address from the byte offset rather than a separately
+# declared .high alias.  lcc uses numeric offsets for array elements and
+# struct fields, which are not named @CLocal32At objects.
 M CPUSH32I @CPUSHI %1 @CPUSHI %1.high
 M CPOP32I @CPOPI %1.high @CPOPI %1
 

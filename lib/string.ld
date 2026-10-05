@@ -6,6 +6,7 @@ I string.ref
 L heapmgr.ld
 L mul.ld
 L div.ld
+L ex716_memmove.ld
 
 # --- External dependencies (not defined in this file) ---
 #  DIV

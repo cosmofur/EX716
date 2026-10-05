@@ -306,6 +306,7 @@ class AssemblerContext:
         self.address = 0
         self.dataaddress = 0
         self.highaddress = 0
+        self.codehighaddress = 0
         self.highwater = 0
         self.Entry = 0
         self.DEFMEMSIZE = 0x10000

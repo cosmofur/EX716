@@ -195,7 +195,7 @@ The Ring 1 header should become:
     ...
 
 Its program globals, currently declared as ':' labels near the top of the
-file, must be converted to explicit ';' declarations. For example:
+file, must be converted to explicit '::' declarations. For example:
 
     :Columns       0
     :Altitude      1000

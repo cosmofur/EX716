@@ -1,4 +1,7 @@
-# Function Index for `cpu(12).py`
+# Function Index for `cpu(12).py` (Archived)
+
+> This index describes a historical source filename that is not present in the
+> current tree. It is retained only for development history.
 
 > Generated from the Python AST. Call relationships are static approximations: dynamic dispatch, indirect calls through tables, string-built names, and runtime-selected callbacks may be under-reported.
 

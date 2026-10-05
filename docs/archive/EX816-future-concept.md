@@ -1,3 +1,9 @@
+# EX816 Future Concept (Archived)
+
+> Historical design exploration, not a description of current EX716 or
+> `cpu24.py` behavior. See [`../programming-guide.md`](../programming-guide.md)
+> for the implemented architecture.
+
 This is thinking about future plans rather than a description of this version of the EX716
 The follow up process might be the EX816 and would have the following additional features
 
@@ -88,4 +94,3 @@ In principle a multi process OS can be created with the main instruciton set and
 Page 0 would act as the OS kernel and handle all device services as well as task swapping.
 
 Library calls would be made to allow processes to use other 'process blocks' as extended memory for larger arrays and data structures.
-
