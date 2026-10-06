@@ -62,6 +62,10 @@ def audit(feature, mode, args, artifact_root):
                 units = [(SUITE / feature["file"]).read_text()]
             else:
                 units = [feature["source"]]
+        else:
+            units = list(units)
+        for runtime_file in feature.get("runtime_files", []):
+            units.append((ROOT / runtime_file).read_text(encoding="utf-8"))
         for i, source in enumerate(units):
             c = work / f"unit{i}.c"
             c.write_text(source + "\n", encoding="utf-8")
@@ -76,7 +80,9 @@ def audit(feature, mode, args, artifact_root):
             preprocessed = work / f"unit{i}.i"
             preprocessed.write_text(out, encoding="utf-8")
             evidence[preprocessed.name] = out
-            rc, out, err = invoke([str(args.compiler), "-target=ex716", str(preprocessed)],
+            compiler_args = feature.get("compiler_args", [])
+            rc, out, err = invoke([str(args.compiler), "-target=ex716",
+                                   *compiler_args, str(preprocessed)],
                                   args.compiler.parent.parent, args.timeout)
             evidence[f"unit{i}.compiler.stderr"] = err
             evidence[f"unit{i}.asm"] = out
@@ -129,6 +135,7 @@ def audit(feature, mode, args, artifact_root):
                     '@PRT "EX716_AUDIT_RESULT="', "@PRTTOP", "@POPNULL", "@PRTNL",
                     # C frames must restore both software stack and frame pointer.
                     "@PUSHI __SS_SP", "@PRT \"EX716_AUDIT_SP=\"", "@PRTHEXTOP", "@POPNULL", "@PRTNL",
+                    "@PUSHI __SS_TOP", "@PRT \"EX716_AUDIT_TOP=\"", "@PRTHEXTOP", "@POPNULL", "@PRTNL",
                     "@PUSHI __C_FP", "@PRT \"EX716_AUDIT_FP=\"", "@PRTHEXTOP", "@POPNULL", "@PRTNL",
                     "@StackDump"]
         if mode == "segmented":
@@ -149,6 +156,11 @@ def audit(feature, mode, args, artifact_root):
             missing = out.split("=== Missing Symbols ===", 1)
             detail = missing[1].split("=== Summary ===", 1)[0].strip() if len(missing) == 2 else (out + err)[-1600:]
             return finish("FAIL", "assemble", detail)
+        if feature.get("kind") == "runtime-reject":
+            diagnostic = feature.get("diagnostic", "")
+            if rc == 0 and diagnostic and diagnostic in out + err:
+                return finish("PASS", "execute", "runtime rejected stack exhaustion safely")
+            return finish("FAIL", "execute", "expected runtime diagnostic " + diagnostic)
         if rc:
             return finish("FAIL", "execute", (out + err)[-1600:])
         matches = RESULT.findall(out)
@@ -156,7 +168,12 @@ def audit(feature, mode, args, artifact_root):
             return finish("FAIL", "execute", "missing/duplicate result marker: " + (out + err)[-1200:])
         if int(matches[0]) != 0:
             return finish("FAIL", "result", "main returned " + matches[0])
-        if "ex716_audit_sp=fff2" not in out.lower():
+        stack_pointer = re.search(r"EX716_AUDIT_SP=([0-9a-f]{4})", out, re.IGNORECASE)
+        stack_top = re.search(r"EX716_AUDIT_TOP=([0-9a-f]{4})", out, re.IGNORECASE)
+        if not stack_pointer or not stack_top:
+            return finish("FAIL", "abi", "software stack markers missing")
+        expected_sp = (int(stack_top.group(1), 16) + 2) & 0xffff
+        if int(stack_pointer.group(1), 16) != expected_sp:
             return finish("FAIL", "abi", "software stack not restored")
         if "EX716_AUDIT_FP=0000" not in out:
             return finish("FAIL", "abi", "C frame pointer not restored")

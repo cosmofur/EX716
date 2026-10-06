@@ -2,6 +2,8 @@
 M __LIB_CLOCALS_LOADED 1
 P Loading clocals.ld
 L softstack.ld
+L heapmgr.ld
+L c_runtime_stubs.ld
 
 # Addressable stack frames for C-generated functions.
 #
@@ -26,13 +28,16 @@ L softstack.ld
 # @CLocal32 assign successive byte offsets within that frame.
 
 G __C_FP
+G __EX716_HEAP_ID
 
 @JMP __CLOCALS_DATA_END
 ? CPU24_SEGMENTED
 ::__C_FP 0
+::__EX716_HEAP_ID 0
 ENDBLOCK
 ! CPU24_SEGMENTED
 :__C_FP 0
+:__EX716_HEAP_ID 0
 ENDBLOCK
 :__CLOCALS_DATA_END
 
@@ -45,6 +50,11 @@ M CLocals `\
   @CALL __MOVE_HW_SS ; \
   @PUSHI __SS_SP ; \
   @SUB %1 ; \
+    @IF_ULT_V __SS_BOTTOM ; \
+      @POPNULL ; \
+      @StackDump ; \
+      @JMP __SS_StackError ; \
+    @ENDIF ; \
   @POPI __SS_SP ; \
   @PUSHI __SS_SP ; \
   @POPI __C_FP \

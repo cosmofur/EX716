@@ -1,6 +1,99 @@
 # Session State
 
-Last updated: 2026-10-04
+Last updated: 2026-10-06
+
+## Current checkpoint: startup output cleanup and readiness reconciliation
+
+- Removed temporary heap-size/object-ID output from generated `main` startup;
+  runtime failures remain diagnostic, but successful startup is silent. The
+  historical C smoke suite is restored to 4/4.
+- Converted the obsolete `SAFE-unsupported-small-aggregate` rejection row to a
+  positive execution regression. Small aggregate assignment is implemented and
+  the row passes in classic, CPU24, and segmented modes.
+- Focused all-mode checks pass for `IO-putchar`, `IO-printf.d`, and
+  `IO-printf.ld`. `putchar` is a C-ABI wrapper around `CAST`; it returns the
+  emitted unsigned byte but cannot yet report output failure.
+- Full segmented audit at this checkpoint: 68 PASS, 30 FAIL, 9 MISSING, and 28
+  NOT_TESTED across 135 manifest entries. Report:
+  `/tmp/ex716-checkpoint-segmented.json`; evidence:
+  `/tmp/ex716-checkpoint-segmented/`.
+- Initial `snprintf` probes still fail because the formatter/runtime footprint
+  leaves too little heap space for even the configured 512-byte software stack.
+  Do not mark bounded formatting complete until code/data/stack layout pressure
+  is resolved and its vectors execute.
+- Next critical work remains translation-unit linkage (`LANG-032/033`), then
+  target `limits.h` and the console stream/input/error-state layer.
+
+## Latest milestone: initial C string/memory/heap adapters
+
+- Added `lib/c_runtime_stubs.ld`; it loads `string.ld`, preserves service
+  addresses needed by wrappers under `__ex716_*`, and exposes C-ABI adapters
+  for string/memory routines and heap allocation. Pure pass-through services
+  `strlen`, `strcmp`, `strncmp`, and `strstr` now use their original globals
+  directly with no trampoline. `clocals.ld` loads the adapter, and generated
+  startup retains the heap ID for `malloc/free`.
+- Added target `stddef.h`, `string.h`, and `stdlib.h`. `malloc` returns
+  two-byte-aligned pointers with a private object-ID word; `free(NULL)` is a
+  no-op. `memset` is implemented directly. The C `strncat` adapter consumes a
+  leaked hardware-stack word from the legacy routine.
+- Header and adapter tests pass 48/48 across classic, CPU24, and segmented
+  modes; the existing C smoke suite passes 4/4. Evidence:
+  `/tmp/ex716-r11-final-adapters.json` and
+  `/tmp/ex716-r11-adapter-suite/` in Ubuntu-24.04.
+- After removing the four pass-through trampolines, the direct-alias and
+  dependent-wrapper regression passes 18/18 across all modes:
+  `/tmp/ex716-r11-direct-routines.json`.
+- Console/stdio, formatting, `calloc`, and `realloc` remain unimplemented.
+
+## Latest milestone: heap-backed C startup stack
+
+- Generated `main` now initializes a heap from the end of static storage to
+  `0xf000`, allocates a 4-KiB object by default, and configures it as the C
+  software stack before saving the caller return address. The size is
+  adjustable with `-Wf-stack-size=N` through lcc or `-stack-size=N` with rcc;
+  accepted values are even byte counts from 512 through 57344. The heap start
+  is clamped to `0x0100`; CPU24 segmented mode uses `__DEND`, other modes use
+  `END__`.
+- `clocals.ld` loads `heapmgr.ld`. `@CLocals` now checks the candidate frame
+  pointer against `__SS_BOTTOM` and routes exhaustion to `__SS_StackError`.
+  Backend frame limit defaults to 256 bytes and is compile-time overridable.
+- `LANG-015`, `LANG-028`, default-stack exhaustion (`SYS-004`), and the 8-KiB
+  override (`SYS-005`) pass in all three modes. The final startup/data/frame
+  regression is 15/15; the C smoke suite passes 4/4. Evidence:
+  `/tmp/ex716-r10-stack-final-regression.json` and
+  `/tmp/ex716-r10-stack-config.json` in Ubuntu-24.04.
+- User accepted R10 for the current software-managed profile. Keep `SYS-001`
+  and `SYS-003` planned, not PASS; defer production lifecycle and full
+  segment/heap/stack isolation until CPU memory management and hard interrupts.
+  The public C `malloc` adapter remains R11.
+
+## Latest milestone: dense C switch jump tables
+
+- `lcc/src/ex716.c` now lowers LCC's computed 16-bit switch targets via `JMPS`
+  and emits switch-label addresses using the same `__ex716_L...` names as the
+  generated case blocks. LCC supplies range guards and fills missing table
+  slots with `default`; no mask-only wraparound is used.
+- Expanded `LANG-014` to test below/above-range signed selectors. Promoted the
+  stable `SAFE-unsupported-dense-switch` ID to positive hole/default coverage.
+  Both probes pass in classic, CPU24 shared, and segmented modes (6/6).
+- Sparse/dense switches, recursive frames, and the remaining indirect-call
+  rejection control pass 15/15 across all modes. Evidence:
+  `/tmp/ex716-r09-final-regression.json` in Ubuntu-24.04.
+- R09 remains partial: indirect function-pointer calls are still unsupported.
+
+## Latest milestone: WSL2 LCC readiness setup
+
+- Ubuntu-24.04 is installed as WSL2 and sees the shared EX716/lcc checkouts;
+  no distro conversion or repository code change was needed.
+- Installed `build-essential` in Ubuntu-24.04. Built fresh `rcc` and bundled
+  `cpp` from current sibling lcc sources into `/tmp/lcc-build-wsl2` using
+  `make -o lburg/gram.c ...` to reuse the checked-in generated parser.
+- Current segmented probes still fail as expected: `LANG-014` malformed
+  dense-switch jump, `LANG-025` unsupported indirect call, and `LANG-028`
+  frame storage over 40 bytes. Evidence: `/tmp/ex716-r09-r10-current.json`.
+- Installed `python3-numpy` in Ubuntu-24.04. `LANG-015` now passes end-to-end
+  in segmented mode using the WSL2 compiler and emulator. Evidence:
+  `/tmp/ex716-wsl2-control-final/` and `/tmp/ex716-wsl2-control-final.json`.
 
 ## Latest milestone: lcc C readiness review and implementation handoff
 
@@ -159,8 +252,9 @@ Last updated: 2026-10-04
   `python3 tests/csuite/run.py` passes 4/4.
 - Floating initializers are explicitly rejected (R12 policy); translation-unit
   imports/exports and static identity across separate compilations remain R08.
-- Next handoff priority: R08/R10/R11 foundations (unit isolation, target build/
-  startup and bounded memory layout), followed by the written variadic ABI R07.
+- Next focus is R08/R11 foundations (unit isolation and target runtime
+  adapters). R10 is accepted for the current software-managed profile; revisit
+  `SYS-001`/`SYS-003` with CPU memory management and hard interrupts.
 
 ## R07 milestone: variadic argument packet (2026-10-04)
 

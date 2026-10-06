@@ -6,6 +6,14 @@ Do not spend time retrying failed sandboxed write/edit commands. For workspace f
 
 WSL2 is not available for this environment because local networking/security behavior differs from WSL1.
 
+## Assembly Local Variables
+
+- Treat `@LocalVar` and `@RestoreVar` as deprecated for new assembly code.
+- Prefer a scoped block using `@Locals`, `@Local name` (or `@Local32 name`),
+	and `@EndLocals`.
+- Use the deprecated pair only when there is a strong reason, such as the
+	values already being on the stack and no local storage is needed.
+
 ## Session handoff
 
 At the start of each session, read `.codex/session-state.md` if it exists and

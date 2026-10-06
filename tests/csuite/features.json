@@ -124,9 +124,9 @@
       "priority": "P1",
       "title": "Dense switch and jump-table lowering",
       "acceptance": [
-        "Dense switch must either work or use a correct branch-chain fallback; inspect any emitted table."
+        "Dense switch dispatch returns the selected case result; signed selectors below and above the table range select default."
       ],
-      "source": "int f(int x){switch(x){case 0:return 4;case 1:return 7;case 2:return 3;case 3:return 8;case 4:return 9;case 5:return 11;case 6:return 12;case 7:return 13;default:return 99;}}int main(void){return f(0)!=4||f(3)!=8||f(7)!=13||f(8)!=99;}"
+      "source": "int f(int x){switch(x){case 0:return 4;case 1:return 7;case 2:return 3;case 3:return 8;case 4:return 9;case 5:return 11;case 6:return 12;case 7:return 13;default:return 99;}}int main(void){return f(0)!=4||f(3)!=8||f(7)!=13||f(-1)!=99||f(8)!=99;}"
     },
     {
       "id": "LANG-015",
@@ -348,24 +348,20 @@
     {
       "id": "SAFE-unsupported-small-aggregate",
       "priority": "P0",
-      "title": "Unsupported small aggregate copy fails compilation",
+      "title": "Small aggregate copy remains safely supported",
       "acceptance": [
-        "Valid two-byte struct assignment receives an EX716 backend diagnostic and nonzero compiler exit."
+        "A valid two-byte struct assignment executes correctly after the former unsupported path became implemented."
       ],
-      "source": "struct S{int x;};int main(void){struct S a,b;a.x=7;b=a;return b.x!=7;}",
-      "kind": "backend-reject",
-      "diagnostic": "EX716: unhandled expression"
+      "source": "struct S{int x;};int main(void){struct S a,b;a.x=7;b=a;return b.x!=7;}"
     },
     {
       "id": "SAFE-unsupported-dense-switch",
-      "priority": "P0",
-      "title": "Malformed dense-switch lowering fails compilation",
+      "priority": "P1",
+      "title": "Dense switch hole and default dispatch",
       "acceptance": [
-        "The current malformed branch target is reported as a backend error and causes nonzero exit; sparse-switch control remains executable."
+        "A dense jump table maps a missing in-range selector and signed out-of-range selectors to default."
       ],
-      "source": "int f(int x){switch(x){case 0:return 4;case 1:return 7;case 2:return 3;case 3:return 8;case 4:return 9;case 5:return 11;case 6:return 12;case 7:return 13;default:return 99;}}int main(void){return f(3)!=8;}",
-      "kind": "backend-reject",
-      "diagnostic": "EX716: malformed jump"
+      "source": "int f(int x){switch(x){case 0:return 4;case 1:return 7;case 2:return 3;case 3:return 8;case 5:return 11;case 6:return 12;case 7:return 13;default:return 99;}}int main(void){return f(4)!=99||f(-1)!=99||f(8)!=99;}"
     },
     {
       "id": "LANG-036",
@@ -611,11 +607,75 @@
       "priority": "P0",
       "title": "printf",
       "acceptance": [
-        "Integer formats and promotions, literal percent, width/precision/sign, exact return count.",
+        "Support %d/%i/%u/%x/%X/%c/%s/%% and %ld; exact output and return count.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){return printf(\"%d %ld %u %x %c %s\",-7,100000L,65535U,255U,'Z',\"ok\")!=23;}",
-      "stdout": "-7 100000 65535 ff Z ok"
+      "source": "#include <stdio.h>\nint main(void){return printf(\"%d %i %u %x %X %c %s %% %ld\",-7,12,65535U,255U,175U,'Z',\"ok\",100000L)!=31;}",
+      "runtime_files": ["lib/stdio_format.c"],
+      "stdout": "-7 12 65535 ff AF Z ok % 100000"
+    },
+    {
+      "id": "IO-printf.d",
+      "priority": "P0",
+      "title": "printf signed integer conversion",
+      "acceptance": [
+        "Formats one promoted int as signed decimal and returns the character count."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return printf(\"%d\",-7)!=2;}",
+      "runtime_files": ["lib/stdio_format.c"],
+      "stdout": "-7"
+    },
+    {
+      "id": "IO-printf.ld",
+      "priority": "P0",
+      "title": "printf signed long conversion",
+      "acceptance": [
+        "Formats a promoted 32-bit long and returns the character count."
+      ],
+      "source": "#include <stdio.h>\nint main(void){return printf(\"%ld\",100000L)!=6;}",
+      "runtime_files": ["lib/stdio_format.c"],
+      "stdout": "100000"
+    },
+    {
+      "id": "IO-snprintf.basic",
+      "priority": "P0",
+      "title": "snprintf bounded output and count",
+      "acceptance": [
+        "Returns the untruncated count, NUL terminates truncated output, supports size zero and size one."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[4],one[1];int n;n=snprintf(b,4,\"%s\",\"hello\");if(n!=5||b[0]!='h'||b[1]!='e'||b[2]!='l'||b[3]!=0)return 1;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 2;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 3;return 0;}",
+      "runtime_files": ["lib/stdio_format.c"]
+    },
+    {
+      "id": "IO-snprintf.literal",
+      "priority": "P0",
+      "title": "snprintf literal buffer sink",
+      "acceptance": [
+        "Copies format text to the destination, returns its length, and NUL terminates."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[8];int n;n=snprintf(b,8,\"hello\");return n!=5||b[0]!='h'||b[4]!='o'||b[5]!=0;}",
+      "compiler_args": ["-stack-size=512"],
+      "runtime_files": ["lib/stdio_format.c"]
+    },
+    {
+      "id": "IO-snprintf.d",
+      "priority": "P0",
+      "title": "snprintf integer argument traversal",
+      "acceptance": [
+        "Consumes a promoted int and returns the exact formatted character count."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[8];int n;n=snprintf(b,8,\"%d\",-7);return n!=2||b[0]!='-'||b[1]!='7'||b[2]!=0;}",
+      "runtime_files": ["lib/stdio_format.c"]
+    },
+    {
+      "id": "IO-snprintf.s",
+      "priority": "P0",
+      "title": "snprintf string argument traversal",
+      "acceptance": [
+        "Consumes a char pointer argument and writes it to the bounded destination."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[8];int n;n=snprintf(b,8,\"%s\",\"hello\");return n!=5||b[0]!='h'||b[4]!='o'||b[5]!=0;}",
+      "runtime_files": ["lib/stdio_format.c"]
     },
     {
       "id": "IO-fprintf",
@@ -644,10 +704,11 @@
       "priority": "P0",
       "title": "snprintf",
       "acceptance": [
-        "Truncation, would-have-written count, size zero, n=1; C99 extension to initial C90 subset.",
+        "Shared integer/string conversions; truncation count, size zero, and size-one NUL termination.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){char b[4];int n;n=snprintf(b,4,\"%d\",12345);return n!=5||b[0]!='1'||b[2]!='3'||b[3]!=0;}",
+      "source": "#include <stdio.h>\nint main(void){char b[20],t[4],one[1];int n;n=snprintf(b,20,\"%d %i %u %x %X %c %s %%\",-7,12,65535U,255U,175U,'Z',\"ok\");if(n!=24||b[0]!='-'||b[3]!='2'||b[6]!='5'||b[12]!='f'||b[15]!='A'||b[18]!='o'||b[22]!='%')return 1;n=snprintf(t,4,\"%s\",\"hello\");if(n!=5||t[0]!='h'||t[1]!='e'||t[2]!='l'||t[3]!=0)return 2;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 3;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 4;return 0;}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },
     {
@@ -1032,9 +1093,18 @@
       "priority": "P1",
       "title": "malloc/free",
       "acceptance": [
-        "Target ABI wrapper, normal result; add allocation exhaustion or ERANGE edge vectors respectively."
+        "Non-null allocations are two-byte aligned; free releases objects and free(NULL) is harmless."
       ],
-      "source": "#include <stdlib.h>\nint main(void){void *p;p=malloc(8);if(!p)return 1;free(p);return 0;}"
+      "source": "#include <stdlib.h>\nint main(void){unsigned char *a,*b;a=(unsigned char *)malloc(1);b=(unsigned char *)malloc(8);if(!a||!b)return 1;if(((unsigned int)a&1)||((unsigned int)b&1))return 2;a[0]=77;if(a[0]!=77)return 3;free(b);free(a);free(NULL);return 0;}"
+    },
+    {
+      "id": "LIB-malloc.oom",
+      "priority": "P1",
+      "title": "malloc returns null on exhaustion",
+      "acceptance": [
+        "An oversized allocation returns null without wrapping its requested byte count."
+      ],
+      "source": "#include <stdlib.h>\nint main(void){return malloc(65535U)!=NULL;}"
     },
     {
       "id": "LIB-strtol",
@@ -1053,6 +1123,60 @@
         "C-compatible pointer/count/return ABI; byte correctness and zero count; assembly routine presence alone is insufficient."
       ],
       "source": "#include <string.h>\nint main(void){return strlen(\"abc\")!=3;}"
+    },
+    {
+      "id": "LIB-strncmp",
+      "priority": "P1",
+      "title": "strncmp C wrapper",
+      "acceptance": [
+        "Honors count, equality, ordering, and the zero-count case."
+      ],
+      "source": "#include <string.h>\nint main(void){return strncmp(\"ab\",\"ac\",2)>=0||strncmp(\"ac\",\"ab\",2)<=0||strncmp(\"a\",\"a\",1)!=0||strncmp(\"x\",\"y\",0)!=0;}"
+    },
+    {
+      "id": "LIB-strstr",
+      "priority": "P1",
+      "title": "strstr C wrapper",
+      "acceptance": [
+        "Returns a pointer to the first match or null when no match exists."
+      ],
+      "source": "#include <string.h>\nint main(void){char *p;p=strstr(\"abcabc\",\"bc\");return !p||p[0]!='b'||p[1]!='c'||strstr(\"abc\",\"zz\")!=NULL;}"
+    },
+    {
+      "id": "LIB-strcpy",
+      "priority": "P1",
+      "title": "strcpy C wrapper and destination return",
+      "acceptance": [
+        "Copies the terminator and returns the original destination pointer."
+      ],
+      "source": "#include <string.h>\nint main(void){char b[5];b[4]='X';return strcpy(b,\"abc\")!=b||b[0]!='a'||b[2]!='c'||b[3]!=0||b[4]!='X';}"
+    },
+    {
+      "id": "LIB-strncpy",
+      "priority": "P1",
+      "title": "strncpy C wrapper and bounded copy",
+      "acceptance": [
+        "Copies at most count bytes, preserves bytes beyond count, and returns the destination."
+      ],
+      "source": "#include <string.h>\nint main(void){char b[5];b[3]='X';b[4]='Y';return strncpy(b,\"abcd\",2)!=b||b[0]!='a'||b[1]!='b'||b[2]!=0||b[3]!='X'||b[4]!='Y';}"
+    },
+    {
+      "id": "LIB-strcat",
+      "priority": "P1",
+      "title": "strcat C wrapper and terminator",
+      "acceptance": [
+        "Appends the source including a terminator and returns the original destination pointer."
+      ],
+      "source": "#include <string.h>\nint main(void){char b[6];b[0]='a';b[1]=0;b[2]='X';b[3]='Y';b[4]='Z';b[5]=0;return strcat(b,\"b\")!=b||b[0]!='a'||b[1]!='b'||b[2]!=0;}"
+    },
+    {
+      "id": "LIB-strncat",
+      "priority": "P1",
+      "title": "strncat C wrapper and terminator",
+      "acceptance": [
+        "Appends at most count characters, always terminates, and returns the destination."
+      ],
+      "source": "#include <string.h>\nint main(void){char b[7];b[0]='a';b[1]=0;b[2]='X';b[3]='Y';b[4]='Z';b[5]='Q';b[6]=0;return strncat(b,\"bcdef\",2)!=b||b[0]!='a'||b[1]!='b'||b[2]!='c'||b[3]!=0;}"
     },
     {
       "id": "LIB-strcmp",
@@ -1128,7 +1252,28 @@
         "Frame reservation checks bottom before writing; valid near-pointer segment model; exhaustion diagnosed; no CS/DS/heap/stack overlap."
       ],
       "kind": "planned",
-      "reason": "Normal frame restoration is checked; negative exhaustion and segment-end fixtures still required."
+      "reason": "Full segment-end and code/data/heap/stack overlap vectors remain unimplemented."
+    },
+    {
+      "id": "SYS-004",
+      "priority": "P1",
+      "title": "Software-stack frame exhaustion",
+      "acceptance": [
+        "A recursive C frame that exceeds the configured software stack reports stack exhaustion before writing below the stack bottom."
+      ],
+      "source": "int descend(int n){unsigned char frame[240];frame[0]=(unsigned char)n;if(n==0)return frame[0];return descend(n-1)+frame[0];}int main(void){return descend(30);}",
+      "kind": "runtime-reject",
+      "diagnostic": "Error. Code Stack Out of Bounds"
+    },
+    {
+      "id": "SYS-005",
+      "priority": "P1",
+      "title": "Configurable C software-stack size",
+      "acceptance": [
+        "The target stack-size option increases the available C recursion depth beyond the default 4 KiB stack."
+      ],
+      "source": "int descend(int n){unsigned char frame[240];frame[0]=(unsigned char)n;if(n==0)return 0;return descend(n-1)+frame[0];}int main(void){return descend(24)!=300;}",
+      "compiler_args": ["-stack-size=8192"]
     },
     {
       "id": "MATH-div16-signed",

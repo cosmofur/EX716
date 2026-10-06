@@ -81,18 +81,45 @@ a P0 fix. Fixing a dependency does not automatically certify its consumers.
 
 | Work item | Priority | Demonstrated evidence / source anchor | Exit criteria and permanent IDs |
 | --- | --- | --- | --- |
-| R01: Fail closed on unsupported code | P0; safety work complete | At review time, unsupported expression/assignment/jump/call paths used `fprintf` and could return exit 0. R01 now routes these through `error()` and diagnoses unknown code nodes. | Four `SAFE-unsupported-*` checks require a matching backend error and nonzero exit; supported controls pass. Feature support remains tracked by `LANG-014`, `025`, `029`, `030`, `034`, `035`. |
+| R01: Fail closed on unsupported code | P0; safety work complete | At review time, unsupported expression/assignment/jump/call paths used `fprintf` and could return exit 0. R01 now routes these through `error()` and diagnoses unknown code nodes. | The two remaining negative `SAFE-unsupported-*` checks require a matching backend error and nonzero exit. Dense-switch and small-aggregate safety IDs are now positive regressions because those paths are implemented. Feature support remains tracked by `LANG-014`, `025`, `029`, `030`, `034`, `035`. |
 | R02: Correct local symbol identity | P0; implementation complete | `ex716_register_local` now assigns function-qualified per-Symbol aliases; caller/callee parameter views share one alias, while `__ex716_offN` derived aliases do not allocate new slots. | Nested/sibling shadowing passes `LANG-016`; recursion, arrays, byte stores and ABI smoke tests remain passing. Assignment diagnostics show frame, source name, alias, offset and size. |
 | R03: Signed remainder and unsigned division | P0; implementation complete | In `EX716/lib/div.ld`, `DIV` tracks dividend sign separately from quotient XOR sign. `DIVU` uses unsigned-less-than branching for remainder subtraction, including high-bit values. | Expanded sign/exactness and high-bit vectors pass independently; `[remainder, quotient]` result order preserved. `MATH-div16-signed`, `MATH-mod16-signed`, `MATH-div16-high`. |
 | R04: Negative pointer difference | P0; implementation complete for near pointers | Backend now recognizes divide-scaled and stride-one pointer-difference IR, compares offsets unsigned, and forms signed differences without 32-bit math. Cross-segment/far-pointer arithmetic is not supported. | Byte/int/long stride, both signs, expression/assignment and pointer ordering pass in all modes. `LANG-018`, both `MEM-pointer-*`. |
 | R05: Aggregate ABI and copy sizes | P0/P1; implementation complete for tested local aggregate ABI | `LANG-005` exposed one copy-length word leaked per internal memmove call; small block `INDIR` was incorrectly treated as scalar. Backend now copies block values by address and helper cleanup is balanced. | Aggregate arguments/results and exact 1-, 2-, 3-, 4-, and 6-byte copies pass with stack/frame checks in all modes. `LANG-005`, `029`, `030`. Public C `memcpy` and broader ABI certification remain separate. |
 | R06: Real data emission | P0; implemented for current data acceptance vectors | Backend emits named DS data through native `::label value` and `::__ value` initializer streams, explicit zero-fill, byte strings, static identities, and near-address relocations. Global stores/subobject offsets now retain their data symbol. Classic assembler gained its missing code high-water field for unified code/data labels. | Automatic/global initialization, scalar/array/struct/string objects, zeroed BSS, separate same-name statics, object/function/offset addresses pass with CS != DS. `LANG-019` through `024`, all modes. Floating initializers remain explicitly unsupported; cross-unit linkage remains R08. |
-| R07: Variadic calling convention | P0; implemented for current acceptance subset | Caller builds a frame-owned packet with a 16-bit payload-byte count and promoted scalar/pointer items in source order; a hidden packet pointer follows named arguments. Fixed calls retain their existing ABI. Target `stdarg.h` provides `va_start`, typed `va_arg`, and no-op `va_end`. | `LANG-026/027` pass in classic, CPU24 and segmented modes, including zero extras, mixed widths, default char promotion, nested call, pointer/string. Aggregates and floating items are explicitly rejected; >40-byte frames and multi-unit static helper linkage are not certified. Formatting (`IO-v*`) must preserve packet semantics. |
+| R07: Variadic calling convention | P0; implemented for current acceptance subset | Caller builds a frame-owned packet with a 16-bit payload-byte count and promoted scalar/pointer items in source order; a hidden packet pointer follows named arguments. Fixed calls retain their existing ABI. Target `stdarg.h` provides `va_start`, typed `va_arg`, and no-op `va_end`. | `LANG-026/027` pass in classic, CPU24 and segmented modes, including zero extras, mixed widths, default char promotion, nested call, pointer/string. Aggregates and floating items are explicitly rejected; frames above the current 256-byte backend limit and multi-unit static helper linkage are not certified. Formatting (`IO-v*`) must preserve packet semantics. |
 | R08: Translation units and linkage | P1 | Separate `main`/`helper` unit probe crashes or fails to return normally. Two units' static `f` definitions have the same emitted function name; audit rejects the collision. Import/export hooks do nothing. | Unit-qualified internal names, external symbol resolution, private label isolation, no duplicate public definitions. `LANG-032`, `033`, `SYS-002`. |
-| R09: Dense switch and indirect calls | P1 | Sparse switch passes; dense switch emits malformed indirect jump. Function-pointer call emitter rejects anything other than direct ADDRG. | Correct branch-chain fallback or tables in the right segment; callback arguments/results clean. `LANG-013`, `014`, `025`. |
-| R10: Frames and startup memory contract | P1/P0 | Hard limit of 40 bytes includes arguments, locals and compiler temporaries. Default software stack is approximately 240 bytes. `CLocals` directly subtracts a frame without a bounds check. | Configurable memory layout, checked frame reservation, usable local buffers, no memory overlap, production entry/exit contract. `LANG-028`, `SYS-001`, `003`. |
-| R11: Target headers and C runtime adapters | P0/P1 | No `lcc/include/ex716` header set; host-target headers describe other widths/ABIs. Existing assembly services are not automatically C library implementations. | Target typedefs/constants/prototypes/macros and C-compatible results/cleanup/errors; all `HEADER-*`, `LIB-*`, `IO-*`. |
+| R09: Dense switch and indirect calls | P1; tested dense jump-table lowering implemented | Sparse and dense switches execute. Computed 16-bit jump targets use `JMPS`, and switch-label relocations name the emitted case labels. Indirect function calls still reject non-ADDRG targets. | Full and hole-containing dense tables, signed lower/upper bounds, all three execution modes. Function-pointer calls and callback arguments/results remain open. `LANG-013`, `014`, `025`, `SAFE-unsupported-dense-switch`. |
+| R10: Frames and startup memory contract | Accepted for the current software-managed profile; hardware boundary/lifecycle gates deferred | Generated `main` initializes a heap after static storage, allocates a 4-KiB stack object by default, and calls `SetSSStack` before opening its C frame. `-Wf-stack-size=N` (or direct `rcc -stack-size=N`) adjusts it; `@CLocals` checks the stack bottom. `EX716_MAX_FRAME_BYTES` defaults to 256 and can be overridden when building the backend. | `LANG-028`, `SYS-004` (default-stack exhaustion), and `SYS-005` (8-KiB override) pass in all three modes. `SYS-001` production entry/exit and `SYS-003` full segment-end/overlap verification remain planned, explicitly deferred until CPU memory management and hard interrupts. The public C `malloc` adapter is R11. |
+| R11: Target headers and C runtime adapters | P0/P1; string/memory/allocation adapter subset implemented | Target `stddef.h`, `stdlib.h`, and `string.h` now exist. `c_runtime_stubs.ld` loads legacy services, leaves ABI-compatible globals direct, and saves adapted service addresses under private aliases; startup retains the heap ID for `malloc/free`. | Current `HEADER-stddef/stdlib/string` and `LIB-*` string/memory/malloc vectors pass in all three modes. `calloc`, `realloc`, console/stdio formatting, and file streams remain open. Continue against the remaining `HEADER-*`, `LIB-*`, and `IO-*` IDs. |
 | R12: Floating/64-bit type policy | P0 safety, P2 implementation | Float/double/long-long metrics exist without complete code generation. Weak float checks can accidentally pass because omitted constant data reads zero. Strong distinct-value control fails. | Explicit rejection first, then optional complete execution support. Do not advertise float by reusing integer width paths. `LANG-034`, `035`, `038`. |
+
+### Initial C Adapter Inventory
+
+Compatibility levels describe current evidence, not just implementation names:
+**C wrapper tested** means the listed C-level vectors pass in all three
+modes, not that every standard edge case is certified; **service exists** means
+a related EX716 routine exists but its C ABI or semantics remain unverified;
+**primitive only** means an instruction or macro is available but no library
+service exists; **missing** means no suitable service was found.
+
+| EX716 Version Name | C Library Name | Compatibility Level | Priority |
+| --- | --- | --- | --- |
+| `string.ld:strlen` (direct global; no stub) | `strlen` | Direct C call tested (`LIB-strlen`). | P1 |
+| `string.ld:strcmp` (direct global; no stub) | `strcmp` | Direct C call tested for equality and ordering (`LIB-strcmp`). | P1 |
+| `string.ld:strncmp` (direct global; no stub) | `strncmp` | Direct C call tested for count, ordering, equality and zero count (`LIB-strncmp`). | P1 |
+| `string.ld:strstr` (direct global; no stub) | `strstr` | Direct C call tested for first match and no match (`LIB-strstr`). | P1 |
+| `string.ld:strcpy` via `c_runtime_stubs.ld` | `strcpy` | C wrapper tested: terminator and returned destination (`LIB-strcpy`). | P1 |
+| `string.ld:strncpy` via `c_runtime_stubs.ld` | `strncpy` | C wrapper tested: bounded copy and returned destination (`LIB-strncpy`). | P1 |
+| `string.ld:strcat` / `strncat` via `c_runtime_stubs.ld` | `strcat` / `strncat` | C wrappers tested: terminator and returned destination (`LIB-strcat`, `LIB-strncat`); adapter removes the legacy `strncat` stack leak. | P1 |
+| `string.ld:memcpy` via `c_runtime_stubs.ld` | `memcpy` | C wrapper tested: byte copy and returned destination (`LIB-memcpy`). Existing implementation also tolerates overlap. | P1 |
+| `EX716_MEMMOVE` via `c_runtime_stubs.ld` | `memmove` | C wrapper tested: overlap-safe byte copy and returned destination (`LIB-memmove`). | P1 |
+| C byte-fill routine in `c_runtime_stubs.ld` | `memset` | Implemented and tested for byte value and returned destination (`LIB-memset`). | P1 |
+| `HeapNewObject` / `HeapDeleteObject` via `c_runtime_stubs.ld` | `malloc` / `free` | C wrapper tested for two-byte alignment, allocation/use, `free`, `free(NULL)`, and oversized-allocation null (`LIB-malloc`, `LIB-malloc.oom`). | P1 |
+| `HeapNewObject` plus zero-fill | `calloc` | Buildable from existing allocation; multiplication overflow and C result contract need a wrapper. | P2 |
+| `HeapResizeObject` | `realloc` | Moving resize service exists; adapt null/failure/zero-size rules and test failure preservation. | P2 |
+| `CAST` adapter in `c_runtime_stubs.ld` / `POLL` instruction | `putchar` / `getchar` | `putchar` C wrapper tested in all modes (`IO-putchar`); output failure/EOF is not yet representable. `getchar` remains missing. | P0 |
+| `stdio_format.c`, `itos`, and `i32tos` | `printf` / `snprintf` | Initial shared integer/string formatter exists. Focused `%d` and `%ld` `printf` vectors pass in all modes; broader formatting and bounded sinks remain incomplete, partly blocked by current code/data/stack layout pressure. | P1 |
 
 The backend advertises long long=8, float=4, double=8, long double=16 with
 `outofline` metrics. That flag is not evidence that operations work. There is
@@ -132,6 +159,11 @@ The checked-in 116-entry baseline remains immutable; the active manifest has
 120 entries after adding the four R01 acceptance checks. The post-R01 full
 segmented audit reports 26 PASS, 23 FAIL, 43 MISSING and 28 NOT_TESTED. All
 original 116 rows retain their prior status; the four new safety rows pass.
+The active manifest has since grown to 135 entries with dense-switch,
+stack-exhaustion/configuration, initial C-adapter coverage, and focused
+formatting vectors; the historical baseline remains unchanged. The
+2026-10-06 checkpoint reports 68 PASS, 30 FAIL, 9 MISSING, and 28 NOT_TESTED
+in segmented mode, with the historical smoke suite passing 4/4.
 The remaining FAIL rows are compiler/runtime feature work, not test-runner
 failures. Full report: `/tmp/ex716-r01-full.json`, with per-case evidence in
 `/tmp/ex716-r01-full/`. The selected-control report is
@@ -335,9 +367,11 @@ by re-reviewing the whole repository.
 Recommended dependency order:
 
 1. R01 diagnostic safety through R05 aggregate ABI/copy correctness are implemented for their current acceptance vectors.
-2. R06 static data and literals; R08/R10 build, unit and memory foundations.
-3. R08 unit isolation and a reproducible target build; R10 memory/startup;
-   minimal `stddef.h`/`limits.h`/`errno.h` from R11.
+2. R06 static data and literals; R08/R11 build, unit and header foundations.
+3. R08 unit isolation and a reproducible target build; minimal
+  `stddef.h`/`limits.h`/`errno.h` from R11. R10 is accepted for the current
+  profile; revisit `SYS-001`/`SYS-003` with CPU memory management and hard
+  interrupts.
 4. R07 written variadic ABI and `stdarg.h`; first console stream layer.
 5. String/heap C adapters, integer formatting and bounded formatting.
 6. Isolated disk fixtures and byte/block file streams; then positioning.
@@ -427,7 +461,8 @@ variadic formatting. The implementation is intentionally limited to 2- and
 4-byte non-floating scalar/pointer items; float-typed items and aggregates are
 diagnosed as unsupported. `stdarg.h` uses two static helper routines, so
 multi-translation-unit linkage has not been certified and remains coupled to
-R08. Frame capacity is still limited by the existing 40-byte C frame ceiling.
+R08. Frame capacity defaults to 256 bytes; frames above that limit are not
+certified.
 
 **R08:** Use two-unit probes, qualify static definitions and private branch
 labels, and make duplicate external definitions an error. The audit's unit
@@ -435,12 +470,17 @@ concatenation demonstrates that a real compilation/link boundary is missing;
 it does not prescribe a full object format. A deterministic assembly combiner
 is a reasonable first implementation if its contracts are explicit.
 
-**R10/R11/stdio:** Implement a small startup and C-adapter file, explicit
-memory map and target include directory. Start unbuffered console streams so
-state/return values are correct before buffering. Map each I/O function's
-existing ID to an executable public-header test. Implement allocation and disk
-fixtures before claiming file-stream support. Do not use host libc as a proxy
-for the EX716 runtime.
+**R10 accepted profile:** The generated entry initializes a heap-backed,
+adjustable 4-KiB software stack and checks each frame reservation. Keep
+`SYS-001` and `SYS-003` planned, not PASS: production lifecycle and full
+segment/heap/stack isolation are deferred until CPU memory management and hard
+interrupts.
+
+**R11/stdio:** Add the target include directory and C adapters. Start
+unbuffered console streams so state/return values are correct before
+buffering. Map each I/O function's existing ID to an executable public-header
+test. Implement allocation and disk fixtures before claiming file-stream
+support. Do not use host libc as a proxy for the EX716 runtime.
 
 For each task, the handoff record should contain only: requirement/IDs, files
 changed, design decision, before/after status, verification command and any
