@@ -83,7 +83,7 @@ L heapmgr.ld
   @PUSHI CHIN
   @ADDI Rseed
   @POPI Rseed
-  @PUSHI CHIN
+  @POLLNOINPUT CHIN
 @ENDWHILE
 @POPNULL @PUSH 0
 # Now look only of a <ENTER>
@@ -131,8 +131,8 @@ L heapmgr.ld
 @MA2V 1 Continue
 @PUSHI Continue
 @LOOP
-   @READCNW CHIN    # This is the No Wait version of Read Character. 0 is no input is waiting.
-   @PUSHI CHIN
+   @READCNW CHIN    # Tagged result: status 2 means no input; low byte is data.
+   @PUSHI CHIN @AND 0xff
    @SWITCH
        @CASE "a\0"   # "a"
           @POPNULL

@@ -468,7 +468,7 @@ M StatusPrint @PUSH 1 @PUSH 23 @CALL WinCursor
               ! DEBUG
               @READCNW NewChar      # Keek reading until we get the 3rd character
               ENDBLOCK
-              @PUSHI NewChar
+              @POLLNOINPUT NewChar
           @ENDWHILE
           @SWITCH
 #          @PUSH 30 @PUSH 11 @CALL WinCursor @StackDump             

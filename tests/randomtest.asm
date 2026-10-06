@@ -59,10 +59,10 @@ L random.ld
    @POPNULL
    @READCNW UserKey
    @INCI SeedCount
-   @PUSHI UserKey
+   @POLLNOINPUT UserKey
 @ENDWHILE
 @TTYECHO
-@PUSHI SeedCount @ADDI UserKey @AND 0x7ffe
+@PUSHI UserKey @AND 0xff @ADDI SeedCount @AND 0x7ffe
 @POPRETURN
 @RET
 :UserKey 0 0

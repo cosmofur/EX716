@@ -537,12 +537,12 @@
       "priority": "P0",
       "title": "getchar",
       "acceptance": [
-        "Distinguish 0xff from EOF; consume deterministic piped input.",
+        "Preserve NUL as input, distinguish it from EOF, and consume deterministic piped input.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){int a,b;a=getchar();b=getchar();return a!='Q'||b!=EOF;}",
+      "source": "#include <stdio.h>\nint main(void){int a,b,c;a=getchar();b=getchar();c=getchar();return a!=0||b!='Q'||c!=EOF;}",
       "stdout": "",
-      "stdin": "Q"
+      "stdin": "\u0000Q"
     },
     {
       "id": "IO-puts",

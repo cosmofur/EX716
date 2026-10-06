@@ -182,8 +182,9 @@ L string.ld
 @LOOP
 @POPNULL
 @READCNW CHIN
-@PUSHI CHIN
-@IF_NOTZERO
+@PUSHI CHIN @SHR8
+@IF_EQ_A PollStatusData
+  @PUSHI CHIN @AND 0xff
   @SWITCH
        @CASE "w\0"
           @MA2V 1 Direction

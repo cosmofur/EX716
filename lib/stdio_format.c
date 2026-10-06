@@ -78,7 +78,7 @@ static int __ex716_number(char *buffer, unsigned long value, int base,
                 }
         }
         for (i = 0; i < count; ++i)
-                buffer[i] = reverse[count - i - 1];
+                buffer[i] = base == 10 ? reverse[i] : reverse[count - i - 1];
         buffer[count] = 0;
         return count;
 }

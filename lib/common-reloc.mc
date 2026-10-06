@@ -99,10 +99,19 @@ G RRT G RLTC G SHR G SHL G FCLR G FSAV G FLOD
 =PollSetNoEcho 4
 =PollSetEcho 5
 =PollReadCINoWait 6
+=PollStatusData 0
+=PollStatusEOF 1
+=PollStatusNoInput 2
+=PollStatusError 3
 =PollReadSector 22
 =PollReadTapeI 23
 =PollRewindTape 24
 =PollReadTime 25
+
+# Helpers for the tagged 16-bit result returned by READC/READCNW.
+M POLLSTATUS %1 @PUSHI %1 @SHR8
+M POLLNOINPUT %1 @PUSHI %1 @SHR8 @SUB PollStatusNoInput
+M POLLBYTE %1 @PUSHI %1 @AND 0xff
 
 # Warning about Macros
 # When defining a macro you can refrence other  macros on the same line.
@@ -262,9 +271,10 @@ M PROMPT @PRT %1 @READI %2
 M READS @PUSH PollReadStrI @POLL %1 @POPNULL
 # Param of READSI is lable that contains pointer to buffer
 M READSI @PUSHI %1 @POPI %0ADDR @PUSH PollReadStrI @POLL ;%0ADDR 2 0xffff @POPNULL
-# Read a unechoed character from keyboard
+# Read a character into a 16-bit tagged result: high byte 0=data, 1=EOF,
+# 2=no input (nonblocking only), 3=I/O error; low byte is data for status 0.
 M READC @PUSH PollReadCharI @POLL %1 @POPNULL
-# Read character from keyboard with no wait if none ready.
+# Read character with no wait; status 2 distinguishes no input from byte 0.
 M READCNW @PUSH PollReadCINoWait @POLL %1 @POPNULL
 # Turn Keyboard echo off
 M TTYNOECHO @PUSH PollSetNoEcho @POLL %1 @POPNULL

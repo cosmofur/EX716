@@ -60,16 +60,17 @@ L fat16lib.ld
    # First When is to 'drain' and keybuffer
    @WHEN
       @READCNW UserKey
-      @PUSHI UserKey
-      @DO_NOTZERO
+      @POLLSTATUS UserKey
+      @DO_ZERO
          @POPNULL
    @ENDWHEN
    @POPNULL
    @WHEN
       @READCNW UserKey
-      @PUSHI UserKey
-      @IF_EQ_AV 0 UserKey
-      @ELSE
+      @POLLNOINPUT UserKey
+      @PUSHI UserKey @SHR8
+      @IF_EQ_A PollStatusData
+         @PUSHI UserKey @AND 0xff @POPI UserKey
          @PRTSTR UserKey
       @ENDIF
       @DO_ZERO

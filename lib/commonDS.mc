@@ -208,6 +208,10 @@ M FALSE 0
 =PollSetRaw 7
 =PollReSetRaw 8
 =PollTTYState 9
+=PollStatusData 0
+=PollStatusEOF 1
+=PollStatusNoInput 2
+=PollStatusError 3
 =PollReadSector 22
 =PollReadTapeI 23
 =PollRewindTape 24
@@ -220,6 +224,9 @@ M FALSE 0
 # When executing a macro, the rule is one macro per line.
 # If you need a Macro to Define another 'macro' for the purpose of flags
 # You can use the MF or MacroFlag command which takes only one argument
+M POLLSTATUS %1 @PUSHI %1 @SHR8
+M POLLNOINPUT %1 @PUSHI %1 @SHR8 @SUB PollStatusNoInput
+M POLLBYTE %1 @PUSHI %1 @AND 0xff
 # and unlike 'M' macros can be enbeded inside other macros.
 M NOP $$NOP
 M PUSH $$PUSH %1
@@ -636,9 +643,10 @@ M PROMPT @PRT %1 @READI %2
 M READS @PUSH PollReadStrI @POLL %1
 # Param of READSI is lable that contains pointer to buffer
 M READSI @PUSHI %1 @CSO @POPI _%0ADDR @PUSH PollReadStrI @POLL :_%0ADDR 0xffff
-# Read a unechoed character from keyboard
+# Read a character into a 16-bit tagged result: high byte 0=data, 1=EOF,
+# 2=no input (nonblocking only), 3=I/O error; low byte is data for status 0.
 M READC @PUSH PollReadCharI @POLL %1
-# Read character from keyboard with no wait if none ready.
+# Read character with no wait; status 2 distinguishes no input from byte 0.
 M READCNW @PUSH PollReadCINoWait @POLL %1
 # Turn Keyboard echo off
 M TTYNOECHO @PUSH PollSetNoEcho @POLL 0

@@ -9,6 +9,7 @@ ECC hello.c
 ECC -o hello.asm hello.c
 ECC -DDEBUG -I ./include --stack-size 8192 -o build/hello.asm hello.c
 ECC --no-stdio -o build/tiny.asm tiny.c
+ECC -g -o build/hello-debug.asm hello.c
 ```
 
 The default output is `out.asm` in the current directory. The launcher locates
@@ -25,13 +26,14 @@ with the EX716 library path available to the assembler:
 CPUPATH=/path/to/EX716/lib python3 /path/to/EX716/cpu24.py out.asm
 ```
 
-Current launcher options are `-o FILE`, `--stack-size BYTES`, `--no-stdio`,
-`-I DIR`, `-D NAME[=VALUE]`, `-U NAME`, and `-v`. Stack size defaults to 4096 bytes and
-must be an even value from 512 through 57344. The target is an experimental
+Current launcher options are `-g`, `-o FILE`, `--stack-size BYTES`,
+`--no-stdio`, `-I DIR`, `-D NAME[=VALUE]`, `-U NAME`, and `-v`. `-g` adds
+`# C path/to/file.c:line` comments at generated-code source locations. These
+help correlate CPU24 assembly listings and runtime errors with C source, but
+do not provide C-level stepping or variable inspection. Stack size defaults
+to 4096 bytes and must be an even value from 512 through 57344. The target is an experimental
 integer C profile (16-bit `int`, 32-bit `long`, near pointers); floating-point
 and long-long operations are not implemented.
 
-Useful follow-on options would be an explicit `--run` mode that invokes CPU24
-with `CPUPATH` already set, plus `--debug` and `--listing` pass-throughs for
-emulator `-g`/`-l`. The generated harness is segmented CPU24 assembly, so a
-classic `cpu.py` selector would not apply to this output format.
+The generated harness is segmented CPU24 assembly, so a classic `cpu.py`
+selector would not apply to this output format.

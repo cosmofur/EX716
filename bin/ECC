@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: ECC [-o output.asm] [--stack-size bytes] [-I dir] [-D name[=value]]
+Usage: ECC [-g] [-o output.asm] [--stack-size bytes] [-I dir] [-D name[=value]]
            [-U name] [-v] source.c [source.c ...]
 
 Compile EX716 C source into a runnable CPU24 assembly harness.
@@ -13,6 +13,7 @@ Options:
   -o FILE             Write assembly to FILE instead of ./out.asm
   --stack-size N      Set each C main stack allocation (default: 4096 bytes)
   --no-stdio          Omit the printf/snprintf formatter runtime
+  -g                  Add C source file:line comments to generated assembly
   -I DIR              Add a C header search directory
   -D NAME[=VALUE]     Define a preprocessor symbol
   -U NAME             Undefine a preprocessor symbol
@@ -33,6 +34,7 @@ output=out.asm
 stack_size=4096
 include_stdio=1
 verbose=0
+debug_lines=0
 cpp_args=()
 sources=()
 
@@ -44,6 +46,10 @@ while (($#)); do
             ;;
         -v)
             verbose=1
+            shift
+            ;;
+        -g)
+            debug_lines=1
             shift
             ;;
         -o)
@@ -106,7 +112,10 @@ done
 [[ -d $target_include ]] || { echo "ECC: EX716 headers not found: $target_include" >&2; exit 1; }
 [[ -f $formatter ]] || { echo "ECC: formatter runtime not found: $formatter" >&2; exit 1; }
 command -v make >/dev/null 2>&1 || { echo "ECC: make is required to build lcc tools" >&2; exit 1; }
-make -s -C "$lcc_root" BUILDDIR=build rcc cpp
+# lcc tracks the generated lburg/gram.c alongside its grammar. Ignore its
+# timestamp for this build so a missing yacc does not prevent rebuilding rcc
+# from the checked-in generated parser; other compiler sources remain current.
+make -s -o lburg/gram.c -C "$lcc_root" BUILDDIR=build rcc cpp
 [[ -x $cpp && -x $rcc ]] || { echo "ECC: lcc tool build did not produce cpp and rcc" >&2; exit 1; }
 
 out_dir=$(dirname -- "$output")
@@ -127,6 +136,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 rcc_args=(-target=ex716 "-stack-size=$stack_size")
+if ((debug_lines)); then
+    rcc_args+=(-g1)
+fi
 asm_files=()
 index=0
 for source in "${sources[@]}"; do
@@ -173,7 +185,6 @@ fi
         printf '\n'
     done
     cat <<'ASSEMBLY'
-.ORG 0x7000
 :__ECC_ENTRY
 .ENTRY __ECC_ENTRY
 @PUSH 1

@@ -118,7 +118,7 @@ service exists; **missing** means no suitable service was found.
 | `HeapNewObject` / `HeapDeleteObject` via `c_runtime_stubs.ld` | `malloc` / `free` | C wrapper tested for two-byte alignment, allocation/use, `free`, `free(NULL)`, and oversized-allocation null (`LIB-malloc`, `LIB-malloc.oom`). | P1 |
 | `HeapNewObject` plus zero-fill | `calloc` | Buildable from existing allocation; multiplication overflow and C result contract need a wrapper. | P2 |
 | `HeapResizeObject` | `realloc` | Moving resize service exists; adapt null/failure/zero-size rules and test failure preservation. | P2 |
-| `CAST` adapter in `c_runtime_stubs.ld` / `POLL` instruction | `putchar` / `getchar` | `putchar` C wrapper tested in all modes (`IO-putchar`); output failure/EOF is not yet representable. `getchar` remains missing. | P0 |
+| `CAST` adapter / tagged `POLL` byte result | `putchar` / `getchar` | `putchar` C wrapper tested in all modes (`IO-putchar`). `getchar` maps tagged byte input to C `EOF`; NUL and EOF have a piped-input regression (`IO-getchar`). Stream-level error state and output failure remain unavailable. | P0 |
 | `stdio_format.c` | `printf` / `snprintf` | Shared parser, field renderer and output sink. Integer conversions are specialized for the 16-bit `int`/32-bit `long` profile; float and long-long formats fail explicitly. Existing focused `%d`/`%ld` evidence predates the expanded formatter; expanded acceptance is still required. | P1 |
 
 The backend advertises long long=8, float=4, double=8, long double=16 with

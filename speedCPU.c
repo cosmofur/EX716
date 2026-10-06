@@ -92,6 +92,10 @@ static VM24State *g_vm24 = NULL;
 #define PollSetRawCode 7
 #define PollReSetRaw 8
 #define PollTTYStateCode 9
+#define PollStatusData 0
+#define PollStatusEOF 1
+#define PollStatusNoInput 2
+#define PollStatusError 3
 #define PollReadSector 22
 #define PollReadTapeI 23
 #define PollRewindTape 24
@@ -108,6 +112,7 @@ static struct termios g_saved_attrs;
 static int g_saved_valid = 0;
 static int g_saved_flags = 0;
 static int g_saved_flags_valid = 0;
+static int g_poll_raw_active = 0;
 
 /*
  * What it does:
@@ -372,7 +377,7 @@ static inline void set_cf_of_sub(int *flags, uint16_t a, uint16_t b, uint16_t r)
  * Parent/call mechanism:
  * - Internal helper called by handle_poll() for char input operations.
  */
-static int read_one_char_nowait(void) {
+static int read_one_char_nowait(unsigned char *out) {
     struct termios saved, attrs;
     int restore = tcgetattr(STDIN_FILENO, &saved) == 0;
     if (restore) {
@@ -388,16 +393,30 @@ static int read_one_char_nowait(void) {
     struct timeval timeout = {0, 0};
     unsigned char ch;
     ssize_t n = -1;
-    if (select(STDIN_FILENO + 1, &readable, NULL, NULL, &timeout) > 0) {
+    int ready = select(STDIN_FILENO + 1, &readable, NULL, NULL, &timeout);
+    if (ready < 0) {
+        if (restore) {
+            tcsetattr(STDIN_FILENO, TCSANOW, &saved);
+        }
+        return PollStatusError;
+    }
+    if (ready > 0) {
         n = read(STDIN_FILENO, &ch, 1);
     }
     if (restore) {
         tcsetattr(STDIN_FILENO, TCSANOW, &saved);
     }
     if (n == 1) {
-        return (int)ch;
+        *out = ch;
+        return PollStatusData;
     }
-    return -1;
+    if (n == 0) {
+        return PollStatusEOF;
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK || ready == 0) {
+        return PollStatusNoInput;
+    }
+    return PollStatusError;
 }
 
 /*
@@ -464,7 +483,9 @@ static void enable_raw(void) {
         cfmakeraw(&raw);
         raw.c_cc[VMIN] = 0;
         raw.c_cc[VTIME] = 1;
-        tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+        if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0) {
+            g_poll_raw_active = 1;
+        }
     }
     if (g_saved_flags_valid) {
         fcntl(STDIN_FILENO, F_SETFL, g_saved_flags | O_NONBLOCK);
@@ -491,6 +512,7 @@ static void disable_raw(void) {
         fcntl(STDIN_FILENO, F_SETFL, g_saved_flags);
         g_saved_flags_valid = 0;
     }
+    g_poll_raw_active = 0;
 }
 
 /*
@@ -818,16 +840,32 @@ static int handle_poll(uint8_t *mem, uint16_t *stack, int *sp, uint16_t arg) {
         }
         case PollReadCharI: {
             unsigned char ch;
-            int c = read(STDIN_FILENO, &ch, 1) == 1 ? ch : 0;
-            put16(mem, arg, (uint16_t)c);
+            ssize_t n;
+            do {
+                n = read(STDIN_FILENO, &ch, 1);
+            } while (n < 0 && errno == EINTR);
+            uint16_t result;
+            if (n == 1) {
+                result = (!g_poll_raw_active && ch == 0x1a)
+                    ? (uint16_t)(PollStatusEOF << 8) : (uint16_t)ch;
+            } else if (n == 0) {
+                result = (uint16_t)(PollStatusEOF << 8);
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                result = (uint16_t)(PollStatusNoInput << 8);
+            } else {
+                result = (uint16_t)(PollStatusError << 8);
+            }
+            put16(mem, arg, result);
             break;
         }
         case PollReadCINoWait: {
-            int c = read_one_char_nowait();
-            if (c < 0) {
-                c = 0;
+            unsigned char ch = 0;
+            int status = read_one_char_nowait(&ch);
+            if (status == PollStatusData && !g_poll_raw_active && ch == 0x1a) {
+                status = PollStatusEOF;
             }
-            put16(mem, arg, (uint16_t)c);
+            put16(mem, arg, (uint16_t)((status << 8) |
+                                       (status == PollStatusData ? ch : 0)));
             break;
         }
         case PollSetNoEcho:

@@ -99,6 +99,10 @@ PollReadCINoWait=6
 PollSetRawCode=7
 PollReSetRaw=8
 PollTTYStateCode=9
+PollStatusData=0
+PollStatusEOF=1
+PollStatusNoInput=2
+PollStatusError=3
 PollReadSector=22
 PollReadTapeI=23
 PollRewindTape=24
@@ -253,11 +257,13 @@ else:  # POSIX (Linux, macOS, Termux, etc.)
         try:
             data = os.read(fd, 128)
             if not data:
-                return None
-            chars = list(data.decode(errors="replace"))
+                return -1
+            chars = list(data.decode("latin-1"))
             CPU.char_queue.extend(chars)
         except BlockingIOError:
             return None
+        except OSError:
+            return -2
 
         return ord(CPU.char_queue.pop(0)) if CPU.char_queue else None            
 
@@ -631,11 +637,12 @@ def PollSetEchoFunc(arg=None):
 
 _saved_attrs = None
 _saved_flags = None
+_poll_raw_active = False
 
 
 def PollSetRawFunc(arg=None):
     """Put terminal into raw, non-blocking mode when supported."""
-    global _saved_attrs, _saved_flags
+    global _saved_attrs, _saved_flags, _poll_raw_active
 
     if _fd is None or not HAS_POSIX_TTY or not sys.stdin.isatty():
         return
@@ -658,10 +665,11 @@ def PollSetRawFunc(arg=None):
         fcntl.F_SETFL,
         _saved_flags | os.O_NONBLOCK
     )
+    _poll_raw_active = True
 
 def PollReSetRawFunc(arg=None):
     """Restore terminal state from before PollSetRawFunc."""
-    global _saved_attrs, _saved_flags
+    global _saved_attrs, _saved_flags, _poll_raw_active
 
     if not HAS_POSIX_TTY:
         return
@@ -694,6 +702,7 @@ def PollReSetRawFunc(arg=None):
 
         _saved_attrs = None
         _saved_flags = None
+        _poll_raw_active = False
         
 
 def PollTTYStateFunc(arg=None):
@@ -1985,33 +1994,47 @@ class microcpu:
                             "041 Insufficent space for Message Address at %d, optPOLL" % (i))
         if cmd == PollReadCharI:
             self.optPOPNULL(address)                 # consume POLL arg
-            if not self.char_queue:
-                if sys.stdin.isatty() and HAS_READCHAR:
-                    try:
+            try:
+                if not self.char_queue:
+                    if sys.stdin.isatty() and HAS_READCHAR:
                         c = readchar.readkey()
-                    except:
-                        c = ""
+                    else:
+                        stream = getattr(sys.stdin, "buffer", sys.stdin)
+                        c = stream.read(1)
+                        if isinstance(c, bytes):
+                            c = c.decode("latin-1")
+                    if len(c) > 1:
+                        self.char_queue = c[1:]
+                        c = c[0]
                 else:
-                    c = sys.stdin.read(1)
-                if not c:
-                    c = "\0"
-                elif len(c) > 1:
-                    self.char_queue = c[1:]
-                    c=c[0]
-            else:
-                c=self.char_queue[0]
-                self.char_queue=self.char_queue[1:]
-                    
-            self.putwordat(address, ord(c))
+                    c = self.char_queue[0]
+                    self.char_queue = self.char_queue[1:]
+                if not c or (c == "\x1a" and not _poll_raw_active):
+                    result = PollStatusEOF << 8
+                else:
+                    result = ord(c) & 0xff
+            except Exception:
+                result = PollStatusError << 8
+            self.putwordat(address, result)
         if cmd == PollReadCINoWait:
             self.optPOPNULL(address)                # consume POLL arg
             if self.char_queue:
                 c = self.char_queue[0]
                 self.char_queue = self.char_queue[1:]
             else:
-                k = get_key()
+                try:
+                    k = get_key()
+                except Exception:
+                    k = -2
                 if k is None:
-                    c = "\0"
+                    result = PollStatusNoInput << 8
+                    c = None
+                elif k == -1:
+                    result = PollStatusEOF << 8
+                    c = None
+                elif k == -2:
+                    result = PollStatusError << 8
+                    c = None
                 elif isinstance(k, str):
                     if len(k) > 1:
                         c = k[0]
@@ -2019,13 +2042,16 @@ class microcpu:
                     else:
                         c = k
                 elif isinstance(k, int):
-                    try:
-                        c = chr(k & 0xFF)
-                    except ValueError:
-                        c = "\0"
+                    c = chr(k & 0xff)
                 else:
-                    c = "\0"
-            self.putwordat(address, ord(c))
+                    result = PollStatusError << 8
+                    c = None
+            if c is not None:
+                if c == "\x1a" and not _poll_raw_active:
+                    result = PollStatusEOF << 8
+                else:
+                    result = ord(c) & 0xff
+            self.putwordat(address, result)
         if cmd == PollSetNoEcho:
             self.optPOPNULL(address)            
             PollSetNoEchoFunc()

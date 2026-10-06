@@ -27,7 +27,7 @@ are in `lib/commonDS.mc`. Unless noted, both provide the same source interface.
 | `@PUSHI2` ... `@PUSHI5`; `@POPI2` ... `@POPI5` | Group repeated pushes or pops for argument handling. Remember that pop order is the reverse of push order. |
 | `@PRT`, `@PRTLN`, `@PRTNL`, `@PRTSP` | Print literal text, text plus newline, a newline, or spaces through emulator CAST services. Literal strings are embedded in the code stream. |
 | `@PRTI`, `@PRTUI`, `@PRTHEXI`, `@PRTSI` | Print a signed/unsigned integer, hexadecimal word, or string whose address is held in a variable. `*TOP` forms print a duplicate and preserve the original stack value. |
-| `@READI`, `@READS`, `@READC`, `@READCNW` | Read an integer, string, character, or nonblocking character through POLL services. The destination form determines where the host result is stored. |
+| `@READI`, `@READS`, `@READC`, `@READCNW` | Read an integer, string, character, or nonblocking character through POLL services. Character reads store a 16-bit tagged result: high byte 0=data, 1=EOF, 2=no input (nonblocking only), or 3=I/O error; the low byte contains data only when the status is 0. In cooked mode, Ctrl-Z (`0x1a`) is treated as EOF; raw mode preserves it as data. |
 | `@TTYNOECHO`, `@TTYECHO`, `@TTYRAW`, `@TTYRAWOFF` | Control terminal echo and raw mode. Restore terminal state before normal program exit when it was changed. |
 | `@DISKSEL`, `@DISKSEEK`, `@DISKREAD`, `@DISKWRITE`, `@DISKSYNC` | Low-level virtual-disk device operations. Application file I/O should normally use `diskos.ld` instead. |
 | `@STRSTACK` | Place a short NUL-terminated string on temporary stack-backed storage and leave its address for a call. Treat the address as temporary rather than heap-owned. |

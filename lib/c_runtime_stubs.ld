@@ -4,7 +4,7 @@ P Loading c_runtime_stubs.ld
 
 # Load services first; rebind only names whose C contract needs adaptation.
 L string.ld
-G malloc G free G memset G putchar
+G malloc G free G memset G putchar G getchar
 
 ? CPU24_SEGMENTED
 ::__EX716_PUTCHAR_BYTE 0
@@ -33,6 +33,31 @@ ENDBLOCK
    @CAST __EX716_PUTCHAR_BYTE
    @PUSHI Value
    @AND 0xff
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION getchar
+:getchar
+@PUSHRETURN
+   @Locals
+   @Local InputWord
+   @Local InputStatus
+:__EX716_GETCHAR_RETRY
+   @READC InputWord
+   @PUSHI InputWord
+   @SHR8
+   @POPI InputStatus
+   @IF_EQ_AV PollStatusNoInput InputStatus
+      @JMP __EX716_GETCHAR_RETRY
+   @ENDIF
+   @IF_EQ_AV PollStatusData InputStatus
+      @PUSHI InputWord
+      @AND 0xff
+   @ELSE
+      @PUSH 0xffff
+   @ENDIF
    @EndLocals
 @POPRETURN
 @RET
