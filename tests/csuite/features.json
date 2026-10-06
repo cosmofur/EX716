@@ -321,7 +321,9 @@
       "acceptance": [
         "Float is four bytes but ADD/F and ADD/I require different code; reject unsupported float with nonzero compiler exit."
       ],
-      "source": "int main(void){float a,b;a=1.5f;b=2.25f;return a==b || a+b!=3.75f || a+b==4.0f;}"
+      "source": "int main(void){float a,b;a=1.5f;b=2.25f;return a==b || a+b!=3.75f || a+b==4.0f;}",
+      "kind": "backend-reject",
+      "diagnostic": "EX716: unsupported floating-point"
     },
     {
       "id": "SAFE-unsupported-indirect-call",
@@ -341,7 +343,7 @@
       ],
       "file": "probes/floating_point.c",
       "kind": "backend-reject",
-      "diagnostic": "EX716: unhandled expression"
+      "diagnostic": "EX716: unsupported floating-point"
     },
     {
       "id": "SAFE-unsupported-small-aggregate",
@@ -395,10 +397,9 @@
       "priority": "P0",
       "title": "Target public <limits.h>",
       "acceptance": [
-        "Header must preprocess and compile using only EX716 include paths; add its type/value assertions as implementation arrives."
+        "EX716 integer limits match its 8-bit byte, signed-char, 16-bit int, and 32-bit long profile."
       ],
-      "source": "#include <limits.h>\nint main(void){return 0;}",
-      "kind": "header"
+      "source": "#include <limits.h>\nint main(void){return CHAR_BIT!=8||CHAR_MIN!=-128||CHAR_MAX!=127||UCHAR_MAX!=255U||SHRT_MIN!=-32768||SHRT_MAX!=32767||USHRT_MAX!=65535U||INT_MIN!=-32768||INT_MAX!=32767||UINT_MAX!=65535U||LONG_MIN!=(-2147483647L-1L)||LONG_MAX!=2147483647L||ULONG_MAX!=4294967295UL||MB_LEN_MAX!=1;}"
     },
     {
       "id": "HEADER-stdarg",
@@ -666,6 +667,26 @@
       "runtime_files": ["lib/stdio_format.c"]
     },
     {
+      "id": "IO-snprintf.integer-fields",
+      "priority": "P0",
+      "title": "snprintf integer widths, precision, and 32-bit boundaries",
+      "acceptance": [
+        "Formats unsigned-long maximum and signed-long minimum exactly; applies sign-aware zero padding, left width, precision, alternate octal form, and near-pointer hexadecimal output."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[12],t[24];int n;n=snprintf(b,12,\"%lu\",4294967295UL);if(n!=10||b[0]!='4'||b[1]!='2'||b[2]!='9'||b[3]!='4'||b[4]!='9'||b[5]!='6'||b[6]!='7'||b[7]!='2'||b[8]!='9'||b[9]!='5'||b[10]!=0)return 1;n=snprintf(b,12,\"%ld\",(-2147483647L-1L));if(n!=11||b[0]!='-'||b[1]!='2'||b[2]!='1'||b[3]!='4'||b[4]!='7'||b[5]!='4'||b[6]!='8'||b[7]!='3'||b[8]!='6'||b[9]!='4'||b[10]!='8'||b[11]!=0)return 2;n=snprintf(t,24,\"%+06d|%-5u|%.4x|%#o\",-7,12U,175U,255U);if(n!=22||t[0]!='-'||t[1]!='0'||t[5]!='7'||t[6]!='|'||t[7]!='1'||t[8]!='2'||t[9]!=' '||t[11]!=' '||t[12]!='|'||t[13]!='0'||t[14]!='0'||t[15]!='a'||t[16]!='f'||t[17]!='|'||t[18]!='0'||t[21]!='7'||t[22]!=0)return 3;n=snprintf(b,12,\"%p\",(void *)0);if(n!=3||b[0]!='0'||b[1]!='x'||b[2]!='0'||b[3]!=0)return 4;return 0;}",
+      "runtime_files": ["lib/stdio_format.c"]
+    },
+    {
+      "id": "IO-snprintf.unsupported",
+      "priority": "P0",
+      "title": "snprintf rejects unimplemented numeric argument widths",
+      "acceptance": [
+        "Long-long and floating conversions return an error without consuming unsupported argument layouts and leave a terminated partial buffer."
+      ],
+      "source": "#include <stdio.h>\nint main(void){char b[8];if(snprintf(b,8,\"x%lld\")!=-1||b[0]!='x'||b[1]!=0)return 1;if(snprintf(b,8,\"%f\")!=-1||b[0]!=0)return 2;return 0;}",
+      "runtime_files": ["lib/stdio_format.c"]
+    },
+    {
       "id": "IO-snprintf.s",
       "priority": "P0",
       "title": "snprintf string argument traversal",
@@ -705,7 +726,7 @@
         "Shared integer/string conversions; truncation count, size zero, and size-one NUL termination.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){char b[20],t[4],one[1];int n;n=snprintf(b,20,\"%d %i %u %x %X %c %s %%\",-7,12,65535U,255U,175U,'Z',\"ok\");if(n!=24||b[0]!='-'||b[3]!='2'||b[6]!='5'||b[12]!='f'||b[15]!='A'||b[18]!='o'||b[22]!='%')return 1;n=snprintf(t,4,\"%s\",\"hello\");if(n!=5||t[0]!='h'||t[1]!='e'||t[2]!='l'||t[3]!=0)return 2;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 3;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 4;return 0;}",
+      "source": "#include <stdio.h>\nint main(void){char b[25],t[4],one[1];int n;n=snprintf(b,25,\"%d %i %u %x %X %c %s %%\",-7,12,65535U,255U,175U,'Z',\"ok\");if(n!=24||b[0]!='-'||b[3]!='2'||b[6]!='5'||b[12]!='f'||b[15]!='A'||b[18]!='Z'||b[20]!='o'||b[23]!='%')return 1;n=snprintf(t,4,\"%s\",\"hello\");if(n!=5||t[0]!='h'||t[1]!='e'||t[2]!='l'||t[3]!=0)return 2;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 3;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 4;return 0;}",
       "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },

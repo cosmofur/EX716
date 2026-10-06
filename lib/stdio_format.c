@@ -1,124 +1,333 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-extern void itos(char *destination, int value, int base);
-extern void i32tos(char *destination, long value, int base);
+/* EX716's maximum supported integer width is 32 bits.  Hex conversion uses
+   nibbles; decimal conversion uses bounded subtraction against powers of ten
+   instead of invoking the comparatively expensive 32-bit divide helper once
+   per digit. */
+static const unsigned long __ex716_pow10[] = {
+        1000000000UL, 100000000UL, 10000000UL, 1000000UL, 100000UL,
+        10000UL, 1000UL, 100UL, 10UL, 1UL
+};
+
+struct __ex716_sink {
+        char *destination;
+        size_t size;
+        int count;
+        int failed;
+};
+
+#define F_LEFT  1
+#define F_PLUS  2
+#define F_SPACE 4
+#define F_ZERO  8
+#define F_ALT   16
+
+static void __ex716_put(struct __ex716_sink *sink, int character) {
+        if (sink->count >= 32767) {
+                sink->failed = 1;
+                return;
+        }
+        if (!sink->destination) {
+                if (putchar(character & 0xff) == EOF)
+                        sink->failed = 1;
+        } else if (sink->size && (unsigned int)sink->count < sink->size - 1) {
+                sink->destination[sink->count] = (char)character;
+        }
+        ++sink->count;
+}
+
+static void __ex716_repeat(struct __ex716_sink *sink, int character, int n) {
+        while (n-- > 0 && !sink->failed)
+                __ex716_put(sink, character);
+}
+
+static int __ex716_number(char *buffer, unsigned long value, int base,
+                          int uppercase) {
+        char reverse[11];
+        int digit;
+        int count;
+        int started;
+        int i;
+
+        count = 0;
+        if (base == 16 || base == 8) {
+                int shift;
+                unsigned long mask;
+
+                shift = base == 16 ? 4 : 3;
+                mask = base == 16 ? 15UL : 7UL;
+                do {
+                        digit = (int)(value & mask);
+                        reverse[count++] = (char)(digit < 10 ? '0' + digit :
+                                (uppercase ? 'A' : 'a') + digit - 10);
+                        value >>= shift;
+                } while (value);
+        } else {
+                started = 0;
+                for (i = 0; i < 10; ++i) {
+                        digit = 0;
+                        while (value >= __ex716_pow10[i]) {
+                                value -= __ex716_pow10[i];
+                                ++digit;
+                        }
+                        if (digit || started || i == 9) {
+                                reverse[count++] = (char)('0' + digit);
+                                started = 1;
+                        }
+                }
+        }
+        for (i = 0; i < count; ++i)
+                buffer[i] = reverse[count - i - 1];
+        buffer[count] = 0;
+        return count;
+}
+
+static int __ex716_parse_number(const char **format) {
+        int value;
+        int digit;
+
+        value = 0;
+        while (**format >= '0' && **format <= '9') {
+                digit = *(*format)++ - '0';
+                if (value > 3276 || (value == 3276 && digit > 7))
+                        return -1;
+                value = value * 10 + digit;
+        }
+        return value;
+}
+
+static void __ex716_field(struct __ex716_sink *sink, const char *text,
+                          int length, int width, int flags, int precision,
+                          int numeric, char sign, const char *prefix) {
+        int prefix_length;
+        int zeroes;
+        int padding;
+        int i;
+
+        prefix_length = 0;
+        if (prefix)
+                while (prefix[prefix_length])
+                        ++prefix_length;
+        zeroes = 0;
+        if (numeric && precision > length)
+                zeroes = precision - length;
+        padding = width - length - zeroes - prefix_length - (sign != 0);
+        if (padding < 0)
+                padding = 0;
+        if ((flags & F_ZERO) && !(flags & F_LEFT) && precision < 0 && numeric) {
+                zeroes += padding;
+                padding = 0;
+        }
+        if (!(flags & F_LEFT))
+                __ex716_repeat(sink, ' ', padding);
+        if (sign)
+                __ex716_put(sink, sign);
+        for (i = 0; i < prefix_length; ++i)
+                __ex716_put(sink, prefix[i]);
+        __ex716_repeat(sink, '0', zeroes);
+        for (i = 0; i < length; ++i)
+                __ex716_put(sink, text[i]);
+        if (flags & F_LEFT)
+                __ex716_repeat(sink, ' ', padding);
+}
 
 int __ex716_vformat(char *destination, size_t size, const char *format,
                     va_list arguments) {
+        struct __ex716_sink sink;
         char digits[12];
         const char *text;
-        int count;
-        int character;
+        const char *prefix;
+        char sign;
+        int flags;
+        int width;
+        int precision;
+        int length;
         int conversion;
-        int long_value;
-        int failed;
+        int modifier;
         int value;
+        int signed_value;
         unsigned int unsigned_value;
-        long wide_value;
+        unsigned long wide_value;
+        long signed_long;
+        int base;
 
-        count = 0;
-        failed = 0;
-        while (*format) {
-                text = NULL;
-                long_value = 0;
+        sink.destination = destination;
+        sink.size = size;
+        sink.count = 0;
+        sink.failed = 0;
+        while (*format && !sink.failed) {
                 if (*format != '%') {
-                        character = (unsigned char)*format++;
-                } else {
+                        __ex716_put(&sink, (unsigned char)*format++);
+                        continue;
+                }
+                ++format;
+                if (*format == '%') {
                         ++format;
-                        if (*format == '%') {
+                        __ex716_put(&sink, '%');
+                        continue;
+                }
+
+                flags = 0;
+                for (;;) {
+                        if (*format == '-') flags |= F_LEFT;
+                        else if (*format == '+') flags |= F_PLUS;
+                        else if (*format == ' ') flags |= F_SPACE;
+                        else if (*format == '0') flags |= F_ZERO;
+                        else if (*format == '#') flags |= F_ALT;
+                        else break;
+                        ++format;
+                }
+                if (*format == '*') {
+                        width = va_arg(arguments, int);
+                        ++format;
+                        if (width < 0) {
+                                if (width == -32768) goto unsupported;
+                                flags |= F_LEFT;
+                                width = -width;
+                        }
+                } else {
+                        width = __ex716_parse_number(&format);
+                        if (width < 0) goto unsupported;
+                }
+                precision = -1;
+                if (*format == '.') {
+                        ++format;
+                        if (*format == '*') {
+                                precision = va_arg(arguments, int);
                                 ++format;
-                                character = '%';
+                                if (precision < 0) precision = -1;
                         } else {
-                                if (*format == 'l') {
-                                        long_value = 1;
-                                        ++format;
-                                }
-                                conversion = (unsigned char)*format++;
-                                switch (conversion) {
-                                case 'd':
-                                case 'i':
-                                        if (long_value) {
-                                                i32tos(digits,
-                                                       va_arg(arguments, long),
-                                                       10);
-                                        } else {
-                                                value = va_arg(arguments, int);
-                                                if (value == -32768)
-                                                        i32tos(digits,
-                                                               (long)value, 10);
-                                                else
-                                                        itos(digits, value, 10);
-                                        }
-                                        text = digits;
-                                        break;
-                                case 'u':
-                                case 'x':
-                                case 'X':
-                                        if (long_value)
-                                                return -1;
-                                        unsigned_value =
-                                                va_arg(arguments, unsigned int);
-                                        wide_value = (long)unsigned_value;
-                                        i32tos(digits, wide_value,
-                                               conversion == 'u' ? 10 : 16);
-                                        text = digits;
-                                        break;
-                                case 'c':
-                                        if (long_value)
-                                                return -1;
-                                        character = va_arg(arguments, int) & 0xff;
-                                        break;
-                                case 's':
-                                        if (long_value)
-                                                return -1;
-                                        text = va_arg(arguments, char *);
-                                        if (!text)
-                                                text = "(null)";
-                                        break;
-                                default:
-                                        return -1;
-                                }
+                                precision = __ex716_parse_number(&format);
+                                if (precision < 0) goto unsupported;
                         }
                 }
 
-                if (text) {
-                        while (*text) {
-                                character = (unsigned char)*text++;
-                                if (count >= 32767) {
-                                        failed = 1;
-                                        break;
-                                }
-                                if (!destination) {
-                                        if (putchar(character) == EOF) {
-                                                failed = 1;
-                                                break;
-                                        }
-                                } else if (size && (unsigned int)count < size - 1) {
-                                        destination[count] = (char)character;
-                                }
-                                ++count;
+                modifier = 0;
+                if (*format == 'h') {
+                        modifier = 1;
+                        ++format;
+                        if (*format == 'h') {
+                                modifier = 2;
+                                ++format;
                         }
-                } else if (!failed) {
-                        if (count >= 32767) {
-                                failed = 1;
-                        } else {
-                                if (!destination) {
-                                        if (putchar(character) == EOF)
-                                                failed = 1;
-                                } else if (size && (unsigned int)count < size - 1) {
-                                        destination[count] = (char)character;
-                                }
-                                ++count;
-                        }
+                } else if (*format == 'l') {
+                        modifier = 3;
+                        ++format;
+                        if (*format == 'l')
+                                goto unsupported; /* future long-long ABI stub */
+                } else if (*format == 'z' || *format == 't') {
+                        modifier = 4;
+                        ++format;
+                } else if (*format == 'j' || *format == 'L') {
+                        goto unsupported; /* future width/type stubs */
                 }
-                if (failed)
+
+                conversion = (unsigned char)*format++;
+                text = digits;
+                prefix = NULL;
+                sign = 0;
+                switch (conversion) {
+                case 'd':
+                case 'i':
+                        if (modifier == 3) {
+                                signed_long = va_arg(arguments, long);
+                                signed_value = signed_long < 0;
+                                wide_value = (unsigned long)signed_long;
+                                if (signed_value) wide_value = 0UL - wide_value;
+                        } else {
+                                value = va_arg(arguments, int);
+                                if (modifier == 1) value = (short)value;
+                                if (modifier == 2) value = (signed char)value;
+                                signed_value = value < 0;
+                                unsigned_value = (unsigned int)value;
+                                wide_value = signed_value ?
+                                        (unsigned long)(0U - unsigned_value) :
+                                        (unsigned long)unsigned_value;
+                        }
+                        if (signed_value) sign = '-';
+                        else if (flags & F_PLUS) sign = '+';
+                        else if (flags & F_SPACE) sign = ' ';
+                        length = __ex716_number(digits, wide_value, 10, 0);
+                        if (precision == 0 && length == 1 && digits[0] == '0')
+                                length = 0;
+                        __ex716_field(&sink, text, length, width, flags,
+                                      precision, 1, sign, NULL);
                         break;
+                case 'u':
+                case 'o':
+                case 'x':
+                case 'X':
+                        if (modifier == 3)
+                                wide_value = va_arg(arguments, unsigned long);
+                        else {
+                                unsigned_value = va_arg(arguments, unsigned int);
+                                if (modifier == 1) unsigned_value = (unsigned short)unsigned_value;
+                                if (modifier == 2) unsigned_value = (unsigned char)unsigned_value;
+                                wide_value = (unsigned long)unsigned_value;
+                        }
+                        base = conversion == 'o' ? 8 :
+                               (conversion == 'x' || conversion == 'X') ? 16 : 10;
+                        length = __ex716_number(digits, wide_value, base,
+                                                conversion == 'X');
+                        if (precision == 0 && length == 1 && digits[0] == '0')
+                                length = 0;
+                        if ((flags & F_ALT) && base == 16 && wide_value) {
+                                prefix = conversion == 'X' ? "0X" : "0x";
+                        } else if ((flags & F_ALT) && base == 8) {
+                                if (!length) {
+                                        digits[0] = '0';
+                                        digits[1] = 0;
+                                        length = 1;
+                                } else if (digits[0] != '0' && precision <= length) {
+                                        prefix = "0";
+                                }
+                        }
+                        __ex716_field(&sink, text, length, width, flags,
+                                      precision, 1, 0, prefix);
+                        break;
+                case 'p':
+                        if (modifier) goto unsupported;
+                        wide_value = (unsigned long)(unsigned int)
+                                     va_arg(arguments, void *);
+                        length = __ex716_number(digits, wide_value, 16, 0);
+                        __ex716_field(&sink, digits, length, width, flags,
+                                      precision, 1, 0, "0x");
+                        break;
+                case 'c':
+                        if (modifier) goto unsupported;
+                        digits[0] = (char)(va_arg(arguments, int) & 0xff);
+                        __ex716_field(&sink, digits, 1, width, flags, -1,
+                                      0, 0, NULL);
+                        break;
+                case 's':
+                        if (modifier) goto unsupported;
+                        text = va_arg(arguments, char *);
+                        if (!text) text = "(null)";
+                        length = 0;
+                        while (text[length] && (precision < 0 || length < precision))
+                                ++length;
+                        __ex716_field(&sink, text, length, width,
+                                      flags & F_LEFT, -1, 0, 0, NULL);
+                        break;
+                case 'f': case 'F': case 'e': case 'E':
+                case 'g': case 'G': case 'a': case 'A':
+                        goto unsupported; /* future floating-point formatting stub */
+                default:
+                        goto unsupported;
+                }
         }
 
-        if (destination && size)
-                destination[(unsigned int)count < size ? count : size - 1] = 0;
-        return failed ? -1 : count;
+        if (sink.destination && sink.size)
+                sink.destination[(unsigned int)sink.count < sink.size ?
+                                 sink.count : sink.size - 1] = 0;
+        return sink.failed ? -1 : sink.count;
+
+unsupported:
+        if (sink.destination && sink.size)
+                sink.destination[(unsigned int)sink.count < sink.size ?
+                                 sink.count : sink.size - 1] = 0;
+        return -1;
 }
 
 int printf(const char *format, ...) {
