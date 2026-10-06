@@ -138,6 +138,33 @@ describes backend callbacks, target metrics and IR conventions. Read the
 relevant callback contract before filling the data hooks; frontend support and
 backend implementation are separate responsibilities.
 
+### R08 translation-unit milestone (2026-10-06)
+
+The current assembly-combiner linkage profile is implemented. The backend
+automatically derives a deterministic unit namespace from the original source
+filename and preprocessed contents, excluding path-bearing line directives.
+End users do not provide an identifier. An optional `-unit-id=` override exists
+only for build tooling that already owns a stronger compilation-unit identity.
+
+Static functions and data, generated constants, branch labels, and local
+aliases use the namespace. External definitions and references retain their C
+linkage names, so separately generated assembly units resolve normally when
+combined. Expanded `LANG-033` coverage gives both units the same private
+function and data names, distinct string contents, and independent branches;
+`LANG-032/033` pass in classic, CPU24 shared, and segmented modes (6/6).
+The neighboring data/control-flow/variadic regression set passes 36/36 and the
+historical smoke suite passes 4/4.
+
+The full segmented audit now reports 74 PASS, 24 FAIL, 9 MISSING, and 28
+NOT_TESTED. The namespace repair also removed apparent stack-allocation failures
+from focused `snprintf` probes: those failures were caused by colliding private
+control/helper symbols, not inadequate heap space. Evidence is in
+`/tmp/ex716-r08-full/` with report `/tmp/ex716-r08-full.json`.
+
+This does not claim a general object format or production linker. `SYS-002`
+still owns the production build/combiner fixture and explicit diagnostics for
+duplicate public definitions and unresolved externals.
+
 ### R01 diagnostic-safety milestone (2026-10-04)
 
 The first implementation milestone is complete. Unsupported backend expression,
@@ -147,13 +174,11 @@ now report through lcc `error()`, which increments the compiler error count;
 also fail explicitly. An unsupported indirect call emits one backend diagnostic
 and does not fall through into a second generic-node error.
 
-Four permanent `SAFE-unsupported-*` probes confirm that indirect calls, float
-expressions, two-byte struct copies and the currently malformed dense-switch
-lowering each produce the intended diagnostic and a nonzero exit in classic,
-CPU24 shared-memory and segmented CPU24 modes. These results certify safe
-rejection only. `LANG-025`, `LANG-034/035`, `LANG-029` and `LANG-014` still fail
-as support tests until their language features work. Eleven selected supported
-controls plus invalid-source diagnostics and the four-case smoke suite passed.
+At that checkpoint four `SAFE-unsupported-*` probes confirmed rejection of
+indirect calls, float expressions, two-byte struct copies, and malformed dense
+switch lowering. Dense switches and small aggregate copies have since become
+positive regressions. Indirect calls remain the open R09 rejection;
+floating-point rejection/implementation remains R12.
 
 The checked-in 116-entry baseline remains immutable; the active manifest has
 120 entries after adding the four R01 acceptance checks. The post-R01 full
