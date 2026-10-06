@@ -298,11 +298,11 @@
       "priority": "P1",
       "title": "Internal-linkage function names",
       "acceptance": [
-        "Two units may each define static helper with different behavior; emitted names must be unique."
+        "Two units may each define same-named static functions and data with different behavior; emitted functions, branch labels, data, and constants must be unique."
       ],
       "units": [
-        "static int f(void){return 1;}int other(void);int main(void){return f()!=1||other()!=2;}",
-        "static int f(void){return 2;}int other(void){return f();}"
+        "static int value=3;static char text[]=\"A\";static int f(int x){if(x)return value+text[0];return 0;}int other(void);int main(void){return f(1)!=68||f(0)!=0||other()!=71;}",
+        "static int value=5;static char text[]=\"B\";static int f(int x){if(x)return value+text[0];return 0;}int other(void){return f(1);}"
       ]
     },
     {

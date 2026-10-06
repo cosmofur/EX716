@@ -67,7 +67,7 @@ Those counts are the post-R01 checkpoint. The active manifest now has 135
 entries, including dense-switch acceptance, `SYS-004`/`SYS-005` stack
 coverage, initial C adapters, and focused integer-formatting vectors. The
 immutable baseline remains 116 entries. At the 2026-10-06 checkpoint, the
-segmented audit reports 68 PASS, 30 FAIL, 9 MISSING, and 28 NOT_TESTED; the
+post-R08 segmented audit reports 74 PASS, 24 FAIL, 9 MISSING, and 28 NOT_TESTED; the
 historical smoke suite passes 4/4.
 
 Audit exit 1 is expected while backlog remains. It means at least one selected
@@ -155,7 +155,7 @@ packet in `c-readiness.md`. Complete one bounded change before taking the next.
 | 4 | R04: signed ptrdiff — complete for near pointers | `LANG-018`, `MEM-pointer-negative/positive` pass all modes. Backend compares 16-bit offsets unsigned, applies byte/int/long stride and signs the result without 32-bit math. Cross-segment/far-pointer arithmetic remains unsupported. |
 | 5 | R05: aggregates — implementation complete for tested local ABI | `LANG-005/029/030` pass all modes with stack/frame checks. Block ASGN copies exact addresses for 1–4-byte values; 6-byte hidden-result return and aggregate argument use overlap-safe internal copy. Public C `memcpy` and broader ABI certification remain separate. |
 | 6 | R06: data emission — implemented for current acceptance vectors | `LANG-019` through `024` cover initialized locals/globals, zero-fill, initialized statics, strings/escapes, arrays/structs, and object/function/offset addresses. `::` output follows the active assembler data cursor; segmented harness selects `.DATA 1`; all cases pass with CS != DS. Floating initializers are explicitly rejected; R08 still owns cross-unit linkage. |
-| 7 | R08/R11 foundations; R10 current profile accepted | `LANG-032/033`, `SYS-002`, `HEADER-stddef/limits/errno`. R10 uses a default 4-KiB adjustable software stack with checked frame reservations (`LANG-028`, `SYS-004/005`). Keep `SYS-001`/`SYS-003` planned and defer them until CPU memory management and hard interrupts. |
+| 7 | R08 current combiner profile implemented; R11 foundations; R10 accepted | `LANG-032/033` pass with automatically namespaced private symbols and unchanged external names. `SYS-002` remains the production build/combiner fixture. Continue `HEADER-limits/errno`. R10 uses a default 4-KiB adjustable software stack with checked frame reservations (`LANG-028`, `SYS-004/005`). |
 | 8 | R07: variadic ABI — implemented for current acceptance subset | `LANG-026/027` and `HEADER-stdarg` pass all three modes. Caller-owned packet: 16-bit payload-byte count followed by promoted scalar/pointer items in argument order; a hidden descriptor pointer follows named parameters. Fixed calls keep their existing ABI. `stdarg.h` traverses with `va_start`/`va_arg`/`va_end`. Aggregates, floats, frames above the current 256-byte backend limit and multi-unit helper linkage remain unsupported/unverified; continue with IO-v* only after checking these boundaries. |
 | 9 | Console and formatting | HEADER-stdio, IO-putchar/getchar/puts/fputc/fgetc/fputs/fgets/fflush/feof/ferror/clearerr, then IO-printf/snprintf and v forms. Use a shared stream core and formatting engine. |
 | 10 | String/heap adapters and file I/O | LIB-*; IO-fopen/fclose/fread/fwrite, then positioning. Add isolated disk fixtures before certification. Translate DiskOS modes, errors and ownership. |

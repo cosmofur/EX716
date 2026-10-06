@@ -88,7 +88,7 @@ a P0 fix. Fixing a dependency does not automatically certify its consumers.
 | R05: Aggregate ABI and copy sizes | P0/P1; implementation complete for tested local aggregate ABI | `LANG-005` exposed one copy-length word leaked per internal memmove call; small block `INDIR` was incorrectly treated as scalar. Backend now copies block values by address and helper cleanup is balanced. | Aggregate arguments/results and exact 1-, 2-, 3-, 4-, and 6-byte copies pass with stack/frame checks in all modes. `LANG-005`, `029`, `030`. Public C `memcpy` and broader ABI certification remain separate. |
 | R06: Real data emission | P0; implemented for current data acceptance vectors | Backend emits named DS data through native `::label value` and `::__ value` initializer streams, explicit zero-fill, byte strings, static identities, and near-address relocations. Global stores/subobject offsets now retain their data symbol. Classic assembler gained its missing code high-water field for unified code/data labels. | Automatic/global initialization, scalar/array/struct/string objects, zeroed BSS, separate same-name statics, object/function/offset addresses pass with CS != DS. `LANG-019` through `024`, all modes. Floating initializers remain explicitly unsupported; cross-unit linkage remains R08. |
 | R07: Variadic calling convention | P0; implemented for current acceptance subset | Caller builds a frame-owned packet with a 16-bit payload-byte count and promoted scalar/pointer items in source order; a hidden packet pointer follows named arguments. Fixed calls retain their existing ABI. Target `stdarg.h` provides `va_start`, typed `va_arg`, and no-op `va_end`. | `LANG-026/027` pass in classic, CPU24 and segmented modes, including zero extras, mixed widths, default char promotion, nested call, pointer/string. Aggregates and floating items are explicitly rejected; frames above the current 256-byte backend limit and multi-unit static helper linkage are not certified. Formatting (`IO-v*`) must preserve packet semantics. |
-| R08: Translation units and linkage | P1 | Separate `main`/`helper` unit probe crashes or fails to return normally. Two units' static `f` definitions have the same emitted function name; audit rejects the collision. Import/export hooks do nothing. | Unit-qualified internal names, external symbol resolution, private label isolation, no duplicate public definitions. `LANG-032`, `033`, `SYS-002`. |
+| R08: Translation units and linkage | P1; implemented for the current assembly-combiner profile | Each compilation automatically derives a deterministic unit namespace from the original filename and preprocessed content, excluding path-bearing line directives. Private functions, data, constants, branch labels, and local aliases use that namespace; external names remain unchanged. No user-supplied ID is required. | Cross-unit external calls and same-named private functions/data/constants/control flow pass all three modes (`LANG-032/033`). The optional `-unit-id=` override is for build tooling. A production combiner/build fixture remains `SYS-002`; import/export callbacks remain intentionally empty because assembler resolution supplies the current link step. |
 | R09: Dense switch and indirect calls | P1; tested dense jump-table lowering implemented | Sparse and dense switches execute. Computed 16-bit jump targets use `JMPS`, and switch-label relocations name the emitted case labels. Indirect function calls still reject non-ADDRG targets. | Full and hole-containing dense tables, signed lower/upper bounds, all three execution modes. Function-pointer calls and callback arguments/results remain open. `LANG-013`, `014`, `025`, `SAFE-unsupported-dense-switch`. |
 | R10: Frames and startup memory contract | Accepted for the current software-managed profile; hardware boundary/lifecycle gates deferred | Generated `main` initializes a heap after static storage, allocates a 4-KiB stack object by default, and calls `SetSSStack` before opening its C frame. `-Wf-stack-size=N` (or direct `rcc -stack-size=N`) adjusts it; `@CLocals` checks the stack bottom. `EX716_MAX_FRAME_BYTES` defaults to 256 and can be overridden when building the backend. | `LANG-028`, `SYS-004` (default-stack exhaustion), and `SYS-005` (8-KiB override) pass in all three modes. `SYS-001` production entry/exit and `SYS-003` full segment-end/overlap verification remain planned, explicitly deferred until CPU memory management and hard interrupts. The public C `malloc` adapter is R11. |
 | R11: Target headers and C runtime adapters | P0/P1; string/memory/allocation adapter subset implemented | Target `stddef.h`, `stdlib.h`, and `string.h` now exist. `c_runtime_stubs.ld` loads legacy services, leaves ABI-compatible globals direct, and saves adapted service addresses under private aliases; startup retains the heap ID for `malloc/free`. | Current `HEADER-stddef/stdlib/string` and `LIB-*` string/memory/malloc vectors pass in all three modes. `calloc`, `realloc`, console/stdio formatting, and file streams remain open. Continue against the remaining `HEADER-*`, `LIB-*`, and `IO-*` IDs. |
@@ -162,7 +162,7 @@ original 116 rows retain their prior status; the four new safety rows pass.
 The active manifest has since grown to 135 entries with dense-switch,
 stack-exhaustion/configuration, initial C-adapter coverage, and focused
 formatting vectors; the historical baseline remains unchanged. The
-2026-10-06 checkpoint reports 68 PASS, 30 FAIL, 9 MISSING, and 28 NOT_TESTED
+post-R08 checkpoint reports 74 PASS, 24 FAIL, 9 MISSING, and 28 NOT_TESTED
 in segmented mode, with the historical smoke suite passing 4/4.
 The remaining FAIL rows are compiler/runtime feature work, not test-runner
 failures. Full report: `/tmp/ex716-r01-full.json`, with per-case evidence in
@@ -460,15 +460,15 @@ implementation must not copy host x86 `stdarg.h` assumptions. Make
 variadic formatting. The implementation is intentionally limited to 2- and
 4-byte non-floating scalar/pointer items; float-typed items and aggregates are
 diagnosed as unsupported. `stdarg.h` uses two static helper routines, so
-multi-translation-unit linkage has not been certified and remains coupled to
-R08. Frame capacity defaults to 256 bytes; frames above that limit are not
+multi-translation-unit linkage now passes the current R08 assembly-combiner
+tests. Frame capacity defaults to 256 bytes; frames above that limit are not
 certified.
 
-**R08:** Use two-unit probes, qualify static definitions and private branch
-labels, and make duplicate external definitions an error. The audit's unit
-concatenation demonstrates that a real compilation/link boundary is missing;
-it does not prescribe a full object format. A deterministic assembly combiner
-is a reasonable first implementation if its contracts are explicit.
+**R08 current profile:** Separate compilations retain external names and use
+automatic deterministic namespaces for every private/generated symbol. The
+two-unit execution probes pass in all modes. The audit's assembly concatenation
+is the current link model; `SYS-002` still needs a production build/combiner
+fixture with explicit duplicate-public and unresolved-external diagnostics.
 
 **R10 accepted profile:** The generated entry initializes a heap-backed,
 adjustable 4-KiB software stack and checks each frame reservation. Keep

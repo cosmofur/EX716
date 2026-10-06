@@ -13,16 +13,19 @@ Last updated: 2026-10-06
 - Focused all-mode checks pass for `IO-putchar`, `IO-printf.d`, and
   `IO-printf.ld`. `putchar` is a C-ABI wrapper around `CAST`; it returns the
   emitted unsigned byte but cannot yet report output failure.
-- Full segmented audit at this checkpoint: 68 PASS, 30 FAIL, 9 MISSING, and 28
-  NOT_TESTED across 135 manifest entries. Report:
-  `/tmp/ex716-checkpoint-segmented.json`; evidence:
-  `/tmp/ex716-checkpoint-segmented/`.
-- Initial `snprintf` probes still fail because the formatter/runtime footprint
-  leaves too little heap space for even the configured 512-byte software stack.
-  Do not mark bounded formatting complete until code/data/stack layout pressure
-  is resolved and its vectors execute.
-- Next critical work remains translation-unit linkage (`LANG-032/033`), then
-  target `limits.h` and the console stream/input/error-state layer.
+- Full segmented audit after R08: 74 PASS, 24 FAIL, 9 MISSING, and 28
+  NOT_TESTED across 135 manifest entries. Report: `/tmp/ex716-r08-full.json`;
+  evidence: `/tmp/ex716-r08-full/`.
+- R08 now automatically derives a deterministic translation-unit namespace
+  from the source filename and preprocessed content (excluding line directives).
+  Private functions, data, constants, labels, and locals are isolated without
+  an end-user option; `LANG-032/033` pass in all three modes. `SYS-002` remains
+  the production build/combiner fixture.
+- Fixing private-label/static-helper collisions also made the focused
+  `snprintf` probes execute successfully. The broad formatting vectors still
+  expose conversion/expectation defects and remain open.
+- Next critical work is target `limits.h`, followed by the console
+  stream/input/error-state layer.
 
 ## Latest milestone: initial C string/memory/heap adapters
 
