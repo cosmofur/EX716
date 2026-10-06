@@ -31,6 +31,7 @@ must be an even value from 512 through 57344. The target is an experimental
 integer C profile (16-bit `int`, 32-bit `long`, near pointers); floating-point
 and long-long operations are not implemented.
 
-Useful follow-on options would be an explicit `--run` mode, a `--cpu cpu.py|cpu24.py`
-selection, and `-g`/debug-symbol control. Those affect execution/debugging, so
-the current command stays focused on reliable assembly generation.
+Useful follow-on options would be an explicit `--run` mode that invokes CPU24
+with `CPUPATH` already set, plus `--debug` and `--listing` pass-throughs for
+emulator `-g`/`-l`. The generated harness is segmented CPU24 assembly, so a
+classic `cpu.py` selector would not apply to this output format.
