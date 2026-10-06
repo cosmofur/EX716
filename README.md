@@ -139,6 +139,8 @@ The current reader-oriented documentation is split by task:
   and structured macro families plus the major runtime libraries.
 * [DiskOS Guide](docs/diskos-guide.md) documents the on-disk format and shows
   complete open/read/write/close patterns.
+* [C compiler quick start](docs/c-compiler.md) covers the `ECC` launcher,
+  generated assembly, and the current target limits.
 
 A minimal EX716 program looks like this:
 

@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+Usage: ECC [-o output.asm] [--stack-size bytes] [-I dir] [-D name[=value]]
+           [-U name] [-v] source.c [source.c ...]
+
+Compile EX716 C source into a runnable CPU24 assembly harness.
+Default output: ./out.asm
+
+Options:
+  -o FILE             Write assembly to FILE instead of ./out.asm
+  --stack-size N      Set each C main stack allocation (default: 4096 bytes)
+  -I DIR              Add a C header search directory
+  -D NAME[=VALUE]     Define a preprocessor symbol
+  -U NAME             Undefine a preprocessor symbol
+  -v                  Show the compiler commands
+  -h, --help          Show this help
+USAGE
+}
+
+script_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
+ex716_root=$(cd -- "$script_dir/.." && pwd -P)
+lcc_root=${ECC_LCC_ROOT:-"$(cd -- "$ex716_root/../lcc" 2>/dev/null && pwd -P)"}
+cpp=${ECC_CPP:-"$lcc_root/build/cpp"}
+rcc=${ECC_RCC:-"$lcc_root/build/rcc"}
+target_include="$lcc_root/include/ex716"
+formatter="$ex716_root/lib/stdio_format.c"
+
+output=out.asm
+stack_size=4096
+verbose=0
+cpp_args=()
+sources=()
+
+while (($#)); do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -v)
+            verbose=1
+            shift
+            ;;
+        -o)
+            (($# >= 2)) || { echo "ECC: -o requires a filename" >&2; exit 2; }
+            output=$2
+            shift 2
+            ;;
+        --stack-size)
+            (($# >= 2)) || { echo "ECC: --stack-size requires a byte count" >&2; exit 2; }
+            stack_size=$2
+            shift 2
+            ;;
+        --stack-size=*)
+            stack_size=${1#*=}
+            shift
+            ;;
+        -I)
+            (($# >= 2)) || { echo "ECC: -I requires a directory" >&2; exit 2; }
+            cpp_args+=("-I$2")
+            shift 2
+            ;;
+        -D|-U)
+            (($# >= 2)) || { echo "ECC: $1 requires a symbol" >&2; exit 2; }
+            cpp_args+=("$1$2")
+            shift 2
+            ;;
+        -I?*|-D?*|-U?*)
+            cpp_args+=("$1")
+            shift
+            ;;
+        --)
+            shift
+            while (($#)); do sources+=("$1"); shift; done
+            ;;
+        -*)
+            echo "ECC: unsupported option: $1" >&2
+            echo "Use -h for supported options." >&2
+            exit 2
+            ;;
+        *)
+            sources+=("$1")
+            shift
+            ;;
+    esac
+done
+
+((${#sources[@]})) || { echo "ECC: provide at least one .c source file" >&2; exit 2; }
+[[ $stack_size =~ ^[0-9]+$ ]] || {
+    echo "ECC: stack size must be an even number of bytes from 512 to 57344" >&2
+    exit 2
+}
+((stack_size >= 512 && stack_size <= 57344 && stack_size % 2 == 0)) || {
+    echo "ECC: stack size must be an even number of bytes from 512 to 57344" >&2
+    exit 2
+}
+[[ -d $target_include ]] || { echo "ECC: EX716 headers not found: $target_include" >&2; exit 1; }
+[[ -f $formatter ]] || { echo "ECC: formatter runtime not found: $formatter" >&2; exit 1; }
+command -v make >/dev/null 2>&1 || { echo "ECC: make is required to build lcc tools" >&2; exit 1; }
+make -s -C "$lcc_root" BUILDDIR=build rcc cpp
+[[ -x $cpp && -x $rcc ]] || { echo "ECC: lcc tool build did not produce cpp and rcc" >&2; exit 1; }
+
+out_dir=$(dirname -- "$output")
+out_name=$(basename -- "$output")
+[[ -d $out_dir ]] || { echo "ECC: output directory does not exist: $out_dir" >&2; exit 1; }
+out_dir=$(cd -- "$out_dir" && pwd -P)
+output="$out_dir/$out_name"
+
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ecc.XXXXXXXX")
+tmp_output=$(mktemp "$out_dir/.ECC.XXXXXXXX")
+cleanup() {
+    rm -rf -- "$tmp_dir"
+    rm -f -- "$tmp_output"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+rcc_args=(-target=ex716 "-stack-size=$stack_size")
+asm_files=()
+index=0
+for source in "${sources[@]}"; do
+    [[ -f $source ]] || { echo "ECC: source file not found: $source" >&2; exit 1; }
+    source_dir=$(cd -- "$(dirname -- "$source")" && pwd -P)
+    source_path="$source_dir/$(basename -- "$source")"
+    [[ $source_path == *.c ]] || {
+        echo "ECC: expected a .c source file: $source" >&2
+        exit 2
+    }
+    preprocessed="$tmp_dir/unit$index.i"
+    assembly="$tmp_dir/unit$index.asm"
+    command=("$cpp" -N -D__EX716__=1 "-I$target_include" "-I$source_dir"
+             "${cpp_args[@]}" "$source_path")
+    if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+    "${command[@]}" > "$preprocessed"
+    command=("$rcc" "${rcc_args[@]}" "$preprocessed")
+    if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+    "${command[@]}" > "$assembly"
+    asm_files+=("$assembly")
+    ((index += 1))
+done
+
+# Compile the small stdio runtime as a private unit so printf/snprintf are
+# available to ECC programs without a separate runtime build step.
+preprocessed="$tmp_dir/stdio_format.i"
+assembly="$tmp_dir/stdio_format.asm"
+command=("$cpp" -N -D__EX716__=1 "-I$target_include" "$formatter")
+if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+"${command[@]}" > "$preprocessed"
+command=("$rcc" "${rcc_args[@]}" "$preprocessed")
+if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+"${command[@]}" > "$assembly"
+asm_files+=("$assembly")
+
+{
+    printf '# Generated by ECC; runtime paths are rooted at %s\n' "$ex716_root"
+    printf '.DATA 1\nI commonDS.mc\n@JMP __ECC_ENTRY\n'
+    printf 'L clocals.ld\nL lmath.ld\n'
+    for assembly in "${asm_files[@]}"; do
+        cat -- "$assembly"
+        printf '\n'
+    done
+    cat <<'ASSEMBLY'
+.ORG 0x7000
+:__ECC_ENTRY
+.ENTRY __ECC_ENTRY
+@PUSH 1
+@SSET SegDS
+@PUSH 1
+@ADM
+@CALL main
+@POPNULL
+@PUSH 0
+@ADM
+@END
+ASSEMBLY
+} > "$tmp_output"
+
+chmod 644 "$tmp_output"
+mv -f -- "$tmp_output" "$output"
+printf 'ECC: wrote %s\n' "$output"
+printf 'ECC: assemble/run with CPUPATH=%q python3 %q %q\n' \
+       "$ex716_root/lib" "$ex716_root/cpu24.py" "$output"
