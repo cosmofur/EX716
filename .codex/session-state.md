@@ -13,14 +13,19 @@ Last updated: 2026-10-06
 - Focused all-mode checks pass for `IO-putchar`, `IO-printf.d`, and
   `IO-printf.ld`. `putchar` is a C-ABI wrapper around `CAST`; it returns the
   emitted unsigned byte but cannot yet report output failure.
-- Full segmented audit after R08: 74 PASS, 24 FAIL, 9 MISSING, and 28
-  NOT_TESTED across 135 manifest entries. Report: `/tmp/ex716-r08-full.json`;
-  evidence: `/tmp/ex716-r08-full/`.
+- Full segmented audit after R09: 75 PASS, 23 FAIL, 9 MISSING, and 28
+  NOT_TESTED across 135 manifest entries. Report: `/tmp/ex716-r09-full.json`;
+  evidence: `/tmp/ex716-r09-full/`.
 - R08 now automatically derives a deterministic translation-unit namespace
   from the source filename and preprocessed content (excluding line directives).
   Private functions, data, constants, labels, and locals are isolated without
   an end-user option; `LANG-032/033` pass in all three modes. `SYS-002` remains
   the production build/combiner fixture.
+- R09 is complete for 16-bit near code pointers. `CALLS` in `common.mc` and
+  `commonDS.mc` calls a target already on the stack while preserving the normal
+  return-address layout. Runtime selection, callbacks, mixed-width calls, and
+  indirect variadic calls pass all modes (`LANG-025` and its former rejection
+  row, 6/6); the R09/R07/R08 regression set passes 27/27.
 - Fixing private-label/static-helper collisions also made the focused
   `snprintf` probes execute successfully. The broad formatting vectors still
   expose conversion/expectation defects and remain open.

@@ -67,7 +67,7 @@ Those counts are the post-R01 checkpoint. The active manifest now has 135
 entries, including dense-switch acceptance, `SYS-004`/`SYS-005` stack
 coverage, initial C adapters, and focused integer-formatting vectors. The
 immutable baseline remains 116 entries. At the 2026-10-06 checkpoint, the
-post-R08 segmented audit reports 74 PASS, 24 FAIL, 9 MISSING, and 28 NOT_TESTED; the
+post-R09 segmented audit reports 75 PASS, 23 FAIL, 9 MISSING, and 28 NOT_TESTED; the
 historical smoke suite passes 4/4.
 
 Audit exit 1 is expected while backlog remains. It means at least one selected
@@ -159,7 +159,7 @@ packet in `c-readiness.md`. Complete one bounded change before taking the next.
 | 8 | R07: variadic ABI — implemented for current acceptance subset | `LANG-026/027` and `HEADER-stdarg` pass all three modes. Caller-owned packet: 16-bit payload-byte count followed by promoted scalar/pointer items in argument order; a hidden descriptor pointer follows named parameters. Fixed calls keep their existing ABI. `stdarg.h` traverses with `va_start`/`va_arg`/`va_end`. Aggregates, floats, frames above the current 256-byte backend limit and multi-unit helper linkage remain unsupported/unverified; continue with IO-v* only after checking these boundaries. |
 | 9 | Console and formatting | HEADER-stdio, IO-putchar/getchar/puts/fputc/fgetc/fputs/fgets/fflush/feof/ferror/clearerr, then IO-printf/snprintf and v forms. Use a shared stream core and formatting engine. |
 | 10 | String/heap adapters and file I/O | LIB-*; IO-fopen/fclose/fread/fwrite, then positioning. Add isolated disk fixtures before certification. Translate DiskOS modes, errors and ownership. |
-| 11 | R09 and optional breadth | LANG-014/025: dense-switch fallback and indirect calls. Then remaining hosted I/O and optional R12 float/64-bit support. Diagnostic safety was already required at step 1. |
+| 11 | R09 complete for near code pointers; optional breadth remains | `LANG-014/025` pass: dense switches and indirect calls, including callbacks and variadic function pointers. Far calls remain outside the profile. Continue hosted I/O and optional R12 float/64-bit support. |
 
 The order is a dependency guide, not permission to combine everything in one
 patch. For example, scalar global+BSS emission can be one task, while literals

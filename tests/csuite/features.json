@@ -223,7 +223,7 @@
       "priority": "P1",
       "title": "Indirect function call",
       "acceptance": [
-        "Function pointer stored locally and passed as callback; return values and argument cleanup."
+        "Runtime-selected near function addresses, indirect calls, callback arguments/results, mixed-width fixed calls, variadic calls, and stack cleanup."
       ],
       "file": "probes/indirect_call.c"
     },
@@ -326,13 +326,11 @@
     {
       "id": "SAFE-unsupported-indirect-call",
       "priority": "P0",
-      "title": "Unsupported indirect call fails compilation",
+      "title": "Indirect-call lowering remains safely supported",
       "acceptance": [
-        "Valid function-pointer C receives an EX716 backend diagnostic and nonzero compiler exit; supported direct-call controls remain executable."
+        "The former unsupported indirect-call path executes with correct results and balanced stacks."
       ],
-      "file": "probes/indirect_call.c",
-      "kind": "backend-reject",
-      "diagnostic": "EX716: unsupported indirect call"
+      "file": "probes/indirect_call.c"
     },
     {
       "id": "SAFE-unsupported-float",

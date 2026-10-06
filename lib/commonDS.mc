@@ -544,6 +544,7 @@ M CALL @PUSH $_%0A @JMP %1 :_%0A
 M CALLZ @PUSH $_%0_Loc @JMPZ _%0_Do @JMP _%0_After :_%0_Do @JMP %1 :_%0_Loc :_%0_After
 M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
 M CALLI @PUSH $_%0A @PUSHI %1 @JMPS :_%0A
+M CALLS @PUSH $_%0A @SWP @JMPS :_%0A  # Call 16-bit target already on stack
 
 M RET @JMPS
 M FJMP @PUSH %1 @PUSH %2 @FJMPS
