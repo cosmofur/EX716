@@ -118,8 +118,9 @@ service exists; **missing** means no suitable service was found.
 | `HeapNewObject` / `HeapDeleteObject` via `c_runtime_stubs.ld` | `malloc` / `free` | C wrapper tested for two-byte alignment, allocation/use, `free`, `free(NULL)`, and oversized-allocation null (`LIB-malloc`, `LIB-malloc.oom`). | P1 |
 | `HeapNewObject` plus zero-fill | `calloc` | Buildable from existing allocation; multiplication overflow and C result contract need a wrapper. | P2 |
 | `HeapResizeObject` | `realloc` | Moving resize service exists; adapt null/failure/zero-size rules and test failure preservation. | P2 |
-| `CAST` adapter / tagged `POLL` byte result | `putchar` / `getchar` | `putchar` C wrapper tested in all modes (`IO-putchar`). `getchar` maps tagged byte input to C `EOF`; NUL and EOF have a piped-input regression (`IO-getchar`). Stream-level error state and output failure remain unavailable. | P0 |
-| `stdio_format.c` | `printf` / `snprintf` | Shared parser, field renderer and output sink. Integer conversions are specialized for the 16-bit `int`/32-bit `long` profile; float and long-long formats fail explicitly. Existing focused `%d`/`%ld` evidence predates the expanded formatter; expanded acceptance is still required. | P1 |
+| `CAST` adapter / tagged `POLL` byte result | `putchar` / `getchar` | Tested in classic, CPU24, and segmented modes; regressions cover NUL, `0xff`, and EOF (`IO-putchar`, `IO-getchar`). | P0 |
+| Console-only opaque `FILE` layer in `stdio_format.c` | `puts`, `fputc`, `fgetc`, `fputs`, `fgets`, `getc`, `putc`, `fflush`, `feof`, `ferror`, `clearerr`, `ungetc` | Tested in all three emulator modes. `stdin` is byte input; `stdout` and `stderr` currently share console output. Streams are unbuffered; one byte of pushback is supported. File-backed streams, separate stderr, and host/device write-failure reporting are not implemented yet. | P0/P1 |
+| `stdio_format.c` | `printf`, `fprintf`, `sprintf`, `snprintf` and `v*` variants | Shared parser, field renderer and stream/buffer sinks. Integer conversions are specialized for 16-bit `int`/32-bit `long`; float and long-long formats fail explicitly. All implemented variants have permanent regression vectors and pass across the three emulator modes. | P0/P1 |
 
 The backend advertises long long=8, float=4, double=8, long double=16 with
 `outofline` metrics. That flag is not evidence that operations work. There is
@@ -220,9 +221,16 @@ of letting verbose debug output hide it.
 
 ## Required standard C I/O roadmap
 
-Start with a small, consistent `FILE` abstraction for console and DiskOS streams.
-Provide target `EOF`, `BUFSIZ`, `SEEK_*`, `size_t`, `fpos_t`, and standard stream
-objects. Character input must represent every unsigned byte separately from
+The initial opaque `FILE` abstraction is console-only. Its layout intentionally
+does not encode a file-size or cursor limit. The next step is to adapt the
+currently supported DiskOS operations, while keeping room for the planned
+larger-file/extent backend; do not bake the present 64-KiB file cap into the C
+API. The `filesys/ex716disk.py` host image tool documents extent-chain metadata,
+but that does not imply the current `diskos.ld` runtime follows extents. The C
+file adapter must initially stay within runtime-supported operations and can
+grow with that backend. `EOF`, `BUFSIZ`, `size_t`, and console standard stream
+objects are now public; `SEEK_*`, `fpos_t`, and DiskOS-backed C streams remain
+for the file layer. Character input distinguishes every unsigned byte from
 EOF. Keep end-of-file and error state separate. Prefer one byte-I/O core used
 by strings, block I/O and formatting rather than independent implementations.
 

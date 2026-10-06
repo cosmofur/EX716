@@ -442,6 +442,16 @@
       "kind": "header"
     },
     {
+      "id": "HEADER-termios",
+      "priority": "P1",
+      "title": "Target public <termios.h> compatibility subset",
+      "acceptance": [
+        "Expose only the documented EX716 TCSANOW, ICANON, and ECHO subset."
+      ],
+      "source": "#include <termios.h>\nint main(void){struct termios t;t.c_lflag=ICANON|ECHO;return TCSANOW!=0||t.c_lflag!=(ICANON|ECHO);}",
+      "kind": "header"
+    },
+    {
       "id": "HEADER-ctype",
       "priority": "P1",
       "title": "Target public <ctype.h>",
@@ -540,9 +550,10 @@
         "Preserve NUL as input, distinguish it from EOF, and consume deterministic piped input.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){int a,b,c;a=getchar();b=getchar();c=getchar();return a!=0||b!='Q'||c!=EOF;}",
+      "source": "#include <stdio.h>\nint main(void){int a,b,c,d;a=getchar();b=getchar();c=getchar();d=getchar();return a!=0||b!='Q'||c!=255||d!=EOF||!feof(stdin);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "",
-      "stdin": "\u0000Q"
+      "stdin_hex": "00 51 ff"
     },
     {
       "id": "IO-puts",
@@ -552,8 +563,9 @@
         "Append exactly one newline; empty string and write error.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){return puts(\"ok\")<0;}",
-      "stdout": "ok\n"
+      "source": "#include <stdio.h>\nint main(void){if(puts(\"\")<0)return 1;return puts(\"ok\")<0;}",
+      "runtime_files": ["lib/stdio_format.c"],
+      "stdout": "\nok\n"
     },
     {
       "id": "IO-fputc",
@@ -563,7 +575,8 @@
         "stdout/stderr and file stream; error flag on failure.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){return fputc('B',stdout)!='B';}",
+      "source": "#include <stdio.h>\nint main(void){int c;c=fputc('B',stdout);return c!='B'||ferror(stdout);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "B"
     },
     {
@@ -574,9 +587,10 @@
         "EOF/error states and unsigned character result.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){return fgetc(stdin)!='R';}",
+      "source": "#include <stdio.h>\nint main(void){int a,b,c;a=fgetc(stdin);b=fgetc(stdin);c=fgetc(stdin);return a!=0||b!=255||c!=EOF||!feof(stdin);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "",
-      "stdin": "R"
+      "stdin_hex": "00 ff"
     },
     {
       "id": "IO-fputs",
@@ -586,7 +600,8 @@
         "No automatic newline; negative result on write failure.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){return fputs(\"ok\",stdout)<0;}",
+      "source": "#include <stdio.h>\nint main(void){return fputs(\"ok\",stdout)<0||ferror(stdout);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "ok"
     },
     {
@@ -597,9 +612,10 @@
         "Retain newline, bound n, NUL terminate; test final unterminated line, EOF, and n=1.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){char b[8];if(fgets(b,8,stdin)!=b)return 1;return b[0]!='x'||b[1]!='\\n'||b[2]!=0;}",
+      "source": "#include <stdio.h>\nint main(void){char b[8],c[2];if(fgets(b,8,stdin)!=b||b[0]!='x'||b[1]!='\\n'||b[2])return 1;if(fgets(b,8,stdin)!=b||b[0]!='a'||b[1]!='b'||b[2]!='c'||b[3])return 2;if(fgets(b,8,stdin)!=0)return 3;if(fgets(c,1,stdin)!=c||c[0])return 4;return !feof(stdin);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "",
-      "stdin": "x\n"
+      "stdin": "x\nabc"
     },
     {
       "id": "IO-printf",
@@ -705,6 +721,7 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return fprintf(stdout,\"%d\",42)!=2;}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "42"
     },
     {
@@ -716,6 +733,7 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8];return sprintf(b,\"%d\",42)!=2||b[0]!='4'||b[1]!='2'||b[2]!=0;}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },
     {
@@ -726,7 +744,7 @@
         "Shared integer/string conversions; truncation count, size zero, and size-one NUL termination.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){char b[25],t[4],one[1];int n;n=snprintf(b,25,\"%d %i %u %x %X %c %s %%\",-7,12,65535U,255U,175U,'Z',\"ok\");if(n!=24||b[0]!='-'||b[3]!='2'||b[6]!='5'||b[12]!='f'||b[15]!='A'||b[18]!='Z'||b[20]!='o'||b[23]!='%')return 1;n=snprintf(t,4,\"%s\",\"hello\");if(n!=5||t[0]!='h'||t[1]!='e'||t[2]!='l'||t[3]!=0)return 2;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 3;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 4;return 0;}",
+      "source": "#include <stdio.h>\nint main(void){char b[25],t[4],one[1];int n;n=snprintf(b,25,\"%d %i %u %x %X %c %s %%\",-7,12,65535U,255U,175U,'Z',\"ok\");if(n!=24)return 1;if(b[0]!='-')return 10;if(b[3]!='1')return 11;if(b[6]!='6'||b[10]!='5')return 12;if(b[12]!='f')return 13;if(b[15]!='A')return 14;if(b[18]!='Z')return 15;if(b[20]!='o')return 16;if(b[23]!='%')return 17;n=snprintf(t,4,\"%s\",\"hello\");if(n!=5||t[0]!='h'||t[1]!='e'||t[2]!='l'||t[3]!=0)return 3;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 4;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 5;return 0;}",
       "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },
@@ -738,7 +756,8 @@
         "Flush writable streams/NULL, preserve error state; avoid undefined use on input streams.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){if(fputs(\"F\",stdout)<0)return 1;return fflush(stdout)!=0;}",
+      "source": "#include <stdio.h>\nint main(void){if(fputs(\"F\",stdout)<0)return 1;return fflush(stdout)!=0||fflush(0)!=0;}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "F"
     },
     {
@@ -749,7 +768,8 @@
         "Flag set only after failed read at end, independent of ferror.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);return c!=EOF||!feof(stdin);}",
+      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);return c!=EOF||!feof(stdin)||ferror(stdin);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },
     {
@@ -760,7 +780,8 @@
         "Initially clear; injected failed read/write must set it, EOF alone must not.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){return ferror(stdin)!=0;}",
+      "source": "#include <stdio.h>\nint main(void){if(ferror(stdout)||feof(stdout))return 1;if(fgetc(stdout)!=EOF)return 2;return !ferror(stdout)||feof(stdout);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },
     {
@@ -772,6 +793,7 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!=EOF)return 1;clearerr(stdin);return feof(stdin)||ferror(stdin);}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": ""
     },
     {
@@ -782,7 +804,8 @@
         "At least one character pushback, clears EOF; EOF argument fails.",
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
-      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!='A')return 1;if(ungetc('Z',stdin)!='Z')return 2;return fgetc(stdin)!='Z';}",
+      "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!='A')return 1;if(fgetc(stdin)!=EOF||!feof(stdin))return 2;if(ungetc('Z',stdin)!='Z')return 3;if(feof(stdin))return 4;if(fgetc(stdin)!='Z')return 5;if(ungetc(EOF,stdin)!=EOF)return 6;return 0;}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "",
       "stdin": "A"
     },
@@ -795,6 +818,7 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return getc(stdin)!='G';}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "",
       "stdin": "G"
     },
@@ -807,6 +831,7 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return putc('P',stdout)!='P';}",
+      "runtime_files": ["lib/stdio_format.c"],
       "stdout": "P"
     },
     {
@@ -1036,32 +1061,32 @@
       "title": "vprintf",
       "acceptance": [
         "Traverse va_list from target stdarg ABI and verify count/output.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "Traverse mixed promoted arguments and return the exact count."
       ],
-      "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "source": "#include <stdio.h>\nstatic int emit(const char *f,...){va_list a;int n;va_start(a,f);n=vprintf(f,a);va_end(a);return n;}int main(void){return emit(\"%d:%s\",7,\"ok\")!=4;}",
+      "runtime_files": ["lib/stdio_format.c"],
+      "stdout": "7:ok"
     },
     {
       "id": "IO-vfprintf",
       "priority": "P1",
       "title": "vfprintf",
       "acceptance": [
-        "Share formatting engine and va_list traversal with explicit stream.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "Share formatting engine and va_list traversal with explicit stream."
       ],
-      "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "source": "#include <stdio.h>\nstatic int emit(FILE *s,const char *f,...){va_list a;int n;va_start(a,f);n=vfprintf(s,f,a);va_end(a);return n;}int main(void){return emit(stderr,\"%u!\",12U)!=3;}",
+      "runtime_files": ["lib/stdio_format.c"],
+      "stdout": "12!"
     },
     {
       "id": "IO-vsprintf",
       "priority": "P1",
       "title": "vsprintf",
       "acceptance": [
-        "Share formatting engine and terminate caller buffer.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "Share formatting engine and terminate caller buffer."
       ],
-      "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "source": "#include <stdio.h>\nstatic int fmt(char *b,const char *f,...){va_list a;int n;va_start(a,f);n=vsprintf(b,f,a);va_end(a);return n;}int main(void){char b[8];return fmt(b,\"%s%d\",\"x\",9)!=2||b[0]!='x'||b[1]!='9'||b[2]!=0;}",
+      "runtime_files": ["lib/stdio_format.c"]
     },
     {
       "id": "IO-vsnprintf",
@@ -1069,10 +1094,10 @@
       "title": "vsnprintf",
       "acceptance": [
         "Would-have-written count, bounded write, n=0, variadic list; C99 subset extension.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "Share target va_list traversal while respecting the destination bound and count."
       ],
-      "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "source": "#include <stdio.h>\nstatic int fmt(char *b,int z,const char *f,...){va_list a;int n;va_start(a,f);n=vsnprintf(b,z,f,a);va_end(a);return n;}int main(void){char b[3];if(fmt(b,3,\"%s\",\"hello\")!=5||b[0]!='h'||b[1]!='e'||b[2]!=0)return 1;if(fmt((char *)0,0,\"%d\",12)!=2)return 2;return 0;}",
+      "runtime_files": ["lib/stdio_format.c"]
     },
     {
       "id": "IO-vfscanf",

@@ -27,7 +27,8 @@ CPUPATH=/path/to/EX716/lib python3 /path/to/EX716/cpu24.py out.asm
 ```
 
 Current launcher options are `-g`, `-o FILE`, `--stack-size BYTES`,
-`--no-stdio`, `-I DIR`, `-D NAME[=VALUE]`, `-U NAME`, and `-v`. `-g` adds
+`--no-stdio`, `-I DIR`, `-D NAME[=VALUE]`, `-U NAME`, and `-v`. `--no-stdio`
+omits the target's console stream and formatting runtime. `-g` adds
 `# C path/to/file.c:line` comments at generated-code source locations. These
 help correlate CPU24 assembly listings and runtime errors with C source, but
 do not provide C-level stepping or variable inspection. Stack size defaults

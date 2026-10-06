@@ -1666,10 +1666,7 @@ class microcpu:
         if cmd == CastPrintChar:
             self.optPOPNULL(address)            
             v = self.memspace[address]
-            if (v < 31):
-                safeprint("%c" % v)
-            else:
-                sys.stdout.write(chr(v))
+            sys.stdout.write(chr(v & 0xff))
         if cmd == CastPrintStrI:
             self.optPOPNULL(address)            
             i = self.getwordat(address)

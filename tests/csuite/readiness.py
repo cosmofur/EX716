@@ -22,9 +22,13 @@ RESULT = re.compile(r"(?m)^EX716_AUDIT_RESULT=(-?\d+)\s*$")
 
 def invoke(command, cwd, timeout, env=None, stdin=""):
     try:
+        binary_input = isinstance(stdin, bytes)
         p = subprocess.run(command, cwd=cwd, env=env, input=stdin,
-                           capture_output=True, text=True, timeout=timeout)
-        return p.returncode, p.stdout, p.stderr
+                           capture_output=True, text=not binary_input,
+                           timeout=timeout)
+        stdout = p.stdout.decode("utf-8", "replace") if binary_input else p.stdout
+        stderr = p.stderr.decode("utf-8", "replace") if binary_input else p.stderr
+        return p.returncode, stdout, stderr
     except subprocess.TimeoutExpired as e:
         def decode(s):
             return s.decode(errors="replace") if isinstance(s, bytes) else (s or "")
@@ -125,13 +129,13 @@ def audit(feature, mode, args, artifact_root):
         harness = prefix + ["@JMP __audit_entry", "L clocals.ld", "L lmath.ld"]
         for runtime in args.runtime:
             harness.append("L " + str(runtime))
-        harness += assembly + [".ORG 0x7000", ":__audit_entry"]
+        harness += assembly + [":__audit_entry"]
         if mode != "classic":
             harness += [".ENTRY __audit_entry"]
         if mode == "segmented":
             harness += ["@PUSH 1", "@SSET SegDS", "@PUSH 1", "@ADM"]
         harness += ['@PRT "EX716_AUDIT_OUTPUT_BEGIN\\n"', "@CALL main",
-                    '@PRT "\\nEX716_AUDIT_OUTPUT_END\\n"',
+                    '@PRT "EX716_AUDIT_OUTPUT_END\\n"',
                     '@PRT "EX716_AUDIT_RESULT="', "@PRTTOP", "@POPNULL", "@PRTNL",
                     # C frames must restore both software stack and frame pointer.
                     "@PUSHI __SS_SP", "@PRT \"EX716_AUDIT_SP=\"", "@PRTHEXTOP", "@POPNULL", "@PRTNL",
@@ -146,8 +150,10 @@ def audit(feature, mode, args, artifact_root):
         evidence["harness.asm"] = asm
         env = dict(os.environ, CPUPATH=str(ROOT / "lib") + os.pathsep + str(work))
         cpu = ROOT / "cpu.py" if mode == "classic" else args.cpu
+        input_data = (bytes.fromhex(feature["stdin_hex"])
+                      if "stdin_hex" in feature else feature.get("stdin", ""))
         rc, out, err = invoke([sys.executable, str(cpu), str(work / "harness.asm")],
-                              work, args.timeout, env, feature.get("stdin", ""))
+                              work, args.timeout, env, input_data)
         evidence["cpu.stdout"] = out
         evidence["cpu.stderr"] = err
         if rc is None:
@@ -179,7 +185,7 @@ def audit(feature, mode, args, artifact_root):
             return finish("FAIL", "abi", "C frame pointer not restored")
         if not re.search(r"Stack:\(empty\)", out + err):
             return finish("FAIL", "abi", "hardware stack not empty after result pop")
-        output = out.split("EX716_AUDIT_OUTPUT_BEGIN\n", 1)[-1].split("\nEX716_AUDIT_OUTPUT_END", 1)[0]
+        output = out.split("EX716_AUDIT_OUTPUT_BEGIN\n", 1)[-1].split("EX716_AUDIT_OUTPUT_END", 1)[0]
         if "stdout" in feature and output != feature["stdout"]:
             return finish("FAIL", "output", f"expected {feature['stdout']!r}; got {output!r}")
         if "stderr_pattern" in feature and not re.search(feature["stderr_pattern"], err, re.MULTILINE):

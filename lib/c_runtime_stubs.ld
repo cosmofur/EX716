@@ -4,13 +4,16 @@ P Loading c_runtime_stubs.ld
 
 # Load services first; rebind only names whose C contract needs adaptation.
 L string.ld
-G malloc G free G memset G putchar G getchar
+G malloc G free G memset G putchar G __EX716_GETCHAR_RAW G __EX716_INPUT_STATUS
+G __EX716_TTY_RAW G __EX716_TTY_COOKED G __EX716_TTY_ECHO G __EX716_TTY_NOECHO
 
 ? CPU24_SEGMENTED
 ::__EX716_PUTCHAR_BYTE 0
+::__EX716_INPUT_STATUS 0
 ENDBLOCK
 ! CPU24_SEGMENTED
 :__EX716_PUTCHAR_BYTE 0
+:__EX716_INPUT_STATUS 0
 ENDBLOCK
 
 =__ex716_strcpy strcpy
@@ -38,8 +41,45 @@ ENDBLOCK
 @RET
 @ENDFUNCTION
 
-@FUNCTION getchar
-:getchar
+# Small C-callable bridge for the EX716 termios compatibility layer.
+@FUNCTION __EX716_TTY_RAW
+:__EX716_TTY_RAW
+@PUSHRETURN
+   @TTYRAW
+   @PUSH 0
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_TTY_COOKED
+:__EX716_TTY_COOKED
+@PUSHRETURN
+   @TTYRAWOFF
+   @PUSH 0
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_TTY_ECHO
+:__EX716_TTY_ECHO
+@PUSHRETURN
+   @TTYECHO
+   @PUSH 0
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_TTY_NOECHO
+:__EX716_TTY_NOECHO
+@PUSHRETURN
+   @TTYNOECHO
+   @PUSH 0
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_GETCHAR_RAW
+:__EX716_GETCHAR_RAW
 @PUSHRETURN
    @Locals
    @Local InputWord
@@ -52,6 +92,8 @@ ENDBLOCK
    @IF_EQ_AV PollStatusNoInput InputStatus
       @JMP __EX716_GETCHAR_RETRY
    @ENDIF
+   @PUSHI InputStatus
+   @POPI __EX716_INPUT_STATUS
    @IF_EQ_AV PollStatusData InputStatus
       @PUSHI InputWord
       @AND 0xff

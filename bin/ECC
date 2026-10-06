@@ -12,7 +12,7 @@ Default output: ./out.asm
 Options:
   -o FILE             Write assembly to FILE instead of ./out.asm
   --stack-size N      Set each C main stack allocation (default: 4096 bytes)
-  --no-stdio          Omit the printf/snprintf formatter runtime
+  --no-stdio          Omit the C stdio runtime, including formatting
   -g                  Add C source file:line comments to generated assembly
   -I DIR              Add a C header search directory
   -D NAME[=VALUE]     Define a preprocessor symbol
@@ -163,8 +163,8 @@ for source in "${sources[@]}"; do
 done
 
 if ((include_stdio)); then
-    # Compile the small stdio runtime as a private unit so printf/snprintf are
-    # available without a separate runtime build step.
+    # Compile the stdio runtime as a private unit so console I/O and formatting
+    # are available without a separate runtime build step.
     preprocessed="$tmp_dir/stdio_format.i"
     assembly="$tmp_dir/stdio_format.asm"
     command=("$cpp" -N -D__EX716__=1 "-I$target_include" "$formatter")

@@ -1,5 +1,47 @@
 #include <stdarg.h>
 #include <stdio.h>
+#include <termios.h>
+
+/* The terminal emulator exposes only these two mode bits. The initial state
+   matches the ordinary cooked terminal mode assumed by the EX716 console. */
+static int __ex716_tty_flags = ICANON | ECHO;
+
+extern int __EX716_TTY_RAW(void);
+extern int __EX716_TTY_COOKED(void);
+extern int __EX716_TTY_ECHO(void);
+extern int __EX716_TTY_NOECHO(void);
+
+int tcgetattr(int file_descriptor, struct termios *settings) {
+        if (file_descriptor != STDIN_FILENO || !settings)
+                return -1;
+        settings->c_iflag = 0;
+        settings->c_oflag = 0;
+        settings->c_cflag = 0;
+        settings->c_lflag = (tcflag_t)__ex716_tty_flags;
+        return 0;
+}
+
+int tcsetattr(int file_descriptor, int action,
+              const struct termios *settings) {
+        int flags;
+
+        if (file_descriptor != STDIN_FILENO || action != TCSANOW || !settings)
+                return -1;
+        flags = (int)settings->c_lflag;
+        if (flags & ~(ICANON | ECHO))
+                return -1;
+
+        if (flags & ICANON)
+                __EX716_TTY_COOKED();
+        else
+                __EX716_TTY_RAW();
+        if (flags & ECHO)
+                __EX716_TTY_ECHO();
+        else
+                __EX716_TTY_NOECHO();
+        __ex716_tty_flags = flags;
+        return 0;
+}
 
 /* EX716's maximum supported integer width is 32 bits.  Hex conversion uses
    nibbles; decimal conversion uses bounded subtraction against powers of ten
@@ -13,6 +55,8 @@ static const unsigned long __ex716_pow10[] = {
 struct __ex716_sink {
         char *destination;
         size_t size;
+        FILE *stream;
+        int unbounded;
         int count;
         int failed;
 };
@@ -29,9 +73,11 @@ static void __ex716_put(struct __ex716_sink *sink, int character) {
                 return;
         }
         if (!sink->destination) {
-                if (putchar(character & 0xff) == EOF)
+                if (sink->stream &&
+                    fputc(character & 0xff, sink->stream) == EOF)
                         sink->failed = 1;
-        } else if (sink->size && (unsigned int)sink->count < sink->size - 1) {
+        } else if (sink->unbounded ||
+                   (sink->size && (unsigned int)sink->count < sink->size - 1)) {
                 sink->destination[sink->count] = (char)character;
         }
         ++sink->count;
@@ -132,8 +178,8 @@ static void __ex716_field(struct __ex716_sink *sink, const char *text,
                 __ex716_repeat(sink, ' ', padding);
 }
 
-int __ex716_vformat(char *destination, size_t size, const char *format,
-                    va_list arguments) {
+int __ex716_vformat(char *destination, size_t size, int unbounded,
+                    FILE *stream, const char *format, va_list arguments) {
         struct __ex716_sink sink;
         char digits[12];
         const char *text;
@@ -154,6 +200,8 @@ int __ex716_vformat(char *destination, size_t size, const char *format,
 
         sink.destination = destination;
         sink.size = size;
+        sink.stream = stream;
+        sink.unbounded = unbounded;
         sink.count = 0;
         sink.failed = 0;
         while (*format && !sink.failed) {
@@ -318,14 +366,16 @@ int __ex716_vformat(char *destination, size_t size, const char *format,
                 }
         }
 
-        if (sink.destination && sink.size)
-                sink.destination[(unsigned int)sink.count < sink.size ?
+        if (sink.destination && (sink.unbounded || sink.size))
+                sink.destination[sink.unbounded ||
+                                 (unsigned int)sink.count < sink.size ?
                                  sink.count : sink.size - 1] = 0;
         return sink.failed ? -1 : sink.count;
 
 unsupported:
-        if (sink.destination && sink.size)
-                sink.destination[(unsigned int)sink.count < sink.size ?
+        if (sink.destination && (sink.unbounded || sink.size))
+                sink.destination[sink.unbounded ||
+                                 (unsigned int)sink.count < sink.size ?
                                  sink.count : sink.size - 1] = 0;
         return -1;
 }
@@ -335,7 +385,7 @@ int printf(const char *format, ...) {
         int result;
 
         va_start(arguments, format);
-        result = __ex716_vformat(NULL, 0, format, arguments);
+        result = __ex716_vformat(NULL, 0, 0, stdout, format, arguments);
         va_end(arguments);
         return result;
 }
@@ -345,7 +395,197 @@ int snprintf(char *destination, size_t size, const char *format, ...) {
         int result;
 
         va_start(arguments, format);
-        result = __ex716_vformat(destination, size, format, arguments);
+        result = __ex716_vformat(destination, size, 0, NULL, format, arguments);
         va_end(arguments);
         return result;
+}
+
+int vprintf(const char *format, va_list arguments) {
+        return __ex716_vformat(NULL, 0, 0, stdout, format, arguments);
+}
+
+int vfprintf(FILE *stream, const char *format, va_list arguments) {
+        if (!stream)
+                return EOF;
+        return __ex716_vformat(NULL, 0, 0, stream, format, arguments);
+}
+
+int vsprintf(char *destination, const char *format, va_list arguments) {
+        return __ex716_vformat(destination, 0, 1, NULL, format, arguments);
+}
+
+int vsnprintf(char *destination, size_t size, const char *format,
+              va_list arguments) {
+        return __ex716_vformat(destination, size, 0, NULL, format, arguments);
+}
+
+int fprintf(FILE *stream, const char *format, ...) {
+        va_list arguments;
+        int result;
+
+        va_start(arguments, format);
+        result = vfprintf(stream, format, arguments);
+        va_end(arguments);
+        return result;
+}
+
+int sprintf(char *destination, const char *format, ...) {
+        va_list arguments;
+        int result;
+
+        va_start(arguments, format);
+        result = vsprintf(destination, format, arguments);
+        va_end(arguments);
+        return result;
+}
+
+/* The first stream layer is deliberately console-only and unbuffered.  The
+   opaque public FILE type is private here so DiskOS-backed streams can be
+   added without changing application code. */
+struct __ex716_FILE {
+        int kind;
+        int eof;
+        int error;
+        int pushback;
+};
+
+#define __EX716_STREAM_INPUT  0
+#define __EX716_STREAM_OUTPUT 1
+#define __EX716_STREAM_ERROR  2
+
+static FILE __ex716_stdin_object = {__EX716_STREAM_INPUT, 0, 0, -1};
+static FILE __ex716_stdout_object = {__EX716_STREAM_OUTPUT, 0, 0, -1};
+static FILE __ex716_stderr_object = {__EX716_STREAM_ERROR, 0, 0, -1};
+FILE *stdin = &__ex716_stdin_object;
+FILE *stdout = &__ex716_stdout_object;
+FILE *stderr = &__ex716_stderr_object;
+
+extern int __EX716_INPUT_STATUS;
+
+extern int __EX716_GETCHAR_RAW(void);
+
+int getchar(void) {
+        return fgetc(stdin);
+}
+
+int fgetc(FILE *stream) {
+        int character;
+
+        if (!stream || stream->kind != __EX716_STREAM_INPUT) {
+                if (stream) stream->error = 1;
+                return EOF;
+        }
+        if (stream->pushback >= 0) {
+                character = stream->pushback;
+                stream->pushback = -1;
+                return character;
+        }
+        character = __EX716_GETCHAR_RAW();
+        if (character == EOF) {
+                if (__EX716_INPUT_STATUS == 3)
+                        stream->error = 1;
+                else
+                        stream->eof = 1;
+                return EOF;
+        }
+        return character & 0xff;
+}
+
+int fputc(int character, FILE *stream) {
+        if (!stream || (stream->kind != __EX716_STREAM_OUTPUT &&
+                        stream->kind != __EX716_STREAM_ERROR)) {
+                if (stream) stream->error = 1;
+                return EOF;
+        }
+        character &= 0xff;
+        if (putchar(character) == EOF) {
+                stream->error = 1;
+                return EOF;
+        }
+        return character;
+}
+
+int getc(FILE *stream) {
+        return fgetc(stream);
+}
+
+int putc(int character, FILE *stream) {
+        return fputc(character, stream);
+}
+
+int fputs(const char *string, FILE *stream) {
+        int result;
+
+        if (!string || !stream ||
+            (stream->kind != __EX716_STREAM_OUTPUT &&
+             stream->kind != __EX716_STREAM_ERROR)) {
+                if (stream) stream->error = 1;
+                return EOF;
+        }
+        result = fprintf(stream, "%s", string);
+        if (result < 0) stream->error = 1;
+        return result;
+}
+
+int puts(const char *string) {
+        if (!string || fputs(string, stdout) == EOF ||
+            fputc('\n', stdout) == EOF)
+                return EOF;
+        return 0;
+}
+
+char *fgets(char *string, int count, FILE *stream) {
+        int character;
+        int used;
+
+        if (!string || count <= 0 || !stream ||
+            stream->kind != __EX716_STREAM_INPUT) {
+                if (stream && stream->kind != __EX716_STREAM_INPUT)
+                        stream->error = 1;
+                return NULL;
+        }
+        used = 0;
+        while (used < count - 1) {
+                character = fgetc(stream);
+                if (character == EOF) {
+                        if (!used) return NULL;
+                        break;
+                }
+                string[used++] = (char)character;
+                if (character == '\n') break;
+        }
+        string[used] = 0;
+        return string;
+}
+
+int feof(FILE *stream) {
+        return stream ? stream->eof : 0;
+}
+
+int ferror(FILE *stream) {
+        return stream ? stream->error : 0;
+}
+
+void clearerr(FILE *stream) {
+        if (stream) {
+                stream->eof = 0;
+                stream->error = 0;
+        }
+}
+
+int ungetc(int character, FILE *stream) {
+        if (character == EOF || !stream ||
+            stream->kind != __EX716_STREAM_INPUT ||
+            stream->pushback >= 0)
+                return EOF;
+        stream->pushback = character & 0xff;
+        stream->eof = 0;
+        return stream->pushback;
+}
+
+int fflush(FILE *stream) {
+        if (!stream || stream->kind == __EX716_STREAM_OUTPUT ||
+            stream->kind == __EX716_STREAM_ERROR)
+                return 0;
+        return EOF;
 }
