@@ -63,9 +63,11 @@ post-R01 report and evidence are in `/tmp/ex716-r01-full.json` and
 `/tmp/ex716-r01-full/`. The original four-case smoke suite passes despite the
 remaining compiler feature failures.
 
-Those counts are the post-R01 checkpoint. The active manifest now has 135
+Those counts are the post-R01 checkpoint. The active manifest now has 144
 entries, including dense-switch acceptance, `SYS-004`/`SYS-005` stack
-coverage, initial C adapters, and focused integer-formatting vectors. The
+coverage, initial C adapters, focused integer-formatting vectors, expanded
+R08 import/export and link-diagnostic coverage, and a frame-subtraction
+wraparound rejection vector. The
 immutable baseline remains 116 entries. At the 2026-10-06 checkpoint, the
 post-R09 segmented audit reports 75 PASS, 23 FAIL, 9 MISSING, and 28 NOT_TESTED; the
 historical smoke suite passes 4/4.

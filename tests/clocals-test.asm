@@ -1,4 +1,5 @@
 I common.mc
+. 0x0100
 @JMP Main
 L clocals.ld
 

@@ -38,12 +38,16 @@ python3 tests/csuite/readiness.py --modes classic,cpu24,segmented \
 ```
 
 The default is genuinely segmented CPU24 execution. `features.json` contains
-120 stable feature IDs and acceptance vectors. The original review baseline has
+144 stable feature IDs and acceptance vectors. The original review baseline has
 116 entries: 22 passing probes, 23 failures, 43 header-blocked entries and 28
 planned fixtures. Four R01 rejection-safety probes were added afterward.
 The audit returns 1 until every selected entry is PASS; use `--filter ID` for
 a focused task. PASS describes the executed probe, not every unimplemented
 acceptance vector. Missing and planned cases are never silently skipped.
+Multi-unit probes pass through `tools/ex716_link.py`, which checks public
+definition uniqueness, rejects colliding private labels, places deduplicated
+`G` declarations before unit references, and can report defined exports.
+Assembler symbol resolution then rejects unresolved external references.
 
 Read [the implementation handoff](../../docs/c-implementation-handoff.md) for
 exact methods, task order and pitfalls, or [the full review and permanent

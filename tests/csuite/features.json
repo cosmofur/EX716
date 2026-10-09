@@ -286,11 +286,21 @@
       "priority": "P1",
       "title": "Multiple translation units",
       "acceptance": [
-        "Compile units separately and combine assembly without duplicate private labels; external function resolves."
+        "Compile units separately, deduplicate global declarations, validate exported function/object names, and resolve external function and object references."
       ],
       "units": [
-        "int helper(int);int main(void){return helper(6)!=7;}",
-        "int helper(int x){if(x)return x+1;return 0;}"
+        "extern int shared;int helper(int);int main(void){return helper(6)!=7||shared!=13;}",
+        "int shared=13;int helper(int x){if(x)return x+1;return 0;}"
+      ],
+      "link_exports": [
+        "helper",
+        "main",
+        "shared"
+      ],
+      "link_declarations": [
+        "helper",
+        "main",
+        "shared"
       ]
     },
     {
@@ -551,7 +561,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int a,b,c,d;a=getchar();b=getchar();c=getchar();d=getchar();return a!=0||b!='Q'||c!=255||d!=EOF||!feof(stdin);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "",
       "stdin_hex": "00 51 ff"
     },
@@ -564,7 +576,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){if(puts(\"\")<0)return 1;return puts(\"ok\")<0;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "\nok\n"
     },
     {
@@ -576,7 +590,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int c;c=fputc('B',stdout);return c!='B'||ferror(stdout);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "B"
     },
     {
@@ -588,7 +604,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int a,b,c;a=fgetc(stdin);b=fgetc(stdin);c=fgetc(stdin);return a!=0||b!=255||c!=EOF||!feof(stdin);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "",
       "stdin_hex": "00 ff"
     },
@@ -601,7 +619,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return fputs(\"ok\",stdout)<0||ferror(stdout);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "ok"
     },
     {
@@ -613,7 +633,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8],c[2];if(fgets(b,8,stdin)!=b||b[0]!='x'||b[1]!='\\n'||b[2])return 1;if(fgets(b,8,stdin)!=b||b[0]!='a'||b[1]!='b'||b[2]!='c'||b[3])return 2;if(fgets(b,8,stdin)!=0)return 3;if(fgets(c,1,stdin)!=c||c[0])return 4;return !feof(stdin);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "",
       "stdin": "x\nabc"
     },
@@ -626,7 +648,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return printf(\"%d %i %u %x %X %c %s %% %ld\",-7,12,65535U,255U,175U,'Z',\"ok\",100000L)!=31;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "-7 12 65535 ff AF Z ok % 100000"
     },
     {
@@ -637,7 +661,9 @@
         "Formats one promoted int as signed decimal and returns the character count."
       ],
       "source": "#include <stdio.h>\nint main(void){return printf(\"%d\",-7)!=2;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "-7"
     },
     {
@@ -648,7 +674,9 @@
         "Formats a promoted 32-bit long and returns the character count."
       ],
       "source": "#include <stdio.h>\nint main(void){return printf(\"%ld\",100000L)!=6;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "100000"
     },
     {
@@ -659,7 +687,9 @@
         "Returns the untruncated count, NUL terminates truncated output, supports size zero and size one."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[4],one[1];int n;n=snprintf(b,4,\"%s\",\"hello\");if(n!=5||b[0]!='h'||b[1]!='e'||b[2]!='l'||b[3]!=0)return 1;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 2;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 3;return 0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-snprintf.literal",
@@ -669,8 +699,12 @@
         "Copies format text to the destination, returns its length, and NUL terminates."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8];int n;n=snprintf(b,8,\"hello\");return n!=5||b[0]!='h'||b[4]!='o'||b[5]!=0;}",
-      "compiler_args": ["-stack-size=512"],
-      "runtime_files": ["lib/stdio_format.c"]
+      "compiler_args": [
+        "-stack-size=512"
+      ],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-snprintf.d",
@@ -680,7 +714,9 @@
         "Consumes a promoted int and returns the exact formatted character count."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8];int n;n=snprintf(b,8,\"%d\",-7);return n!=2||b[0]!='-'||b[1]!='7'||b[2]!=0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-snprintf.integer-fields",
@@ -690,7 +726,9 @@
         "Formats unsigned-long maximum and signed-long minimum exactly; applies sign-aware zero padding, left width, precision, alternate octal form, and near-pointer hexadecimal output."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[12],t[24];int n;n=snprintf(b,12,\"%lu\",4294967295UL);if(n!=10||b[0]!='4'||b[1]!='2'||b[2]!='9'||b[3]!='4'||b[4]!='9'||b[5]!='6'||b[6]!='7'||b[7]!='2'||b[8]!='9'||b[9]!='5'||b[10]!=0)return 1;n=snprintf(b,12,\"%ld\",(-2147483647L-1L));if(n!=11||b[0]!='-'||b[1]!='2'||b[2]!='1'||b[3]!='4'||b[4]!='7'||b[5]!='4'||b[6]!='8'||b[7]!='3'||b[8]!='6'||b[9]!='4'||b[10]!='8'||b[11]!=0)return 2;n=snprintf(t,24,\"%+06d|%-5u|%.4x|%#o\",-7,12U,175U,255U);if(n!=22||t[0]!='-'||t[1]!='0'||t[5]!='7'||t[6]!='|'||t[7]!='1'||t[8]!='2'||t[9]!=' '||t[11]!=' '||t[12]!='|'||t[13]!='0'||t[14]!='0'||t[15]!='a'||t[16]!='f'||t[17]!='|'||t[18]!='0'||t[21]!='7'||t[22]!=0)return 3;n=snprintf(b,12,\"%p\",(void *)0);if(n!=3||b[0]!='0'||b[1]!='x'||b[2]!='0'||b[3]!=0)return 4;return 0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-snprintf.unsupported",
@@ -700,7 +738,9 @@
         "Long-long and floating conversions return an error without consuming unsupported argument layouts and leave a terminated partial buffer."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8];if(snprintf(b,8,\"x%lld\")!=-1||b[0]!='x'||b[1]!=0)return 1;if(snprintf(b,8,\"%f\")!=-1||b[0]!=0)return 2;return 0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-snprintf.s",
@@ -710,7 +750,9 @@
         "Consumes a char pointer argument and writes it to the bounded destination."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8];int n;n=snprintf(b,8,\"%s\",\"hello\");return n!=5||b[0]!='h'||b[4]!='o'||b[5]!=0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-fprintf",
@@ -721,7 +763,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return fprintf(stdout,\"%d\",42)!=2;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "42"
     },
     {
@@ -733,7 +777,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[8];return sprintf(b,\"%d\",42)!=2||b[0]!='4'||b[1]!='2'||b[2]!=0;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": ""
     },
     {
@@ -745,7 +791,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){char b[25],t[4],one[1];int n;n=snprintf(b,25,\"%d %i %u %x %X %c %s %%\",-7,12,65535U,255U,175U,'Z',\"ok\");if(n!=24)return 1;if(b[0]!='-')return 10;if(b[3]!='1')return 11;if(b[6]!='6'||b[10]!='5')return 12;if(b[12]!='f')return 13;if(b[15]!='A')return 14;if(b[18]!='Z')return 15;if(b[20]!='o')return 16;if(b[23]!='%')return 17;n=snprintf(t,4,\"%s\",\"hello\");if(n!=5||t[0]!='h'||t[1]!='e'||t[2]!='l'||t[3]!=0)return 3;if(snprintf((char *)0,0,\"x%d\",12)!=3)return 4;if(snprintf(one,1,\"abc\")!=3||one[0]!=0)return 5;return 0;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": ""
     },
     {
@@ -757,7 +805,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){if(fputs(\"F\",stdout)<0)return 1;return fflush(stdout)!=0||fflush(0)!=0;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "F"
     },
     {
@@ -769,7 +819,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);return c!=EOF||!feof(stdin)||ferror(stdin);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": ""
     },
     {
@@ -781,7 +833,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){if(ferror(stdout)||feof(stdout))return 1;if(fgetc(stdout)!=EOF)return 2;return !ferror(stdout)||feof(stdout);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": ""
     },
     {
@@ -793,7 +847,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!=EOF)return 1;clearerr(stdin);return feof(stdin)||ferror(stdin);}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": ""
     },
     {
@@ -805,7 +861,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){int c;c=fgetc(stdin);if(c!='A')return 1;if(fgetc(stdin)!=EOF||!feof(stdin))return 2;if(ungetc('Z',stdin)!='Z')return 3;if(feof(stdin))return 4;if(fgetc(stdin)!='Z')return 5;if(ungetc(EOF,stdin)!=EOF)return 6;return 0;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "",
       "stdin": "A"
     },
@@ -818,7 +876,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return getc(stdin)!='G';}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "",
       "stdin": "G"
     },
@@ -831,7 +891,9 @@
         "Minimal smoke probe is necessary but not full semantic certification; expand acceptance vectors under this same ID."
       ],
       "source": "#include <stdio.h>\nint main(void){return putc('P',stdout)!='P';}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "P"
     },
     {
@@ -1064,7 +1126,9 @@
         "Traverse mixed promoted arguments and return the exact count."
       ],
       "source": "#include <stdio.h>\nstatic int emit(const char *f,...){va_list a;int n;va_start(a,f);n=vprintf(f,a);va_end(a);return n;}int main(void){return emit(\"%d:%s\",7,\"ok\")!=4;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "7:ok"
     },
     {
@@ -1075,7 +1139,9 @@
         "Share formatting engine and va_list traversal with explicit stream."
       ],
       "source": "#include <stdio.h>\nstatic int emit(FILE *s,const char *f,...){va_list a;int n;va_start(a,f);n=vfprintf(s,f,a);va_end(a);return n;}int main(void){return emit(stderr,\"%u!\",12U)!=3;}",
-      "runtime_files": ["lib/stdio_format.c"],
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ],
       "stdout": "12!"
     },
     {
@@ -1086,7 +1152,9 @@
         "Share formatting engine and terminate caller buffer."
       ],
       "source": "#include <stdio.h>\nstatic int fmt(char *b,const char *f,...){va_list a;int n;va_start(a,f);n=vsprintf(b,f,a);va_end(a);return n;}int main(void){char b[8];return fmt(b,\"%s%d\",\"x\",9)!=2||b[0]!='x'||b[1]!='9'||b[2]!=0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-vsnprintf",
@@ -1097,7 +1165,9 @@
         "Share target va_list traversal while respecting the destination bound and count."
       ],
       "source": "#include <stdio.h>\nstatic int fmt(char *b,int z,const char *f,...){va_list a;int n;va_start(a,f);n=vsnprintf(b,z,f,a);va_end(a);return n;}int main(void){char b[3];if(fmt(b,3,\"%s\",\"hello\")!=5||b[0]!='h'||b[1]!='e'||b[2]!=0)return 1;if(fmt((char *)0,0,\"%d\",12)!=2)return 2;return 0;}",
-      "runtime_files": ["lib/stdio_format.c"]
+      "runtime_files": [
+        "lib/stdio_format.c"
+      ]
     },
     {
       "id": "IO-vfscanf",
@@ -1269,6 +1339,87 @@
       "reason": "No eight-byte expression/load/store support; not required for the initial C90-derived integer subset."
     },
     {
+      "id": "LANG-039",
+      "priority": "P1",
+      "title": "Duplicate external function definition rejected",
+      "kind": "link-reject",
+      "link_error": {
+        "kind": "duplicate-definition",
+        "symbol": "shared"
+      },
+      "acceptance": [
+        "Combining two translation units that both define external function shared must fail with a duplicate-definition diagnostic."
+      ],
+      "units": [
+        "int shared(void){return 1;}",
+        "int shared(void){return 2;}"
+      ]
+    },
+    {
+      "id": "LANG-040",
+      "priority": "P1",
+      "title": "Undefined external function reference rejected",
+      "kind": "link-reject",
+      "link_error": {
+        "kind": "undefined-reference",
+        "symbol": "missing"
+      },
+      "acceptance": [
+        "An imported external function without a definition must be reported and execution must be refused."
+      ],
+      "source": "int missing(int);int main(void){return missing(3);}"
+    },
+    {
+      "id": "LANG-041",
+      "priority": "P1",
+      "title": "Duplicate external object definition rejected",
+      "kind": "link-reject",
+      "link_error": {
+        "kind": "duplicate-definition",
+        "symbol": "shared"
+      },
+      "acceptance": [
+        "Combining two translation units that both define the same external object must fail with a duplicate-definition diagnostic."
+      ],
+      "units": [
+        "int shared=1;int first(void){return shared;}",
+        "int shared=2;int second(void){return shared;}"
+      ]
+    },
+    {
+      "id": "LANG-042",
+      "priority": "P1",
+      "title": "Duplicate private unit identity rejected",
+      "kind": "link-reject",
+      "compiler_args": [
+        "-unit-id=collision"
+      ],
+      "link_error": {
+        "kind": "unit-id-collision"
+      },
+      "acceptance": [
+        "Two units with the same private namespace must fail before duplicate private labels can be silently combined."
+      ],
+      "units": [
+        "static int helper(void){return 1;}int first(void){return helper();}",
+        "static int helper(void){return 2;}int second(void){return helper();}"
+      ]
+    },
+    {
+      "id": "LANG-043",
+      "priority": "P1",
+      "title": "Undefined external object reference rejected",
+      "kind": "link-reject",
+      "link_error": {
+        "kind": "undefined-reference",
+        "symbol": "missing"
+      },
+      "acceptance": [
+        "An imported external object without a definition must be declared and execution must be refused."
+      ],
+      "source": "extern int missing;int main(void){return missing;}"
+    },
+    {
       "id": "SYS-001",
       "priority": "P0",
       "title": "Application startup and shutdown",
@@ -1317,7 +1468,20 @@
         "The target stack-size option increases the available C recursion depth beyond the default 4 KiB stack."
       ],
       "source": "int descend(int n){unsigned char frame[240];frame[0]=(unsigned char)n;if(n==0)return 0;return descend(n-1)+frame[0];}int main(void){return descend(24)!=300;}",
-      "compiler_args": ["-stack-size=8192"]
+      "compiler_args": [
+        "-stack-size=8192"
+      ]
+    },
+    {
+      "id": "SYS-006",
+      "priority": "P1",
+      "title": "Frame reservation rejects 16-bit subtraction wrap",
+      "acceptance": [
+        "A near-maximum addressable C frame on the default smaller software stack reports stack exhaustion before the 16-bit stack pointer subtraction can wrap and permit frame writes."
+      ],
+      "source": "int main(void){unsigned char first[32760];unsigned char second[32760];first[0]=1;second[0]=2;return first[0]+second[0];}",
+      "kind": "runtime-reject",
+      "diagnostic": "Error. Code Stack Out of Bounds"
     },
     {
       "id": "MATH-div16-signed",

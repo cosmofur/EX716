@@ -52,12 +52,15 @@ M CLocals `\
   @PUSHI __C_FP ; \
   @CALL __MOVE_HW_SS ; \
   @PUSHI __SS_SP ; \
+  @SUBI __SS_BOTTOM ; \
+  @IF_ULT_A %1 ; \
+    @POPNULL ; \
+    @StackDump ; \
+    @JMP __SS_StackError ; \
+  @ENDIF ; \
+  @POPNULL ; \
+  @PUSHI __SS_SP ; \
   @SUB %1 ; \
-    @IF_ULT_V __SS_BOTTOM ; \
-      @POPNULL ; \
-      @StackDump ; \
-      @JMP __SS_StackError ; \
-    @ENDIF ; \
   @POPI __SS_SP ; \
   @PUSHI __SS_SP ; \
   @POPI __C_FP \

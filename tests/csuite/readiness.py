@@ -115,18 +115,61 @@ def audit(feature, mode, args, artifact_root):
                 diagnostic = err[bad.start():].splitlines()[0]
                 return finish("FAIL", "codegen", "compiler exited 0: " + diagnostic)
             assembly.append(out)
-        if len(assembly) > 1:
-            names = set()
-            for unit in assembly:
-                definitions = set(re.findall(r"(?m)^@FUNCTION (\S+)", unit))
-                collision = names & definitions
-                if collision:
-                    return finish("FAIL", "codegen", "translation-unit function names collide: " + ", ".join(sorted(collision)))
-                names.update(definitions)
         if feature.get("kind") == "header":
             return finish("PASS", "compile", "public header compiles; runtime not assessed")
+        link_error = feature.get("link_error", {})
+        if (len(assembly) > 1 or feature.get("kind") == "link-reject" or
+                feature.get("link_exports") or feature.get("link_declarations")):
+            unit_paths = []
+            for i, source_text in enumerate(assembly):
+                unit_path = work / f"unit{i}.asm"
+                unit_path.write_text(source_text, encoding="utf-8")
+                unit_paths.append(unit_path)
+            linked = work / "linked.asm"
+            symbols = work / "exports.inc"
+            command = [sys.executable, str(ROOT / "tools/ex716_link.py"),
+                       "-o", str(linked), "--symbols-output", str(symbols)]
+            command += [str(path) for path in unit_paths]
+            rc, out, err = invoke(command, work, args.timeout)
+            evidence["linker.stdout"] = out
+            evidence["linker.stderr"] = err
+            if rc is None:
+                return finish("TIMEOUT", "link", "EX716 assembly combiner timed out")
+            if rc != 0:
+                if (feature.get("kind") == "link-reject" and
+                        link_error.get("kind") == "duplicate-definition" and
+                        link_error.get("symbol") in err):
+                    return finish("PASS", "link",
+                                  "duplicate public definition rejected: " +
+                                  link_error["symbol"])
+                if (feature.get("kind") == "link-reject" and
+                        link_error.get("kind") == "unit-id-collision" and
+                        "unit identities collide" in err):
+                    return finish("PASS", "link",
+                                  "duplicate private symbol namespace rejected")
+                return finish("FAIL", "link",
+                              err.strip() or "EX716 unit combination failed")
+            if feature.get("link_exports"):
+                export_text = symbols.read_text(encoding="utf-8")
+                evidence["exports.inc"] = export_text
+                missing = [name for name in feature["link_exports"]
+                           if not re.search(r"(?m)^G\s+" + re.escape(name) + r"\s*$",
+                                            export_text)]
+                if missing:
+                    return finish("FAIL", "link",
+                                  "export report omitted: " + ", ".join(missing))
+            linked_text = linked.read_text(encoding="utf-8")
+            for name in feature.get("link_declarations", []):
+                count = len(re.findall(r"(?m)^G\s+" + re.escape(name) + r"\s*$",
+                                       linked_text))
+                if count != 1:
+                    return finish("FAIL", "link",
+                                  f"expected one G declaration for {name}; got {count}")
+            evidence["linked.asm"] = linked_text
+            assembly = [evidence["linked.asm"]]
         prefix = [".DATA 1", "I commonDS.mc"] if mode == "segmented" else ["I common.mc"]
-        harness = prefix + ["@JMP __audit_entry", "L clocals.ld", "L lmath.ld"]
+        entry_setup = [". 0x0100"] if mode == "classic" else []
+        harness = prefix + entry_setup + ["@JMP __audit_entry", "L clocals.ld", "L lmath.ld"]
         for runtime in args.runtime:
             harness.append("L " + str(runtime))
         harness += assembly + [":__audit_entry"]
@@ -161,6 +204,14 @@ def audit(feature, mode, args, artifact_root):
         if "Unresolved symbols: 0" not in out:
             missing = out.split("=== Missing Symbols ===", 1)
             detail = missing[1].split("=== Summary ===", 1)[0].strip() if len(missing) == 2 else (out + err)[-1600:]
+            if (feature.get("kind") == "link-reject" and rc != 0 and
+                    link_error.get("kind") == "undefined-reference" and
+                    link_error.get("symbol") in out + err and
+                    "Unresolved symbols:" in out and
+                    "=== Declared Global but NOT Defined ===" in out):
+                return finish("PASS", "link",
+                              "undefined external reference rejected: " +
+                              link_error["symbol"])
             return finish("FAIL", "assemble", detail)
         if feature.get("kind") == "runtime-reject":
             diagnostic = feature.get("diagnostic", "")

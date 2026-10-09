@@ -650,3 +650,57 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
   modified. WSL1 should review lcc commit `a0ff0f7` (frame limit and stdio
   round-trip) against its stashed work notes, then reapply only after comparing
   actual changes.
+
+
+## Item #1 follow-up: linkage declarations and link validation (2026-10-09)
+
+- Scope is item #1 only: symbol namespaces, external declarations, and
+  indirect calls. R09 indirect calls already pass; this follow-up closes the
+  external import/export declaration and multi-unit validation gaps.
+- In the isolated WSL2-based checkout, `I(import)` and `I(export)` now emit
+  deduplicated `G` declarations. Static data receives a unit-qualified name
+  even when the frontend temporarily provides a null type.
+- The EX716 audit combiner validates declared imports, public definitions,
+  private-label namespace collisions, and reports defined exports. Features
+  `LANG-032/033` cover successful cross-unit symbols and private isolation;
+  `LANG-039` through `043` cover duplicate definitions, unresolved symbols,
+  and colliding unit identities.
+- CPU and CPU24 startup now stop on unresolved symbols rather than proceeding
+  with unresolved addresses.
+- Focused link diagnostics passed across classic, CPU24, and segmented modes.
+  Positive `LANG-032/033` link checks pass in CPU24 and segmented modes. Classic
+  execution has an existing baseline startup/stack failure also seen with
+  `LANG-001`; it is outside this item.
+- The changes are staged only as patch files for the WSL2 checkout; no commit
+  was created and the WSL1 working trees and stashes were left untouched.
+
+
+## Item #2 follow-up: C frame reservation underflow guard (2026-10-09)
+
+- Scope is runtime C-frame capacity checking and overflow-test groundwork.
+  The compiler frame-size limit is already 0xfffe in WSL2 and is unchanged.
+- `lib/clocals.ld` now checks `__SS_SP - __SS_BOTTOM` against the requested
+  frame size before subtracting the frame. The former post-subtraction compare
+  could accept a near-maximum frame after its 16-bit subtraction wrapped.
+- Added `SYS-006` using two individually legal 32,760-byte arrays (combined
+  frame 65,520 bytes). Before the guard fix, this ran through and `main` returned
+  3 on CPU24/segmented instead of reporting stack exhaustion. After the fix,
+  `SYS-004`, `SYS-005`, and `SYS-006` pass in CPU24 and segmented modes (6/6).
+- Classic mode remains blocked by the existing hardware-stack error in
+  `softstack.ld:166` (`SWP on stack with less than 2 items` in
+  `__MOVE_HW_SS`) before C frame checking. Do not report classic frame coverage
+  as passing.
+- These changes are isolated in the temporary WSL2-based copy. They are not
+  committed or applied to the WSL1 original repositories.
+
+
+## Classic audit entry-point correction (2026-10-09)
+
+- Classic readiness runs were entering the first included runtime function
+  because the harness had no explicit entry directive accepted by `cpu.py`.
+  Set legacy entry to 0x0100 immediately before the harness jump. The
+  previous `__MOVE_HW_SS` underflow was an entry-point artifact, not a C-frame
+  guard failure.
+- The standalone classic `tests/clocals-test.asm` now sets `. 0x0100` before
+  its entry jump for the same reason. CPU24 audit modes retain their `.ENTRY`
+  directives.

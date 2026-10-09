@@ -3834,6 +3834,7 @@ def FinalSymbolReport(context):
 
     if not unresolved:
         print("  ✔ All symbols resolved")            
+    return len(unresolved)
 
 
 
@@ -6241,7 +6242,10 @@ def main():
         NewLocalID = curfile
         maxusedmem = \
             loadfile(curfile, maxusedmem, CPU , GLOBALFLAG, NewLocalID, context)
-    FinalSymbolReport(context)
+    unresolved = FinalSymbolReport(context)
+    if unresolved:
+        safeprint("ERROR: refusing to execute with unresolved symbols")
+        sys.exit(1)
 
     context.GlobalOptCnt = 0
 
@@ -6250,7 +6254,10 @@ def main():
         # Default to common.mc to provide base macros
         maxusedmem = \
             loadfile("common.mc", maxusedmem, CPU, GLOBALFLAG, "common.mc",  context)
-        FinalSymbolReport(context)
+        unresolved = FinalSymbolReport(context)
+        if unresolved:
+            safeprint("ERROR: refusing to execute with unresolved symbols")
+            sys.exit(1)
         
         UseDebugger = True
     if OptCodeFlag:
