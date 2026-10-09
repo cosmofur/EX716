@@ -119,7 +119,7 @@ service exists; **missing** means no suitable service was found.
 | `HeapNewObject` plus zero-fill | `calloc` | Buildable from existing allocation; multiplication overflow and C result contract need a wrapper. | P2 |
 | `HeapResizeObject` | `realloc` | Moving resize service exists; adapt null/failure/zero-size rules and test failure preservation. | P2 |
 | `CAST` adapter / tagged `POLL` byte result | `putchar` / `getchar` | Tested in classic, CPU24, and segmented modes; regressions cover NUL, `0xff`, and EOF (`IO-putchar`, `IO-getchar`). | P0 |
-| Console-only opaque `FILE` layer in `stdio_format.c` | `puts`, `fputc`, `fgetc`, `fputs`, `fgets`, `getc`, `putc`, `fflush`, `feof`, `ferror`, `clearerr`, `ungetc` | Tested in all three emulator modes. `stdin` is byte input; `stdout` and `stderr` currently share console output. Streams are unbuffered; one byte of pushback is supported. File-backed streams, separate stderr, and host/device write-failure reporting are not implemented yet. | P0/P1 |
+| Opaque unbuffered `FILE` layer in `stdio_format.c` | Console stream functions plus initial DiskOS-backed `fopen`, `fclose`, `fread`, and `fwrite` adapters | Console behavior has existing all-mode coverage. The file adapters translate C modes, own a DiskOS pointer, and preserve element-count returns; isolated disk fixtures and semantic certification remain open. `stdin` is byte input; `stdout` and `stderr` share console output. | P0/P1 |
 | `stdio_format.c` | `printf`, `fprintf`, `sprintf`, `snprintf` and `v*` variants | Shared parser, field renderer and stream/buffer sinks. Integer conversions are specialized for 16-bit `int`/32-bit `long`; float and long-long formats fail explicitly. All implemented variants have permanent regression vectors and pass across the three emulator modes. | P0/P1 |
 
 The backend advertises long long=8, float=4, double=8, long double=16 with
@@ -221,11 +221,12 @@ of letting verbose debug output hide it.
 
 ## Required standard C I/O roadmap
 
-The initial opaque `FILE` abstraction is console-only. Its layout intentionally
-does not encode a file-size or cursor limit. The next step is to adapt the
-currently supported DiskOS operations, while keeping room for the planned
-larger-file/extent backend; do not bake the present 64-KiB file cap into the C
-API. The `filesys/ex716disk.py` host image tool documents extent-chain metadata,
+The opaque `FILE` abstraction supports unbuffered console and initial
+DiskOS-backed file streams. Its layout intentionally does not encode a
+file-size or cursor limit. The adapters use currently supported DiskOS
+operations while keeping room for the planned larger-file/extent backend; do
+not bake the present 64-KiB file cap into the C API. The
+`filesys/ex716disk.py` host image tool documents extent-chain metadata,
 but that does not imply the current `diskos.ld` runtime follows extents. The C
 file adapter must initially stay within runtime-supported operations and can
 grow with that backend. `EOF`, `BUFSIZ`, `size_t`, and console standard stream
@@ -273,20 +274,22 @@ startup ownership and exhaustion behavior.
 DiskOS offers byte reads/writes and persistent file pointers. It should be a
 backend for stdio, not be renamed to stdio:
 
-- Its `ro`, `wo`, `rw`, `w+`, `a+` modes differ from C modes. In particular,
-  current `wo` does not establish truncation, and DiskOS `w+` starts at EOF.
-  Implement a separate mode translator and the missing operations.
+- Its `ro`, `wo`, `rw`, `w+`, `a+` modes differ from C modes. The stdio
+  adapter translates C modes and performs truncation explicitly; DiskOS
+  `FP_OPEN_CREATE` means create-if-absent, not truncate-existing.
 - Line reads remove LF and pack status/length; a stdio adapter must reconstruct
   its own line and state contract. Reusing raw byte reads may be simpler.
 - DiskOS close returns 1 for success; the C wrapper must translate results.
   Some file-open error paths print and end execution; stdio failures must return
   normally with stream/error information.
 - Heap-backed FilePtr, ArgTable and sector buffers have distinct lifetimes.
-  Initialization needs a disk heap and loaded filesystem header.
+  The adapter sets DiskOS's heap and loads disk 0's filesystem header on the
+  first `fopen` after generated C startup initializes the heap.
 - The current runtime only supports a single 64 KiB block per file and does
   not follow host-tool extent chains. Do not represent larger files as working.
-  Split large requests and check multiplication before computing size*count;
-  a 16-bit `size_t` cannot represent an entire 65536-byte transfer.
+  Split large requests and account for multiplication overflow before
+  computing `size*count`; a 16-bit `size_t` cannot represent an entire
+  65536-byte transfer.
 - Runtime disk magic is `0x3044`; the host formatter defaults to `0x0716`.
   Use the explicit runtime magic in all isolated fixtures.
 

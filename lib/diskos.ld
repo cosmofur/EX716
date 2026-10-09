@@ -767,6 +767,7 @@ G LINE_EOF
 :DirNewArgTable
 @PUSHRETURN
 @Locals
+#USE HeapNewObject
    @Local I1
    @Local Limit
    @Local ArgTable
@@ -776,12 +777,18 @@ G LINE_EOF
       @PUSH 0
    @ELSE
       @Call(VA) HeapNewObject DiskHeap ARGTABLE_SIZE
-      @POPI ArgTable
-      @PUSHI ArgTable @ADD ARGTABLE_SIZE @SUB 1 @POPI Limit
-      @ForIV2V I1 ArgTable Limit
-         @PUSH 0 @POPII I1
-      @Next I1
-      @PUSHI ArgTable
+      @IF_ULT_A 100
+         @PRTS MEMERRMSG
+         @POPNULL
+         @PUSH 0
+      @ELSE
+         @POPI ArgTable
+         @PUSHI ArgTable @ADD ARGTABLE_SIZE @SUB 1 @POPI Limit
+         @ForIV2V I1 ArgTable Limit
+            @PUSH 0 @POPII I1
+         @Next I1
+         @PUSHI ArgTable
+      @ENDIF
    @ENDIF
 @EndLocals
 @POPRETURN
@@ -794,20 +801,31 @@ G LINE_EOF
 #-----------------------------------------
 :DiskNewBuffer
 @PUSHRETURN
+@Locals
+#USE HeapNewObject
+   @Local Buffer
+   @MA2V 0 Buffer
    @IF_EQ_AV -1 DiskHeap
       # Heap Must be defined before it can be used.
       @PRTS MEMERRMSG
-      @PUSH -1
    @ELSE
-      @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE @IF_ULT_A 100 @PRTS MEMERRMSG @POPNULL @END @ENDIF
+      @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
+      @IF_ULT_A 100
+         @PRTS MEMERRMSG
+         @POPNULL
+      @ELSE
+         @POPI Buffer
+      @ENDIF
    @ENDIF
+   @PUSHI Buffer
+@EndLocals
 @POPRETURN
 @RET
 @ENDFUNCTION
 
 #-----------------------------------------
-# DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, Diskbuff)
-# Writes exactly ByteCount bytes from memory beginning at MemPtr
+# DiskWriteBlock(Sector, MemPtr, ByteCount, StartOffset, Diskbuff):Bytes_Written
+# Writes up to ByteCount bytes from memory beginning at MemPtr
 # into consecutive disk sectors beginning at Sector and StartOffset.
 # Existing bytes outside the written range in partial sectors are preserved.
 # Sectors beyond the written range are not modified.
@@ -823,6 +841,7 @@ G LINE_EOF
     @Local Diskbuff
     @Local InBuffPtr
     @Local _I
+    @Local OrigCount
 
 
     @POPI Diskbuff
@@ -830,8 +849,7 @@ G LINE_EOF
     @POPI ByteCount
     @POPI MemPtr
     @POPI Sector
-
-
+    @MA2V 0 OrigCount
 
     # Now test to make sure ByteCount does not overflow the address
     @PUSHI ByteCount
@@ -855,9 +873,14 @@ G LINE_EOF
        #
        @POPNULL
        @PRT "ERR:NVOF"
+       @MA2V 0 ByteCount
        @JMP DWBExit
     @ENDIF
     @POPNULL
+
+    # The return value is the number of bytes actually copied. Save the
+    # bounded request; ByteCount is consumed by the sector-copy loop.
+    @MV2V ByteCount OrigCount
 
     @PUSHI ByteCount
     @WHILE_UGT_A 0
@@ -896,6 +919,9 @@ G LINE_EOF
             @POPNULL
 
             @IF_EQ_AV 0 ByteCount
+                # The loop body consumed its condition at entry. Preserve a
+                # value for the common post-loop POPNULL before breaking.
+                @PUSHI _I
                 @WHILEBREAK
             @ENDIF
 
@@ -923,6 +949,8 @@ G LINE_EOF
         @PUSHI ByteCount
     @ENDWHILE
 :DWBExit
+    @PUSHI OrigCount
+    @SUBI ByteCount
 @EndLocals
 @POPRETURN
 @RET
@@ -1024,13 +1052,14 @@ G LINE_EOF
 :DiskOpen
 @PUSHRETURN
 @Locals
-#USE DirNewArgTable,DirWriteEntry,DataBlockFirstSector
+#USE DirNewArgTable,DirWriteEntry,DirReadEntry,DiskNewBuffer,DiskFindFreeBlock
     @Local FileNum
     @Local Mode
     @Local ArgTable
     @Local FilePtr
     @Local DoCreateFlag
     @Local Diskbuff
+    @Local FirstBlock
 
 
     @POPI Mode
@@ -1068,6 +1097,10 @@ G LINE_EOF
 
     @POPI ArgTable
     @CALL DiskNewBuffer
+    @IF_ZERO
+        @POPNULL
+        @JMP Do_Op_EXIT
+    @ENDIF
     @POPI Diskbuff
     @Call(VVV) DirReadEntry FileNum ArgTable Diskbuff
     @IF_ZERO
@@ -1085,13 +1118,8 @@ G LINE_EOF
     @IF_NOTZERO
        # File exists
        @POPNULL
-       @PUSHI Mode @AND FP_OPEN_CREATE
-       @IF_NOTZERO
-           @POPNULL
-           @MA2V 1 DoCreateFlag
-       @ELSE
-           @POPNULL
-       @ENDIF
+       # CREATE means create if absent; callers that need truncation must
+       # explicitly reset the file size after opening.
        
     @ELSE
        @POPNULL
@@ -1108,10 +1136,16 @@ G LINE_EOF
     @ENDIF
 
     @IF_EQ_AV 1 DoCreateFlag
+       @CALL DiskFindFreeBlock
+       @POPI FirstBlock
+       @IF_EQ_AV 0 FirstBlock
+          @PRT "ERR:!SPACE"
+          @JMP Do_Op_EXIT
+       @ENDIF
        @FILL_AT_A ArgTable DIR_AT_FLAGS FLAG_INUSE
        @FILL_AT_A ArgTable DIR_AT_FILESIZE 0
        @FILL_AT_A ArgTable DIR_AT_FILESIZE+2 0       
-       @FILL_AT_V ArgTable DIR_AT_FIRSTBLOCK FileNum
+       @FILL_AT_V ArgTable DIR_AT_FIRSTBLOCK FirstBlock
        @FILL_AT_A ArgTable DIR_AT_BLOCKCOUNT 1
        @Call(VVV) DirWriteEntry FileNum ArgTable Diskbuff
        @IF_ZERO
@@ -1134,7 +1168,8 @@ G LINE_EOF
     # Populate FilePtr fields
     @FILL_AT_V FilePtr FPTR_FILENUM FileNum
 
-    @Call(V) DataBlockFirstSector FileNum
+    @GET_FROM ArgTable DIR_AT_FIRSTBLOCK
+    @SHLN 7
     @FILL_AT_S FilePtr FPTR_FIRST_SECTOR
 
     @PUSHI ArgTable @ADD DIR_AT_FILESIZE @PUSHS
@@ -1200,30 +1235,443 @@ G LINE_EOF
 
 
 #-----------------------------------------
+# Find first unreferenced data block (4-511). Directory entries, not the
+# file-number bitmap, describe physical block ownership.
+#-----------------------------------------
+@FUNCTION DiskFindFreeBlock
+:DiskFindFreeBlock
+@PUSHRETURN
+@Locals
+#USE HeapNewObject,HeapDeleteObject,DiskNewBuffer,DirNewArgTable,DirReadEntry
+    @Local Map
+    @Local WorkArg
+    @Local Diskbuff
+    @Local MapCursor
+    @Local EntryNum
+    @Local FirstBlock
+    @Local BlockCount
+    @Local BlockIndex
+    @Local EndBlock
+    @Local Candidate
+    @Local Result
+
+    @MA2V 0 Map
+    @MA2V 0 WorkArg
+    @MA2V 0 Diskbuff
+    @MA2V 0 Result
+    @Call(VA) HeapNewObject DiskHeap 1024
+    @IF_ULT_A 100
+        @POPNULL
+        @JMP DFFB_CLEANUP
+    @ENDIF
+    @POPI Map
+    @PUSHI Map
+    @ADD 1024
+    @POPI EndBlock
+    @MV2V Map MapCursor
+:DFFB_CLEAR_MAP
+    @PUSHI MapCursor
+    @IF_UGE_V EndBlock
+        @POPNULL
+        @JMP DFFB_MAP_CLEARED
+    @ENDIF
+    @POPNULL
+        @PUSH 0
+        @POPII MapCursor
+    @INCI MapCursor
+    @JMP DFFB_CLEAR_MAP
+:DFFB_MAP_CLEARED
+
+    @CALL DirNewArgTable
+    @IF_ZERO
+        @POPNULL
+        @JMP DFFB_CLEANUP
+    @ENDIF
+    @POPI WorkArg
+    @CALL DiskNewBuffer
+    @IF_ZERO
+        @POPNULL
+        @JMP DFFB_CLEANUP
+    @ENDIF
+    @POPI Diskbuff
+
+    # Mark every block referenced by a live directory entry.
+    @MA2V 1 EntryNum
+:DFFB_SCAN
+    @PUSHI EntryNum
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @JMP DFFB_FIND
+    @ENDIF
+    @POPNULL
+    @Call(VVV) DirReadEntry EntryNum WorkArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @JMP DFFB_CLEANUP
+    @ENDIF
+    @POPNULL
+    @GET_FROM WorkArg DIR_AT_FLAGS
+    @AND FLAG_INUSE
+    @IF_NOTZERO
+        @POPNULL
+        @GET_FROM WorkArg DIR_AT_FLAGS
+        @AND FLAG_DELETED
+        @IF_ZERO
+            @POPNULL
+            @GET_FROM WorkArg DIR_AT_FIRSTBLOCK
+            @POPI FirstBlock
+            @GET_FROM WorkArg DIR_AT_BLOCKCOUNT
+            @POPI BlockCount
+            @IF_NEQ_AV 0 BlockCount
+                @PUSHI FirstBlock
+                @IF_UGE_A 4
+                    @POPNULL
+                    @PUSHI FirstBlock
+                    @ADDI BlockCount
+                    @IF_ULE_A 512
+                        @POPNULL
+                        @PUSHI FirstBlock
+                        @ADDI BlockCount
+                        @POPI EndBlock
+                        @PUSHI FirstBlock
+                        @POPI BlockIndex
+:DFFB_MARK
+                        @PUSHI BlockIndex
+                        @IF_ULT_V EndBlock
+                            @POPNULL
+                            @PUSH 1
+                            @PUSHI BlockIndex
+                            @SHL
+                            @ADDI Map
+                            @POPS
+                            @INCI BlockIndex
+                            @JMP DFFB_MARK
+                        @ENDIF
+                        @POPNULL
+                    @ELSE
+                        @POPNULL
+                        @JMP DFFB_CLEANUP
+                    @ENDIF
+                @ELSE
+                    @POPNULL
+                    @JMP DFFB_CLEANUP
+                @ENDIF
+            @ENDIF
+        @ELSE
+            @POPNULL
+        @ENDIF
+    @ELSE
+        @POPNULL
+    @ENDIF
+    @INCI EntryNum
+    @JMP DFFB_SCAN
+
+:DFFB_FIND
+    @MA2V 4 Candidate
+:DFFB_FIND_LOOP
+    @PUSHI Candidate
+    @IF_UGE_A 512
+        @POPNULL
+        @JMP DFFB_CLEANUP
+    @ENDIF
+    @POPNULL
+    @PUSHI Candidate
+    @SHL
+    @ADDI Map
+    @PUSHS
+    @IF_ZERO
+        @POPNULL
+        @MV2V Candidate Result
+        @JMP DFFB_CLEANUP
+    @ENDIF
+    @POPNULL
+    @INCI Candidate
+    @JMP DFFB_FIND_LOOP
+
+:DFFB_CLEANUP
+    @IF_NEQ_AV 0 Diskbuff
+        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @POPNULL
+    @ENDIF
+    @IF_NEQ_AV 0 WorkArg
+        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @POPNULL
+    @ENDIF
+    @IF_NEQ_AV 0 Map
+        @Call(VV) HeapDeleteObject DiskHeap Map
+        @POPNULL
+    @ENDIF
+    @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+#-----------------------------------------
+# Append a single-block extent to ParentNum. ParentArg is updated in memory
+# and on disk. Returns the new continuation FileNum, or zero on failure.
+#-----------------------------------------
+@FUNCTION DiskAllocateExtent
+:DiskAllocateExtent
+@PUSHRETURN
+@Locals
+#USE FSFindFreeFile,FSSetFileUsed,FSClearFileUsed,FSWriteHeader,DirNewArgTable,DirWriteEntry,DiskFindFreeBlock,HeapDeleteObject
+    @Local ParentNum
+    @Local ParentArg
+    @Local Diskbuff
+    @Local NewNum
+    @Local NewBlock
+    @Local NewArg
+    @Local Result
+    @Local Flags
+
+    @POPI Diskbuff
+    @POPI ParentArg
+    @POPI ParentNum
+    @MA2V 0 NewArg
+    @MA2V 0 Result
+
+    @CALL FSFindFreeFile
+    @POPI NewNum
+    @IF_EQ_AV 0 NewNum
+        @JMP DAE_CLEANUP
+    @ENDIF
+    @CALL DiskFindFreeBlock
+    @POPI NewBlock
+    @IF_EQ_AV 0 NewBlock
+        @JMP DAE_CLEANUP
+    @ENDIF
+    @CALL DirNewArgTable
+    @IF_ZERO
+        @POPNULL
+        @JMP DAE_CLEANUP
+    @ENDIF
+    @POPI NewArg
+
+    @Call(V) FSSetFileUsed NewNum
+    @IF_ZERO
+        @POPNULL
+        @JMP DAE_CLEANUP
+    @ENDIF
+    @POPNULL
+    # Continuation entries are allocated slots but not visible files.
+    @DECI FSActiveFilesStore
+
+    @FILL_AT_A NewArg DIR_AT_FLAGS FLAG_INUSE
+    @FILL_AT_V NewArg DIR_AT_FILENUM NewNum
+    @FILL_AT_A NewArg DIR_AT_FILESIZE 0
+    @FILL_AT_A NewArg DIR_AT_FILESIZE+2 1
+    @FILL_AT_V NewArg DIR_AT_FIRSTBLOCK NewBlock
+    @FILL_AT_A NewArg DIR_AT_BLOCKCOUNT 1
+    @FILL_AT_A NewArg DIR_AT_RESERVE 0
+    @Call(VVV) DirWriteEntry NewNum NewArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @JMP DAE_ROLLBACK
+    @ENDIF
+    @POPNULL
+
+    @FILL_AT_V ParentArg DIR_AT_RESERVE NewNum
+    @Call(VVV) DirWriteEntry ParentNum ParentArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @JMP DAE_ROLLBACK
+    @ENDIF
+    @POPNULL
+    @CALL FSWriteHeader
+    @IF_ZERO
+        @POPNULL
+        @JMP DAE_ROLLBACK
+    @ENDIF
+    @POPNULL
+    @MV2V NewNum Result
+    @JMP DAE_CLEANUP
+
+:DAE_ROLLBACK
+    @FILL_AT_A ParentArg DIR_AT_RESERVE 0
+    @Call(VVV) DirWriteEntry ParentNum ParentArg Diskbuff
+    @POPNULL
+    @FILL_AT_A NewArg DIR_AT_FLAGS FLAG_DELETED
+    @FILL_AT_A NewArg DIR_AT_RESERVE 0
+    @Call(VVV) DirWriteEntry NewNum NewArg Diskbuff
+    @POPNULL
+    @Call(V) FSClearFileUsed NewNum
+    @POPNULL
+    @INCI FSActiveFilesStore
+    @CALL FSWriteHeader
+    @POPNULL
+
+:DAE_CLEANUP
+    @IF_NEQ_AV 0 NewArg
+        @Call(VV) HeapDeleteObject DiskHeap NewArg
+        @POPNULL
+    @ENDIF
+    @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+#-----------------------------------------
+# Locate the extent covering BlockOffset, appending one-block continuations
+# as needed. WorkArg is overwritten with the located directory entry.
+#-----------------------------------------
+@FUNCTION DiskLocateWriteExtent
+:DiskLocateWriteExtent
+@PUSHRETURN
+@Locals
+#USE DirReadEntry,DiskAllocateExtent
+    @Local FilePtr
+    @Local BlockOffset
+    @Local BlockOffsetPtr
+    @Local WorkArg
+    @Local Diskbuff
+    @Local RootNum
+    @Local RootArg
+    @Local EntryNum
+    @Local BlockCount
+    @Local NextNum
+    @Local Hops
+    @Local Result
+
+    @POPI Diskbuff
+    @POPI WorkArg
+    @POPI BlockOffsetPtr
+    @POPI FilePtr
+    @MA2V 0 Result
+    @PUSHI FilePtr @ADD FPTR_FILENUM @PUSHS
+    @POPI RootNum
+    @PUSHI FilePtr @ADD FPTR_ARGTABLE @PUSHS
+    @POPI RootArg
+    @PUSHII BlockOffsetPtr
+    @POPI BlockOffset
+    @MV2V RootNum EntryNum
+    @MA2V 0 Hops
+
+:DLWE_LOOP
+    @PUSHI Hops
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @JMP DLWE_EXIT
+    @ENDIF
+    @POPNULL
+    @Call(VVV) DirReadEntry EntryNum WorkArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @JMP DLWE_EXIT
+    @ENDIF
+    @POPNULL
+    @INCI Hops
+    @GET_FROM WorkArg DIR_AT_FLAGS
+    @AND FLAG_INUSE
+    @IF_ZERO
+        @POPNULL
+        @JMP DLWE_EXIT
+    @ENDIF
+    @POPNULL
+    @GET_FROM WorkArg DIR_AT_FLAGS
+    @AND FLAG_DELETED
+    @IF_NOTZERO
+        @POPNULL
+        @JMP DLWE_EXIT
+    @ENDIF
+    @POPNULL
+    @GET_FROM WorkArg DIR_AT_BLOCKCOUNT
+    @POPI BlockCount
+    @IF_EQ_AV 0 BlockCount
+        @JMP DLWE_EXIT
+    @ENDIF
+    @PUSHI BlockOffset
+    @IF_ULT_V BlockCount
+        @POPNULL
+        @PUSHI BlockOffset
+        @PUSHI BlockOffsetPtr
+        @POPS
+        @MV2V EntryNum Result
+        @JMP DLWE_EXIT
+    @ENDIF
+    @POPNULL
+    @PUSHI BlockOffset
+    @SUBI BlockCount
+    @POPI BlockOffset
+    @PUSHI BlockOffset
+    @PUSHI BlockOffsetPtr
+    @POPS
+    @GET_FROM WorkArg DIR_AT_RESERVE
+    @POPI NextNum
+    @IF_NEQ_AV 0 NextNum
+        @PUSHI NextNum
+        @IF_UGE_A DIREntryCount
+            @POPNULL
+            @JMP DLWE_EXIT
+        @ENDIF
+        @POPNULL
+        @MV2V NextNum EntryNum
+        @JMP DLWE_LOOP
+    @ENDIF
+
+    # This is the chain tail. Allocate the next directory entry and block.
+    @Call(VVV) DiskAllocateExtent EntryNum WorkArg Diskbuff
+    @POPI NextNum
+    @IF_EQ_AV 0 NextNum
+        @JMP DLWE_EXIT
+    @ENDIF
+    @PUSHI EntryNum
+    @IF_EQ_V RootNum
+        @POPNULL
+        @GET_FROM WorkArg DIR_AT_RESERVE
+        @PUSHI RootArg @ADD DIR_AT_RESERVE
+        @POPS
+    @ELSE
+        @POPNULL
+    @ENDIF
+    @MV2V NextNum EntryNum
+    @JMP DLWE_LOOP
+
+:DLWE_EXIT
+    @PUSHI Result
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+#-----------------------------------------
 # DiskFileWrite(FilePtr, MemPtr, ByteCount)
-# Writes data to file at current cursor.
+# Writes across linked extents, creating continuations when needed.
 #-----------------------------------------
 @FUNCTION DiskFileWrite
 :DiskFileWrite
 @PUSHRETURN
 @Locals
-#USE DiskWriteBlock
+#USE DiskWriteBlock,DiskNewBuffer,DirNewArgTable,HeapDeleteObject,DiskLocateWriteExtent
     @Local FilePtr
     @Local MemPtr
     @Local ByteCount
-    @Local Mode
-    @Local Cursor
-    @Local CursorHW    # 32-but uses 05-06
-    @Local FileSize    # 32-bit (uses 07,08)
-    @Local FileSizeHW    # Need to name 08 but don't have to use the name.
-    @Local SectorBase
+    @Local CursorLow
+    @Local CursorHigh
+    @Local FileSizeLow
+    @Local FileSizeHigh
     @Local Sector
     @Local StartOffset
     @Local Diskbuff
-    @Local MaxWrite
+    @Local WorkArg
+    @Local ExtentNum
+    @Local BlockOffset
+    @Local BlockCount
+    @Local ChunkCount
+    @Local ActualCount
+    @Local WriteTotal
+
     @POPI ByteCount
     @POPI MemPtr
     @POPI FilePtr
+    @MA2V 0 WriteTotal
+    @MA2V 0 Diskbuff
+    @MA2V 0 WorkArg
+
+    @IF_EQ_AV 0 FilePtr
+        @JMP DFW_CLEANUP
+    @ENDIF
 
     #-------------------------------------------------
     # Validate WRITE permission
@@ -1233,8 +1681,7 @@ G LINE_EOF
     @IF_ZERO
         @POPNULL
         @PRT "ERR:!W"
-        @PUSH 0
-        @JMP DFW_EXIT
+        @JMP DFW_CLEANUP
     @ENDIF
     @POPNULL
 
@@ -1242,96 +1689,394 @@ G LINE_EOF
     # Load cursor and filesize
     #-------------------------------------------------
     @PUSHI FilePtr @ADD FPTR_CURSOR @PUSHS
-    @POPI Cursor
-
+    @POPI CursorLow
+    @PUSHI FilePtr @ADD FPTR_CURSOR+2 @PUSHS
+    @POPI CursorHigh
     @PUSHI FilePtr @ADD FPTR_FILESIZE @PUSHS
-    @POPI FileSize
+    @POPI FileSizeLow
     @PUSHI FilePtr @ADD FPTR_FILESIZE+2 @PUSHS
-    @POPI FileSize+2
-
-    #-------------------------------------------------
-    # Enforce 64KB single-block limit
-    #-------------------------------------------------
-    @PUSH 0xffff
-    @SUBI Cursor
-    @POPI MaxWrite
-
-    @PUSHI ByteCount
-    @IF_UGT_V MaxWrite
-        @POPNULL
-        @MA2V MaxWrite ByteCount
-    @ENDIF
-    @POPNULL
+    @POPI FileSizeHigh
 
     @IF_EQ_AV 0 ByteCount
-        @PUSH 0
-        @JMP DFW_EXIT
+        @JMP DFW_CLEANUP
     @ENDIF
-
-    #-------------------------------------------------
-    # Compute sector and offset
-    #-------------------------------------------------
-    @PUSHI Cursor
-    @SHRN 9
-    @POPI Sector
-
-    @PUSHI Cursor
-    @AND 0x1FF
-    @POPI StartOffset
-
-    @PUSHI FilePtr @ADD FPTR_FIRST_SECTOR @PUSHS
-    @ADDI Sector
-    @POPI Sector
-
-    #-------------------------------------------------
-    # Allocate disk buffer
-    #-------------------------------------------------
     @CALL DiskNewBuffer
     @IF_ZERO
-       @POPNULL
-       @PRTS MEMERRMSG
-       @JMP DFW_EXIT       
+        @POPNULL
+        @JMP DFW_CLEANUP
     @ENDIF
     @POPI Diskbuff
+    @CALL DirNewArgTable
+    @IF_ZERO
+        @POPNULL
+        @JMP DFW_CLEANUP
+    @ENDIF
+    @POPI WorkArg
 
-    #-------------------------------------------------
-    # Perform write
-    #-------------------------------------------------
-    @PUSHI Sector       # Do to limit of Macros, have to manually push arguments > 4
-    @Call(VVVV) DiskWriteBlock MemPtr ByteCount StartOffset Diskbuff
+:DFW_WRITE_LOOP
+    @IF_EQ_AV 0 ByteCount
+        @JMP DFW_CLEANUP
+    @ENDIF
+    @MV2V CursorHigh BlockOffset
+    @PUSHI FilePtr
+    @PUSH BlockOffset
+    @PUSHI WorkArg
+    @PUSHI Diskbuff
+    @CALL DiskLocateWriteExtent
+    @POPI ExtentNum
+    @IF_EQ_AV 0 ExtentNum
+        @JMP DFW_CLEANUP
+    @ENDIF
+
+    @GET_FROM WorkArg DIR_AT_BLOCKCOUNT
+    @POPI BlockCount
+    @GET_FROM WorkArg DIR_AT_FIRSTBLOCK
+    @POPI Sector
+    @PUSHI Sector
+    @IF_ULT_A 4
+        @POPNULL
+        @JMP DFW_CLEANUP
+    @ENDIF
     @POPNULL
+    @PUSHI BlockCount
+    @SUBI BlockOffset
+    @POPI BlockCount
+    @MV2V ByteCount ChunkCount
+    @IF_EQ_AV 1 BlockCount
+        @IF_NEQ_AV 0 CursorLow
+            @PUSH 0
+            @SUBI CursorLow
+            @POPI ActualCount
+            @PUSHI ChunkCount
+            @IF_UGT_V ActualCount
+                @POPNULL
+                @MV2V ActualCount ChunkCount
+            @ELSE
+                @POPNULL
+            @ENDIF
+        @ENDIF
+    @ENDIF
 
+    @PUSHI Sector
+    @ADDI BlockOffset
+    @SHLN 7
+    @POPI Sector
+    @PUSHI CursorLow
+    @SHRN 9
+    @ADDI Sector
+    @POPI Sector
+    @PUSHI CursorLow
+    @AND 0x1ff
+    @POPI StartOffset
 
-    #-------------------------------------------------
-    # Free disk buffer
-    #-------------------------------------------------
-    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
-    @POPNULL
-    #-------------------------------------------------
-    # Update cursor
-    #-------------------------------------------------
-    @PUSHI Cursor
-    @ADDI ByteCount
-    @POPI Cursor
+    @PUSHI Sector
+    @Call(VVVV) DiskWriteBlock MemPtr ChunkCount StartOffset Diskbuff
+    @POPI ActualCount
+    @IF_EQ_AV 0 ActualCount
+        @JMP DFW_CLEANUP
+    @ENDIF
 
-    @PUSHI Cursor
+    @PUSHI WriteTotal
+    @ADDI ActualCount
+    @POPI WriteTotal
+    @PUSHI ByteCount
+    @SUBI ActualCount
+    @POPI ByteCount
+    @PUSHI MemPtr
+    @ADDI ActualCount
+    @POPI MemPtr
+    @PUSHI CursorLow
+    @ADDI ActualCount
+    @IF_CARRY
+        @POPI CursorLow
+        @INCI CursorHigh
+    @ELSE
+        @POPI CursorLow
+    @ENDIF
+
+    @PUSHI CursorLow
     @PUSHI FilePtr @ADD FPTR_CURSOR
     @POPS
-    #-------------------------------------------------
-    # Update filesize if extended
-    #-------------------------------------------------
-    @PUSHI Cursor
-    @IF_UGT_V FileSize
+    @PUSHI CursorHigh
+    @PUSHI FilePtr @ADD FPTR_CURSOR+2
+    @POPS
+    @PUSHI CursorHigh
+    @IF_UGT_V FileSizeHigh
         @POPNULL
-        @PUSHI Cursor
-        @PUSHI FilePtr @ADD FPTR_FILESIZE
-        @POPS
+        @JMP DFW_UPDATE_FILESIZE
+    @ENDIF
+    @POPNULL
+    @PUSHI CursorHigh
+    @IF_ULT_V FileSizeHigh
+        @POPNULL
+        @JMP DFW_NEXT_CHUNK
+    @ENDIF
+    @POPNULL
+    @PUSHI CursorLow
+    @IF_UGT_V FileSizeLow
+        @POPNULL
+        @JMP DFW_UPDATE_FILESIZE
+    @ENDIF
+    @POPNULL
+    @JMP DFW_NEXT_CHUNK
+
+:DFW_UPDATE_FILESIZE
+    @MV2V CursorLow FileSizeLow
+    @MV2V CursorHigh FileSizeHigh
+    @PUSHI CursorLow
+    @PUSHI FilePtr @ADD FPTR_FILESIZE
+    @POPS
+    @PUSHI CursorHigh
+    @PUSHI FilePtr @ADD FPTR_FILESIZE+2
+    @POPS
+
+:DFW_NEXT_CHUNK
+    @PUSHI ActualCount
+    @IF_ULT_V ChunkCount
+        @POPNULL
+        @JMP DFW_CLEANUP
+    @ENDIF
+    @POPNULL
+    @IF_EQ_AV 0 ByteCount
+        @JMP DFW_CLEANUP
+    @ENDIF
+    @JMP DFW_WRITE_LOOP
+
+:DFW_CLEANUP
+    @IF_NEQ_AV 0 Diskbuff
+        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @POPNULL
+    @ENDIF
+    @IF_NEQ_AV 0 WorkArg
+        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @POPNULL
+    @ENDIF
+    @PUSHI WriteTotal
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+#-----------------------------------------
+# Remove continuation extents and excess blocks beyond the capacity required
+# by the current logical file size. Keep at least the root's first block.
+#-----------------------------------------
+@FUNCTION DiskTrimExtents
+:DiskTrimExtents
+@PUSHRETURN
+@Locals
+#USE DirNewArgTable,DirReadEntry,DirWriteEntry,FSClearFileUsed,FSWriteHeader,HeapDeleteObject
+    @Local FilePtr
+    @Local RootArg
+    @Local Diskbuff
+    @Local WorkArg
+    @Local RootNum
+    @Local EntryNum
+    @Local NextNum
+    @Local KeepBlocks
+    @Local BlockCount
+    @Local SizeLow
+    @Local SizeHigh
+    @Local Flags
+    @Local Hops
+    @Local Changed
+    @Local Result
+
+    @POPI Diskbuff
+    @POPI RootArg
+    @POPI FilePtr
+    @MA2V 0 WorkArg
+    @MA2V 0 Changed
+    @MA2V 1 Result
+    @PUSHI FilePtr @ADD FPTR_FILENUM @PUSHS
+    @POPI RootNum
+    @PUSHI FilePtr @ADD FPTR_FILESIZE @PUSHS
+    @POPI SizeLow
+    @PUSHI FilePtr @ADD FPTR_FILESIZE+2 @PUSHS
+    @POPI SizeHigh
+    @MV2V SizeHigh KeepBlocks
+    @IF_NEQ_AV 0 SizeLow
+        @INCI KeepBlocks
+    @ENDIF
+    @IF_EQ_AV 0 KeepBlocks
+        @MA2V 1 KeepBlocks
+    @ENDIF
+    @CALL DirNewArgTable
+    @IF_ZERO
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_CLEANUP
+    @ENDIF
+    @POPI WorkArg
+    @MV2V RootNum EntryNum
+    @MA2V 0 Hops
+
+:DTE_FIND_KEEP
+    @PUSHI Hops
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_CLEANUP
+    @ENDIF
+    @POPNULL
+    @Call(VVV) DirReadEntry EntryNum WorkArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_CLEANUP
+    @ENDIF
+    @POPNULL
+    @INCI Hops
+    @GET_FROM WorkArg DIR_AT_BLOCKCOUNT
+    @POPI BlockCount
+    @IF_EQ_AV 0 BlockCount
+        @MA2V 0 Result
+        @JMP DTE_CLEANUP
+    @ENDIF
+    @PUSHI KeepBlocks
+    @IF_UGT_V BlockCount
+        @POPNULL
+        @PUSHI KeepBlocks
+        @SUBI BlockCount
+        @POPI KeepBlocks
+        @GET_FROM WorkArg DIR_AT_RESERVE
+        @POPI NextNum
+        @IF_EQ_AV 0 NextNum
+            @JMP DTE_CLEANUP
+        @ENDIF
+        @PUSHI NextNum
+        @IF_UGE_A DIREntryCount
+            @POPNULL
+            @MA2V 0 Result
+            @JMP DTE_CLEANUP
+        @ENDIF
+        @POPNULL
+        @MV2V NextNum EntryNum
+        @JMP DTE_FIND_KEEP
+    @ENDIF
+    @POPNULL
+
+    # Keep all or part of this extent; disconnect its old tail if present.
+    @GET_FROM WorkArg DIR_AT_RESERVE
+    @POPI NextNum
+    @PUSHI KeepBlocks
+    @IF_ULT_V BlockCount
+        @POPNULL
+        @FILL_AT_V WorkArg DIR_AT_BLOCKCOUNT KeepBlocks
+        @MA2V 1 Changed
     @ELSE
         @POPNULL
     @ENDIF
-    @PUSHI ByteCount
+    @IF_NEQ_AV 0 NextNum
+        @FILL_AT_A WorkArg DIR_AT_RESERVE 0
+        @MA2V 1 Changed
+    @ENDIF
+    @IF_NEQ_AV 0 Changed
+        @Call(VVV) DirWriteEntry EntryNum WorkArg Diskbuff
+        @IF_ZERO
+            @POPNULL
+            @MA2V 0 Result
+            @JMP DTE_CLEANUP
+        @ENDIF
+        @POPNULL
+        @PUSHI EntryNum
+        @IF_EQ_V RootNum
+            @POPNULL
+            @GET_FROM WorkArg DIR_AT_BLOCKCOUNT
+            @PUSHI RootArg @ADD DIR_AT_BLOCKCOUNT
+            @POPS
+            @GET_FROM WorkArg DIR_AT_RESERVE
+            @PUSHI RootArg @ADD DIR_AT_RESERVE
+            @POPS
+        @ELSE
+            @POPNULL
+        @ENDIF
+    @ENDIF
 
-:DFW_EXIT
+    # Mark each detached continuation as deleted and release its directory
+    # slot. Data blocks become reusable because allocation scans live entries.
+    @MA2V 0 Hops
+:DTE_FREE_TAIL
+    @IF_EQ_AV 0 NextNum
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @PUSHI Hops
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @POPNULL
+    @PUSHI NextNum
+    # Directory entry 0 is the filesystem header; entries 1-3 are valid
+    # file slots even though physical data blocks 1-3 are reserved.
+    @IF_ULT_A 1
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @POPNULL
+    @PUSHI NextNum
+    @IF_EQ_V RootNum
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @POPNULL
+    @PUSHI NextNum
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @POPNULL
+    @Call(VVV) DirReadEntry NextNum WorkArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @POPNULL
+    @INCI Hops
+    @GET_FROM WorkArg DIR_AT_RESERVE
+    @POPI EntryNum
+    @GET_FROM WorkArg DIR_AT_FLAGS
+    @AND 0xfffe
+    @OR FLAG_DELETED
+    @FILL_AT_S WorkArg DIR_AT_FLAGS
+    @FILL_AT_A WorkArg DIR_AT_RESERVE 0
+    @Call(VVV) DirWriteEntry NextNum WorkArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @MA2V 0 Result
+        @JMP DTE_WRITE_HEADER
+    @ENDIF
+    @POPNULL
+    @Call(V) FSClearFileUsed NextNum
+    @POPNULL
+    # FSClearFileUsed counts allocated slots; continuations are not visible
+    # files, so undo its visible-file counter decrement.
+    @INCI FSActiveFilesStore
+    @MV2V EntryNum NextNum
+    @JMP DTE_FREE_TAIL
+
+:DTE_WRITE_HEADER
+    @IF_NEQ_AV 0 Hops
+        @CALL FSWriteHeader
+        @IF_ZERO
+            @POPNULL
+            @MA2V 0 Result
+        @ELSE
+            @POPNULL
+        @ENDIF
+    @ENDIF
+
+:DTE_CLEANUP
+    @IF_NEQ_AV 0 WorkArg
+        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @POPNULL
+    @ENDIF
+    @PUSHI Result
 @EndLocals
 @POPRETURN
 @RET
@@ -1345,7 +2090,7 @@ G LINE_EOF
 :DiskClose
 @PUSHRETURN
 @Locals
-#USE DirWriteEntry
+#USE DirWriteEntry,DiskNewBuffer,DiskTrimExtents
     @Local FilePtr
     @Local Mode
     @Local FileNum
@@ -1382,11 +2127,18 @@ G LINE_EOF
 
         @CALL DiskNewBuffer
         @IF_ZERO
-            @PRTS MEMERRMSG
             @POPNULL
             @JMP DC_CLEANUP
         @ENDIF
         @POPI Diskbuff
+
+        @Call(VVV) DiskTrimExtents FilePtr ArgTable Diskbuff
+        @IF_ZERO
+            @POPNULL
+            @MA2V 0 Result
+            @JMP DC_CLEANUP
+        @ENDIF
+        @POPNULL
 
         # Recover FileNum.
         @GET_FROM FilePtr FPTR_FILENUM
@@ -1444,7 +2196,7 @@ G LINE_EOF
 #
 # ByteCount semantics:
 #   ByteCount > 0  : read up to ByteCount bytes
-#   ByteCount == -1: read until EOF (subject to limits)
+#   ByteCount == -1: request 65535 bytes (subject to EOF)
 #   ByteCount == 0 : read nothing
 #
 # The number of bytes actually read is returned.
@@ -1452,36 +2204,50 @@ G LINE_EOF
 # Notes:
 # * The file cursor is advanced by the number of bytes read.
 # * The file size is taken from the FilePtr, not the directory.
-# * A single call will never read more than 64KB.
-# * Callers must loop to read larger files.
+# * ByteCount is a 16-bit word, so one call reads at most 65535 bytes.
+# * A call may cross linked extents; callers loop for larger transfers.
 # * The file must be opened with FP_OPEN_READ.
 #
-# This interface is forward-compatible with multi-block
-# and extent-based files.
+# Extent lookup starts at the root directory entry for every chunk.
 # DiskFileRead(FilePtr, MemPtr, ByteCount)
 #---------------------------------------------------------
 @FUNCTION DiskFileRead
 :DiskFileRead
 @PUSHRETURN
 @Locals
-#USE DiskReadBlock
+#USE DirNewArgTable,DirReadEntry,DiskReadBlock,DiskNewBuffer,HeapDeleteObject
     @Local FilePtr
     @Local MemPtr
     @Local ByteCount
-    @Local Mode
-    @Local Cursor
-    @Local CursorHW
-    @Local FileSize        # 32-bit (07,08)
-    @Local FileSizeHW
-    @Local BytesLeft
-    @Local SectorBase
-    @Local SectorOff
+    @Local CursorLow
+    @Local CursorHigh
+    @Local FileSizeLow
+    @Local FileSizeHigh
+    @Local BytesLeftLow
+    @Local RemainingRequest
+    @Local ReadTotal
+    @Local ActualRead
+    @Local ChunkCount
+    @Local ExtentNum
+    @Local BlockOffset
+    @Local BlockCount
+    @Local HopCount
     @Local Sector
-    @Local StartOffset
     @Local Diskbuff
+    @Local WorkArg
+    @Local CursorLoaded
+
     @POPI ByteCount
     @POPI MemPtr
     @POPI FilePtr
+    @MA2V 0 ReadTotal
+    @MA2V 0 Diskbuff
+    @MA2V 0 WorkArg
+    @MA2V 0 CursorLoaded
+
+    @IF_EQ_AV 0 FilePtr
+        @JMP DFR_CLEANUP
+    @ENDIF
 
     #-------------------------------------------------
     # Validate READ permission
@@ -1491,118 +2257,289 @@ G LINE_EOF
     @IF_ZERO
         @POPNULL
         @PRT "ERR:!RD"
-        @PUSH 0
-        @JMP DFR_EXIT
+        @JMP DFR_CLEANUP
     @ENDIF
     @POPNULL
 
     #-------------------------------------------------
-    # Load cursor
+    # Load the 32-bit logical cursor and file size.
     #-------------------------------------------------
     @PUSHI FilePtr @ADD FPTR_CURSOR @PUSHS
-    @POPI Cursor
-
-    #-------------------------------------------------
-    # Load file size (32-bit)
-    #-------------------------------------------------
+    @POPI CursorLow
+    @PUSHI FilePtr @ADD FPTR_CURSOR+2 @PUSHS
+    @POPI CursorHigh
     @PUSHI FilePtr @ADD FPTR_FILESIZE @PUSHS
-    @POPI FileSize
+    @POPI FileSizeLow
     @PUSHI FilePtr @ADD FPTR_FILESIZE+2 @PUSHS
-    @POPI FileSizeHW
+    @POPI FileSizeHigh
+    @MA2V 1 CursorLoaded
 
-    #-------------------------------------------------
-    # EOF check
-    #-------------------------------------------------
-    @PUSHI Cursor
-    @IF_UGE_V FileSize
-        @POPNULL
-        @PUSH 0
-        @JMP DFR_EXIT
-    @ENDIF
-    @POPNULL
-
-    #-------------------------------------------------
-    # BytesLeft = FileSize - Cursor
-    #-------------------------------------------------
-    @PUSHI FileSize
-    @SUBI Cursor
-    @POPI BytesLeft
-
-    #-------------------------------------------------
-    # Handle ByteCount == -1 (read to EOF)
-    #-------------------------------------------------
-    @IF_EQ_AV -1 ByteCount
-        @MV2V BytesLeft ByteCount
-    @ENDIF
-
-    #-------------------------------------------------
-    # Clamp ByteCount to BytesLeft
-    #-------------------------------------------------
-    @PUSHI ByteCount
-    @IF_UGT_V BytesLeft
-        @POPNULL
-        @MA2V BytesLeft ByteCount
-    @ENDIF
-    @POPNULL
-
-    #-------------------------------------------------
-    # Fast exit if nothing to read
-    #-------------------------------------------------
+    # A zero-byte request is not an EOF probe.
     @IF_EQ_AV 0 ByteCount
-        @PUSH 0
-        @JMP DFR_EXIT
+        @JMP DFR_CLEANUP
     @ENDIF
 
     #-------------------------------------------------
-    # Compute sector offset and start offset
+    # EOF check: compare high words first, then low words.
     #-------------------------------------------------
-    @PUSHI Cursor
-    @SHRN 9
-    @POPI SectorOff
-
-    @PUSHI Cursor
-    @AND 0x1FF
-    @POPI StartOffset
-
-    @PUSHI FilePtr @ADD FPTR_FIRST_SECTOR @PUSHS
-    @ADDI SectorOff
-    @POPI Sector
+    @PUSHI CursorHigh
+    @IF_UGT_V FileSizeHigh
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+    @PUSHI CursorHigh
+    @IF_EQ_V FileSizeHigh
+        @POPNULL
+        @PUSHI CursorLow
+        @IF_UGE_V FileSizeLow
+            @POPNULL
+            @JMP DFR_CLEANUP
+        @ENDIF
+        @POPNULL
+    @ENDIF
+    @POPNULL
 
     #-------------------------------------------------
-    # Allocate disk buffer
+    # Clamp this word-sized request to the remaining 32-bit file length.
+    #-------------------------------------------------
+    @PUSHI FileSizeLow
+    @SUBI CursorLow
+    @IF_CARRY
+        @POPI BytesLeftLow
+        @PUSHI FileSizeHigh
+        @SUBI CursorHigh
+        @SUB 1
+        @POPI FileSizeHigh
+    @ELSE
+        @POPI BytesLeftLow
+        @PUSHI FileSizeHigh
+        @SUBI CursorHigh
+        @POPI FileSizeHigh
+    @ENDIF
+    @IF_EQ_AV 0 FileSizeHigh
+        @PUSHI ByteCount
+        @IF_UGT_V BytesLeftLow
+            @POPNULL
+            @MV2V BytesLeftLow ByteCount
+        @ELSE
+            @POPNULL
+        @ENDIF
+    @ENDIF
+
+    @IF_EQ_AV 0 ByteCount
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @MV2V ByteCount RemainingRequest
+
+    #-------------------------------------------------
+    # Allocate one directory-entry workspace and one sector buffer. Keep the
+    # open file's root ArgTable intact for DiskClose.
     #-------------------------------------------------
     @CALL DiskNewBuffer
+    @IF_ZERO
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
     @POPI Diskbuff
-    #-------------------------------------------------
-    # Read data block
-    #-------------------------------------------------
-    @PUSHI Sector              # Have to push Sector first as we don't have VVVVV Call
-    :Break01
-    @Call(VVVV) DiskReadBlock MemPtr ByteCount StartOffset Diskbuff
+    @CALL DirNewArgTable
+    @IF_ZERO
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPI WorkArg
+
+:DFR_FIND_EXTENT
+    # Re-walk from the root using 64-KiB block units. CursorHigh is the
+    # logical block offset; BlockOffset becomes the offset within this entry.
+    @PUSHI FilePtr @ADD FPTR_FILENUM @PUSHS
+    @POPI ExtentNum
+    @MV2V CursorHigh BlockOffset
+    @MA2V 0 HopCount
+
+:DFR_READ_EXTENT
+    # Bound traversal so a corrupt cycle cannot loop forever.
+    @PUSHI HopCount
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
     @POPNULL
-    #-------------------------------------------------
-    # Free disk buffer
-    #-------------------------------------------------
-    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+    @PUSHI ExtentNum
+    @IF_UGE_A DIREntryCount
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
     @POPNULL
 
-    #-------------------------------------------------
-    # Advance cursor
-    #-------------------------------------------------
-    @PUSHI Cursor
-    @ADDI ByteCount
-    @POPI Cursor
+    @Call(VVV) DirReadEntry ExtentNum WorkArg Diskbuff
+    @IF_ZERO
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+    @INCI HopCount
 
-    @PUSHI Cursor
-    @PUSHI FilePtr @ADD FPTR_CURSOR
-    @POPS
+    # Only live entries may contribute data to a visible file chain.
+    @GET_FROM WorkArg DIR_AT_FLAGS
+    @AND FLAG_INUSE
+    @IF_ZERO
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+    @GET_FROM WorkArg DIR_AT_FLAGS
+    @AND FLAG_DELETED
+    @IF_NOTZERO
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
 
-    #-------------------------------------------------
-    # Return bytes read
-    #-------------------------------------------------
-    @PUSHI ByteCount
+    @GET_FROM WorkArg DIR_AT_BLOCKCOUNT
+    @POPI BlockCount
+    @IF_EQ_AV 0 BlockCount
+        @JMP DFR_CLEANUP
+    @ENDIF
 
-:DFR_EXIT
+    # Skip complete extents until the cursor's 64-KiB block is reached.
+    @PUSHI BlockOffset
+    @IF_UGE_V BlockCount
+        @POPNULL
+        @PUSHI BlockOffset
+        @SUBI BlockCount
+        @POPI BlockOffset
+        @GET_FROM WorkArg DIR_AT_RESERVE
+        @POPI ExtentNum
+        @IF_EQ_AV 0 ExtentNum
+            # End of chain: return any bytes already read, never read FileNum 0.
+            @JMP DFR_CLEANUP
+        @ENDIF
+        @PUSHI ExtentNum
+        @IF_UGE_A DIREntryCount
+            @POPNULL
+            @JMP DFR_CLEANUP
+        @ENDIF
+        @POPNULL
+        @JMP DFR_READ_EXTENT
+    @ENDIF
+    @POPNULL
+
+    # Validate this contiguous block range against the disk geometry.
+    @GET_FROM WorkArg DIR_AT_FIRSTBLOCK
+    @POPI Sector
+    @PUSHI Sector
+    @IF_ULT_A 4
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+    @PUSHI BlockCount
+    @IF_UGT_A 512
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+    @PUSHI Sector
+    @ADDI BlockCount
+    @IF_UGT_A 512
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+
+    # This word-sized read can cross at most one extent boundary. Clip the
+    # first chunk to the current extent's final block when needed.
+    @PUSHI BlockCount
+    @SUBI BlockOffset
+    @POPI BlockCount
+    @MV2V RemainingRequest ChunkCount
+    @IF_EQ_AV 1 BlockCount
+        @IF_NEQ_AV 0 CursorLow
+            @PUSH 0
+            @SUBI CursorLow
+            @POPI ActualRead
+            @PUSHI ChunkCount
+            @IF_UGT_V ActualRead
+                @POPNULL
+                @MV2V ActualRead ChunkCount
+            @ELSE
+                @POPNULL
+            @ENDIF
+        @ENDIF
+    @ENDIF
+
+    # Sector = (first_block + block_offset) * 128 + cursor_low / 512.
+    @PUSHI Sector
+    @ADDI BlockOffset
+    @SHLN 7
+    @POPI Sector
+    @PUSHI CursorLow
+    @SHRN 9
+    @ADDI Sector
+    @POPI Sector
+    @PUSHI CursorLow
+    @AND 0x1ff
+    @POPI ActualRead
+
+    @PUSHI Sector
+    @Call(VVVV) DiskReadBlock MemPtr ChunkCount ActualRead Diskbuff
+    @POPI ActualRead
+    @IF_EQ_AV 0 ActualRead
+        @JMP DFR_CLEANUP
+    @ENDIF
+
+    # Keep the cursor and destination pointer in step with bytes actually read.
+    @PUSHI ReadTotal
+    @ADDI ActualRead
+    @POPI ReadTotal
+    @PUSHI RemainingRequest
+    @SUBI ActualRead
+    @POPI RemainingRequest
+    @PUSHI MemPtr
+    @ADDI ActualRead
+    @POPI MemPtr
+    @PUSHI CursorLow
+    @ADDI ActualRead
+    @IF_CARRY
+        @POPI CursorLow
+        @INCI CursorHigh
+    @ELSE
+        @POPI CursorLow
+    @ENDIF
+
+    # A short block read stops here; otherwise re-map the new cursor from the
+    # root if more bytes remain. At an exact final-block boundary the next
+    # pass checks the link and returns cleanly if there is no continuation.
+    @PUSHI ActualRead
+    @IF_ULT_V ChunkCount
+        @POPNULL
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @POPNULL
+    @IF_EQ_AV 0 RemainingRequest
+        @JMP DFR_CLEANUP
+    @ENDIF
+    @JMP DFR_FIND_EXTENT
+
+:DFR_CLEANUP
+    @IF_NEQ_AV 0 Diskbuff
+        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @POPNULL
+    @ENDIF
+    @IF_NEQ_AV 0 WorkArg
+        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @POPNULL
+    @ENDIF
+    @IF_EQ_AV 1 CursorLoaded
+        @PUSHI CursorLow
+        @PUSHI FilePtr @ADD FPTR_CURSOR
+        @POPS
+        @PUSHI CursorHigh
+        @PUSHI FilePtr @ADD FPTR_CURSOR+2
+        @POPS
+    @ENDIF
+    @PUSHI ReadTotal
 @EndLocals
 @POPRETURN
 @RET
@@ -1712,7 +2649,7 @@ G LINE_EOF
 :file_open
 @PUSHRETURN
 @Locals
-#USE FSFindFreeFile,DiskSetFileName,DiskOpen,DiskClose,FSSetFileUsed,FSWriteHeader
+#USE FSFindFile,FSFindFreeFile,DiskSetFileName,DiskOpen,DiskClose,FSSetFileUsed,FSWriteHeader
     @Local FileName
     @Local Mode
     @Local FileNum
@@ -1845,7 +2782,7 @@ G LINE_EOF
 :file_open_basic
 @PUSHRETURN
 @Locals
-#USE FSFindFreeFile,DiskSetFileName,DiskOpen,DiskClose,FSSetFileUsed,FSWriteHeader
+#USE FSFindFile,FSFindFreeFile,DiskSetFileName,DiskOpen,DiskClose,FSSetFileUsed,FSWriteHeader
     @Local FileName
     @Local Mode
     @Local FileNum
@@ -2199,14 +3136,21 @@ G LINE_EOF
 :FSReadHeader
 @PUSHRETURN
 @Locals
-#USE DiskReadSector
+#USE DiskReadSector,DiskNewBuffer
     @Local Diskbuff
     @Local _I
     @Local DISKNUM
     @POPI DISKNUM
     @MV2V DISKNUM FSDiskNumStore      # We keep this so WriteHeader does not require param.
 
-    @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
+    @CALL DiskNewBuffer
+    @IF_ZERO
+       @POPNULL
+       @MA2V 0 FSHeadValidStore
+       @MA2V -1 FSDiskNumStore
+       @PUSH 0
+       @JMP FSRH_Exit
+    @ENDIF
     @POPI Diskbuff
 
     @DISKSELI DISKNUM                 # Reading Disk Header is really the only time to select DISKID
@@ -2257,7 +3201,7 @@ G LINE_EOF
 :FSWriteHeader
 @PUSHRETURN
 @Locals
-#USE DiskReadSector,DiskWriteSector
+#USE DiskReadSector,DiskWriteSector,DiskNewBuffer
     @Local Diskbuff
     @Local _I
     @Local TestVal
@@ -2275,7 +3219,12 @@ G LINE_EOF
     @ENDIF
     # Now test to make sure Disk wasn't swapped.
     @DISKSELI FSDiskNumStore
-    @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
+    @CALL DiskNewBuffer
+    @IF_ZERO
+       @POPNULL
+       @PUSH 0
+       @JMP FSW_Return
+    @ENDIF
     @POPI Diskbuff
     @Call(AV) DiskReadSector 0 Diskbuff
     #
@@ -2318,6 +3267,7 @@ G LINE_EOF
     # Always delete Diskbuff
     @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO  @POPNULL @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
 
+    :FSW_Return
 @EndLocals
 @POPRETURN
 @RET
@@ -2337,7 +3287,7 @@ G LINE_EOF
    @Local Mask
 
    @AND 0x1ff       # Make sure FileNum in valid range.
-   @IF_UGE_A 4
+   @IF_UGE_A 1
       @POPI FileNum
 
 
@@ -2361,7 +3311,7 @@ G LINE_EOF
       # Else is already zero
       @ENDIF
    @ELSE
-      @PUSH 0             # send if FileNum <4
+      @PUSH 0             # FileNum 0 is reserved for the FS header.
    @ENDIF
 @EndLocals
 @POPRETURN
@@ -2381,7 +3331,7 @@ G LINE_EOF
    @Local Mask
 
    @AND 0x1ff       # Make sure FileNum in valid range.
-   @IF_UGE_A 4
+   @IF_UGE_A 1
       @POPI FileNum
 
       @PUSHI FileNum @SHRN 4 @SHLN 1  # We need both do align with words
@@ -2433,7 +3383,7 @@ G LINE_EOF
    @Local Mask
 
    @AND 0x1ff       # Make sure FileNum in valid range.
-   @IF_UGE_A 4
+   @IF_UGE_A 1
       @POPI FileNum
 
       @PUSHI FileNum @SHRN 4 @SHLN 1  # We need both do align with words
@@ -2483,7 +3433,7 @@ G LINE_EOF
 #USE FSIsFileUsed
     @Local _I
 
-    @MA2V 4 _I
+    @MA2V 1 _I
     @PUSHI _I
     @WHILE_ULT_A 512
        @POPNULL
@@ -2569,12 +3519,13 @@ G LINE_EOF
     @PUSHI Diskbuff @ADD FSCreateTimeID+2
     @POPS
     #
-    @PUSH 4             # 4 covers the 4 reserved files.
+    @PUSH 0             # Visible files; directory entry 0 is only the header.
     @PUSHI Diskbuff @ADD FSActiveFilesID
     @POPS
     #
-    # First 4 blocks are reserved mark them as in use
-    @PUSH 0b1111
+    # Reserve the filesystem header directory entry only. Data blocks 1-3
+    # are reserved separately by DiskFindFreeBlock.
+    @PUSH 0b1
     @PUSHI Diskbuff @ADD FSFileBitMapID
     @POPS
     #
@@ -2599,9 +3550,9 @@ G LINE_EOF
 #USE FSIsFileUsed
     @Local _I
     @Local Word
-    @IF_ULT_A 4
+    @IF_ULT_A 1
         @POPNULL
-        @MA2V 4 _I
+        @MA2V 1 _I
     @ELSE
         @POPI _I
     @ENDIF
@@ -2655,7 +3606,7 @@ G LINE_EOF
 :FSFindFile
 @PUSHRETURN
 @Locals
-#USE DirNewArgTable,FSNextUsedFile,WildCardMatch
+#USE DirNewArgTable,FSNextUsedFile,WildCardMatch,DiskNewBuffer
     @Local Pattern
     @Local StartPoint
     @Local FileNum
@@ -2666,17 +3617,29 @@ G LINE_EOF
     @POPI Pattern
 
     # Allocate working buffers
+    @MA2V 0 Diskbuff
+    @MA2V 0 ArgTable
     @CALL DiskNewBuffer
+    @IF_ZERO
+        @POPNULL
+        @PUSH 0
+        @JMP FSFF_Exit
+    @ENDIF
     @POPI Diskbuff
 
-    @CALL DirNewArgTable @IF_ZERO @PRTS MEMERRMSG @END @ENDIF
+    @CALL DirNewArgTable
+    @IF_ZERO
+        @POPNULL
+        @PUSH 0
+        @JMP FSFF_Exit
+    @ENDIF
     @POPI ArgTable
 
-    # Start at max(StartPoint, 4)
+    # Start at max(StartPoint, 1); directory entry 0 holds the FS header.
     @PUSHI StartPoint
-    @IF_ULT_A 4
+    @IF_ULT_A 1
         @POPNULL
-        @PUSH 4
+        @PUSH 1
     @ENDIF
     @POPI FileNum
 
@@ -2718,10 +3681,14 @@ G LINE_EOF
 
 :FSFF_Exit
     # Cleanup
-    @Call(VV) HeapDeleteObject DiskHeap Diskbuff
-    @POPNULL
-    @Call(VV) HeapDeleteObject DiskHeap ArgTable
-    @POPNULL
+    @IF_NEQ_AV 0 Diskbuff
+        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @POPNULL
+    @ENDIF
+    @IF_NEQ_AV 0 ArgTable
+        @Call(VV) HeapDeleteObject DiskHeap ArgTable
+        @POPNULL
+    @ENDIF
 
 @EndLocals
 @POPRETURN

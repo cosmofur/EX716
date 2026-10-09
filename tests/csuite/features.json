@@ -874,10 +874,10 @@
       "title": "fopen",
       "acceptance": [
         "r/rb,w/wb,a/ab,r+,w+,a+; missing file, create, truncate, append each write, invalid mode and allocation failure.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "The compiler-side lcc/tests/file_roundtrip.py fixture covers a baseline path; keep this entry planned until the listed mode and failure vectors are asserted."
       ],
       "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "reason": "An isolated disk round-trip runner is available; this feature's full acceptance vectors remain uncertified."
     },
     {
       "id": "IO-fclose",
@@ -885,10 +885,10 @@
       "title": "fclose",
       "acceptance": [
         "Commit final size, release every handle/buffer, return 0/EOF, flush failure; repeated opens must not leak.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "The compiler-side lcc/tests/file_roundtrip.py fixture covers successful close; keep this entry planned until ownership, persistence, and failure vectors are asserted."
       ],
       "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "reason": "An isolated disk round-trip runner is available; this feature's full acceptance vectors remain uncertified."
     },
     {
       "id": "IO-fread",
@@ -896,10 +896,10 @@
       "title": "fread",
       "acceptance": [
         "Return complete element count; size/count zero; partial final element; NUL/0xff binary payload; multiplication overflow.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "The compiler-side lcc/tests/file_roundtrip.py fixture checks a complete binary element; keep this entry planned until partial, zero-size, and boundary vectors are asserted."
       ],
       "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "reason": "An isolated disk round-trip runner is available; this feature's full acceptance vectors remain uncertified."
     },
     {
       "id": "IO-fwrite",
@@ -907,10 +907,10 @@
       "title": "fwrite",
       "acceptance": [
         "Return complete element count; short/error writes; read-only stream; sector crossings and 65535/65536 boundary.",
-        "Add public-header C probe plus isolated disk/va_list fixture under this ID; no PASS before runtime semantics are asserted."
+        "The compiler-side lcc/tests/file_roundtrip.py fixture checks a complete binary element; keep this entry planned until short-write and boundary vectors are asserted."
       ],
       "kind": "planned",
-      "reason": "No executable semantic fixture yet; C stdio/header/ABI adapters are absent in inspected tree."
+      "reason": "An isolated disk round-trip runner is available; this feature's full acceptance vectors remain uncertified."
     },
     {
       "id": "IO-fseek",

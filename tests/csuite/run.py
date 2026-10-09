@@ -31,11 +31,12 @@ def run_case(source: Path, compiler: Path, timeout: float) -> tuple[bool, str]:
     harness = "\n".join(
         [
             "I common.mc",
-            "@JMP Main",
+            "@JMP __csuite_entry",
             "L clocals.ld",
             "L lmath.ld",
             compile_result.stdout,
-            ":Main",
+            ":__csuite_entry",
+            ".ENTRY __csuite_entry",
             '@PRT "EX716_TEST_RESULT="',
             "@CALL main",
             "@PRTTOP",

@@ -158,7 +158,7 @@ packet in `c-readiness.md`. Complete one bounded change before taking the next.
 | 7 | R08 current combiner profile implemented; R11 foundations; R10 accepted | `LANG-032/033` pass with automatically namespaced private symbols and unchanged external names. `SYS-002` remains the production build/combiner fixture. Continue `HEADER-limits/errno`. R10 uses a default 4-KiB adjustable software stack with checked frame reservations (`LANG-028`, `SYS-004/005`). |
 | 8 | R07: variadic ABI — implemented for current acceptance subset | `LANG-026/027` and `HEADER-stdarg` pass all three modes. Caller-owned packet: 16-bit payload-byte count followed by promoted scalar/pointer items in argument order; a hidden descriptor pointer follows named parameters. Fixed calls keep their existing ABI. `stdarg.h` traverses with `va_start`/`va_arg`/`va_end`. Aggregates, floats, frames above the current 256-byte backend limit and multi-unit helper linkage remain unsupported/unverified; continue with IO-v* only after checking these boundaries. |
 | 9 | Console and formatting | HEADER-stdio, IO-putchar/getchar/puts/fputc/fgetc/fputs/fgets/fflush/feof/ferror/clearerr, then IO-printf/snprintf and v forms. Use a shared stream core and formatting engine. |
-| 10 | String/heap adapters and file I/O | LIB-*; IO-fopen/fclose/fread/fwrite, then positioning. Add isolated disk fixtures before certification. Translate DiskOS modes, errors and ownership. |
+| 10 | String/heap adapters and file I/O | Initial `fopen`/`fclose`/`fread`/`fwrite` adapters now map to DiskOS. Add isolated disk fixtures for semantic certification, then implement positioning. |
 | 11 | R09 complete for near code pointers; optional breadth remains | `LANG-014/025` pass: dense switches and indirect calls, including callbacks and variadic function pointers. Far calls remain outside the profile. Continue hosted I/O and optional R12 float/64-bit support. |
 
 The order is a dependency guide, not permission to combine everything in one
@@ -207,9 +207,10 @@ evidence that it is responsible.
 - **"Assembly memcpy/heap/DiskOS functions are standard C functions."** Names
   do not establish return values, argument cleanup, size types, stream state or
   failure behavior. Check each assembly contract and write an adapter.
-- **"DiskOS w+ means C w+."** Current DiskOS w+ starts at EOF; C mode handling
-  needs its own translation/truncation/update behavior. Close's success value
-  also differs. Some open-error paths terminate the emulator instead of returning.
+- **"DiskOS modes are standard C modes."** C stdio has its own mode
+  translation and explicitly truncates for `w`; DiskOS close's success value
+  also needs translation. Some open-error paths can print diagnostics, so
+  failure behavior needs fixture coverage.
 - **"Format or mount the project disk to test a fix."** Use only temporary
   DISK00.disk fixtures, explicit magic 0x3044, no extents and disjoint memory
   ranges. The runtime does not follow host extent chains.

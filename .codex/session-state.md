@@ -1,8 +1,170 @@
 # Session State
 
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
-## Current checkpoint: startup output cleanup and readiness reconciliation
+## Current CPU-only DiskOS extent write follow-up
+
+- Scope is EX716 CPU/emulator DiskOS only. Do not edit lcc or C stdio during
+  this task. User wants writes to allocate/link a continuation at the tail and
+  writable close after truncation to release stale continuation entries and
+  make their blocks reusable.
+- `lib/diskos.ld` implements physical-block scanning, one-block continuation
+  allocation, extent traversal for writes, and extent trimming from `DiskClose`.
+  File directory numbers 1-511 are valid; only header entry 0 is reserved.
+  Formatting initializes the visible-file count to zero and reserves bitmap
+  bit 0. Physical data blocks 1-3 remain reserved independently.
+- CPU24 boundary-write probe succeeded from a one-block file at byte 65,534:
+  close committed size 65,542, the root linked continuation entry 4 on block 5,
+  exported bytes at the boundary were `12345678`, and `ex716disk.py check`
+  reported no structural problems.
+- CPU24 truncation probe on a Python-created 65,537-byte file (root 1,
+  continuation 2) returned close success, set size to zero, retained the root's
+  first block, marked entry 2 deleted, and cleared its bitmap bit. A subsequent
+  boundary write reused entry 2 and block 5; the resulting image passed the
+  checker and exported the expected boundary bytes.
+- CPU24 no-space probe occupied every physical data block with valid extents.
+  An EOF write did not add a link or change the 65,536-byte root file; close
+  completed and the image checker still passed.
+- The first truncation run exposed a runtime mismatch: DiskOS treated file
+  numbers 1-3 as reserved because physical blocks 1-3 are reserved. Updating
+  `FSIsFileUsed`, `FSSetFileUsed`, `FSClearFileUsed`, `FSFindFreeFile`,
+  `FSNextUsedFile`, `FSFindFile`, and the trim guard aligned runtime bitmap
+  behavior with the Python filesystem examples.
+- Temporary probes are `/tmp/diskfile_write_extent.asm`,
+  `/tmp/diskopen_stack.asm`, and `/tmp/DISK00.disk`; the image is disposable.
+  Run the emulator from `/tmp` because it resolves `DISK00.disk` relative to
+  cwd; set `CPUPATH` to the repository `lib`.
+- Updated `docs/diskos-guide.md` and `filesys/README.md` for runtime extent
+  reads/writes, bitmap numbering, truncation, and block allocation. `git diff
+  --check` passed. The boundary data was verified after close by exporting the
+  image with the host tool; a CPU-level close/reopen/readback probe remains
+  useful follow-up coverage. No lcc/compiler or C stdio source was changed by
+  this CPU-only work.
+
+## Extent compatibility review
+
+- `filesys/ex716disk.py` stores each extent in its own directory entry. The
+  root entry owns the filename and total 32-bit size; `DIR_RESERVE[0:2]`
+  links to the next extent entry. Each entry independently names a contiguous
+  data-block range with `first_block` and `block_count`. Continuations are
+  allocated in the file-number bitmap but are not counted as visible files.
+- `DiskWriteBlock` and `DiskFileWrite` return the actual written byte count;
+  BASIC v2 compares it with the requested serialized length. Direct callers
+  must consume the result or discard it.
+- DiskOS read support now follows extent links and uses each entry's
+  `first_block`/`block_count`. `DiskOpen` initializes its first sector from
+  `DIR_FIRSTBLOCK`, so the root file number and first data block may differ.
+  `DiskFileRead` returns actual bytes, clips to the root's 32-bit file size,
+  returns zero for a positive request at EOF, and returns a partial count if a
+  chain ends before the stored size. It bounds traversal to 512 entries and
+  does not follow a zero link to directory entry 0.
+- Extent creation, writes across extents, and erase/undelete chain cleanup are
+  still pending. Hardware device failures remain a separate
+  emulator/interrupt project.
+- CPU24 validation used `/tmp/diskfile_read_extent.asm` and a Python-created
+  `DISK00.disk`: reads crossed contiguous and fragmented extents, a seek into
+  the second extent returned the expected data, the final byte returned 1,
+  the following read returned 0, unresolved symbols were zero, and the
+  hardware stack was empty. A malformed image whose size exceeded its chain
+  returned the available final byte and then zero without reading entry 0.
+  The image and assembly probe are temporary.
+- Updated `docs/diskos-guide.md` to describe the current read/write split and
+  16-bit per-call read count. No lcc/compiler or C stdio source was changed in
+  this DiskOS/CPU24 work.
+- Next: implement separate directory-slot/data-block allocation and linked
+  extent creation for writes; then update erase/undelete paths if runtime
+  parity with the Python tool is needed.
+- After the extent work, update `cpu.py`, `cpu24.py`, and the C fast emulator
+  backend to resolve `DISKnn.disk` under one shared OS environment variable
+  directory. Preserve current-working-directory lookup when unset for
+  backwards compatibility. Choose and document the variable name when this
+  follow-up starts.
+
+## Latest milestone: persistent ECC command lookup
+
+- The compiler driver is `bin/ECC`. The existing interactive Bash fragment
+  already added the EX716 repository root to `PATH`, but not its `bin`
+  directory. Updated `~/.bashrc.d/10-development.sh` to add
+  `$HOME/github/personal/EX716/bin`; this file is outside the repository.
+- Verified in a fresh interactive Bash that `command -v ECC` resolves to
+  `/home/backs1/github/personal/EX716/bin/ECC` and the script is executable.
+- The shell startup emitted existing WSL2 proxy warnings in this environment;
+  they did not prevent PATH setup or command lookup.
+
+## Current checkpoint: initial DiskOS-backed C stdio adapters
+
+- Restored from the user's 2026-10-06 handoff: lcc overlay commit `17565a9`
+  and EX716 runtime commit `fc8e4b8` are the paired compiler/runtime baseline.
+- EX716 HEAD remains `fc8e4b8`; runtime edits are in progress. `.cpu_history`
+  and pre-existing lcc generated outputs remain untracked.
+- `lib/stdio_format.c` now has initial unbuffered `fopen`, `fclose`, `fread`,
+  and `fwrite` adapters. C modes `r/w/a`, optional `+`, and optional `b` map to
+  DiskOS modes; `w` modes explicitly truncate and append writes reset the
+  DiskOS cursor to EOF. Existing byte/string stream functions accept file
+  streams. The opaque public `FILE` declaration remains unchanged.
+- `lib/c_runtime_stubs.ld` bridges the C ABI to DiskOS, including lazy setup
+  from `__EX716_HEAP_ID`, stream open/read/write/close and cursor helpers.
+  `../lcc/include/ex716/stdio.h` declares the four functions, and its packaged
+  EX716 overlay patch was updated.
+- `lib/diskos.ld` now treats `FP_OPEN_CREATE` as create-if-absent, so append
+  opens do not truncate existing files. `DiskClose` persists the explicit
+  zero size for C `w` modes.
+- Additional DiskOS hardening normalizes `DiskNewBuffer` and
+  `DirNewArgTable` allocation errors to zero, checks their allocations in
+  open/read/write/header/search paths, and makes failed `DiskFileRead` and
+  `DiskFileWrite` buffer allocations return zero without advancing the cursor.
+  `FSWriteHeader` also returns failure cleanly if its sector buffer cannot be
+  allocated.
+- Updated DiskOS/C I/O docs and kept `IO-fopen/fclose/fread/fwrite` planned
+  pending broader isolated-disk semantic coverage.
+- Added the compiler regression at `../lcc/tests/io_file_roundtrip.c` and its
+  CPU24-only runner at `../lcc/tests/file_roundtrip.py`; both are included in
+  the lcc overlay. The runner formats a temporary runtime-compatible disk,
+  compiles the stdio runtime and probe, checks the C result and hardware-stack
+  cleanup, checks the host image, and compares exported bytes. No test-specific
+  files were added to EX716.
+- First user run exposed six missing DiskOS functions because `D diskos.ld`
+  filters the library before the bridge-local `#USE` requests are seen.
+  Added top-level requests in `c_runtime_stubs.ld`; also added missing
+  `DirReadEntry` and `FSFindFile` dependency declarations in DiskOS. Assembly
+  now resolves all symbols.
+- A CPU24 trace narrowed the `DiskWriteBlock` crash to an unconditional
+  `@POPNULL` after the inner copy loop. The loop consumes its condition at the
+  top of each iteration; when `ByteCount` reaches zero, `@WHILEBREAK` skips
+  the next iteration's condition push, but the common cleanup still popped
+  one. CPU24 attributed the resulting underflow to the following
+  `DiskWriteSector` call. The break path now pushes `_I` so common cleanup is
+  balanced.
+- The single CPU24 file round-trip now passes: C result is zero, the hardware
+  stack is empty, the DiskOS image passes the host checker, and exported bytes
+  exactly match the binary fixture. Runner elapsed time was about five seconds.
+- `DiskWriteBlock` now returns the bounded byte count it copied, and
+  `DiskFileWrite` consumes that result for its return value and cursor update.
+  A repository-wide call-site audit found no other source caller: the BASIC
+  v1/v2 files only declare the global and now document that callers must
+  consume or discard the result. The sole implementation caller is
+  `DiskFileWrite`. No tests have been run for this change yet.
+- Audited BASIC SAVE callers too: v1 compares the returned `DiskFileWrite`
+  count with `StrLen` and discards it; v2 now compares with `OutLen` (the
+  requested serialized line length) instead of its previously uninitialized
+  `BufLen`, then discards the result. Direct `DiskWriteBlock` callers were not
+  found in BASIC sources.
+- The lcc runner is CPU24-only, shows phase progress, and prints complete
+  emulator output before reporting errors. Normal successful compiler debug
+  output is suppressed to avoid overwhelming the focused test.
+- DiskOS exposes `DiskOpen`, `DiskFileRead`, `DiskFileWrite`, and `DiskClose`.
+  `DiskClose` owns/frees the file pointer and its argtable. `wo` does not
+  truncate; `w+` creates and appends at EOF; `a+` creates and appends with
+  read/write access. The current runtime caps single-block files at 64 KiB.
+- Known follow-up: `file_open` does not make new-file creation and filesystem
+  header persistence transactional; a failed `FSWriteHeader` can leave the
+  in-memory and on-disk allocation state inconsistent. Disk-sector operations
+  can still terminate on device failure instead of reporting stdio errors.
+- Next: expand semantic coverage for file modes, partial reads/writes, and
+  allocation failures. Do not constrain C stream layout to the current DiskOS
+  size/cursor cap.
+
+## Prior checkpoint: startup output cleanup and readiness reconciliation
 
 - Removed temporary heap-size/object-ID output from generated `main` startup;
   runtime failures remain diagnostic, but successful startup is silent. The
@@ -459,3 +621,32 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
 - Next: grow coverage from the book's focused tests while filtering out
   floating point, host-width assumptions, hosted I/O, and over-segment memory
   until those target features are implemented.
+
+## WSL2 stable checkpoint for WSL1 review (2026-10-09)
+
+- WSL2 lcc raises the default EX716 frame limit from 256 bytes to the
+  16-bit addressable maximum (`0xfffe`), with subtraction-based overflow-safe
+  bounds checking. The EX716 lcc overlay carries the same change. The associated
+  compiler/runtime I/O work adds target `fopen`/`fclose`/`fread`/`fwrite`
+  adapters and a temporary-DiskOS binary round-trip fixture.
+- EX716 contains DiskOS extent allocation, write/close/truncation handling,
+  C stdio adapters, BASIC write-count fixes, and updated user/runtime docs.
+  The readiness manifest's three missing `reason` keys were repaired.
+- Validation: compiler rebuild was current; targeted 600-byte and 40,004-byte
+  frame probes verified normal execution and software-stack bounds errors;
+  `lcc/tests/file_roundtrip.py` passed with result 0, empty hardware stack,
+  valid image, and byte-for-byte payload match. The full three-mode readiness
+  audit reports 101 PASS, 5 FAIL, 8 MISSING, and 24 NOT_TESTED per CPU24 and
+  segmented mode; classic reports 9 PASS, 97 FAIL, 8 MISSING, and 24
+  NOT_TESTED. No baseline PASS regressed. Known audit gaps include float
+  semantics, `perror`/`scanf`/`sscanf`/`strtol`, absent standard headers, and
+  unimplemented planned features. Reports are in `/tmp/codex-frame-readiness-final.json`
+  and `/tmp/codex-frame-readiness-final-evidence/`.
+  The historical CPU24 C smoke runner now declares an explicit `.ENTRY`; it
+  passes 4/4. Without that directive, the emulator used a legacy address and
+  failed before entering `main`.
+- Generated compiler/test artifacts and `.cpu_history` remain untracked and
+  are intentionally excluded from the commits. The WSL1 snapshot was not
+  modified. WSL1 should review lcc commit `a0ff0f7` (frame limit and stdio
+  round-trip) against its stashed work notes, then reapply only after comparing
+  actual changes.

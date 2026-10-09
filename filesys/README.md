@@ -4,9 +4,9 @@
 
 > **Runtime compatibility:** `lib/diskos.ld` currently accepts magic `0x3044`,
 > while this tool's provisional format default is `0x0716`. Always pass
-> `--magic 0x3044` when formatting an image for the EX716 runtime. The tool can
-> create linked extents, but runtime DiskOS currently reads only one 64-KiB
-> block per file. See [the DiskOS guide](../docs/diskos-guide.md) for details.
+> `--magic 0x3044` when formatting an image for the EX716 runtime. Runtime
+> DiskOS follows linked extents for reads and writes. See
+> [the DiskOS guide](../docs/diskos-guide.md) for details.
 
 ## Commands
 
@@ -34,9 +34,10 @@ Mutating operations create `Disk01.disk.bak` unless `--no-backup` is used.
    explicit `--magic 0x3044` image.
 3. Timestamps are 32-bit Unix UTC timestamps.
 4. The first 16-bit word of `DIR_RESERVE` is treated as the next-extent
-   FileNum by this tool; current runtime DiskOS does not follow it.
+   FileNum by the host tool and runtime DiskOS.
 5. Bitmap bit numbering is least-significant-bit first.
-6. FileNum 0 is marked allocated in the filesystem bitmap.
+6. FileNum 0 is reserved for the filesystem header; valid file slots begin at
+   FileNum 1. Physical data blocks 1-3 remain reserved.
 7. The filesystem active-file count counts visible root files, not continuation
    extent entries.
 
@@ -65,4 +66,6 @@ Continuation entries contain:
 Imports allocate one 64-KiB block and one directory entry per extent. The
 reader and checker permit an extent to describe more than one contiguous block,
 so the format can later use larger contiguous runs without changing the chain
-logic.
+logic. Runtime DiskOS reads and writes these chains. Writes append one-block
+continuations as needed, and truncating a writable file makes detached entries
+available for later allocation.

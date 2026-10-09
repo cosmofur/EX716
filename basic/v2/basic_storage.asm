@@ -671,7 +671,6 @@ M ZeroOutVar @MA2V 0 %1
    @LocalVar FilePtr   05
    @LocalVar FileName  06
    @LocalVar LineNum   07
-   @LocalVar BufLen    08
    @LocalVar OutBufHead 09
 
    @IF_EQ_AV 1 NullProgram
@@ -714,7 +713,7 @@ M ZeroOutVar @MA2V 0 %1
       @PUSH "\n\0" @PUSHI OutBufHead @ADDI OutLen @POPS
       @INCI OutLen
       @Call(VVV) DiskFileWrite FilePtr OutBufHead OutLen
-      @IF_ULT_V BufLen
+      @IF_ULT_V OutLen
          @Call(AA) BasicRaiseError ERR_FILE_WRITE_FAIL 0
       @ENDIF
       @POPNULL      
@@ -734,7 +733,6 @@ M ZeroOutVar @MA2V 0 %1
    
    :SM_EXIT
    @RestoreVar 09
-   @RestoreVar 08
    @RestoreVar 07
    @RestoreVar 06
    @RestoreVar 05

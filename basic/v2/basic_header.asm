@@ -11,6 +11,7 @@ G DirNewArgTable
 G DirWriteEntry
 G DiskNewBuffer
 G DiskReadSector
+# DiskWriteBlock returns the byte count; callers must consume it or @POPNULL.
 G DiskWriteBlock
 G DiskWriteSector
 G ExecuteCommand

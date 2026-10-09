@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <termios.h>
 
 /* The terminal emulator exposes only these two mode bits. The initial state
@@ -439,19 +440,29 @@ int sprintf(char *destination, const char *format, ...) {
         return result;
 }
 
-/* The first stream layer is deliberately console-only and unbuffered.  The
-   opaque public FILE type is private here so DiskOS-backed streams can be
-   added without changing application code. */
+/* Streams are deliberately unbuffered. The public FILE type stays opaque;
+   console streams are static while DiskOS streams own a heap object. */
 struct __ex716_FILE {
         int kind;
         int eof;
         int error;
         int pushback;
+        int readable;
+        int writable;
+        int append;
+        void *disk_file;
 };
 
 #define __EX716_STREAM_INPUT  0
 #define __EX716_STREAM_OUTPUT 1
 #define __EX716_STREAM_ERROR  2
+#define __EX716_STREAM_DISK   3
+
+#define __EX716_MODE_RO 0x6f72
+#define __EX716_MODE_WO 0x6f77
+#define __EX716_MODE_RW 0x7772
+#define __EX716_MODE_WP 0x2b77
+#define __EX716_MODE_AP 0x2b61
 
 static FILE __ex716_stdin_object = {__EX716_STREAM_INPUT, 0, 0, -1};
 static FILE __ex716_stdout_object = {__EX716_STREAM_OUTPUT, 0, 0, -1};
@@ -461,6 +472,17 @@ FILE *stdout = &__ex716_stdout_object;
 FILE *stderr = &__ex716_stderr_object;
 
 extern int __EX716_INPUT_STATUS;
+extern int __EX716_DISK_INIT(void);
+extern void *__EX716_DISK_OPEN(const char *name, int mode);
+extern int __EX716_DISK_CLOSE(void *file);
+extern unsigned int __EX716_DISK_READ(void *file, void *buffer,
+                                      unsigned int count);
+extern unsigned int __EX716_DISK_WRITE(void *file, const void *buffer,
+                                       unsigned int count);
+extern int __EX716_DISK_TRUNCATE(void *file);
+extern int __EX716_DISK_REWIND(void *file);
+extern int __EX716_DISK_APPEND(void *file);
+static int __ex716_disk_ready;
 
 extern int __EX716_GETCHAR_RAW(void);
 
@@ -470,8 +492,11 @@ int getchar(void) {
 
 int fgetc(FILE *stream) {
         int character;
+        unsigned char byte;
 
-        if (!stream || stream->kind != __EX716_STREAM_INPUT) {
+        if (!stream || (stream->kind != __EX716_STREAM_INPUT &&
+                        (stream->kind != __EX716_STREAM_DISK ||
+                         !stream->readable))) {
                 if (stream) stream->error = 1;
                 return EOF;
         }
@@ -479,6 +504,13 @@ int fgetc(FILE *stream) {
                 character = stream->pushback;
                 stream->pushback = -1;
                 return character;
+        }
+        if (stream->kind == __EX716_STREAM_DISK) {
+                if (__EX716_DISK_READ(stream->disk_file, &byte, 1) != 1) {
+                        stream->eof = 1;
+                        return EOF;
+                }
+                return byte;
         }
         character = __EX716_GETCHAR_RAW();
         if (character == EOF) {
@@ -492,6 +524,22 @@ int fgetc(FILE *stream) {
 }
 
 int fputc(int character, FILE *stream) {
+        unsigned char byte;
+
+        if (stream && stream->kind == __EX716_STREAM_DISK) {
+                if (!stream->writable) {
+                        stream->error = 1;
+                        return EOF;
+                }
+                byte = (unsigned char)character;
+                if (stream->append)
+                        __EX716_DISK_APPEND(stream->disk_file);
+                if (__EX716_DISK_WRITE(stream->disk_file, &byte, 1) != 1) {
+                        stream->error = 1;
+                        return EOF;
+                }
+                return byte;
+        }
         if (!stream || (stream->kind != __EX716_STREAM_OUTPUT &&
                         stream->kind != __EX716_STREAM_ERROR)) {
                 if (stream) stream->error = 1;
@@ -518,7 +566,8 @@ int fputs(const char *string, FILE *stream) {
 
         if (!string || !stream ||
             (stream->kind != __EX716_STREAM_OUTPUT &&
-             stream->kind != __EX716_STREAM_ERROR)) {
+             stream->kind != __EX716_STREAM_ERROR &&
+             (stream->kind != __EX716_STREAM_DISK || !stream->writable))) {
                 if (stream) stream->error = 1;
                 return EOF;
         }
@@ -539,8 +588,9 @@ char *fgets(char *string, int count, FILE *stream) {
         int used;
 
         if (!string || count <= 0 || !stream ||
-            stream->kind != __EX716_STREAM_INPUT) {
-                if (stream && stream->kind != __EX716_STREAM_INPUT)
+            (stream->kind != __EX716_STREAM_INPUT &&
+             (stream->kind != __EX716_STREAM_DISK || !stream->readable))) {
+                if (stream)
                         stream->error = 1;
                 return NULL;
         }
@@ -575,7 +625,8 @@ void clearerr(FILE *stream) {
 
 int ungetc(int character, FILE *stream) {
         if (character == EOF || !stream ||
-            stream->kind != __EX716_STREAM_INPUT ||
+            (stream->kind != __EX716_STREAM_INPUT &&
+             (stream->kind != __EX716_STREAM_DISK || !stream->readable)) ||
             stream->pushback >= 0)
                 return EOF;
         stream->pushback = character & 0xff;
@@ -585,7 +636,156 @@ int ungetc(int character, FILE *stream) {
 
 int fflush(FILE *stream) {
         if (!stream || stream->kind == __EX716_STREAM_OUTPUT ||
-            stream->kind == __EX716_STREAM_ERROR)
+            stream->kind == __EX716_STREAM_ERROR ||
+            stream->kind == __EX716_STREAM_DISK)
                 return 0;
         return EOF;
+}
+
+static int __ex716_mode(const char *mode, int *disk_mode,
+                        int *readable, int *writable, int *append,
+                        int *truncate) {
+        int plus;
+        int binary;
+        int i;
+
+        if (!mode || !mode[0] ||
+            (mode[0] != 'r' && mode[0] != 'w' && mode[0] != 'a'))
+                return 0;
+        plus = 0;
+        binary = 0;
+        for (i = 1; mode[i]; ++i) {
+                if (mode[i] == '+' && !plus)
+                        plus = 1;
+                else if (mode[i] == 'b' && !binary)
+                        binary = 1;
+                else
+                        return 0;
+        }
+        *append = mode[0] == 'a';
+        *truncate = mode[0] == 'w';
+        *readable = mode[0] == 'r' || plus;
+        *writable = mode[0] != 'r' || plus;
+        if (mode[0] == 'r')
+                *disk_mode = plus ? __EX716_MODE_RW : __EX716_MODE_RO;
+        else if (mode[0] == 'w')
+                *disk_mode = plus ? __EX716_MODE_AP : __EX716_MODE_WO;
+        else
+                *disk_mode = plus ? __EX716_MODE_AP : __EX716_MODE_WP;
+        return 1;
+}
+
+FILE *fopen(const char *filename, const char *mode) {
+        FILE *stream;
+        void *disk_file;
+        int disk_mode;
+        int readable;
+        int writable;
+        int append;
+        int truncate;
+
+        if (!filename || !__ex716_mode(mode, &disk_mode, &readable,
+                                      &writable, &append, &truncate))
+                return NULL;
+        if (!__ex716_disk_ready) {
+                if (__EX716_DISK_INIT() != 1)
+                        return NULL;
+                __ex716_disk_ready = 1;
+        }
+        disk_file = __EX716_DISK_OPEN(filename, disk_mode);
+        if (!disk_file)
+                return NULL;
+        if (truncate) {
+                if (__EX716_DISK_TRUNCATE(disk_file) != 1) {
+                        __EX716_DISK_CLOSE(disk_file);
+                        return NULL;
+                }
+        } else if (append && readable) {
+                /* C a+ starts reading at the beginning but appends writes. */
+                if (__EX716_DISK_REWIND(disk_file) != 1) {
+                        __EX716_DISK_CLOSE(disk_file);
+                        return NULL;
+                }
+        }
+        stream = (FILE *)malloc(sizeof(*stream));
+        if (!stream) {
+                __EX716_DISK_CLOSE(disk_file);
+                return NULL;
+        }
+        stream->kind = __EX716_STREAM_DISK;
+        stream->eof = 0;
+        stream->error = 0;
+        stream->pushback = -1;
+        stream->readable = readable;
+        stream->writable = writable;
+        stream->append = append;
+        stream->disk_file = disk_file;
+        return stream;
+}
+
+int fclose(FILE *stream) {
+        int result;
+
+        if (!stream || stream->kind != __EX716_STREAM_DISK)
+                return EOF;
+        result = __EX716_DISK_CLOSE(stream->disk_file);
+        stream->disk_file = NULL;
+        free(stream);
+        return result == 1 ? 0 : EOF;
+}
+
+size_t fread(void *destination, size_t size, size_t count, FILE *stream) {
+        unsigned int requested;
+        unsigned int actual;
+        unsigned char *bytes;
+
+        if (!size || !count)
+                return 0;
+        if (!destination || !stream || stream->kind != __EX716_STREAM_DISK ||
+            !stream->readable) {
+                if (stream) stream->error = 1;
+                return 0;
+        }
+        if (count && size > ((size_t)-1) / count) {
+                stream->error = 1;
+                return 0;
+        }
+        requested = size * count;
+        bytes = (unsigned char *)destination;
+        actual = 0;
+        if (stream->pushback >= 0) {
+                bytes[actual++] = (unsigned char)stream->pushback;
+                stream->pushback = -1;
+        }
+        if (actual < requested)
+                actual += (unsigned int)__EX716_DISK_READ(
+                        stream->disk_file, bytes + actual, requested - actual);
+        if (actual < requested)
+                stream->eof = 1;
+        return actual / size;
+}
+
+size_t fwrite(const void *source, size_t size, size_t count, FILE *stream) {
+        unsigned int requested;
+        unsigned int actual;
+
+        if (!size || !count)
+                return 0;
+        if (!source || !stream || stream->kind != __EX716_STREAM_DISK ||
+            !stream->writable) {
+                if (stream) stream->error = 1;
+                return 0;
+        }
+        if (count && size > ((size_t)-1) / count) {
+                stream->error = 1;
+                return 0;
+        }
+        requested = size * count;
+        if (stream->append)
+                __EX716_DISK_APPEND(stream->disk_file);
+        actual = (unsigned int)__EX716_DISK_WRITE(
+                stream->disk_file, source, requested);
+        if (actual < requested)
+                stream->error = 1;
+        return actual / size;
 }
