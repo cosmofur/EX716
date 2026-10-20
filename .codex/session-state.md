@@ -1,5 +1,39 @@
 # Session State
 
+## Current snake.asm compatibility follow-up (2026-10-09)
+
+- User's existing change replaces the classic `. Main` entry syntax in
+  `tests/snake.asm` with `.ENTRY Main`. Classic `cpu.py` initially treated
+  `.ENTRY` as unresolved, so it now supports the directive with first-pass
+  label resolution, matching CPU24.
+- The user's debug trace then showed execution correctly reaching `Init`, but
+  faulting at `SWP` in its first keyboard polling loop. `POLLNOINPUT` expanded
+  to a stray leading argument token followed by the intended status expression.
+  Removed the same stray token from `POLLSTATUS` and `POLLBYTE` in
+  `lib/common.mc`.
+- Verified the `POLLNOINPUT` expansion is now just
+  `@PUSHI CHIN @SHR8 @SUB PollStatusNoInput`; assembly resolves all symbols.
+  Interactive emulator run passed initialization, entered the game, exercised
+  the `l` command and `ListData`, and exited normally.
+- Follow-up logic review removed the character/status debug prints, the
+  post-seed debug message, and the `l`/`ListData` display-overwriting dump.
+  Right/down movement now stops at the last valid screen coordinate; ring
+  buffer wrap checks include index 2048; `InBody` returns a boolean so a hit at
+  index 0 is detected. Food growth now holds the tail for the requested number
+  of moves instead of skipping head slots.
+- Reassembled with zero unresolved symbols and reran interactively: the prompt
+  and field were clean, four right moves rendered correctly, and `Q` exited
+  normally. The interactive run did not trigger a food pickup, so the new
+  growth counter was not exercised through gameplay. `git diff --check` passed.
+- Follow-up: raw terminal Enter can arrive as carriage return, while the seed
+  loop only compared against line feed. The second initialization wait now
+  normalizes `\r` to `\n`. Verified interactively with `S\r`, which cleared the
+  prompt and entered the game, then `Q` exited normally.
+- Modified files: `cpu.py`, `lib/common.mc`, `tests/snake.asm`, and
+  `.codex/session-state.md`.
+  Preserved the user's `tests/snake.asm` modification. `.cpu_history` is
+  generated and untracked.
+
 Last updated: 2026-10-08
 
 ## Current CPU-only DiskOS extent write follow-up

@@ -56,6 +56,7 @@ L heapmgr.ld
 @CALL WinClear
 @CALL WinHideCursor
 @MA2V 0 Score
+@MA2V 0 GrowthRemaining
 @MA2V 2 HeadIdx
 @MA2V 0 TailIdx
 #
@@ -70,7 +71,7 @@ L heapmgr.ld
 @SHR
 @PUSHI CHY
 @CALL WinCursor
-# Prompt the user to enter two characters 'any' and <enter>
+# Prompt for any key followed by Enter.
 # We'll use the human reaction time between these two to create a unique seed for random
 @PRT "Hit S<ENTER> to start:"  # We are cheating here by suggesting an 'S' But any will do
 @PUSH 0
@@ -79,7 +80,6 @@ L heapmgr.ld
   @POPNULL
   @INCI Rseed
   @READCNW CHIN
-  @PRTSI CHIN @PRTHEXI CHIN @PRTSP
   @PUSHI CHIN
   @ADDI Rseed
   @POPI Rseed
@@ -91,14 +91,18 @@ L heapmgr.ld
   @POPNULL
   @INC2I Rseed
   @READCNW CHIN
-  @PRTSI CHIN @PRTHEXI CHIN @PRTSP  
   @PUSHI CHIN @AND 0xff
+  @DUP
+  @IF_EQ_A "\r\0"
+     @POPNULL @POPNULL @PUSH "\n\0"
+  @ELSE
+     @POPNULL
+  @ENDIF
   @DUP  
   @ADDI Rseed
   @POPI Rseed 
 @ENDWHILE
 @POPNULL
-@PRT "After Random Seed"
 @PUSHI Rseed
 @CALL rndsetseed
 @CALL WinClear
@@ -111,6 +115,7 @@ L heapmgr.ld
 :PRX 0
 :PRY 0
 :RVal 0
+:GrowthRemaining 0
 :Rseed 0
 :CHIN  0 0
 :Continue 0
@@ -145,7 +150,8 @@ L heapmgr.ld
        @CASE "d\0"   # "d"
           @POPNULL
           @PUSHI CHX
-	  @IF_LT_V WinWidth
+          @ADD 1
+          @IF_LT_V WinWidth
 	     @INCI CHX
 	  @ENDIF
 	  @POPNULL
@@ -161,7 +167,8 @@ L heapmgr.ld
        @CASE "s\0"   # "s"
           @POPNULL
           @PUSHI CHY
-	  @IF_LT_V WinHeight
+          @ADD 1
+          @IF_LT_V WinHeight
 	    @INCI CHY
 	  @ENDIF
 	  @POPNULL
@@ -200,10 +207,6 @@ L heapmgr.ld
           @CALL WinCursor
           @PRTI "@"
           @CBREAK
-       @CASE "l\0"   # "l"
-          @POPNULL                                                 # 0
-          @CALL ListData
-          @CBREAK
        @CDEFAULT
           # Do nothing
 	  @POPNULL
@@ -211,10 +214,9 @@ L heapmgr.ld
     @ENDCASE
     @IF_EQ_VV CHX RFX
        @IF_EQ_VV CHY RFY
-          @ForIA2V Null 0 RVal
-             @CALL InsertHead
-             @INC2I HeadIdx
-	  @Next Null
+	  @PUSHI GrowthRemaining
+	  @ADDI RVal
+	  @POPI GrowthRemaining
 	  @PUSHI Score
 	  @ADDI RVal
 	  @POPI Score
@@ -240,13 +242,25 @@ L heapmgr.ld
    @ENDIF
 @ENDIF
 # Its a new location, deal with it.
-@PUSHI TailIdx @ADD SnakeData @PUSHS  # PUSH SnakeData[TailIdx]
-@IF_NOTZERO
-   @CALL SplitNum                        # Turn compressed XY into 2 numbers
-   @CALL WinCursor
-   @PRT " "
+@PUSHI GrowthRemaining
+@IF_ZERO
+   @POPNULL
+   @PUSHI TailIdx @ADD SnakeData @PUSHS  # PUSH SnakeData[TailIdx]
+   @IF_NOTZERO
+      @CALL SplitNum                        # Turn compressed XY into 2 numbers
+      @CALL WinCursor
+      @PRT " "
+   @ELSE
+      @POPNULL
+   @ENDIF
+   @PUSHI TailIdx @ADD 2
+   @IF_GE_V MaxLength
+      @POPNULL @PUSH 0
+   @ENDIF
+   @POPI TailIdx
 @ELSE
    @POPNULL
+   @DECI GrowthRemaining
 @ENDIF
 # Now reset the old data to zero
 #@PUSH 0
@@ -275,11 +289,6 @@ L heapmgr.ld
    @POPNULL @PUSH 0
 @ENDIF
 @POPI HeadIdx
-@PUSHI TailIdx @ADD 2
-@IF_GE_V MaxLength
-   @POPNULL @PUSH 0
-@ENDIF
-@POPI TailIdx
 #
 #
 @PUSHI CHX @PUSHI CHY @CALL PackNum  # Push compacted X,Y onto stack
@@ -317,13 +326,13 @@ L heapmgr.ld
 
 #
 # InBody takes a COMPXY number and searchs between head and tail for any matches
-# it returns the Index if there is one, or zero if none.
+# it returns nonzero if there is a match, or zero if none.
 :InBody
 @POPI IBReturn
 @POPI CMPVAL
 @ForIV2V IBIndex TailIdx HeadIdx
   @PUSHI IBIndex
-  @IF_GT_V MaxLength
+  @IF_GE_V MaxLength
      @POPNULL
      @PUSH 0
      @MA2V 0 IBIndex
@@ -332,7 +341,7 @@ L heapmgr.ld
   @PUSHS
   @IF_EQ_V CMPVAL
      @POPNULL
-     @PUSHI IBIndex
+     @PUSH 1
      @PUSHI IBReturn
      @RET
   @ENDIF
@@ -400,30 +409,5 @@ L heapmgr.ld
 # We'll only use the low bytes for the CX/Y and mask the high bytes
 . SnakeData+4096
 #
-# Just a debug listing of the tail data
-:ListData
-@PUSH 0 @PUSH 0 @CALL WinCursor                                # 0
-@PRT "Tail: " @PRTI TailIdx @PRT " To " @PRTI HeadIdx @PRT "    \n"      # 0
-@ForIV2V LDIndex TailIdx HeadIdx
-   @PUSHI LDIndex                                                # +1
-   @IF_GT_V MaxLength
-     @PRTLN "Hit Max reset to Zero"                           # 1
-     @POPNULL                                                 # 0
-     @PUSH 0                                                  # 1
-   @ENDIF
-     @POPI LDIndex                                                 # 0
-     @PUSHI LDIndex                                                # 1
-     @ADD SnakeData                                              # 1
-     @PUSHS                                                      # 1
-     @PRT "(" @PRTI LDIndex @PRT ") "
-     @PRT "CMPXY: " @PRTHEXTOP @PRTSP
-     @CALL SplitNum                                              # 2
-     @SWP                                                        # 2
-     @PRTHEXTOP @PRT "," @POPNULL                                # 1
-     @PRTHEXTOP @PRTNL @POPNULL                                  # 0
-@NextBy LDIndex 2
-@RET
-:LDIndex 0
-
 # Last '.' needs to identify the entry point of the program
-. Main
+.ENTRY Main

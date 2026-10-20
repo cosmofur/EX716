@@ -350,6 +350,7 @@ class AssemblerContext:
         self.StructStack = []
         self.UseRequested = set()
         self.KeepDynamicLibraries = False
+        self.QuietAssemblyOutput = False
         self.DynamicLibraryTempFiles = []
         
 
@@ -5124,7 +5125,8 @@ def execute_assembler_command(cmd, CPU, context):
         )
 
         dprint(DBG_MACRO, f"[P BRACE] {before_brace} -> {nline}")
-        safeprint(nline.strip())
+        if not context.QuietAssemblyOutput:
+            safeprint(nline.strip())
 
         return tail
     elif key == "MA":
@@ -6481,6 +6483,8 @@ def main():
             elif arg == "-g":
                 UseDebugger = True
                 DebugOut=sys.stdout
+            elif arg == "-q":
+                context.QuietAssemblyOutput = True
             elif arg == "-K":
                 context.KeepDynamicLibraries = True
             elif arg == "-f":
@@ -6510,7 +6514,7 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:

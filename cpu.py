@@ -166,6 +166,7 @@ COMMAND_SPEC = {
     "MA": {"arity":2,"arg_kind":["word"]},
     ".": {"arity":1,"arg_kind":["word"]},
     ".ORG": {"arity":1,"arg_kind":["word"]},
+    ".ENTRY": {"arity":1,"arg_kind":["word"]},
     ".DATA": {"arity":1,"arg_kind":["word"]},
     ":": {"arity":-1,"arg_kind":["word"]},
     "=": {"arity":-2,"arg_kind":["word","equation"]},
@@ -337,6 +338,7 @@ class AssemblerContext:
         self.StructStack = []
         self.UseRequested = set()
         self.KeepDynamicLibraries = False
+        self.QuietAssemblyOutput = False
         self.DynamicLibraryTempFiles = []
         
 
@@ -4761,6 +4763,27 @@ def execute_assembler_command(cmd, CPU, context):
         context.Entry = context.address
         return
 
+    elif key.upper() == ".ENTRY":
+        if not rest:
+            CPU.raiseerror(f"Missing target for .ENTRY {filename}:{context.FileLineNum}")
+
+        target, used = nextwordequation(rest)
+        trailing = rest[used:].lstrip()
+        if trailing:
+            CPU.raiseerror(
+                f"Unexpected trailing text after .ENTRY: {trailing!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+
+        expanded = expand_brace_refs(
+            target, filename, context, CPU, preserve_unresolved=False
+        )
+        value = DecodeStr(expanded, context.address, CPU, True, context)
+        if not isinstance(value, int):
+            CPU.raiseerror(f".ENTRY target must resolve on first pass: {target}")
+        context.Entry = Str2Word(value)
+        return
+
     elif key.upper() == ".DATA":
         if not rest:
             CPU.raiseerror(f"Missing address for .DATA {filename}:{context.FileLineNum}")
@@ -4887,7 +4910,8 @@ def execute_assembler_command(cmd, CPU, context):
         )
 
         dprint(DBG_MACRO, f"[P BRACE] {before_brace} -> {nline}")
-        safeprint(nline.strip())
+        if not context.QuietAssemblyOutput:
+            safeprint(nline.strip())
 
         return tail
     elif key == "MA":
@@ -6202,6 +6226,8 @@ def main():
             elif arg == "-g":
                 UseDebugger = True
                 DebugOut=sys.stdout
+            elif arg == "-q":
+                context.QuietAssemblyOutput = True
             elif arg == "-K":
                 context.KeepDynamicLibraries = True
             elif arg == "-f":
@@ -6231,7 +6257,7 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:

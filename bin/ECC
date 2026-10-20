@@ -18,6 +18,8 @@ Options:
   -D NAME[=VALUE]     Define a preprocessor symbol
   -U NAME             Undefine a preprocessor symbol
   -v                  Show the compiler commands
+  -q                  Suppress compiler output unless compilation fails
+                      and suggest quiet CPU24 assembly output when running
   -h, --help          Show this help
 USAGE
 }
@@ -29,6 +31,7 @@ cpp=${ECC_CPP:-"$lcc_root/build/cpp"}
 rcc=${ECC_RCC:-"$lcc_root/build/rcc"}
 target_include="$lcc_root/include/ex716"
 formatter="$ex716_root/lib/stdio_format.c"
+stdlib_runtime="$ex716_root/lib/stdlib_runtime.c"
 
 output=out.asm
 stack_size=4096
@@ -37,6 +40,7 @@ verbose=0
 debug_lines=0
 cpp_args=()
 sources=()
+quiet=0
 
 while (($#)); do
     case "$1" in
@@ -84,6 +88,10 @@ while (($#)); do
             cpp_args+=("$1")
             shift
             ;;
+        -q)
+            quiet=1
+            shift
+            ;;
         --)
             shift
             while (($#)); do sources+=("$1"); shift; done
@@ -111,12 +119,14 @@ done
 }
 [[ -d $target_include ]] || { echo "ECC: EX716 headers not found: $target_include" >&2; exit 1; }
 [[ -f $formatter ]] || { echo "ECC: formatter runtime not found: $formatter" >&2; exit 1; }
-command -v make >/dev/null 2>&1 || { echo "ECC: make is required to build lcc tools" >&2; exit 1; }
-# lcc tracks the generated lburg/gram.c alongside its grammar. Ignore its
-# timestamp for this build so a missing yacc does not prevent rebuilding rcc
-# from the checked-in generated parser; other compiler sources remain current.
-make -s -o lburg/gram.c -C "$lcc_root" BUILDDIR=build rcc cpp
-[[ -x $cpp && -x $rcc ]] || { echo "ECC: lcc tool build did not produce cpp and rcc" >&2; exit 1; }
+[[ -f $stdlib_runtime ]] || { echo "ECC: stdlib runtime not found: $stdlib_runtime" >&2; exit 1; }
+[[ -x $cpp && -x $rcc ]] || {
+    echo "ECC: prebuilt lcc tools not found or not executable:" >&2
+    echo "  cpp: $cpp" >&2
+    echo "  rcc: $rcc" >&2
+    echo "Build them once with: make -o lburg/gram.c BUILDDIR=build cpp rcc (in $lcc_root)" >&2
+    exit 1
+}
 
 out_dir=$(dirname -- "$output")
 out_name=$(basename -- "$output")
@@ -134,6 +144,31 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+compiler_log="$tmp_dir/compiler.log"
+run_compiler() {
+    local status
+    local log_file=$1
+    shift
+    if "$@" 2>"$log_file"; then
+        if ((!quiet)); then cat "$log_file" >&2; fi
+    else
+        status=$?
+        if ((quiet)); then
+            sed -E \
+                -e '/^=== EX716 gen\(/,/^=== END EX716 gen ===/d' \
+                -e '/^EX716: function\(/d' \
+                -e '/^EX716: local symbol=/d' \
+                -e '/^EX716: assignment /d' \
+                -e '/^EX716: emit\(/d' \
+                -e '/^  arg\[[0-9]+\]:/d' \
+                "$log_file" >&2
+        else
+            cat "$log_file" >&2
+        fi
+        return "$status"
+    fi
+}
 
 rcc_args=(-target=ex716 "-stack-size=$stack_size")
 if ((debug_lines)); then
@@ -153,14 +188,25 @@ for source in "${sources[@]}"; do
     assembly="$tmp_dir/unit$index.asm"
     command=("$cpp" -N -D__EX716__=1 "-I$target_include" "-I$source_dir"
              "${cpp_args[@]}" "$source_path")
-    if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
-    "${command[@]}" > "$preprocessed"
+    if ((verbose && !quiet)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+    run_compiler "$compiler_log" "${command[@]}" > "$preprocessed"
     command=("$rcc" "${rcc_args[@]}" "$preprocessed")
-    if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
-    "${command[@]}" > "$assembly"
+    if ((verbose && !quiet)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+    run_compiler "$compiler_log" "${command[@]}" > "$assembly"
     asm_files+=("$assembly")
     ((index += 1))
 done
+
+# Compile the standard-library runtime independently of stdio.
+preprocessed="$tmp_dir/stdlib_runtime.i"
+assembly="$tmp_dir/stdlib_runtime.asm"
+command=("$cpp" -N -D__EX716__=1 "-I$target_include" "$stdlib_runtime")
+if ((verbose && !quiet)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+run_compiler "$compiler_log" "${command[@]}" > "$preprocessed"
+command=("$rcc" "${rcc_args[@]}" "$preprocessed")
+if ((verbose && !quiet)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+run_compiler "$compiler_log" "${command[@]}" > "$assembly"
+asm_files+=("$assembly")
 
 if ((include_stdio)); then
     # Compile the stdio runtime as a private unit so console I/O and formatting
@@ -168,11 +214,11 @@ if ((include_stdio)); then
     preprocessed="$tmp_dir/stdio_format.i"
     assembly="$tmp_dir/stdio_format.asm"
     command=("$cpp" -N -D__EX716__=1 "-I$target_include" "$formatter")
-    if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
-    "${command[@]}" > "$preprocessed"
+    if ((verbose && !quiet)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+    run_compiler "$compiler_log" "${command[@]}" > "$preprocessed"
     command=("$rcc" "${rcc_args[@]}" "$preprocessed")
-    if ((verbose)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
-    "${command[@]}" > "$assembly"
+    if ((verbose && !quiet)); then printf ' '; printf '%q ' "${command[@]}"; printf '\n' >&2; fi
+    run_compiler "$compiler_log" "${command[@]}" > "$assembly"
     asm_files+=("$assembly")
 fi
 
@@ -202,5 +248,9 @@ ASSEMBLY
 chmod 644 "$tmp_output"
 mv -f -- "$tmp_output" "$output"
 printf 'ECC: wrote %s\n' "$output"
-printf 'ECC: assemble/run with CPUPATH=%q python3 %q %q\n' \
-       "$ex716_root/lib" "$ex716_root/cpu24.py" "$output"
+printf 'ECC: assemble/run with CPUPATH=%q ' "$ex716_root/lib"
+cpu_command=(python3 "$ex716_root/cpu24.py")
+if ((quiet)); then cpu_command+=(-q); fi
+cpu_command+=("$output")
+printf '%q ' "${cpu_command[@]}"
+printf '\n'

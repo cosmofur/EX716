@@ -9,7 +9,7 @@ L string.ld
 # their transitive DiskOS dependencies are retained in the filtered library.
 #USE SetDiskHeap,FSReadHeader,file_open,DiskClose,DiskFileRead,DiskFileWrite
 D diskos.ld
-G malloc G free G memset G putchar G __EX716_GETCHAR_RAW G __EX716_INPUT_STATUS
+G malloc G free G exit G memset G putchar G __EX716_GETCHAR_RAW G __EX716_INPUT_STATUS
 G __EX716_TTY_RAW G __EX716_TTY_COOKED G __EX716_TTY_ECHO G __EX716_TTY_NOECHO
 G __EX716_DISK_INIT G __EX716_DISK_OPEN G __EX716_DISK_CLOSE
 G __EX716_DISK_READ G __EX716_DISK_WRITE G __EX716_DISK_TRUNCATE
@@ -475,4 +475,10 @@ ENDBLOCK
    @EndLocals
 @POPRETURN
 @RET
+@ENDFUNCTION
+
+@FUNCTION exit
+:exit
+@PUSHRETURN
+   @END
 @ENDFUNCTION

@@ -1227,7 +1227,10 @@
       "acceptance": [
         "Target ABI wrapper, normal result; add allocation exhaustion or ERANGE edge vectors respectively."
       ],
-      "source": "#include <stdlib.h>\nint main(void){char *e;long n;n=strtol(\"-123x\",&e,10);return n!=-123L||*e!='x';}"
+      "source": "#include <stdlib.h>\n#include <limits.h>\n#include <errno.h>\n\nint main(void)\n{\n    char *end;\n    long n;\n\n    errno = 0;\n    n = strtol(\"-123x\", &end, 10);\n    if (n != -123L || *end != 'x' || errno != 0) return 1;\n\n    n = strtol(\"2147483647\", &end, 10);\n    if (n != LONG_MAX || *end != 0) return 2;\n\n    n = strtol(\"-2147483648\", &end, 10);\n    if (n != LONG_MIN || *end != 0) return 3;\n\n    errno = 0;\n    n = strtol(\"2147483648\", &end, 10);\n    if (n != LONG_MAX || errno != ERANGE) return 4;\n\n    errno = 0;\n    n = strtol(\"-2147483649\", &end, 10);\n    if (n != LONG_MIN || errno != ERANGE) return 5;\n\n    errno = 0;\n    n = strtol(\"  +0x2aZ\", &end, 0);\n    if (n != 42L || *end != 'Z' || errno != 0) return 6;\n\n    n = strtol(\"10102\", &end, 2);\n    if (n != 10L || *end != '2') return 7;\n\n    n = strtol(\"xyz\", &end, 10);\n    if (n != 0L || *end != 'x') return 8;\n\n    return 0;\n}",
+      "runtime_files": [
+        "lib/stdlib_runtime.c"
+      ]
     },
     {
       "id": "LIB-strlen",

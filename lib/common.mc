@@ -169,9 +169,9 @@ M FALSE 0
 # When executing a macro, the rule is one macro per line.
 # If you need a Macro to Define another 'macro' for the purpose of flags
 # You can use the MF or MacroFlag command which takes only one argument
-M POLLSTATUS %1 @PUSHI %1 @SHR8
-M POLLNOINPUT %1 @PUSHI %1 @SHR8 @SUB PollStatusNoInput
-M POLLBYTE %1 @PUSHI %1 @AND 0xff
+M POLLSTATUS @PUSHI %1 @SHR8
+M POLLNOINPUT @PUSHI %1 @SHR8 @SUB PollStatusNoInput
+M POLLBYTE @PUSHI %1 @AND 0xff
 # and unlike 'M' macros can be enbeded inside other macros.
 M NOP $$NOP
 M PUSH $$PUSH %1
