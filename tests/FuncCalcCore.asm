@@ -48,7 +48,7 @@ L lmath.ld
 # FCParseLogicalOr(inptr):[newptr] "Parses logical OR expressions."
 # FCParseLogicalAnd(inptr):[newptr] "Parses logical AND expressions."
 # FCParseComparison(inptr):[newptr] "Parses signed comparisons."
-# FCParseExpr(inptr):[newptr] "Parses additive numeric expressions."
+# FCParseExpr(inptr):[newptr] "Parses additive numeric or string-concatenation expressions."
 # FCParseTerm(inptr):[newptr] "Parses multiplicative numeric expressions."
 # FCParseUnary(inptr):[newptr] "Parses unary negation."
 # FCParsePrimary(inptr):[newptr] "Parses literals, variables, grouping, and calls."
@@ -71,7 +71,9 @@ L lmath.ld
 # FCBuiltinLenParsed(argcount):void "Evaluates parsed LEN argument."
 # FCBuiltinValParsed(argcount):void "Evaluates parsed VAL argument."
 # FCBuiltinStrParsed(argcount):void "Evaluates parsed STR$ argument."
+# FCBuiltinChrParsed(argcount):void "Creates a one-byte string from an integer character code."
 # FCBuiltinSplitParsed(argcount):void "Evaluates parsed SPLIT arguments."
+# FCBuiltinWriteParsed(argcount):void "Writes one string without a trailing newline."
 # FCBuiltinInputParsed(argcount):void "Reads and returns one line of text, with an optional prompt."
 # FCBuiltinInputIntParsed(argcount):void "Reads and returns one signed integer, with an optional prompt."
 # FCBuiltinGetKeyParsed(argcount):void "Returns one key; an optional numeric flag controls waiting."
@@ -257,7 +259,9 @@ L lmath.ld
 ::KwLen "LEN\0"
 ::KwVal "VAL\0"
 ::KwStr "STR$\0"
+::KwChr "CHR$\0"
 ::KwSplit "SPLIT\0"
+::KwWrite "WRITE\0"
 ::KwInput "INPUT\0"
 ::KwInputInt "INPUTINT\0"
 ::KwGetKey "GETKEY\0"
@@ -337,7 +341,9 @@ ENDBLOCK
 :KwLen "LEN\0"
 :KwVal "VAL\0"
 :KwStr "STR$\0"
+:KwChr "CHR$\0"
 :KwSplit "SPLIT\0"
+:KwWrite "WRITE\0"
 :KwInput "INPUT\0"
 :KwInputInt "INPUTINT\0"
 :KwGetKey "GETKEY\0"
@@ -593,8 +599,9 @@ ENDBLOCK
 @PRTLN "  FOR({init},test,{stmt[;stmt]})"
 @PRTLN "  SWITCH(value,case,stmt[,case,stmt],default)"
 @PRTLN "  BREAK[(depth)], CONTINUE"
-@PRTLN "  LEN(str), VAL(str), STR$(int)"
+@PRTLN "  LEN(str), VAL(str), STR$(int), CHR$(code)"
 @PRTLN "  SPLIT(str,start,stop)"
+@PRTLN "  WRITE(str)"
 @PRTLN "  INPUT([prompt]), INPUTINT([prompt])"
 @PRTLN "  GETKEY([wait])"
 @PRTLN "  TTYRAW(), TTYCOOKED()"
@@ -1144,11 +1151,29 @@ ENDBLOCK
    @JMP FCAssignDone
 @ENDIF
 @POPNULL
+# Bind a new slot's name before expression evaluation. Recursive expression
+# parsing shares temporary local registers, while the slot itself remains
+# stable for the duration of this statement.
+@PUSHI TargetSlot @ADD FC_SLOT_FLAGS @PUSHS
+@IF_EQ_A FC_SLOT_ACTIVE
+   @POPNULL
+@ELSE
+   @POPNULL
+   @Call(V) FCStringDup assignname
+   @PUSHI TargetSlot @ADD FC_SLOT_NAMEPTR @POPS
+   @PUSH FC_SLOT_ACTIVE @PUSHI TargetSlot @ADD FC_SLOT_FLAGS @POPS
+@ENDIF
 @Call(V) FCEvalExpr ValuePtr
 @MV2V assignname NamePtr
 @Call(V) FCStoreEval TargetSlot
 @CALL FCReleaseExprCleanup
-@PRTS MsgOk @PRTNL
+@PUSHI CurrentFramePtr
+@IF_ZERO
+   @POPNULL
+   @PRTS MsgOk @PRTNL
+@ELSE
+   @POPNULL
+@ENDIF
 :FCAssignDone
 @Call(V) FCFreeString assignname
 @EndLocals
@@ -2061,6 +2086,17 @@ ENDBLOCK
    @Local op
    @Local leftlow
    @Local lefthigh
+   @Local leftstr
+   @Local leftobj
+   @Local leftowned
+   @Local rightstr
+   @Local rightobj
+   @Local rightowned
+   @Local leftlen
+   @Local rightlen
+   @Local total
+   @Local combined
+   @Local rightdest
    @Local done
 @POPI inptr
 @MA2V 0 done
@@ -2087,8 +2123,90 @@ ENDBLOCK
       @MA2V 1 done
    @ELSE
       @POPNULL
+      @IF_EQ_AV FC_TYPE_STR EvalType
+         @PUSHI op
+         @IF_EQ_A "+\0"
+            @POPNULL
+            @MV2V EvalStr leftstr
+            @MV2V EvalStrObj leftobj
+            @MV2V EvalStrOwned leftowned
+            # The right parser reuses Eval state. Keep an independent left
+            # operand so chained concatenations retain their full prefix.
+            @Call(V) FCStringDup leftstr @POPI leftstr
+            @PUSHI leftowned
+            @IF_NOTZERO
+               @POPNULL
+               @Call(VV) HeapDeleteObject MainHeapID leftobj @POPNULL
+            @ELSE
+               @POPNULL
+            @ENDIF
+            @MV2V leftstr leftobj
+            @MA2V 1 leftowned
+            @INCI inptr
+            @Call(V) FCParseTerm inptr @POPI inptr
+            @IF_NEQ_AV FC_TYPE_STR EvalType
+               @PRTLN "ERR string concatenation expects strings"
+               @PUSHI leftowned
+               @IF_NOTZERO
+                  @POPNULL
+                  @Call(VV) HeapDeleteObject MainHeapID leftobj @POPNULL
+               @ELSE
+                  @POPNULL
+               @ENDIF
+               @CALL FCReleaseEvalString
+               @MA2V FC_TYPE_EMPTY EvalType
+               @MA2V 1 done
+            @ELSE
+               @MV2V EvalStr rightstr
+               @MV2V EvalStrObj rightobj
+               @MV2V EvalStrOwned rightowned
+               @Call(V) strlen leftstr @POPI leftlen
+               @Call(V) strlen rightstr @POPI rightlen
+               @PUSHI leftlen @ADDI rightlen @POPI total
+               @PUSHI MainHeapID @PUSHI total @ADD 1 @CALL HeapNewObject @POPI combined
+               @Call(VVV) memcpy combined leftstr leftlen
+               @PUSHI combined @ADDI leftlen @POPI rightdest
+               @Call(VVV) memcpy rightdest rightstr rightlen
+               @PUSHI combined @ADDI total @PUSHS @AND 0xff00
+               @PUSHI combined @ADDI total @POPS
+               @PUSHI leftowned
+               @IF_NOTZERO
+                  @POPNULL
+                  @Call(VV) HeapDeleteObject MainHeapID leftobj @POPNULL
+               @ELSE
+                  @POPNULL
+               @ENDIF
+               @PUSHI rightowned
+               @IF_NOTZERO
+                  @POPNULL
+                  @PUSHI rightobj
+                  @IF_NEQ_V leftobj
+                     @POPNULL
+                     @Call(VV) HeapDeleteObject MainHeapID rightobj @POPNULL
+                  @ELSE
+                     @POPNULL
+                  @ENDIF
+               @ELSE
+                  @POPNULL
+               @ENDIF
+               @MV2V combined EvalStr
+               @MV2V combined EvalStrObj
+               @MA2V 1 EvalStrOwned
+               @MA2V 0 EvalValueFlags
+               @MA2V 0 EvalI32
+               @MA2V 0 EvalI32+2
+               @MA2V FC_TYPE_STR EvalType
+            @ENDIF
+         @ELSE
+            @POPNULL
+            @PRTLN "ERR - expects numbers"
+            @CALL FCReleaseEvalString
+            @MA2V FC_TYPE_EMPTY EvalType
+            @MA2V 1 done
+         @ENDIF
+      @ELSE
       @IF_NEQ_AV FC_TYPE_I32 EvalType
-         @PRTLN "ERR expression expects numbers"
+         @PRTLN "ERR expression expects numbers or strings"
          @MA2V FC_TYPE_EMPTY EvalType
          @MA2V 1 done
       @ELSE
@@ -2112,6 +2230,7 @@ ENDBLOCK
             @ENDIF
             @MA2V FC_TYPE_I32 EvalType
          @ENDIF
+      @ENDIF
       @ENDIF
    @ENDIF
    @PUSHI done
@@ -2967,6 +3086,7 @@ ENDBLOCK
    @Local closeptr
    @Local comma
    @Local saveclose
+   @Local savecomma
    @Local linked
    @Local listptr
    @Local bodyptr
@@ -2987,6 +3107,10 @@ ENDBLOCK
 @POPNULL
 @PUSHII closeptr @POPI saveclose
 @PUSH 0 @POPII closeptr
+@PUSHII comma @POPI savecomma
+# FCEvalExpr must only see the test. Without a terminator at this comma it
+# continues into the loop body and reports malformed expressions.
+@PUSHII comma @AND 0xff00 @PUSHI comma @POPS
 @PUSHI comma @ADD 1 @CALL FCSkipWhite @POPI bodyptr
 @Call(V) FCCompileStatementList bodyptr @POPI linked
 @Call(V) FCStatementLinkedToList linked @POPI listptr
@@ -3042,6 +3166,7 @@ ENDBLOCK
    @POPNULL
 @ENDIF
 @Call(V) FCFreeCodeList listptr
+@PUSHI savecomma @POPII comma
 @PUSHI saveclose @POPII closeptr
 :FCBuiltinWhileLazyDone
 @EndLocals
@@ -3508,10 +3633,26 @@ ENDBLOCK
    @JMP FCDispatchBuiltinParsedDone
 @ENDIF
 @POPNULL
+@Call(VA) strcmp name KwChr
+@IF_ZERO
+   @POPNULL
+   @CALL FCBuiltinChrParsed
+   @MA2V 1 result
+   @JMP FCDispatchBuiltinParsedDone
+@ENDIF
+@POPNULL
 @Call(VA) strcmp name KwSplit
 @IF_ZERO
    @POPNULL
    @CALL FCBuiltinSplitParsed
+   @MA2V 1 result
+   @JMP FCDispatchBuiltinParsedDone
+@ENDIF
+@POPNULL
+@Call(VA) strcmp name KwWrite
+@IF_ZERO
+   @POPNULL
+   @CALL FCBuiltinWriteParsed
    @MA2V 1 result
    @JMP FCDispatchBuiltinParsedDone
 @ENDIF
@@ -3909,6 +4050,101 @@ ENDBLOCK
 @ENDIF
 @PUSHI typev @PUSHI low @PUSHI high @PUSHI flags @CALL FCReleaseArg
 :FCBuiltinStrParsedDone
+@EndLocals
+@POPRETURN
+@RET
+
+:FCBuiltinChrParsed
+@PUSHRETURN
+@Locals
+   @Local count
+   @Local typev
+   @Local low
+   @Local high
+   @Local flags
+   @Local charstr
+@POPI count
+@PUSHI count
+@IF_NEQ_A 1
+   @POPNULL
+   @PRTLN "ERR CHR$ expects one arg"
+   @Call(V) FCDiscardArgs count
+   @MA2V FC_TYPE_EMPTY EvalType
+   @JMP FCBuiltinChrParsedDone
+@ENDIF
+@POPNULL
+@POPI4 flags high low typev
+@PUSHI typev
+@IF_NEQ_A FC_TYPE_I32
+   @POPNULL
+   @PRTLN "ERR CHR$ expects number"
+   @MA2V FC_TYPE_EMPTY EvalType
+   @JMP FCBuiltinChrParsedRelease
+@ENDIF
+@POPNULL
+@PUSHI high
+@IF_NOTZERO
+   @POPNULL
+   @PRTLN "ERR CHR$ code must be 0..255"
+   @MA2V FC_TYPE_EMPTY EvalType
+   @JMP FCBuiltinChrParsedRelease
+@ENDIF
+@POPNULL
+@PUSHI low
+@IF_UGE_A 256
+   @POPNULL
+   @PRTLN "ERR CHR$ code must be 0..255"
+   @MA2V FC_TYPE_EMPTY EvalType
+   @JMP FCBuiltinChrParsedRelease
+@ENDIF
+@POPNULL
+@PUSHI MainHeapID @PUSH 2 @CALL HeapNewObject @POPI charstr
+@PUSHI low @POPII charstr
+# @POPII writes the character byte and its zero high byte together. A second
+# word store at charstr+1 would extend beyond this two-byte heap object.
+@MV2V charstr EvalStr
+@MV2V charstr EvalStrObj
+@MA2V 1 EvalStrOwned
+@MA2V FC_TYPE_STR EvalType
+@MA2V 0 EvalI32
+@MA2V 0 EvalI32+2
+:FCBuiltinChrParsedRelease
+@PUSHI typev @PUSHI low @PUSHI high @PUSHI flags @CALL FCReleaseArg
+:FCBuiltinChrParsedDone
+@EndLocals
+@POPRETURN
+@RET
+
+:FCBuiltinWriteParsed
+@PUSHRETURN
+@Locals
+   @Local count
+   @Local typev
+   @Local low
+   @Local high
+   @Local flags
+@POPI count
+@PUSHI count
+@IF_NEQ_A 1
+   @POPNULL
+   @PRTLN "ERR WRITE expects one arg"
+   @Call(V) FCDiscardArgs count
+   @MA2V FC_TYPE_EMPTY EvalType
+   @JMP FCBuiltinWriteParsedDone
+@ENDIF
+@POPNULL
+@POPI4 flags high low typev
+@PUSHI typev
+@IF_EQ_A FC_TYPE_STR
+   @POPNULL
+   @PRTSI low
+@ELSE
+   @POPNULL
+   @PRTLN "ERR WRITE expects string"
+@ENDIF
+@MA2V FC_TYPE_EMPTY EvalType
+@PUSHI typev @PUSHI low @PUSHI high @PUSHI flags @CALL FCReleaseArg
+:FCBuiltinWriteParsedDone
 @EndLocals
 @POPRETURN
 @RET
@@ -5372,9 +5608,11 @@ ENDBLOCK
    @Local funcptr
    @Local argcount
    @Local ok
+   @Local returnstr
 @POPI argcount
 @POPI funcptr
 @MA2V 0 ok
+@MA2V 0 returnstr
 @CALL FCFramePush @POPNULL
 @Call(VV) FCBindArgsToParams funcptr argcount @POPI ok
 @PUSHI ok
@@ -5388,6 +5626,16 @@ ENDBLOCK
       @MA2V FC_TYPE_EMPTY EvalType
    @ELSE
       @POPNULL
+      # A returned local string lives in the frame that is about to be freed.
+      # Detach it before FCFramePop so callers receive a valid value.
+      @IF_EQ_AV FC_TYPE_STR EvalType
+         @Call(V) FCStringDup EvalStr @POPI returnstr
+         @CALL FCReleaseEvalString
+         @MV2V returnstr EvalStr
+         @MV2V returnstr EvalStrObj
+         @MA2V 1 EvalStrOwned
+         @MA2V 0 EvalValueFlags
+      @ENDIF
    @ENDIF
    @MA2V 0 FCReturnFlag
 @ELSE

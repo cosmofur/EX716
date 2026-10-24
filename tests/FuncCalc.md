@@ -48,7 +48,7 @@ Assigning a new value to an existing name replaces its old value.
 
 ## Expressions
 
-The arithmetic operators, from highest to lowest precedence, are:
+The operators, from highest to lowest precedence, are:
 
 1. Parentheses and function calls
 2. Unary negation: `-value`
@@ -60,8 +60,9 @@ The arithmetic operators, from highest to lowest precedence, are:
 
 Comparisons and logical operators return integer `1` for true and `0` for false. Logical operands use zero as false and any nonzero integer as true.
 
-All arithmetic uses signed 32-bit integers. Arithmetic operators do not
-concatenate strings. Division or remainder by zero reports an error.
+Numeric arithmetic uses signed 32-bit integers. `+` also concatenates two
+strings; both operands must have the same type. Other arithmetic operators
+require numbers. Division or remainder by zero reports an error.
 
 ```text
 PRINT 2+3*4
@@ -76,6 +77,19 @@ A=100
 B=A/4+3
 PRINT B
 ```
+
+Use `+` to concatenate strings and assign the result to another variable:
+
+```text
+A="test"
+B="dog"
+C=" "
+D=A+C+B
+PRINT D
+```
+
+This prints `test dog`. Each `+` operation requires both operands to be strings
+or both to be numbers.
 
 An expression may also appear by itself. Its result is evaluated and then
 discarded.
@@ -180,6 +194,18 @@ TEXT=STR$(-716)
 PRINT TEXT
 ```
 
+### `CHR$(code)`
+
+Returns a one-character string for an integer code from 0 through 255. It is
+useful for terminal controls that cannot appear directly in a FuncCalc string
+literal. `CHR$(0)` is an empty string because FuncCalc strings are
+null-terminated.
+
+```text
+RETURN=CHR$(13)
+BACKSPACE=CHR$(8)
+```
+
 ### `SPLIT(string, start, stop)`
 
 Returns a substring using inclusive, one-based indexes. `start` must be at
@@ -189,6 +215,15 @@ length. Invalid or reversed ranges return an empty string.
 ```text
 PRINT SPLIT("EX716 computer",1,5)
 PRINT SPLIT("abcdef",2,4)
+```
+
+### `WRITE(string)`
+
+Writes a string without appending a newline. It returns no value. This is
+intended for interactive terminal output such as a line editor.
+
+```text
+WRITE("Prompt: ")
 ```
 
 ### `INPUT([prompt])`
@@ -501,7 +536,8 @@ FC> EXEC TOTAL
 
 ## Current limitations
 
-- Arithmetic operators accept integers only; strings are not concatenated.
+- `+` concatenates strings or adds numbers; mixed string and numeric operands
+  are rejected.
 - String literals do not support escape sequences.
 - Integer literals are decimal only.
 - FuncCalc is an experimental interpreter and reports most language failures
