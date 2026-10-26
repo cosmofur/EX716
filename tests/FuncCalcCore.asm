@@ -226,7 +226,7 @@ L lmath.ld
 ::FCLoopDepth 0
 ::FCBreakDepth 0
 ::FCContinueFlag 0
-::FCKeyInput 0 0
+::FCKeyInput 0
 ::PrintBuff "00000000000\0"
 ::FcPrompt "FC> \0"
 ::FcContPrompt "... \0"
@@ -308,7 +308,7 @@ ENDBLOCK
 :FCLoopDepth 0
 :FCBreakDepth 0
 :FCContinueFlag 0
-:FCKeyInput 0 0
+:FCKeyInput 0
 :PrintBuff "00000000000\0"
 :FcPrompt "FC> \0"
 :FcContPrompt "... \0"

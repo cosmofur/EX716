@@ -1,5 +1,24 @@
 # Session State
 
+## Active checkpoint: native ExecCall and persistent DiskOS fixture (2026-10-26)
+
+- Current objective: enable a DiskOS launcher to run an EXC01 child and then reload itself with the child exit status. The desired eventual launcher is `LAUNCHER.EXC`; initial disk programs will include `DIR`, `HELLOWORLD`, and `ECHO`.
+- Worktree changes are intentionally uncommitted: `lib/exec.ld`, `lib/exec.ref`, `docs/exc01-format.md`, `tests/exec-native-test.asm`, `tests/exec-target.asm`, and `tests/DISK00.disk`. Generated untracked files are `.cpu_history`, `tests/exec-native-test.exc`, and `tests/exec-target.exc`; preserve `.cpu_history`, while the two `.exc` files are disposable build products.
+- `ExecCall(FileName, ArgCount, ArgVector, ReturnFileName)` has been added. It uses Stage 1 to prepare target and continuation EXC01 images and stores their headers, extent plans, and ARG1 blocks in MS 255. `ExecFile` remains destructive replacement.
+- MS 255 is now allowed as an image descriptor: Stage 2 consumes, but deliberately does not copy, those sectors so a launcher linked with `exec.ld` does not overwrite the executing loader.
+- The far-return-pair design was replaced with an explicit state-in-MS-255 design. An ExecCall child now pushes its 16-bit status and performs `@FJMP 255 0x0e00`; `ExecStage2ChildExit` at that stable loader address should save the status to the continuation ARG1 block (flags bit 0 and offset 14) and reload the continuation. This avoids carrying a far-return pair through child code.
+- Fixed malformed multiword `::` initializers found during debugging: `ExecArgs` and the older `ArgVector` regression now use a labeled first word plus `::__` for the second. `::` accepts exactly one initializer (with optional `* count`). Removed the ignored extra zero from the CPU24 and classic `FCKeyInput` declarations.
+- CPU24 debugger now has `dhex ADDRESS [LENGTH]` and `dhexi POINTER [LENGTH]`. They dump the current DS for numeric addresses or the declared data bank for labels; `dhexi` dereferences in that same bank. This is needed because existing `hex` displays bank-0/physical addresses and can misleadingly show unrelated code for `.DATA 1` labels. `dhex ExecName 20` showed `01:1865` with `EXEC-TARGET.EXC`; `dhexi ExecArgs 12` showed the first argument string at `01:1875`.
+- CPU24 instruction and fault-context disassembly now prefixes the instruction with compact live segment state, `D##E##C##:address` (for example `D01E01C00:700f`). This makes DS/ES/CS changes visible during single-stepping.
+- Debugger scoped-symbol resolution now permits a unique library-scoped constant after its original source range has ended. This restores multi-operand `p EXEC_LOADER_MS SegES EXEC_STAGE2_STATE EXEC_EXC01_ENTRY_MS`; `p` remains a memory inspection command, so constants are interpreted as offsets rather than rendered as literal values.
+- Replaced EXC01 header/descriptor magic offsets in `lib/exec.ld` with documented `EXEC_EXC01_*` field constants. Fixed the Stage 2 field reads: `@PUSHS` must occur after adding the desired field offset to the header address. The old order dereferenced `0x8000` as the word `0x5845` (`"EX"`) and then read unrelated memory, leaving `FJMPS` with bank/offset `0,0` and jumping to `00:0000`.
+- Fixed the child-return handoff. `ExecStage2ChildExit` now saves the child status and copies the serialized continuation ARG1 from `FF:F800` to active `FF:FE00` before reloading the launcher. Its byte-copy bound must read the stored ARG1 size with `@IF_UGE_V`; the prior `@IF_UGE_A` compared against the constant's address-like value and overran the copy.
+- Added `lib/exec.mc`, the client-side ExecCall exit interface. A child includes it and uses `@ExecExit status`; the macro pushes the status then far-jumps to the resident `FF:0E00` `ExecStage2ChildExit` gateway, which never returns. `tests/exec-target.asm` now uses this interface rather than spelling out the loader jump.
+- Persistent fixture: `tests/DISK00.disk` was deliberately changed from a 10 KB text placeholder to a valid 32 MiB DiskOS image (disk id `0x0716`, magic `0x3044`, timestamp 0). It currently contains `EXEC-NATIVE.EXC` and `EXEC-TARGET.EXC`; `python3 filesys/ex716disk.py check tests/DISK00.disk` passes.
+- IMPORTANT disk rule: do NOT format `tests/DISK00.disk` again. Future updates must inspect first, then replace/import only the named program entries (currently deletion/reimport was used for the two test images), preserving all other future OS programs.
+- Verification: both source images assemble with zero unresolved symbols; `tests/exec-library-test.asm` prints `EXC ARG1 PASS`; the fixture passes `ex716disk.py check`; and the native regression from `tests/` passes with `NATIVE CALL PASS` (`939365` operations). `git diff --check` and `python3 -m py_compile cpu24.py` pass. Rebuilt both EXC01 images and replaced only `EXEC-NATIVE.EXC` and `EXEC-TARGET.EXC` in the persistent fixture.
+- Next action: optionally refactor straightforward Stage 1 descriptor/extent `JMP` flow into structured macros for readability. Retain the explicit Stage 2 labels/jumps where the stateful bare-metal loader/far handoff makes that control flow clearer.
+
 ## Current snake.asm compatibility follow-up (2026-10-09)
 
 - User's existing change replaces the classic `. Main` entry syntax in
@@ -34,7 +53,7 @@
   Preserved the user's `tests/snake.asm` modification. `.cpu_history` is
   generated and untracked.
 
-Last updated: 2026-10-08
+Last updated: 2026-10-26
 
 ## Current CPU-only DiskOS extent write follow-up
 

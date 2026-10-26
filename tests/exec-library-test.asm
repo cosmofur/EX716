@@ -12,7 +12,8 @@ L exec.ld
 ::ArgOne "one\0"
 ::ArgTwo "two words\0"
 ::DemoName "DEMO.EXC\0"
-::ArgVector ArgOne ArgTwo
+::ArgVector ArgOne
+::__        ArgTwo
 
 .CODE 0
 .ORG 0x7000

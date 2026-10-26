@@ -7,13 +7,20 @@ M __LIB_EXEC_LOADED 1
 #   * CPU24 segmented mode and commonDS.mc.
 #   * diskos.ld initialized with a heap and filesystem header.
 #   * This library is loaded after .DATA has selected the caller's data MS.
-#   * MS 255 is reserved for the destructive Stage 2 loader in this version.
+#   * MS 255 contains the Stage 2 loader.  An image may carry its own Stage 2
+#     descriptor; Stage 2 consumes but does not copy that descriptor.
 #
 # ExecFile(FileName, ArgCount, ArgVector):error
 #   ArgVector contains ArgCount near pointers in the caller's DS. argv[0] is
 #   synthesized from FileName. A successful call never returns.
+#
+# ExecCall(FileName, ArgCount, ArgVector, ReturnFileName):error
+#   Preserves ReturnFileName as the continuation image.  A successful call
+#   loads FileName, then reloads ReturnFileName when the child uses
+#   @ExecExit (from exec.mc) with a 16-bit status.
 
 G ExecFile
+G ExecCall
 G ExecBuildArgBlock
 G ExecArgWork
 
@@ -28,13 +35,37 @@ G ExecArgWork
 
 =EXEC_LOADER_MS          255
 =EXEC_STAGE2_ENTRY       0x0100
+=EXEC_STAGE2_RETURN_ENTRY 0x0e00
 =EXEC_HEADER             0x8000
 =EXEC_EXTENT_PLAN        0x8200
+=EXEC_RETURN_HEADER      0x8a00
+=EXEC_RETURN_EXTENT_PLAN 0x8c00
 =EXEC_STAGE2_STATE       0xfb00
 =EXEC_SECTOR_BUFFER      0xfc00
+=EXEC_RETURN_ARG_BLOCK   0xf800
 =EXEC_ARG_BLOCK          0xfe00
 =EXEC_MAX_EXTENTS        512
 =EXEC_MAX_CALLER_ARGS    31
+=EXEC_STAGE2_REPLACE     0
+=EXEC_STAGE2_CALL        1
+=EXEC_ARG_RETURNED       1
+=EXEC_STAGE2_CHILD_STATUS 26
+=EXEC_STAGE2_ARG_SIZE     28
+=EXEC_STAGE2_ARG_OFFSET   30
+
+# EXC01 header layout. Keep these synchronized with docs/exc01-format.md and
+# cpu24.py's EXC01 reader/writer; Stage 2 reads this serialized copy directly.
+=EXEC_EXC01_ENTRY_MS         5
+=EXEC_EXC01_ENTRY_ADDRESS    6
+=EXEC_EXC01_INITIAL_DS       8
+=EXEC_EXC01_DESCRIPTOR_COUNT 9
+=EXEC_EXC01_DESCRIPTOR_TABLE 10
+
+# EXC01 descriptor layout (relative to EXEC_EXC01_DESCRIPTOR_TABLE).
+=EXEC_EXC01_DESC_TYPE         0
+=EXEC_EXC01_DESC_MS           1
+=EXEC_EXC01_DESC_SECTOR_COUNT 2
+=EXEC_EXC01_DESCRIPTOR_SIZE   4
 
 # Low-memory Stage 1 workspaces. These are disposable once Stage 2 starts.
 ::ExecHeaderWork 0 * 512
@@ -52,6 +83,7 @@ G ExecArgWork
 ::ExecAvailableSectors 0
 ::ExecExpectedLow 0
 ::ExecExpectedHigh 0
+::ExecPreparedExtentCount 0
 
 # Copy bytes within the caller DS into the loader MS selected by ES.
 @FUNCTION ExecCopyToLoader
@@ -77,6 +109,114 @@ G ExecArgWork
         @PUSHI Count
     @ENDWHILE
     @POPNULL
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+# ExecPrepareImage(FileName):error
+# Validates an EXC01 file and leaves its header and physical extent plan in
+# ExecHeaderWork and ExecExtentWork.  It closes all DiskOS objects before
+# returning, so callers can prepare both a target and a continuation image.
+@FUNCTION ExecPrepareImage
+:ExecPrepareImage
+@PUSHRETURN
+@Locals
+#USE file_open,DiskClose,DiskNewBuffer,DirNewArgTable,DirReadEntry,HeapDeleteObject
+    @Local FileName
+    @Local FilePtr
+    @Local DiskBuffer
+    @Local WorkArg
+    @Local EntryNum
+    @Local NextEntry
+    @Local ExtentCount
+    @Local PlanPtr
+    @Local BlockCount
+    @Local FirstBlock
+    @Local Result
+
+    @POPI FileName
+    @MA2V EXEC_BAD_FORMAT Result
+    @MA2V 0 FilePtr
+    @MA2V 0 DiskBuffer
+    @MA2V 0 WorkArg
+    @Call(VA) file_open FileName MODE_RO
+    @POPI FilePtr
+    @IF_EQ_AV 0 FilePtr
+        @MA2V EXEC_NOT_FOUND Result
+        @JMP ExecPrepareCleanup
+    @ENDIF
+    @PUSHI FilePtr @ADD FPTR_FIRST_SECTOR @PUSHS @POPI FirstBlock
+    @Call(VA) DiskReadSector FirstBlock ExecHeaderWork
+    @PUSHI ExecHeaderWork @IF_NEQ_A 0x5845 @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @PUSHI ExecHeaderWork+2 @IF_NEQ_A 0x3043 @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @PUSHI ExecHeaderWork+4 @AND 0xff @IF_NEQ_A 0x31 @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @PUSHI ExecHeaderWork+EXEC_EXC01_ENTRY_MS @AND 0xff @POPI ExecEntryMS
+    @PUSHI ExecHeaderWork+EXEC_EXC01_INITIAL_DS @AND 0xff @POPI ExecInitialDS
+    @PUSHI ExecHeaderWork+EXEC_EXC01_DESCRIPTOR_COUNT @AND 0xff @POPI ExecHeaderCount
+    @PUSHI ExecHeaderCount @IF_UGT_A 125 @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @MA2V 0 ExecPayloadSectors
+    @MA2V 0 ExecEntrySeen
+    @MA2V 0 ExecDSSeen
+    @MA2V ExecHeaderWork+EXEC_EXC01_DESCRIPTOR_TABLE ExecHeaderPtr
+    @MA2V 0 ExecIndex
+
+:ExecPrepareDescriptor
+    @PUSHI ExecIndex @IF_UGE_V ExecHeaderCount @POPNULL @JMP ExecPrepareDescriptorsDone @ENDIF @POPNULL
+    @PUSHI ExecHeaderPtr @PUSHS @AND 0xff @IF_UGT_A 1 @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @PUSHI ExecHeaderPtr @ADD EXEC_EXC01_DESC_MS @PUSHS @AND 0xff @POPI NextEntry
+    @PUSHI ExecHeaderPtr @ADD EXEC_EXC01_DESC_SECTOR_COUNT @PUSHS @POPI ExecSectorCount
+    @IF_EQ_AV 0 ExecSectorCount @JMP ExecPrepareCleanup @ENDIF
+    @PUSHI ExecSectorCount @IF_UGT_A 128 @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @PUSHI ExecPayloadSectors @ADDI ExecSectorCount @POPI ExecPayloadSectors
+    @IF_EQ_VV NextEntry ExecEntryMS @MA2V 1 ExecEntrySeen @ENDIF
+    @IF_EQ_VV NextEntry ExecInitialDS @MA2V 1 ExecDSSeen @ENDIF
+    @PUSHI ExecHeaderPtr @ADD EXEC_EXC01_DESCRIPTOR_SIZE @POPI ExecHeaderPtr
+    @INCI ExecIndex
+    @JMP ExecPrepareDescriptor
+
+:ExecPrepareDescriptorsDone
+    @IF_EQ_AV 0 ExecEntrySeen @JMP ExecPrepareCleanup @ENDIF
+    @IF_EQ_AV 0 ExecDSSeen @JMP ExecPrepareCleanup @ENDIF
+    @PUSHI ExecPayloadSectors @ADD 1 @POPI ExecSectorCount
+    @PUSHI ExecSectorCount @SHLN 9 @POPI ExecExpectedLow
+    @PUSHI ExecSectorCount @SHRN 7 @POPI ExecExpectedHigh
+    @PUSHI FilePtr @ADD FPTR_FILESIZE @PUSHS @IF_NEQ_V ExecExpectedLow @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @PUSHI FilePtr @ADD FPTR_FILESIZE+2 @PUSHS @IF_NEQ_V ExecExpectedHigh @POPNULL @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @CALL DiskNewBuffer @IF_ZERO @POPNULL @MA2V EXEC_NO_MEMORY Result @JMP ExecPrepareCleanup @ENDIF @POPI DiskBuffer
+    @CALL DirNewArgTable @IF_ZERO @POPNULL @MA2V EXEC_NO_MEMORY Result @JMP ExecPrepareCleanup @ENDIF @POPI WorkArg
+    @PUSHI FilePtr @ADD FPTR_FILENUM @PUSHS @POPI EntryNum
+    @MA2V 0 ExtentCount
+    @MA2V 0 ExecAvailableSectors
+    @MA2V ExecExtentWork PlanPtr
+
+:ExecPrepareExtent
+    @PUSHI ExtentCount @IF_UGE_A EXEC_MAX_EXTENTS @POPNULL @MA2V EXEC_BAD_EXTENTS Result @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @Call(VVV) DirReadEntry EntryNum WorkArg DiskBuffer @IF_ZERO @POPNULL @MA2V EXEC_BAD_EXTENTS Result @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @GET_FROM WorkArg DIR_AT_FLAGS @AND FLAG_INUSE @IF_ZERO @POPNULL @MA2V EXEC_BAD_EXTENTS Result @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @GET_FROM WorkArg DIR_AT_FIRSTBLOCK @POPI FirstBlock
+    @GET_FROM WorkArg DIR_AT_BLOCKCOUNT @POPI BlockCount
+    @IF_EQ_AV 0 BlockCount @MA2V EXEC_BAD_EXTENTS Result @JMP ExecPrepareCleanup @ENDIF
+    @PUSHI FirstBlock @SHLN 7 @PUSHI PlanPtr @POPS
+    @PUSHI BlockCount @SHLN 7 @PUSHI PlanPtr @ADD 2 @POPS
+    @PUSHI ExecAvailableSectors @PUSHI BlockCount @SHLN 7 @ADDS @POPI ExecAvailableSectors
+    @PUSHI PlanPtr @ADD 4 @POPI PlanPtr
+    @INCI ExtentCount
+    @GET_FROM WorkArg DIR_AT_RESERVE @POPI NextEntry
+    @IF_EQ_AV 0 NextEntry @JMP ExecPrepareExtentsDone @ENDIF
+    @MV2V NextEntry EntryNum
+    @JMP ExecPrepareExtent
+
+:ExecPrepareExtentsDone
+    @PUSHI ExecPayloadSectors @ADD 1 @IF_UGT_V ExecAvailableSectors @POPNULL @MA2V EXEC_BAD_EXTENTS Result @JMP ExecPrepareCleanup @ENDIF @POPNULL
+    @MV2V ExtentCount ExecPreparedExtentCount
+    @MA2V EXEC_OK Result
+
+:ExecPrepareCleanup
+    @IF_NEQ_AV 0 FilePtr @Call(V) DiskClose FilePtr @POPNULL @ENDIF
+    @IF_NEQ_AV 0 WorkArg @Call(VV) HeapDeleteObject DiskHeap WorkArg @POPNULL @ENDIF
+    @IF_NEQ_AV 0 DiskBuffer @Call(VV) HeapDeleteObject DiskHeap DiskBuffer @POPNULL @ENDIF
+    @PUSHI Result
 @EndLocals
 @POPRETURN
 @RET
@@ -170,6 +310,74 @@ G ExecArgWork
         @PUSHI StringPtr @SUB ExecArgWork
     @ENDIF
 :ExecBuildArgBlockExit
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+# ExecCall(FileName, ArgCount, ArgVector, ReturnFileName):error.
+# A successful call does not return to this image; it reloads ReturnFileName
+# after the called image jumps to MS 255:EXEC_STAGE2_RETURN_ENTRY.
+@FUNCTION ExecCall
+:ExecCall
+@PUSHRETURN
+@Locals
+    @Local FileName
+    @Local ArgCount
+    @Local ArgVector
+    @Local ReturnFileName
+    @Local ArgSize
+    @Local Result
+
+    @POPI ReturnFileName
+    @POPI ArgVector
+    @POPI ArgCount
+    @POPI FileName
+    @MA2V EXEC_BAD_FORMAT Result
+
+    # Build and preserve the target's launch data before the continuation is
+    # prepared, because both operations share the Stage 1 workspaces.
+    @Call(VVV) ExecBuildArgBlock FileName ArgCount ArgVector
+    @POPI ArgSize
+    @IF_EQ_AV 0 ArgSize
+        @MA2V EXEC_ARGUMENTS_TOO_BIG Result
+        @JMP ExecCallExit
+    @ENDIF
+    @Call(V) ExecPrepareImage FileName
+    @POPI Result
+    @IF_NEQ_AV EXEC_OK Result @JMP ExecCallExit @ENDIF
+    @PUSH EXEC_LOADER_MS @SSET SegES
+    @Call(AAA) ExecCopyToLoader EXEC_HEADER ExecHeaderWork 512
+    @PUSHI ExecPreparedExtentCount @SHLN 2 @POPI ExecSectorCount
+    @Call(AAV) ExecCopyToLoader EXEC_EXTENT_PLAN ExecExtentWork ExecSectorCount
+    @Call(AAV) ExecCopyToLoader EXEC_ARG_BLOCK ExecArgWork ArgSize
+
+    # The reloaded launcher receives only argv[0].  Its flags/status identify
+    # that it is resuming after a child rather than starting cold.
+    @Call(VAA) ExecBuildArgBlock ReturnFileName 0 0
+    @POPI ArgSize
+    @IF_EQ_AV 0 ArgSize
+        @MA2V EXEC_ARGUMENTS_TOO_BIG Result
+        @JMP ExecCallExit
+    @ENDIF
+    @Call(V) ExecPrepareImage ReturnFileName
+    @POPI Result
+    @IF_NEQ_AV EXEC_OK Result @JMP ExecCallExit @ENDIF
+    @PUSH EXEC_LOADER_MS @SSET SegES
+    @Call(AAA) ExecCopyToLoader EXEC_RETURN_HEADER ExecHeaderWork 512
+    @PUSHI ExecPreparedExtentCount @SHLN 2 @POPI ExecSectorCount
+    @Call(AAV) ExecCopyToLoader EXEC_RETURN_EXTENT_PLAN ExecExtentWork ExecSectorCount
+    @Call(AAV) ExecCopyToLoader EXEC_RETURN_ARG_BLOCK ExecArgWork ArgSize
+
+    # Stage 2 owns MS 255 from here on.  It first loads the target, then uses
+    # the saved continuation plan when the target jumps to its exit entry.
+    @PUSH EXEC_STAGE2_CALL @PUSH EXEC_STAGE2_STATE @ESO @POPS
+    @PUSH EXEC_LOADER_MS @SSET SegDS
+    @PUSH EXEC_LOADER_MS @SSET SegES
+    @FJMP EXEC_LOADER_MS EXEC_STAGE2_ENTRY
+
+:ExecCallExit
+    @PUSHI Result
 @EndLocals
 @POPRETURN
 @RET
@@ -271,10 +479,6 @@ G ExecArgWork
     @ENDIF
     @POPNULL
     @PUSHI ExecHeaderPtr @ADD 1 @PUSHS @AND 0xff @POPI NextEntry
-    @IF_EQ_AV EXEC_LOADER_MS NextEntry
-        @MA2V EXEC_LOADER_MS_USED Result
-        @JMP ExecFileCleanup
-    @ENDIF
     @PUSHI ExecHeaderPtr @ADD 2 @PUSHS @POPI ExecSectorCount
     @IF_EQ_AV 0 ExecSectorCount
         @JMP ExecFileCleanup
@@ -401,6 +605,7 @@ G ExecArgWork
     @Call(AAV) ExecCopyToLoader EXEC_ARG_BLOCK ExecArgWork ArgSize
     @PUSHI ExtentCount
     @PUSH EXEC_STAGE2_STATE @ESO @POPS
+    @PUSH EXEC_STAGE2_REPLACE @PUSH EXEC_STAGE2_STATE @ESO @POPS
 
     # Close and free every DiskOS object before abandoning the old image.
     @Call(V) DiskClose FilePtr
@@ -446,45 +651,57 @@ G ExecArgWork
 @PUSH EXEC_LOADER_MS @SSET SegDS
 @PUSH EXEC_LOADER_MS @SSET SegES
 
-# Mutable state lives in the reserved high part of this MS.
+# Stage 1 selects the mode.  Stage 2 retains it while the target runs.
+@MA2V EXEC_EXTENT_PLAN EXEC_STAGE2_STATE+22
+@MA2V EXEC_HEADER EXEC_STAGE2_STATE+24
+
+:ExecStage2LoadImage
+# Mutable state lives in the reserved high part of this MS.  The plan/header
+# bases select either the target image or the preserved continuation image.
 @MA2V 0 EXEC_STAGE2_STATE+2      # extent index
 @MA2V 0 EXEC_STAGE2_STATE+4      # descriptor index
-@MA2V EXEC_EXTENT_PLAN EXEC_STAGE2_STATE+6
-@MA2V EXEC_HEADER+10 EXEC_STAGE2_STATE+8
+@PUSHI EXEC_STAGE2_STATE+22 @PUSHS @POPI EXEC_STAGE2_STATE+6
+@PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_DESCRIPTOR_TABLE @POPI EXEC_STAGE2_STATE+8
 
 # Load first physical extent and skip the EXC01 header Disk Sector.
-@PUSHI EXEC_EXTENT_PLAN @ADD 1 @POPI EXEC_STAGE2_STATE+10
-@PUSHI EXEC_EXTENT_PLAN+2 @SUB 1 @POPI EXEC_STAGE2_STATE+12
+@PUSHI EXEC_STAGE2_STATE+22 @PUSHS @ADD 1 @POPI EXEC_STAGE2_STATE+10
+@PUSHI EXEC_STAGE2_STATE+22 @PUSHS @ADD 2 @PUSHS @SUB 1 @POPI EXEC_STAGE2_STATE+12
 
 :ExecStage2DescriptorLoop
 @PUSHI EXEC_STAGE2_STATE+4
-@PUSHI EXEC_HEADER+9 @AND 0xff
+@PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_DESCRIPTOR_COUNT @PUSHS @AND 0xff
 @IF_UGE_S
     @POPNULL @POPNULL
     @JMP ExecStage2StartProgram
 @ENDIF
 @POPNULL @POPNULL
 
-@PUSHI EXEC_STAGE2_STATE+8 @ADD 1 @PUSHS @AND 0xff @POPI EXEC_STAGE2_STATE+14
-@PUSHI EXEC_STAGE2_STATE+8 @ADD 2 @PUSHS @POPI EXEC_STAGE2_STATE+16
+@PUSHI EXEC_STAGE2_STATE+8 @ADD EXEC_EXC01_DESC_MS @PUSHS @AND 0xff @POPI EXEC_STAGE2_STATE+14
+@PUSHI EXEC_STAGE2_STATE+8 @ADD EXEC_EXC01_DESC_SECTOR_COUNT @PUSHS @POPI EXEC_STAGE2_STATE+16
 @MA2V 0 EXEC_STAGE2_STATE+18
 
 :ExecStage2SectorLoop
 @IF_EQ_AV 0 EXEC_STAGE2_STATE+16
-    @PUSHI EXEC_STAGE2_STATE+8 @ADD 4 @POPI EXEC_STAGE2_STATE+8
+    @PUSHI EXEC_STAGE2_STATE+8 @ADD EXEC_EXC01_DESCRIPTOR_SIZE @POPI EXEC_STAGE2_STATE+8
     @INCI EXEC_STAGE2_STATE+4
     @JMP ExecStage2DescriptorLoop
 @ENDIF
 
 @IF_EQ_AV 0 EXEC_STAGE2_STATE+12
     @INCI EXEC_STAGE2_STATE+2
-    @PUSHI EXEC_STAGE2_STATE+2 @SHLN 2 @ADD EXEC_EXTENT_PLAN @POPI EXEC_STAGE2_STATE+6
+    @PUSHI EXEC_STAGE2_STATE+2 @SHLN 2 @PUSHI EXEC_STAGE2_STATE+22 @PUSHS @ADDS @POPI EXEC_STAGE2_STATE+6
     @PUSHII EXEC_STAGE2_STATE+6 @POPI EXEC_STAGE2_STATE+10
     @PUSHI EXEC_STAGE2_STATE+6 @ADD 2 @PUSHS @POPI EXEC_STAGE2_STATE+12
 @ENDIF
 
 @DISKSEEKI EXEC_STAGE2_STATE+10
 @DISKREAD EXEC_SECTOR_BUFFER
+@IF_EQ_AV EXEC_LOADER_MS EXEC_STAGE2_STATE+14
+    # A launcher image includes this loader in its own EXC01 payload.  It is
+    # already executing from MS 255, so consume those sectors without copying
+    # them over the active loader.
+    @JMP ExecStage2SectorCopied
+@ENDIF
 @PUSHI EXEC_STAGE2_STATE+14 @SSET SegES
 @MA2V 0 EXEC_STAGE2_STATE+20
 
@@ -510,11 +727,54 @@ G ExecArgWork
 @JMP ExecStage2SectorLoop
 
 :ExecStage2StartProgram
-@PUSHI EXEC_HEADER+5 @AND 0xff
-@PUSHI EXEC_HEADER+6
-@PUSHI EXEC_HEADER+8 @AND 0xff @SSET SegDS
+@IF_EQ_AV EXEC_STAGE2_CALL EXEC_STAGE2_STATE
+    # ES retains access to the target ARG1 block.  The target has no return
+    # pair to preserve: @ExecExit transfers to the fixed loader gateway,
+    # leaving its 16-bit status on the hardware stack.
+    @PUSH EXEC_LOADER_MS @SSET SegES
+    @PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_ENTRY_MS @PUSHS @AND 0xff
+    @PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_ENTRY_ADDRESS @PUSHS
+    @PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_INITIAL_DS @PUSHS @AND 0xff @SSET SegDS
+    @FJMPS
+@ENDIF
+@PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_ENTRY_MS @PUSHS @AND 0xff
+@PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_ENTRY_ADDRESS @PUSHS
+@PUSHI EXEC_STAGE2_STATE+24 @ADD EXEC_EXC01_INITIAL_DS @PUSHS @AND 0xff @SSET SegDS
 @PUSH EXEC_LOADER_MS @SSET SegES
 @FJMPS
+
+# Explicit return gateway for an ExecCall child.  This is deliberately placed
+# at a stable address so small standalone programs need no copied far-return
+# pair or loader-private pointer in their own data segment.
+.ORG EXEC_STAGE2_RETURN_ENTRY
+:ExecStage2ChildExit
+@PUSH EXEC_LOADER_MS @SSET SegDS
+@PUSH EXEC_LOADER_MS @SSET SegES
+@POPI EXEC_STAGE2_STATE+EXEC_STAGE2_CHILD_STATUS
+@MA2V EXEC_ARG_RETURNED EXEC_RETURN_ARG_BLOCK+8
+@PUSHI EXEC_STAGE2_STATE+EXEC_STAGE2_CHILD_STATUS @PUSH EXEC_RETURN_ARG_BLOCK+14 @POPS
+
+# Make the returned continuation ARG1 block active for the reloaded launcher.
+@PUSH EXEC_RETURN_ARG_BLOCK+4 @PUSHS @POPI EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_SIZE
+@MA2V 0 EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_OFFSET
+:ExecStage2CopyReturnArg
+@PUSHI EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_OFFSET
+@IF_UGE_V EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_SIZE
+    @POPNULL
+    @JMP ExecStage2CopyReturnArgDone
+@ENDIF
+@POPNULL
+@PUSH EXEC_ARG_BLOCK @ADDI EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_OFFSET @PUSHS @AND 0xff00
+@PUSH EXEC_RETURN_ARG_BLOCK @ADDI EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_OFFSET @PUSHS @AND 0xff
+@ORS
+@PUSH EXEC_ARG_BLOCK @ADDI EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_OFFSET @POPS
+@INCI EXEC_STAGE2_STATE+EXEC_STAGE2_ARG_OFFSET
+@JMP ExecStage2CopyReturnArg
+:ExecStage2CopyReturnArgDone
+@MA2V EXEC_STAGE2_REPLACE EXEC_STAGE2_STATE
+@MA2V EXEC_RETURN_EXTENT_PLAN EXEC_STAGE2_STATE+22
+@MA2V EXEC_RETURN_HEADER EXEC_STAGE2_STATE+24
+@JMP ExecStage2LoadImage
 
 # Keep subsequent source assembly in the conventional code MS.
 .CODE 0

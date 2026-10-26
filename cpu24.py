@@ -856,10 +856,20 @@ def FindHistoricVal(varname, testaddress, context=None):
         best = max(candidates, key=lambda e: e["start"])
         return best["value"]
 
-    # 3) Handle cases where it not a declaired global but has a larger context that its valud in.
+    # 3) A library-scoped constant can be needed after execution has left the
+    # source range where it was defined (for example, Stage 2 debugger work).
+    # Resolve it only when every matching scoped definition has one value.
+    scoped_values = set()
+    for name, history in LocVarHist.items():
+        if name.startswith(prefix):
+            scoped_values.update(entry["value"] for entry in history)
+    if len(scoped_values) == 1:
+        return scoped_values.pop()
+
+    # 4) Handle cases where it is not a declared global but has one history.
     if exact_history and len(exact_history) == 1:
         return exact_history[0]["value"]
-    # 4 No active or unique value found.
+    # 5) No active or unique value found.
     return None
 
 
@@ -1221,8 +1231,8 @@ class microcpu:
                     CF = 1 if self.flags & 4 else 0
                     OF = 1 if self.flags & 8 else 0
                     opname = OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}"
-                    outline = "%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%d N%d C%d O%d" % (
-                        i, opname, P1, PI, PII, ZF, NF, CF, OF
+                    outline = "D%02xE%02xC%02x:%04x:%8s P1:%04x [I]:%04x [II]:%04x Z%d N%d C%d O%d" % (
+                        self.DS, self.ES, self.CS, i, opname, P1, PI, PII, ZF, NF, CF, OF
                     )
                     safeprint(outline, file=DebugOut)
                     pline = self.FindWhatLine(i)
@@ -2973,8 +2983,8 @@ def DissAsm(start, length, CPU):
         if (optcode in OPTLIST):
             tos = f"{CPU.fetchStack(0):04x}" if CPU.hwstacksp > 0 else "----"
             sft = f"{CPU.fetchStack(1):04x}" if CPU.hwstacksp > 1 else "----"
-            OUTLINE = "%02x:%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%s,%s] Z%1d N%1d C%1d O%1d SS(%d)" % (
-                CPU.CS, i, OPTSYM[optcode], P1, PI, PII,
+            OUTLINE = "D%02xE%02xC%02x:%04x:%8s P1:%04x [I]:%04x [II]:%04x TOS[%s,%s] Z%1d N%1d C%1d O%1d SS(%d)" % (
+                CPU.DS, CPU.ES, CPU.CS, i, OPTSYM[optcode], P1, PI, PII,
                 tos, sft, ZF, NF, CF, OF, addr
             )
         if FoundLabels != "":
@@ -3038,9 +3048,15 @@ def getkeyfromval(val, my_dict):
         return ""   # Empty set case
     return
 
-def hexdump(startaddr, length, CPU):
+def hexdump(startaddr, length, CPU, bank=None):
+    """Dump a logical address range, optionally from an explicit memory bank."""
     endaddr = startaddr + length
-    safeprint("Range is %04x to %04x" % (startaddr, endaddr))
+    if bank is None:
+        safeprint("Range is %04x to %04x" % (startaddr, endaddr))
+    else:
+        safeprint("Range is %02x:%04x to %02x:%04x" % (
+            bank, startaddr, bank, endaddr
+        ))
 
     base = startaddr & ~0xF  # Align down to 16-byte boundary
 
@@ -3055,19 +3071,24 @@ def hexdump(startaddr, length, CPU):
 
         for j in range(16):
             addr = i + j
-            if addr < startaddr or addr >= endaddr or addr >= len(CPU.memspace):
+            physical = (
+                CPU.physical_address(bank, addr) if bank is not None else addr
+            )
+            if (addr < startaddr or addr >= endaddr
+                    or physical >= len(CPU.memspace)):
                 hex_part += "   "
                 ascii_part += " "
             else:
                 line_has_data = True
-                byte = CPU.memspace[addr]
+                byte = CPU.memspace[physical]
                 hex_part += f"{byte:02x} "
                 ascii_part += chr(byte) if 32 <= byte <= 126 else "_"
 
         if not line_has_data:
             break  # Don’t print blank rows after the range
 
-        safeprint(f"{i:04x}: {hex_part} {ascii_part}")
+        prefix = f"{bank:02x}:{i:04x}" if bank is not None else f"{i:04x}"
+        safeprint(f"{prefix}: {hex_part} {ascii_part}")
         i += 16
 
 
@@ -5444,7 +5465,11 @@ def debugger(passline, context: AssemblerContext):
             thisword=" "
         while thisword != "":            
             rawlist.append(thisword)
-            if not looks_numeric(thisword) and (thisword[0].isalpha() or thisword[0] == "_"):
+            if cmdword in ("dhex", "dhexi") and ":" in thisword:
+                # The command handler parses BANK:ADDRESS after generic token
+                # collection; do not feed it to the numeric parser here.
+                pass
+            elif not looks_numeric(thisword) and (thisword[0].isalpha() or thisword[0] == "_"):
                 varval = FindHistoricVal(
                     thisword, CPU.code_address(CPU.pc), context
                 )
@@ -5874,6 +5899,43 @@ def debugger(passline, context: AssemblerContext):
             else:
                 safeprint("ERR: Need pointer label and optional length")
             continue
+        if cmdword in ("dhex", "dhexi"):
+            if rawlist:
+                explicit_bank = ":" in rawlist[0]
+                if explicit_bank:
+                    bank_text, address_text = rawlist[0].split(":", 1)
+                    try:
+                        bank = int(bank_text, 0)
+                        startv = int(address_text, 0)
+                    except ValueError:
+                        safeprint("ERR: Banked data address must be BANK:ADDRESS")
+                        continue
+                    if not 0 <= bank <= 0xff:
+                        safeprint("ERR: Data bank must be 0..255")
+                        continue
+                    length = (
+                        int(rawlist[1], 0) if len(rawlist) > 1 else 16
+                    )
+                    source = CPU.physical_address(bank, startv)
+                elif argcnt > 0:
+                    startv = int(arglist[0], 0) if isinstance(arglist[0], str) else arglist[0]
+                    source = data_target(startv, rawlist[0])
+                    bank = (source >> 16) & 0xff
+                    if argcnt == 1:
+                        length = 16
+                    else:
+                        length = int(arglist[1], 0) if isinstance(arglist[1], str) else arglist[1]
+                else:
+                    safeprint("ERR: Need data address and optional length")
+                    continue
+                if cmdword == "dhexi":
+                    startv = CPU.getwordmem(source)
+                if length < 0:
+                    length = 0
+                hexdump(startv, length, CPU, bank=bank)
+            else:
+                safeprint("ERR: Need data address and optional length")
+            continue
         if cmdword == "n":
             stepcnt = 1
             stoprange = 0
@@ -6141,7 +6203,9 @@ def debugger(passline, context: AssemblerContext):
                 ("d", "DissAsm $1 $2"),
                 ("g","goto $1"),
                 ("h", "this test"),
-                ("hex", "Print hexdump $1[-$2]"),
+                ("hex", "Print code/physical hexdump $1[-$2]"),
+                ("dhex", "Print DS/label-bank hexdump $1[-$2]"),
+                ("dhexi", "Dereference in DS/label-bank, then dump"),
                 ("l", "DissAsm from line"),
                 ("m", "modify or edit memory"),
                 ("n", "Do one step"),

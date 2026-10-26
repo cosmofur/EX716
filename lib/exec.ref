@@ -1,2 +1,3 @@
 ExecFile(FileName,ArgCount,ArgVector):error "Replaces the current CPU24 image with an EXC01 executable from DiskOS; success does not return."
+ExecCall(FileName,ArgCount,ArgVector,ReturnFileName):error "Runs an EXC01 target then reloads ReturnFileName; target pushes a 16-bit status and jumps to 255:0x0e00."
 ExecBuildArgBlock(FileName,ArgCount,ArgVector):size|0 "Builds the fixed 512-byte ARG1 launch block; supplied arguments exclude synthesized argv[0]."
