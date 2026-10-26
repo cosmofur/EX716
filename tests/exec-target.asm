@@ -1,0 +1,43 @@
+# Target image for the native ExecFile regression.
+.DATA 3
+I commonDS.mc
+
+.CODE 2
+.ORG 0x0100
+:Main
+.ENTRY Main
+@PUSH 1 @ADM
+@PUSH EXEC_ARG_BLOCK @ESO @PUSHS
+@IF_NEQ_A 0x5241
+    @POPNULL
+    @PRTLN "NATIVE EXEC FAIL"
+    @END
+@ENDIF
+@POPNULL
+@PUSH EXEC_ARG_BLOCK+6 @ESO @PUSHS
+@IF_NEQ_A 3
+    @POPNULL
+    @PRTLN "NATIVE EXEC FAIL"
+    @END
+@ENDIF
+@POPNULL
+# argv[0] begins at launch-block offset 24 and contains "EXEC...".
+@PUSH EXEC_ARG_BLOCK+16 @ESO @PUSHS @ADD EXEC_ARG_BLOCK @ESO @PUSHS
+@IF_NEQ_A 0x5845
+    @POPNULL
+    @PRTLN "NATIVE EXEC FAIL"
+    @END
+@ENDIF
+@POPNULL
+# argv[1] follows the 16-byte filename and contains "one".
+@PUSH EXEC_ARG_BLOCK+18 @ESO @PUSHS @ADD EXEC_ARG_BLOCK @ESO @PUSHS
+@IF_NEQ_A 0x6e6f
+    @POPNULL
+    @PRTLN "NATIVE EXEC FAIL"
+    @END
+@ENDIF
+@POPNULL
+@PRTLN "NATIVE EXEC PASS"
+@END
+
+=EXEC_ARG_BLOCK 0xfe00

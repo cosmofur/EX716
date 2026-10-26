@@ -1850,7 +1850,7 @@ class microcpu:
                     "038 Attempted to write block larger than memory to storage")
         if cmd == CastWriteSectorI:
             self.optPOPNULL(address)            
-            v = self.getwordat(address)
+            v = self.data_address(self.getwordat(address))
             if context.DeviceHandle == None:
                 self.raiseerror("540 Attempted to write without selecting Disk")
             if v < bank_end-0x1ff:
@@ -2095,7 +2095,7 @@ class microcpu:
         if cmd == PollReadSectorI:
             self.optPOPNULL(address)
             if current_context.DeviceHandle is not None:
-                v = self.getwordmem(address)
+                v = self.data_address(self.getwordmem(address))
                 if v <= bank_end-0x1ff:
                     current_context.DeviceFile.seek(self.DiskPtr)
                     block = current_context.DeviceFile.read(512)

@@ -766,3 +766,30 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
   `tests/test_cpu24_exc01.py`, and this handoff. Generated `.exc` and history
   files were removed. Next native milestone is a DiskOS EXC01 loader using a
   sector buffer and far-memory copy into each destination MS.
+
+
+## Native DiskOS ExecFile prototype (2026-10-25)
+
+- Added `lib/exec.ld`/`exec.ref`. `ExecFile(FileName,ArgCount,ArgVector)` uses
+  DiskOS for lookup/header validation and full extent-chain planning, then a
+  destructive Stage 2 in reserved MS 255 performs raw sector reads, copies each
+  EXC01 CS to its declared MS, sets DS/ES, and far-jumps to the entry point.
+  Success does not return; pre-destructive failures return `EXEC_*` status.
+- Stage 2 currently reserves MS 255 and rejects target images that declare it.
+  Dynamic relocation to MS 254 or another unused bank remains follow-up work.
+- Added a fixed 512-byte `ARG1` launch ABI at `ES:0xfe00`: at most 31 supplied
+  arguments plus synthesized `argv[0]`, with relative offsets and NUL strings.
+  The serialized header/table/strings must fit in one sector.
+- Corrected CPU24 indirect sector read/write buffers to apply the active data
+  MS. This was required for DiskOS heap buffers in segmented mode; direct raw
+  Stage 2 reads already use the loader MS.
+- Added `tests/exec-library-test.asm`, `exec-native-test.asm`, and
+  `exec-target.asm`. ARG1 construction passes. An EXC01 target imported into a
+  temporary DiskOS image was loaded through native `ExecFile`; it verified
+  argc, argv[0], and argv[1] through ES and printed `NATIVE EXEC PASS` after
+  65,517 instructions. CPU24 EXC01 unit tests, `py_compile`, and
+  `git diff --check` pass.
+- The end-to-end test used `/tmp/DISK00.disk` with DiskOS magic `0x3044`; it is
+  disposable. Generated `.exc` and history files were removed. An unrelated
+  untracked `venv/` appeared during the session and was deliberately left
+  untouched.

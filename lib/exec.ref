@@ -1,0 +1,2 @@
+ExecFile(FileName,ArgCount,ArgVector):error "Replaces the current CPU24 image with an EXC01 executable from DiskOS; success does not return."
+ExecBuildArgBlock(FileName,ArgCount,ArgVector):size|0 "Builds the fixed 512-byte ARG1 launch block; supplied arguments exclude synthesized argv[0]."

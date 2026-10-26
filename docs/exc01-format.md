@@ -43,3 +43,45 @@ python3 cpu24.py program.exc
 
 An EXC01 file contains no source map or symbols, so source-level debugger
 features are available only when running the assembly source.
+
+## Native DiskOS exec
+
+`lib/exec.ld` provides the initial destructive native loader:
+
+```text
+ExecFile(FileName, ArgCount, ArgVector):error
+```
+
+The supplied argument vector contains `ArgCount` near string pointers and does
+not include `argv[0]`; the loader prepends `FileName`. Failure returns one of
+the `EXEC_*` status constants. Success replaces the caller and never returns.
+
+Stage 1 uses DiskOS to open the file, validate its EXC01 header and exact file
+size, follow the complete extent chain, and construct a physical-sector plan.
+Stage 2 runs from reserved MS 255, reads payload sectors through the raw disk
+operations, copies them into their destination Memory Segments, and far-jumps
+to the entry point. This first implementation rejects images that declare MS
+255; relocating Stage 2 to another unused high MS is planned follow-up work.
+
+### ARG1 launch block
+
+On entry to the replacement program, `ES` is 255 and `ES:0xfe00` contains one
+512-byte launch area. Only the serialized portion is written; remaining bytes
+are reserved. The executable starts with `CS:PC` and `DS` from EXC01.
+
+| Offset | Size | Meaning |
+|---:|---:|---|
+| 0 | 4 | ASCII `ARG1` |
+| 4 | 2 | Serialized size |
+| 6 | 2 | `argc`, including synthesized `argv[0]` |
+| 8 | 2 | Flags, currently zero |
+| 10 | 2 | Argument-offset table offset, currently 16 |
+| 12 | 2 | String-area offset |
+| 14 | 2 | Reserved |
+| 16 | variable | `(argc + 1)` relative offsets; final entry is zero |
+| following | variable | NUL-terminated argument strings |
+
+At most 31 caller arguments are accepted, producing at most 32 entries after
+`argv[0]` is added. The complete header, table, and strings must fit in 512
+bytes. A C startup shim can copy these strings from ES into normal DS-relative
+storage and then call `main(argc, argv)`.
