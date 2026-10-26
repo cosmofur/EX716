@@ -31,6 +31,7 @@ import time
 import bisect
 import tempfile
 import glob
+import struct
 
 try:
     import termios
@@ -329,6 +330,9 @@ class AssemblerContext:
         self.DEFMEMSIZE = MAXPHYSMEM
         self.InitialDS = 0
         self.DataCopyBank = None
+        self.SegmentHighWater = {}
+        self.CodeSegments = {0}
+        self.DataSegments = set()
         self.AdminFlag = 0
         self.Fast = False
         self.CrossCheck = False
@@ -1095,6 +1099,11 @@ class microcpu:
             self.raiseerror("190 Physical Address OverFlow %06x" % location)
 
         if context is not None:
+            bank = (int(location) >> 16) & 0xff
+            end_offset = (int(location) & 0xffff) + 1
+            context.SegmentHighWater[bank] = max(
+                context.SegmentHighWater.get(bank, 0), end_offset
+            )
             src_file = getattr(context, "CurrentSourceFile", "") or context.ActiveFile
             src_line = getattr(context, "CurrentSourceLine", 0) or context.FileLineNum
 
@@ -3765,7 +3774,7 @@ def DecodeStr(instr, curaddress, CPU, JUSTRESULT, context: AssemblerContext):
     if ((instr.startswith('"') and instr.endswith('"')) or (instr.startswith("'") and instr.endswith("'"))) and not JUSTRESULT:
         midtext = instr[1:-1]
         for c in midtext:
-            CPU.insertbyte(curaddress, int(ord(c)) & 0xff)
+            CPU.insertbyte(curaddress, int(ord(c)) & 0xff, context)
             curaddress += 1
         return curaddress
 
@@ -4941,6 +4950,7 @@ def execute_assembler_command(cmd, CPU, context):
             )
         context.CodeAddresses[context.CodeSegment] = context.address & 0xffff
         context.CodeSegment = value
+        context.CodeSegments.add(value)
         offset = context.CodeAddresses.get(value, 0)
         context.address = (value << 16) | offset
         return ""
@@ -4994,6 +5004,7 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
         context.DataSegment = value
+        context.DataSegments.add(value)
         context.InitialDS = value
         context.dataaddress = value << 16
         return ""
@@ -6406,6 +6417,205 @@ def CreateTempFilename(origfilename):
     return path
 
 
+EXC01_MAGIC = b"EXC01"
+EXC01_HEADER_SIZE = 512
+EXC01_DESCRIPTOR_SIZE = 4
+EXC01_MAX_DESCRIPTORS = 125
+EXC01_TYPE_CODE = 0
+EXC01_TYPE_DATA = 1
+
+
+def is_exc01_file(filename):
+    try:
+        with open(filename, "rb") as stream:
+            return stream.read(len(EXC01_MAGIC)) == EXC01_MAGIC
+    except OSError:
+        return False
+
+
+def exc01_descriptors(context):
+    """Return (type, memory segment, 512-byte count) records."""
+    high_water = dict(context.SegmentHighWater)
+
+    # The entry point and initial DS must name loadable Memory Segments even
+    # when their allocated bytes happen to be all zero.
+    high_water[context.EntryBank] = max(
+        high_water.get(context.EntryBank, 0), context.Entry + 1
+    )
+    high_water[context.InitialDS] = max(high_water.get(context.InitialDS, 0), 1)
+
+    if context.DataCopyBank is not None:
+        copy_length = context.codehighaddress & 0xffff
+        high_water[context.DataCopyBank] = max(
+            high_water.get(context.DataCopyBank, 0), copy_length
+        )
+
+    descriptors = []
+    for bank in sorted(high_water):
+        byte_count = int(high_water[bank])
+        if not 0 <= bank <= 0xff:
+            raise ValueError(f"EXC01 Memory Segment is out of range: {bank}")
+        if not 1 <= byte_count <= 0x10000:
+            raise ValueError(
+                f"EXC01 Memory Segment {bank} has invalid size {byte_count}"
+            )
+        sector_count = (byte_count + 511) // 512
+        record_type = (
+            EXC01_TYPE_CODE
+            if bank in context.CodeSegments or bank == context.EntryBank
+            else EXC01_TYPE_DATA
+        )
+        descriptors.append((record_type, bank, sector_count))
+
+    if len(descriptors) > EXC01_MAX_DESCRIPTORS:
+        raise ValueError(
+            f"EXC01 supports at most {EXC01_MAX_DESCRIPTORS} descriptors; "
+            f"program needs {len(descriptors)}"
+        )
+    return descriptors
+
+
+def write_exc01(filename, message, CPU, context):
+    descriptors = exc01_descriptors(context)
+    try:
+        message_bytes = message.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise ValueError("EXC01 loading message must contain only ASCII") from exc
+    if b"\0" in message_bytes:
+        raise ValueError("EXC01 loading message cannot contain a NUL byte")
+
+    message_offset = 10 + len(descriptors) * EXC01_DESCRIPTOR_SIZE
+    if message_offset + len(message_bytes) + 1 > EXC01_HEADER_SIZE:
+        available = EXC01_HEADER_SIZE - message_offset - 1
+        raise ValueError(
+            f"EXC01 loading message is too long; maximum is {available} bytes "
+            f"for {len(descriptors)} descriptors"
+        )
+
+    header = bytearray(EXC01_HEADER_SIZE)
+    header[0:5] = EXC01_MAGIC
+    header[5] = context.EntryBank & 0xff
+    struct.pack_into("<H", header, 6, context.Entry & 0xffff)
+    header[8] = context.InitialDS & 0xff
+    header[9] = len(descriptors)
+    offset = 10
+    for record_type, bank, sector_count in descriptors:
+        header[offset] = record_type
+        header[offset + 1] = bank
+        struct.pack_into("<H", header, offset + 2, sector_count)
+        offset += EXC01_DESCRIPTOR_SIZE
+    header[message_offset:message_offset + len(message_bytes)] = message_bytes
+
+    with open(filename, "wb") as stream:
+        stream.write(header)
+        for _, bank, sector_count in descriptors:
+            start = bank << 16
+            size = sector_count * 512
+            stream.write(CPU.memspace[start:start + size].tobytes())
+
+    return descriptors
+
+
+def load_exc01(filename, CPU, context):
+    with open(filename, "rb") as stream:
+        image = stream.read()
+
+    if len(image) < EXC01_HEADER_SIZE:
+        raise ValueError("EXC01 file is shorter than its 512-byte header")
+    header = image[:EXC01_HEADER_SIZE]
+    if header[:5] != EXC01_MAGIC:
+        raise ValueError("not an EXC01 executable")
+
+    entry_bank = header[5]
+    entry_address = struct.unpack_from("<H", header, 6)[0]
+    initial_ds = header[8]
+    descriptor_count = header[9]
+    if descriptor_count > EXC01_MAX_DESCRIPTORS:
+        raise ValueError(
+            f"EXC01 descriptor count {descriptor_count} exceeds "
+            f"{EXC01_MAX_DESCRIPTORS}"
+        )
+
+    table_end = 10 + descriptor_count * EXC01_DESCRIPTOR_SIZE
+    message_end = header.find(b"\0", table_end)
+    if message_end < 0:
+        raise ValueError("EXC01 loading message is not NUL terminated")
+    try:
+        message = header[table_end:message_end].decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ValueError("EXC01 loading message is not ASCII") from exc
+    if any(header[message_end + 1:]):
+        raise ValueError("EXC01 header padding after the message is not zero")
+
+    descriptors = []
+    seen_banks = set()
+    payload_size = 0
+    for index in range(descriptor_count):
+        offset = 10 + index * EXC01_DESCRIPTOR_SIZE
+        record_type = header[offset]
+        bank = header[offset + 1]
+        sector_count = struct.unpack_from("<H", header, offset + 2)[0]
+        if record_type not in (EXC01_TYPE_CODE, EXC01_TYPE_DATA):
+            raise ValueError(
+                f"EXC01 descriptor {index} has unsupported type {record_type}"
+            )
+        if not 1 <= sector_count <= 128:
+            raise ValueError(
+                f"EXC01 descriptor {index} has invalid sector count {sector_count}"
+            )
+        if bank in seen_banks:
+            raise ValueError(f"EXC01 Memory Segment {bank} is described twice")
+        seen_banks.add(bank)
+        descriptors.append((record_type, bank, sector_count))
+        payload_size += sector_count * 512
+
+    expected_size = EXC01_HEADER_SIZE + payload_size
+    if len(image) != expected_size:
+        raise ValueError(
+            f"EXC01 file size is {len(image)} bytes; expected {expected_size}"
+        )
+    descriptor_by_bank = {bank: (kind, count) for kind, bank, count in descriptors}
+    if entry_bank not in descriptor_by_bank:
+        raise ValueError(f"EXC01 entry MS {entry_bank} is not present")
+    if descriptor_by_bank[entry_bank][0] != EXC01_TYPE_CODE:
+        raise ValueError(f"EXC01 entry MS {entry_bank} is not a code descriptor")
+    if entry_address >= descriptor_by_bank[entry_bank][1] * 512:
+        raise ValueError(
+            f"EXC01 entry address {entry_bank:02x}:{entry_address:04x} "
+            "is outside its loaded image"
+        )
+    if initial_ds not in descriptor_by_bank:
+        raise ValueError(f"EXC01 initial DS {initial_ds} is not present")
+
+    payload_offset = EXC01_HEADER_SIZE
+    for record_type, bank, sector_count in descriptors:
+        size = sector_count * 512
+        start = bank << 16
+        CPU.memspace[start:start + size] = np.frombuffer(
+            image[payload_offset:payload_offset + size], dtype=np.uint8
+        )
+        context.SegmentHighWater[bank] = size
+        if record_type == EXC01_TYPE_CODE:
+            context.CodeSegments.add(bank)
+        else:
+            context.DataSegments.add(bank)
+        payload_offset += size
+
+    context.Entry = entry_address
+    context.EntryBank = entry_bank
+    context.EntryExplicit = True
+    context.InitialDS = initial_ds
+    CPU.CS = entry_bank
+    CPU.DS = initial_ds
+    CPU.ES = initial_ds
+    CPU.SegmentMode = int(any(bank != 0 for _, bank, _ in descriptors))
+    CPU.pc = entry_address
+    if message:
+        safeprint(message)
+    safeprint(f"Loaded EXC01 executable: {filename}")
+    return descriptors
+
+
 def save_readline_history(histfile):
     try:
         readline.write_history_file(histfile)
@@ -6442,6 +6652,8 @@ def main():
     files = []
     OptCodeFlag = False
     BinaryOutFlag = False
+    ExecutableOutFlag = False
+    ExecutableMessage = ""
     UseDebugger = False
     breakafter = ()
 
@@ -6472,6 +6684,8 @@ def main():
                firstcmd+=[arg]
             if prpcmd == 4:
                 context.Monitor.append(Str2Word(arg))                
+            if prpcmd == 5:
+                ExecutableMessage = arg
         else:
             if arg == "-d":
                 context.Debug = min(context.Debug + 1, DBG_INTERNAL)
@@ -6502,6 +6716,11 @@ def main():
                 safeprint("Optcode flag set")
             elif arg == "-O":
                 BinaryOutFlag = True
+            elif arg == "--exe":
+                ExecutableOutFlag = True
+            elif arg == "--exe-message":
+                skipone = True
+                prpcmd = 5
             elif arg == "-w":
                 skipone = True
                 prpcmd = 1
@@ -6514,21 +6733,38 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
                 files.append(arg)
 #    Entry = 0
     maxusedmem = 0
-    for curfile in files:
-        NewLocalID = curfile
-        maxusedmem = \
-            loadfile(curfile, maxusedmem, CPU , GLOBALFLAG, NewLocalID, context)
-    unresolved = FinalSymbolReport(context)
-    if unresolved:
-        safeprint("ERROR: refusing to execute with unresolved symbols")
-        sys.exit(1)
+    exc_loaded = False
+    exc_inputs = [filename for filename in files if is_exc01_file(filename)]
+    if exc_inputs:
+        if len(files) != 1:
+            safeprint("ERROR: an EXC01 executable must be the only input file")
+            sys.exit(1)
+        if ExecutableOutFlag:
+            safeprint("ERROR: --exe requires assembly source, not an EXC01 input")
+            sys.exit(1)
+        try:
+            descriptors = load_exc01(files[0], CPU, context)
+        except (OSError, ValueError) as exc:
+            safeprint(f"ERROR: cannot load EXC01 executable: {exc}")
+            sys.exit(1)
+        maxusedmem = max((count * 512 for _, _, count in descriptors), default=0)
+        exc_loaded = True
+    else:
+        for curfile in files:
+            NewLocalID = curfile
+            maxusedmem = \
+                loadfile(curfile, maxusedmem, CPU , GLOBALFLAG, NewLocalID, context)
+        unresolved = FinalSymbolReport(context)
+        if unresolved:
+            safeprint("ERROR: refusing to execute with unresolved symbols")
+            sys.exit(1)
 
     context.GlobalOptCnt = 0
 
@@ -6611,24 +6847,48 @@ def main():
         sys.exit()
     i = 0
     SP = -1
-    if context.DataCopyBank is not None:
-        copy_length = context.codehighaddress & 0xffff
-        copy_base = context.DataCopyBank << 16
-        CPU.memspace[copy_base:copy_base + copy_length] = CPU.memspace[:copy_length]
-    if not context.EntryExplicit:
-        if context.LegacyEntry is not None:
-            context.Entry = context.LegacyEntry
-            context.EntryBank = context.LegacyEntryBank
-        safeprint(
-            "Warning: no .ENTRY directive; using legacy .ORG entry "
-            f"{context.EntryBank:02x}:{context.Entry:04x}"
-        )
+    if not exc_loaded:
+        if context.DataCopyBank is not None:
+            copy_length = context.codehighaddress & 0xffff
+            copy_base = context.DataCopyBank << 16
+            CPU.memspace[copy_base:copy_base + copy_length] = CPU.memspace[:copy_length]
+            context.SegmentHighWater[context.DataCopyBank] = max(
+                context.SegmentHighWater.get(context.DataCopyBank, 0), copy_length
+            )
+            context.DataSegments.add(context.DataCopyBank)
+        if not context.EntryExplicit:
+            if context.LegacyEntry is not None:
+                context.Entry = context.LegacyEntry
+                context.EntryBank = context.LegacyEntryBank
+            safeprint(
+                "Warning: no .ENTRY directive; using legacy .ORG entry "
+                f"{context.EntryBank:02x}:{context.Entry:04x}"
+            )
 
-    CPU.DS = context.InitialDS
-    CPU.CS = context.EntryBank
-    if context.EntryBank != 0:
-        CPU.SegmentMode = 1
-    CPU.pc = context.Entry
+        CPU.DS = context.InitialDS
+        CPU.ES = context.InitialDS
+        CPU.CS = context.EntryBank
+        CPU.SegmentMode = int(
+            context.EntryBank != 0
+            or context.InitialDS != 0
+            or any(bank != 0 for bank in context.SegmentHighWater)
+        )
+        CPU.pc = context.Entry
+
+    if ExecutableOutFlag:
+        newfile = create_new_filename(files[0], "exc")
+        try:
+            descriptors = write_exc01(
+                newfile, ExecutableMessage, CPU, context
+            )
+        except (OSError, ValueError) as exc:
+            safeprint(f"ERROR: cannot write EXC01 executable: {exc}")
+            sys.exit(1)
+        safeprint(
+            f"Wrote EXC01 executable: {newfile} "
+            f"({len(descriptors)} Memory Segments)"
+        )
+        sys.exit()
     if context.Debug > 1:
         dprint(DBG_ASM,"Start of Run: Debug: %s: Watch: %s" % (context.Debug, context.watchword))
     if ListOut:

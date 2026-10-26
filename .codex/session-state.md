@@ -738,3 +738,31 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
 - The standalone classic `tests/clocals-test.asm` now sets `. 0x0100` before
   its entry jump for the same reason. CPU24 audit modes retain their `.ENTRY`
   directives.
+
+
+## CPU24 EXC01 executable images (2026-10-25)
+
+- Fast-forwarded `Dev_072426` to `origin/Dev_072426`; the branch was 20 commits
+  behind and is now synchronized. The earlier memory-cache experiment remains
+  preserved as `stash@{0}` and was not reapplied.
+- `cpu24.py --exe [--exe-message TEXT] source.asm` now writes `source.exc`.
+  Passing an EXC01 file as the sole positional input auto-detects the five-byte
+  magic, restores its Memory Segments, prints its ASCII load message, initializes
+  CS/PC/DS/ES, and executes without assembling source.
+- EXC01 has a 512-byte header: `EXC01`, entry MS/address, initial DS, descriptor
+  count, four-byte type/MS/sector-count descriptors, and a NUL-terminated ASCII
+  message. Payload is consecutive 512-byte sectors in descriptor order. V1
+  permits 125 unique MS descriptors of 1-128 sectors each; type 0 is normal
+  mixed code/data and type 1 is advisory data-oriented metadata.
+- Assembly now tracks per-MS high-water marks, including emitted zero bytes, so
+  images preserve allocated layout rather than merely scanning for nonzero data.
+  The loader validates structure and complete file length before writing memory.
+- Added `docs/exc01-format.md` and `tests/test_cpu24_exc01.py`. Unit tests cover
+  header fields, payload/register round trips, load messages, and duplicate-MS
+  rejection. A manual `tests/cpu24-far-code.asm` round trip produced three MS
+  descriptors; source and EXC01 both printed `CPU24 far-code PASS` after 115
+  instructions. `py_compile` and `git diff --check` pass.
+- Modified files: `cpu24.py`, `docs/exc01-format.md`,
+  `tests/test_cpu24_exc01.py`, and this handoff. Generated `.exc` and history
+  files were removed. Next native milestone is a DiskOS EXC01 loader using a
+  sector buffer and far-memory copy into each destination MS.
