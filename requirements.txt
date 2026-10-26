@@ -1,0 +1,2 @@
+numpy>=1.20
+readchar>=4.0

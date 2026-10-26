@@ -790,6 +790,15 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
   65,517 instructions. CPU24 EXC01 unit tests, `py_compile`, and
   `git diff --check` pass.
 - The end-to-end test used `/tmp/DISK00.disk` with DiskOS magic `0x3044`; it is
-  disposable. Generated `.exc` and history files were removed. An unrelated
-  untracked `venv/` appeared during the session and was deliberately left
-  untouched.
+  disposable. Generated `.exc` and history files were removed.
+
+
+## Local Python environment repair (2026-10-26)
+
+- `.bashrc` auto-activates the repository's `venv/`, but its `bin/activate`
+  file was zero bytes. Recreated it as a Python 3.12 virtual environment and
+  installed NumPy and readchar. Confirmed an interactive Bash enters the repo
+  with `VIRTUAL_ENV` set and `python` resolving to `venv/bin/python`.
+- Added `requirements.txt` for NumPy and readchar, setup instructions to the
+  README, and root `.gitignore` entries for `venv/` and `.venv/`. The environment
+  is generated locally; its dependencies and recreation steps are tracked.

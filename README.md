@@ -95,6 +95,12 @@ Common `cpu.py` options include:
 
 EX716 is primarily developed on Linux and WSL, and also runs in POSIX-like Python environments such as Termux. Native Windows support is best-effort: assembler and non-interactive emulator paths should import cleanly, while terminal raw-mode features are limited compared with POSIX terminals.
 
+For a local Python environment, run `python3 -m venv venv`, activate it with
+`source venv/bin/activate`, then install the runtime packages with
+`python -m pip install -r requirements.txt`. The `venv/` directory is machine-
+local and ignored by Git. NumPy is required by the emulator; `readchar` enables
+single-key terminal input and can be omitted when that feature is not needed.
+
 `CPUPATH` uses the host platform path separator: `:` on Linux, WSL, macOS, and Termux; `;` on native Windows.
 
 ## Optional C Fast Mode
