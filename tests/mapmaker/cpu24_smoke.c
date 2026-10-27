@@ -9,8 +9,12 @@ int main(void)
     unsigned long first;
 
     if (!MapInitialize(&map, 12345UL, 7)) return 1;
-    if (!MapSetCell(&map, 126, 126, MAKE_CELL(255, TERRAIN_SNOW))) return 2;
-    if (!MapGetCell(&map, 126, 126, &cell)) return 3;
+    if (!MapSetCell(&map, MAP_WIDTH / 2, MAP_HEIGHT / 2,
+                    MAKE_CELL(200, TERRAIN_ROCK))) return 8;
+    if (!MapSmooth(&map, 1)) return 9;
+    if (!MapSetCell(&map, MAP_WIDTH - 1, MAP_HEIGHT - 1,
+                    MAKE_CELL(255, TERRAIN_SNOW))) return 2;
+    if (!MapGetCell(&map, MAP_WIDTH - 1, MAP_HEIGHT - 1, &cell)) return 3;
     if (CELL_HEIGHT(cell) != 255U || CELL_TERRAIN(cell) != TERRAIN_SNOW) return 4;
     first = MapRandom(&map);
     if (!MapInitialize(&map, 12345UL, 7)) return 5;

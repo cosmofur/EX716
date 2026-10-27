@@ -7,10 +7,28 @@ typedef char mapmaker_assert_long_is_at_least_32[(sizeof(unsigned long) >= 4) ? 
 /* Explicit masks make the checksum 32-bit even on LP64 hosts. */
 #define MAP_U32(value) ((value) & 0xffffffffUL)
 
-/* This full-map buffer keeps smoothing independent of traversal direction.
-   It is intentionally host-only for Milestone 2; CPU24 needs far data before
-   two map-sized buffers can safely be placed in its segmented memory model. */
+/* This full-map buffer keeps smoothing independent of traversal direction. */
+#ifdef __EX716__
+/* Bank 2 is a manually reserved far-scratch bank in the CPU24 harness. */
+static ex716_far_ptr mapmaker_smooth_buffer = EX716_FAR_PTR(2U, 0x0200U);
+static MapCell mapmaker_smooth_row[MAP_WIDTH];
+#else
 static MapCell mapmaker_smooth_buffer[MAP_CELLS];
+#endif
+
+/* The host keeps the entire destination map near.  CPU24 writes one computed
+ * row at a time, then transfers that row to the far scratch segment. */
+#ifndef __EX716__
+static void mapmaker_smooth_store(unsigned int index, MapCell cell)
+{
+    mapmaker_smooth_buffer[index] = cell;
+}
+
+static MapCell mapmaker_smooth_load(unsigned int index)
+{
+    return mapmaker_smooth_buffer[index];
+}
+#endif
 
 static int mapmaker_clamp_coordinate(int value, int maximum)
 {
@@ -166,6 +184,9 @@ int MapSmooth(Map *map, int passes)
     unsigned int index;
     unsigned int sum;
     MapCell center;
+#ifdef __EX716__
+    ex716_far_ptr row_pointer;
+#endif
 
     if (map == 0 || passes < 0)
         return 0;
@@ -179,12 +200,34 @@ int MapSmooth(Map *map, int passes)
                 sum += CELL_HEIGHT(map->cells[(y + 1 < MAP_HEIGHT ? y + 1 : y) * MAP_WIDTH + x]);
                 sum += CELL_HEIGHT(map->cells[y * MAP_WIDTH + (x ? x - 1 : x)]);
                 sum += CELL_HEIGHT(map->cells[y * MAP_WIDTH + (x + 1 < MAP_WIDTH ? x + 1 : x)]);
-                mapmaker_smooth_buffer[index] = MAKE_CELL(sum / 8U,
-                                                           CELL_TERRAIN(center));
+#ifdef __EX716__
+                mapmaker_smooth_row[x] = MAKE_CELL(sum >> 3,
+                                                    CELL_TERRAIN(center));
+#else
+                mapmaker_smooth_store(index, MAKE_CELL(sum >> 3,
+                                                        CELL_TERRAIN(center)));
+#endif
             }
+#ifdef __EX716__
+            row_pointer.offset = (unsigned short)(mapmaker_smooth_buffer.offset +
+                                                   (unsigned int)y * MAP_WIDTH * 2U);
+            row_pointer.segment = mapmaker_smooth_buffer.segment;
+            ex716_far_put16v(&row_pointer, mapmaker_smooth_row, MAP_WIDTH);
+#endif
         }
+#ifdef __EX716__
+        for (y = 0; y < MAP_HEIGHT; ++y) {
+            row_pointer.offset = (unsigned short)(mapmaker_smooth_buffer.offset +
+                                                   (unsigned int)y * MAP_WIDTH * 2U);
+            row_pointer.segment = mapmaker_smooth_buffer.segment;
+            ex716_far_get16v(&row_pointer, mapmaker_smooth_row, MAP_WIDTH);
+            for (x = 0; x < MAP_WIDTH; ++x)
+                map->cells[(unsigned int)y * MAP_WIDTH + x] = mapmaker_smooth_row[x];
+        }
+#else
         for (index = 0; index < MAP_CELLS; ++index)
-            map->cells[index] = mapmaker_smooth_buffer[index];
+            map->cells[index] = mapmaker_smooth_load(index);
+#endif
     }
     return 1;
 }

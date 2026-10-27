@@ -566,6 +566,16 @@ for i in SymToValMap:
     OPTDICT[str(i[0])] = [i[0], i[1].encode(
         'ascii', "ignore").decode('utf-8', 'ignore'), i[2]]
 
+# Keep the byte-load extension available to programs assembled with the
+# non-segmented emulator as well as cpu24.py.
+_pushb_op = [63, "PUSHB", 1]
+OPTLIST.append(_pushb_op[0])
+while len(OPTSYM) <= _pushb_op[0]:
+    OPTSYM.append("")
+OPTSYM[_pushb_op[0]] = _pushb_op[1]
+OPTDICT[_pushb_op[1]] = _pushb_op
+OPTDICT[str(_pushb_op[0])] = _pushb_op
+
 try:
     _fd = sys.stdin.fileno()
 except (AttributeError, OSError):
@@ -1281,6 +1291,13 @@ class microcpu:
         # Since we are storing the result in the same stack spot as the address was, no need for overflow checks
         newaddress = self.fetchStack(0)
         self.StoreAcum(0, self.getwordat(newaddress))
+
+    def optPUSHB(self, address):
+        # Byte reads do not require a second byte, unlike PUSHS.
+        newaddress = self.fetchStack(0)
+        if newaddress < 0 or newaddress >= len(self.memspace):
+            self.raiseerror("220 Invalid Address: %d, optPUSHB" % newaddress)
+        self.StoreAcum(0, int(self.memspace[newaddress]))
 
     def optPOPNULL(self, address):
         if (address > MAXMEMSP):

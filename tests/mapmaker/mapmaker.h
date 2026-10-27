@@ -2,12 +2,20 @@
 #define MAPMAKER_H
 
 /* Portable C89 core.  CPU24 requires unsigned short to be 16 bits. */
+#ifndef MAP_WIDTH
 #define MAP_WIDTH 127
+#endif
+#ifndef MAP_HEIGHT
 #define MAP_HEIGHT 127
+#endif
 #define MAP_CELLS (MAP_WIDTH * MAP_HEIGHT)
 #define MAP_FORMAT_VERSION 2
 
 typedef unsigned short MapCell;
+
+#ifdef __EX716__
+#include <farptr.h>
+#endif
 
 #define CELL_HEIGHT(cell) ((unsigned int)((cell) & 0x00ffU))
 #define CELL_TERRAIN(cell) ((unsigned int)(((cell) >> 8) & 0x00ffU))

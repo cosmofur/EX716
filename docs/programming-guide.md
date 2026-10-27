@@ -137,6 +137,31 @@ Set DS and enter Ring 1 before touching banked data. Returning to Ring 0 with
 `@PUSH 0 @ADM` clears the segment registers. See `CPU2CPU24.txt` for a detailed
 porting checklist.
 
+### Explicit far-data handles
+
+The first C far-data ABI is deliberately explicit. Include `farptr.h`, retain
+the descriptor itself in the current DS, and name the target ES bank manually:
+
+```c
+#include <farptr.h>
+
+static ex716_far_ptr scratch = EX716_FAR_PTR(2U, 0x0200U);
+
+ex716_far_put16(&scratch, 0x1234U);
+value = ex716_far_get16(&scratch);
+```
+
+Link segmented programs with `L farptr.ld`. The single-word helpers save ES,
+set it from `scratch.segment`, and use `@ESO` for the target access; ES is
+restored on return. `ex716_far_get16v` and `ex716_far_put16v` transfer a
+contiguous run of words and therefore select ES once per run; use those for
+rows or blocks rather than repeatedly calling the single-word helpers. DS and
+ES are independent: normal C accesses use DS, while `@ESO` uses ES for just
+its next memory operation. This is not a C `T *`: ordinary pointers remain near
+16-bit DS offsets, and callers must allocate/reserve the selected bank and
+avoid a word access beginning at offset `0xffff`. Pointer arithmetic, automatic
+bank allocation, and arrays spanning banks are later compiler/runtime work.
+
 ## 5. Calls, parameters, and local storage
 
 Arguments are pushed left to right and the callee pops them right to left.

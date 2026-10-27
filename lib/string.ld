@@ -138,14 +138,12 @@ ENDBLOCK
    @LocalVar len_size 02
    @POPI len_strptr
    @MA2V 0 len_size
-   @PUSHII len_strptr  # First character
-   @AND 0x00ff
+   @PUSHI len_strptr @PUSHS @PUSHB  # First character
    @WHILE_NOTZERO
       @POPNULL
       @INCI len_size
       @INCI len_strptr
-      @PUSHII len_strptr
-      @AND 0x00ff
+      @PUSHI len_strptr @PUSHS @PUSHB
    @ENDWHILE
    @POPNULL
    @PUSHI len_size
@@ -1046,7 +1044,7 @@ ENDBLOCK
           @MA2V 0 FoundFlag
           @MA2V 0 Index1
           @MV2V Delim DelimCurse  # Set Cursor to loop though Delim
-          @PUSHII DelimCurse @AND 0xff
+          @PUSHI DelimCurse @PUSHS @PUSHB
           @WHILE_NOTZERO
               @IF_EQ_S
                   # Found, replace with null and end loop
@@ -1059,14 +1057,14 @@ ENDBLOCK
                   @POPNULL
                   @INCI DelimCurse
                @ENDIF
-               @PUSHII DelimCurse @AND 0xff    # Will exit inner loop when DelimCurse -> null            
+               @PUSHI DelimCurse @PUSHS @PUSHB    # Will exit inner loop when DelimCurse -> null
            @ENDWHILE
            @POPNULL     # Pops off the 0 that terminate while
            @POPNULL     # Pop off Instring[x]
            @IF_EQ_AV 0 FoundFlag
               # Did not find match, try next character
               @INCI InString
-              @PUSHII InString @AND 0xff  # continue while (unless InString[x]==null)
+              @PUSHI InString @PUSHS @PUSHB  # continue while (unless InString[x]==null)
            @ELSE
               # Found match. So end the outer while loop.
               @INCI InString        # Move to the null.           
@@ -1115,11 +1113,11 @@ ENDBLOCK
    @ForIupA2S Index1 0     # A2S means 0 to current value on stack, which is poped off at the start.
       @PUSHI instring
       @ADDI Index1
-      @PUSHS @AND 0xff
+      @PUSHB
       @ForIupA2V Index2 0 SplitLen
          @PUSHI splitlist
          @ADDI Index2
-         @PUSHS @AND 0xff
+         @PUSHB
          @IF_EQ_S
             @INCI SSCount       # If  == then SSCOunt++
          @ENDIF
@@ -1130,10 +1128,10 @@ ENDBLOCK
    # Have to consider what to do if the deliminator is also the first character as that would make
    # the first substring a null lenth string. Better to drop it.
    @ForIupA2V Index2 0 SplitLen
-      @PUSHII instring @AND 0xff
+      @PUSHI instring @PUSHS @PUSHB
       @PUSHI splitlist
       @ADDI Index2
-      @PUSHS @AND 0xff      # Just look at 1st character.
+      @PUSHB      # Just look at 1st character.
       @IF_EQ_S
          # Match, so move start of instring past the split character.
          @INCI instring   # This will make instring start at first non split character.

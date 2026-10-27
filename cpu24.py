@@ -55,7 +55,7 @@ class DynFunction:
     source_file: str = ""
     start_line: int = 0
 
-from collections import defaultdict
+from collections import defaultdict, deque
 
 
 #import traceback
@@ -396,6 +396,8 @@ class AssemblerContext:
         self.Remote = False
         self.watchpoints = []
         self.Monitor = []
+        self.TraceTailSize = 0
+        self.TraceTail = None
     def max_macro_arg_index(self,body):
         nums=[int(x) for x in re.findall(r"%([0-9]+)", body)]
         return max(nums, default=0)
@@ -587,7 +589,7 @@ for i in SymToValMap:
 for _op in (
     [56, "CSO", 1], [57, "DSO", 1], [58, "ESO", 1],
     [59, "SSO", 1], [60, "SGET", 3], [61, "SSET", 3],
-    [62, "FJMPS", 1],
+    [62, "FJMPS", 1], [63, "PUSHB", 1],
 ):
     OPTLIST.append(_op[0])
     while len(OPTSYM) <= _op[0]:
@@ -1258,6 +1260,16 @@ class microcpu:
                 safeprint("Stack dump error:", e, file=DebugOut)
 
             # Print ID code
+            trace_tail = getattr(current_context, "TraceTail", None)
+            if trace_tail is not None:
+                safeprint("Instruction trace tail (oldest first; %d records):" % len(trace_tail), file=DebugOut)
+                for record in trace_tail:
+                    source = self.FindWhatLine(record["pc"])
+                    safeprint(
+                        "  {pc:04x}->{next_pc:04x} {opname:<8} arg={argument:04x} "
+                        "sp={sp:02x} top=[{stack}] DS={ds:02x} ES={es:02x} CS={cs:02x} {source}".format(
+                            source=source or "", **record),
+                        file=DebugOut)
             safeprint("Error Number: %s at PC:0x%04x" % (idcode, i), file=DebugOut)
             safeprint("%s:%s" % (current_context.ActiveFile, current_context.FileLineNum+1))
             if idcode[:3].isdigit():
@@ -1318,6 +1330,15 @@ class microcpu:
             self.raiseerror("220 Invalid Physical Address: %d, getwordat" % address)
         return self.getwordmem(address)
 
+    def getbyteat(self, address):
+        """Read one byte through DS (or the active segment override)."""
+        address = int(address)
+        if address <= MAXMEMSP:
+            address = self.data_address(address)
+        if address < 0 or address >= len(self.memspace):
+            self.raiseerror("220 Invalid Physical Address: %d, getbyteat" % address)
+        return int(self.memspace[address])
+
     def putwordat(self, address, value):
         address = int(address)
         if address <= MAXMEMSP:
@@ -1374,6 +1395,11 @@ class microcpu:
         # Since we are storing the result in the same stack spot as the address was, no need for overflow checks
         newaddress = self.fetchStack(0)
         self.StoreAcum(0, self.getwordat(newaddress))
+
+    def optPUSHB(self, address):
+        # Like PUSHS, but a byte read is valid at offset 0xffff.
+        newaddress = self.fetchStack(0)
+        self.StoreAcum(0, self.getbyteat(newaddress))
 
     def optPOPNULL(self, address):
         sp = self.hwstacksp
@@ -2534,7 +2560,23 @@ class microcpu:
 
                 self.pc = next_pc
                 self.prefix_just_set = False
+                if context.TraceTail is not None:
+                    context.TraceTail.append({
+                        "pc": pc, "next_pc": next_pc,
+                        "opname": OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}",
+                        "argument": argument & 0xffff, "sp": self.hwstacksp,
+                        "stack": " ".join(f"{int(value):04x}" for value in self.hwstack[max(0, self.hwstacksp - 4):self.hwstacksp]),
+                        "ds": self.DS, "es": self.ES, "cs": self.CS,
+                    })
                 func(argument)
+                if context.TraceTail is not None:
+                    context.TraceTail.append({
+                        "pc": pc, "next_pc": self.pc & 0xffff,
+                        "opname": OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}",
+                        "argument": argument & 0xffff, "sp": self.hwstacksp,
+                        "stack": " ".join(f"{int(value):04x}" for value in self.hwstack[max(0, self.hwstacksp - 4):self.hwstacksp]),
+                        "ds": self.DS, "es": self.ES, "cs": self.CS,
+                    })
                 if not self.prefix_just_set:
                     self.segment_override = None
         else:
@@ -2568,7 +2610,23 @@ class microcpu:
 
                 self.pc = next_pc
                 self.prefix_just_set = False
+                if context.TraceTail is not None:
+                    context.TraceTail.append({
+                        "pc": pc, "next_pc": next_pc,
+                        "opname": OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}",
+                        "argument": argument & 0xffff, "sp": self.hwstacksp,
+                        "stack": " ".join(f"{int(value):04x}" for value in self.hwstack[max(0, self.hwstacksp - 4):self.hwstacksp]),
+                        "ds": self.DS, "es": self.ES, "cs": self.CS,
+                    })
                 func(argument)
+                if context.TraceTail is not None:
+                    context.TraceTail.append({
+                        "pc": pc, "next_pc": self.pc & 0xffff,
+                        "opname": OPTSYM[optcode] if optcode < len(OPTSYM) else f"OP{optcode:02x}",
+                        "argument": argument & 0xffff, "sp": self.hwstacksp,
+                        "stack": " ".join(f"{int(value):04x}" for value in self.hwstack[max(0, self.hwstacksp - 4):self.hwstacksp]),
+                        "ds": self.DS, "es": self.ES, "cs": self.CS,
+                    })
                 if not self.prefix_just_set:
                     self.segment_override = None
         return 0
@@ -6750,6 +6808,12 @@ def main():
                 context.Monitor.append(Str2Word(arg))                
             if prpcmd == 5:
                 ExecutableMessage = arg
+            if prpcmd == 6:
+                try:
+                    context.TraceTailSize = int(arg)
+                except ValueError:
+                    safeprint("--trace-tail requires a positive integer", file=DebugOut)
+                    sys.exit(1)
         else:
             if arg == "-d":
                 context.Debug = min(context.Debug + 1, DBG_INTERNAL)
@@ -6785,6 +6849,9 @@ def main():
             elif arg == "--exe-message":
                 skipone = True
                 prpcmd = 5
+            elif arg == "--trace-tail":
+                skipone = True
+                prpcmd = 6
             elif arg == "-w":
                 skipone = True
                 prpcmd = 1
@@ -6797,7 +6864,7 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n--trace-tail N Dump the last N executed instructions on a fatal error\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
@@ -6831,6 +6898,11 @@ def main():
             sys.exit(1)
 
     context.GlobalOptCnt = 0
+    if context.TraceTailSize:
+        if context.TraceTailSize < 1:
+            safeprint("--trace-tail requires a positive integer", file=DebugOut)
+            sys.exit(1)
+        context.TraceTail = deque(maxlen=context.TraceTailSize)
 
     if len(files) == 0:
         # if no files given then drop to debugger for machine lang tests.

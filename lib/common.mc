@@ -108,6 +108,7 @@ G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 =ADM 53
 =SCLR 54
 =SRTP 55
+=PUSHB 63
 
 M TRUE 1
 =TRUE 1
@@ -179,6 +180,7 @@ M DUP $$DUP
 M PUSHI $$PUSHI %1
 M PUSHII $$PUSHII %1
 M PUSHS $$PUSHS
+M PUSHB $$PUSHB
 M POPNULL $$POPNULL
 M SWP $$SWP
 M POPI $$POPI %1
@@ -1248,13 +1250,14 @@ M FUNCTION \
    MF __FUNC_BEGIN_%1 1 \
    MF __FUNC_LAST %1 \
    :__FuncStart \
-   =__FUNC_START_%1 {__FuncStart}
+   =__FUNC_START_%1 {__FuncStart} \
+   MF __FUNC_ACTIVE_START %EVAL {__FuncStart}
 
 M ENDFUNCTION \
    :__FuncEnd \
    =__FUNC_END_{__FUNC_LAST} {__FuncEnd} \
    MF __FUNC_END_{__FUNC_LAST} 1 \
-   =__FUNC_SIZE {__FuncEnd}-{__FuncStart} \
+   =__FUNC_SIZE {__FuncEnd}-{__FUNC_ACTIVE_START} \
    MF __FUNC_SIZE_{__FUNC_LAST} {__FUNC_SIZE} \
    P Function: {__FUNC_LAST} Size {__FUNC_SIZE} Bytes
 
