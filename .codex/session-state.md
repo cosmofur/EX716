@@ -1,5 +1,29 @@
 # Session State
 
+## Current CPU24 automatic code-bank diagnostic (2026-10-29)
+
+- User is evaluating automatic CS banking once code exceeds 64 KiB, using `tests/fooa1.asm`.
+- Focused run: `CPUPATH=lib python3 cpu24.py tests/fooa1.asm` assembles and runs, but all nine calls run in CS 0.  After 64 KiB, displayed function offsets wrap (for example Test_4 is `0x017d`), confirming unguarded cross-bank code emission rather than a working automatic relocation.
+- Important finding: this test does **not** currently invoke `assemble_auto_bank_function` / its nested `assemble_in`. `@FUNCTION` in `lib/commonDS.mc` expands to its ordinary symbol/size bookkeeping macro and has no `AUTOBANK_FUNCTION_BEGIN`/`END` markers; the raw-function capture path only recognizes a plain source `@FUNCTION Name` command before macro expansion.
+- `assemble_in` has exactly two call sites (initial tentative placement and retry in next bank). Its `context.CodeAddresses[bank] = context.address & 0xffff` is lossy bookkeeping, but the larger invariant failure is that `context.address` can cross into the next physical bank while `context.CodeSegment` remains the old bank; labels then retain a 16-bit offset with the old CS. Central emitted-byte/range validation should detect this before any write is committed, with a relocation-specific overflow exception caught only by auto-banking.
+- Implemented a non-exception initial fix in `cpu24.py`: tentative auto-bank assembly now resets `AutoBankOverflow`/`AutoBankHighOffset`; `.ORG` and legacy `.` retain raw first-pass width while auto-bank capture is active and mark an out-of-bank target before normal 16-bit truncation; emitted bytes update the same high-water mark. `assemble_in` returns that high-water span and its existing two-call relocation path retries when the flag or reserved-end test says it does not fit. Normal non-auto-bank directives preserve historical wrapping.
+- Verified with `python3 -m py_compile cpu24.py`, `git diff --check`, and a disposable `/tmp/cpu24-autobank-overflow.asm`: a function initially at `00:C000` with `.ORG BigHere+0x4000` relocates to a second segment and `--exe` writes a two-memory-segment EXC01. `fooa1.asm` still does not enter raw-function capture because `RUFF` expands its whole function into one macro command; it remains a regression target once capture recognizes those macro-expanded boundaries.
+- Completed the macro-boundary and far-return follow-up. `split_macro_function_open` and quote/backquote-aware `split_macro_function_close` isolate only a macro-expanded leading plain `@FUNCTION Name` and trailing unquoted `@ENDFUNCTION`; the prior unconditional `[AB ...]` diagnostic prints were removed. `fooa1.asm` now captures and places Tests 1–3 in CS0, 4–6 in CS1, and 7–9 in CS2.
+- Root cause of the nested-return failure: a cross-bank veneer stored a near return label in the caller's CS. The ordinary callee `@RET` only pops a 16-bit PC and therefore returned at the caller-bank offset while retaining the callee's CS, entering unrelated code and repeating Test 7–9. Far-call source veneers now push a return label emitted in the *callee* bank. That remote veneer performs `@FRET`, which restores the saved PC/CS pair and performs `FJMPS` back to the caller.
+- Veneers are now grouped by bank and emitted at the reserved `0xfc00` tail rather than the mutable normal code cursor; overflow of the 1 KiB veneer reservation raises an assembly error. Generated veneer assembly restores the caller's legacy entry metadata after its temporary `.ORG` directives. With `-K`, generated auto-bank and veneer sources are intentionally retained for inspection.
+- Verification: `CPUPATH=lib python3 cpu24.py tests/fooa1.asm` passes with exactly four CS transitions (`0->1`, `1->2`, `2->1`, `1->0`) and no stack underflow; `--no_auto_bank tests/fooa1.asm` preserves all-CS0 legacy behavior; `tests/cpu24-far-code.asm` passes. `tests/fooa2.asm` is not present in this worktree. `tests/clocals-cpu24-test.asm` faults at `00:2009` both with and without `--no_auto_bank`, so it is an unrelated existing failure, not a banking regression.
+- MapMaker/ECC follow-up: `tests/mapmaker/cpu24_banked_smoke.py` passes (`BANKED_RESULT=42`, CS0<->CS3); `cpu24_smoke.py` passes (`MAPMAKER_CPU24_RESULT=0`). The full ECC-generated MapMaker harness initially exposed two automatic-bank issues: data `::` emitted within `__ex716_vformat` was incorrectly counted as code overflow, and same-bank automatic calls consumed one tail veneer each until the 1 KiB reservation overflowed. Added `EmittingData` scope around data initializers so byte high-water tracking counts code only. During final veneer generation, same-bank veneer forward references are retargeted directly to their final local labels; only cross-bank calls consume tail veneer space, using library-local mangled target symbols where necessary.
+- `bin/ECC -q -o /tmp/mapmaker-cpu24-ecc.asm tests/mapmaker/mapmaker_cpu24.c tests/mapmaker/mapmaker.c` now completes, and CPU24 assembles all automatic-bank functions with zero missing call labels. Its remaining two unresolved globals are `ex716_far_get16v`/`ex716_far_put16v`: ECC currently loads `clocals.ld` and `lmath.ld` but not `farptr.ld`, while the included stdio runtime needs those helpers. This is a runtime-library inclusion issue, not a CS-bank allocation failure.
+- Added `L farptr.ld` to the normal ECC harness, fixing those two missing runtime symbols without a test-specific helper.  The plain MapMaker build now has zero unresolved symbols.  From an isolated directory containing a freshly formatted `DISK00.disk`, auto-bank execution currently faults at `CS0:6781` in a captured generated function (`POPI`, stack address out of range); legacy `--no_auto_bank` instead faults earlier in `softstack.ld` with `SWP on stack with less than 2 items`.  Therefore ECC compilation and CPU24 assembly are unblocked, but full MapMaker generation is not yet a passing runtime test and the crash is not attributable solely to automatic CS banking.
+- Trace refinement: the first incorrect transfer in the auto-bank MapMaker run is in CS2.  Ordinary execution falls through from `0xFBFF` to the veneer reservation at `0xFC00`; there is no `JMP`/call instruction.  `0xFC00` happens to hold `__AB_V_2_CMP32S`, which saves the apparent fall-through address as a far return and jumps to `CS0:CMP32S`.  Its normal four comparison operands are absent, so the later `@POP32I(V) BVar` faults (`POPS` sees only its destination).  The immediate auto-bank issue is therefore unintended code fall-through/overlap into the reserved bank-tail veneer area, not a defect in the FENTER/FRET pair for a valid cross-bank call.  Identify the preceding CS2 function/control-flow endpoint before changing veneer code.
+
+## Current checkpoint: bank-qualified C frame prototype (2026-10-28)
+
+- Added `lib/banked_runtime.ld`, which supplies bank-2-qualified C frame helpers (`B2_MOVE_HW_SS`, `B2_MOVE_SS_HW`, `B2_PUSHRETURN`, `B2_POPRETURN`, `B2_CLocals`, and `B2_EndCLocals`). It is loaded only while `.CODE 2` is active; its stack metadata/storage remains in DS bank 1.
+- Added `tests/mapmaker/banked_smoke.c` and `tests/mapmaker/cpu24_banked_smoke.py`. The runner compiles C, extracts the selected C function into CODE 2, rewrites C frame macros to the B2 variants, and rewrites declared bank-0 services to `B2_CALL_B0` far calls. It passes with `BANKED_RESULT=42`, zero unresolved symbols, and confirms a CODE-2 compiled function can read DS-bank data and invoke a bank-0 compiled global accessor through a far gateway.
+- Important layout rule discovered: `.DATA 1` and `.CODE 1` occupy the same physical bank, so code must begin at bank 2 while DS remains bank 1. Do not place banked code in CODE 1 unless data is relocated.
+- Added `tools/bank_runtime.py`, which emits bank-qualified code copies of `mul.ld`, `div.ld`, and `shift16.ld`. `banked_runtime.ld` now supplies the bank-2 compatibility versions of the legacy `@Locals` family. The smoke runner loads those generated copies into CODE 2 and rewrites `MapSetCell` to call `B2_MULU` locally. The real MapMaker `MapSetCell` function now executes in CODE 2 successfully (`BANKED_RESULT=42`, zero unresolved symbols).
+
 ## Active checkpoint: native ExecCall and persistent DiskOS fixture (2026-10-26)
 
 - Current objective: enable a DiskOS launcher to run an EXC01 child and then reload itself with the child exit status. The desired eventual launcher is `LAUNCHER.EXC`; initial disk programs will include `DIR`, `HELLOWORLD`, and `ECHO`.
@@ -821,3 +845,44 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
 - Added `requirements.txt` for NumPy and readchar, setup instructions to the
   README, and root `.gitignore` entries for `venv/` and `.venv/`. The environment
   is generated locally; its dependencies and recreation steps are tracked.
+
+
+## Banked MapMaker runtime telemetry (2026-10-28)
+
+- `cpu24.py` now appends bank activity to the normal `END of Run` summary:
+  executed opcode counts by CS, observed DS/ES values, and CS transition
+  counts. The Python interpreter records these per opcode; native fast mode
+  reports that detailed activity is unavailable.
+- `tests/mapmaker/cpu24_banked_smoke.py` now places banked code in MS 3, since
+  `MapSmooth` reserves MS 2 at `0x0200` as its far scratch buffer. Its normal
+  smoke path passes with `BANKED_RESULT=42` and reports `CS0=142, CS3=445` and
+  two transitions in each direction.
+- Expanding that smoke run to `MapSmooth` exposed an unresolved ABI defect:
+  its far row-copy path corrupts the shared C soft-stack frame and runs until
+  the bank-local stack guard trips. The test was returned to the passing
+  MapSetCell baseline. The next step is a C-frame-aware bank-local far-pointer
+  helper (or an equivalent fully specified bank-0 gateway ABI), before moving
+  MapSmooth into a banked segment.
+- The assembler now maintains numeric macro `HIGH_BANK`, initialized to zero
+  and raised whenever `.CODE`, `.DATA`, or `.DATACOPY` selects a higher bank.
+  Numeric expressions accept macro names directly, so `.CODE HIGH_BANK+1` and
+  `@FCALL HIGH_BANK Target` work without hard-coded bank values. The MapMaker
+  smoke run reserves data bank 2, selects `HIGH_BANK+1`, and verified it runs
+  in bank 3 with `BANKED_RESULT=42`.
+
+
+## Automatic function-banking groundwork (2026-10-28)
+
+- `cpu24.py` now records every source and macro-expanded command in a stable
+  replay tape before mutating it. `SourceCommand` has a tape index and the
+  assembler context exposes the current position, default auto-bank state,
+  function-bank tables, and a 1 KiB planned veneer reservation.
+- Added `.AUTO_BANK ON|OFF` and `cpu24.py --no_auto_bank`; `bin/ECC` now
+  accepts `--no_auto_bank` and writes `.AUTO_BANK OFF` into its output. These
+  are safe opt-out controls; automatic function relocation has not yet been
+  enabled.
+- Do not inject begin/end directives by appending to the legacy `FUNCTION` /
+  `ENDFUNCTION` macro bodies. Their deferred macro-expansion sequencing does
+  not preserve a matching runtime frame. Capture raw `@FUNCTION` boundaries
+  in the source-command reader instead, then replay their command-tape span.
+- The passing banked MapMaker smoke test remains green after the groundwork.

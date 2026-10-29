@@ -549,7 +549,7 @@ M JUGT \
 # --------------------------------------------------------------
 # CALL and Return Functions
 # --------------------------------------------------------------
-M CALL @PUSH $_%0A @JMP %1 :_%0A
+M CALL AUTOBANK_CALL %1
 M CALLZ @PUSH $_%0_Loc @JMPZ _%0_Do @JMP _%0_After :_%0_Do @JMP %1 :_%0_Loc :_%0_After
 M CALLNZ @PUSH $_%0_Loc @JMPZ _%0_After @JMP %1 :_%0_Loc :_%0_After
 M CALLI @PUSH $_%0A @PUSHI %1 @JMPS :_%0A

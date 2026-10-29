@@ -32,6 +32,7 @@ import bisect
 import tempfile
 import glob
 import struct
+import copy
 
 try:
     import termios
@@ -171,6 +172,10 @@ COMMAND_SPEC = {
     ".ENTRY": {"arity":1,"arg_kind":["word"]},
     ".DATA": {"arity":1,"arg_kind":["word"]},
     ".DATACOPY": {"arity":1,"arg_kind":["word"]},
+    ".AUTO_BANK": {"arity":1,"arg_kind":["word"]},
+    "AUTOBANK_CALL": {"arity":1,"arg_kind":["word"]},
+    "AUTOBANK_FUNCTION_BEGIN": {"arity":1,"arg_kind":["word"]},
+    "AUTOBANK_FUNCTION_END": {"arity":1,"arg_kind":["word"]},
     ":": {"arity":-1,"arg_kind":["word"]},
     "=": {"arity":-2,"arg_kind":["word","equation"]},
     }
@@ -287,6 +292,7 @@ class SourceCommand:
     address: int
     origin: str="file"
     segments: list[str] | None = None
+    tape_index: int | None = None
 
 @dataclass
 class ForwardRef:
@@ -356,11 +362,35 @@ class AssemblerContext:
         self.KeepDynamicLibraries = False
         self.QuietAssemblyOutput = False
         self.DynamicLibraryTempFiles = []
+
+        # Commands are recorded before expansion or mutation.  Automatic
+        # banking will use this tape to replay a function transaction without
+        # rewinding a physical source file.
+        self.CommandTape = []
+        self.CommandPosition = -1
+        self.AutoBank = True
+        self.AutoBankVeneerBytes = 1024
+        self.AutoBankFunctions = {}
+        self.AutoBankActiveFunction = None
+        self.AutoBankFunctionHistory = []
+        self.AutoBankCapture = None
+        self.AutoBankCaptureEnabled = True
+        self.AutoBankCallRelocations = []
+        self.AutoBankVeneersEmitted = False
+        # Per-tentative-function layout state.  It is meaningful only while
+        # AutoBankActiveFunction is set; ordinary assembly retains its
+        # established 16-bit address wrapping behavior.
+        self.AutoBankOverflow = False
+        self.AutoBankHighOffset = 0
         
 
         # Macro state
-        self.MacroData = {}
-        self.MacroPCount = {}
+        # HIGH_BANK is an assembler-maintained numeric macro.  It is updated
+        # whenever a segment directive selects a higher bank, so sources can
+        # request the next free high bank with `.CODE HIGH_BANK+1`.
+        self.HighBank = 0
+        self.MacroData = {"HIGH_BANK": "0"}
+        self.MacroPCount = {"HIGH_BANK": 0}
         self.MacroVars = ['0'] * 64
         self.MacroBlockStack = []
         self.CurrentMacroID = None        
@@ -389,15 +419,72 @@ class AssemblerContext:
         # Data segment state
         self.ExpectData = 0
         self.DataSegment = -1
+        self.EmittingData = False
 
         # Debug/Options
         self.Debug = 0
         self.GlobalOptCnt = 0
+        # Runtime bank telemetry records the active segment registers once per
+        # Python-emulated instruction, making far calls visible in the summary.
+        self.BankCodeCounts = {}
+        self.BankTransitions = {}
+        self.BankDataSegments = set()
+        self.BankExtraSegments = set()
+        self._LastExecutionCS = None
         self.Remote = False
         self.watchpoints = []
         self.Monitor = []
         self.TraceTailSize = 0
         self.TraceTail = None
+
+    def note_bank(self, bank):
+        """Expose the highest selected assembly bank as HIGH_BANK."""
+        bank = int(bank)
+        if bank > self.HighBank:
+            self.HighBank = bank
+            self.MacroData["HIGH_BANK"] = str(bank)
+            self.MacroPCount["HIGH_BANK"] = 0
+
+    def record_command(self, command):
+        """Assign a stable replay-tape position before command mutation."""
+        if command.tape_index is None:
+            command.tape_index = len(self.CommandTape)
+            self.CommandTape.append(SourceCommand(
+                text=command.text,
+                filename=command.filename,
+                resolved_filename=command.resolved_filename,
+                line_num=command.line_num,
+                address=command.address,
+                origin=command.origin,
+                segments=command.segments,
+                tape_index=command.tape_index,
+            ))
+        self.CommandPosition = command.tape_index
+
+    def record_execution_segments(self, cs, ds, es):
+        """Record the segment registers used for one interpreted opcode."""
+        cs, ds, es = int(cs), int(ds), int(es)
+        self.BankCodeCounts[cs] = self.BankCodeCounts.get(cs, 0) + 1
+        self.BankDataSegments.add(ds)
+        self.BankExtraSegments.add(es)
+        if self._LastExecutionCS is not None and self._LastExecutionCS != cs:
+            edge = (self._LastExecutionCS, cs)
+            self.BankTransitions[edge] = self.BankTransitions.get(edge, 0) + 1
+        self._LastExecutionCS = cs
+
+    def bank_execution_report(self):
+        if not self.BankCodeCounts:
+            return "Bank activity: unavailable (fast native execution)"
+        code = ", ".join(
+            f"CS{bank}={count}" for bank, count in sorted(self.BankCodeCounts.items()))
+        data = ", ".join(str(bank) for bank in sorted(self.BankDataSegments))
+        extra = ", ".join(str(bank) for bank in sorted(self.BankExtraSegments))
+        transitions = ", ".join(
+            f"{source}->{target}={count}"
+            for (source, target), count in sorted(self.BankTransitions.items()))
+        return (f"Bank activity: code [{code}]; DS [{data or '-'}]; "
+                f"ES [{extra or '-'}]; CS transitions "
+                f"[{transitions or '-'}]")
     def max_macro_arg_index(self,body):
         nums=[int(x) for x in re.findall(r"%([0-9]+)", body)]
         return max(nums, default=0)
@@ -973,10 +1060,15 @@ def handle_data_label(line, filename, context, CPU):
     initializer = expand_brace_refs(
         initializer, filename, context, CPU, preserve_unresolved=True
     )
-    for _ in range(repeat):
-        workingaddress = DecodeStr(
-            initializer, workingaddress, CPU, False, context
-        )
+    old_emitting_data = context.EmittingData
+    context.EmittingData = True
+    try:
+        for _ in range(repeat):
+            workingaddress = DecodeStr(
+                initializer, workingaddress, CPU, False, context
+            )
+    finally:
+        context.EmittingData = old_emitting_data
 
     if context.DataSegment != -1:
         context.dataaddress = workingaddress
@@ -1116,6 +1208,15 @@ class microcpu:
             context.SegmentHighWater[bank] = max(
                 context.SegmentHighWater.get(bank, 0), end_offset
             )
+            if (context.AutoBankActiveFunction is not None and
+                    not context.EmittingData):
+                function_bank = context.CodeSegment
+                function_offset = int(location) - (function_bank << 16)
+                context.AutoBankHighOffset = max(
+                    context.AutoBankHighOffset, function_offset + 1
+                )
+                if function_offset < 0 or function_offset > 0xffff:
+                    context.AutoBankOverflow = True
             src_file = getattr(context, "CurrentSourceFile", "") or context.ActiveFile
             src_line = getattr(context, "CurrentSourceLine", 0) or context.FileLineNum
 
@@ -1944,6 +2045,7 @@ class microcpu:
         if cmd == CastEnd:
             self.optPOPNULL(address)            
             safeprint("\nEND of Run:(%d Opts)" % current_context.GlobalOptCnt)
+            safeprint(current_context.bank_execution_report())
             sys.exit(address)
         if cmd == CastDebugToggle:
             self.optPOPNULL(address)            
@@ -2546,6 +2648,7 @@ class microcpu:
                 if context.Debug >= DBG_RUN:
                     dissasm(pc, 1, self)
 
+                context.record_execution_segments(self.CS, self.DS, self.ES)
                 optcnt.GlobalOptCnt += 1
 
                 size = op_size[optcode]
@@ -2596,6 +2699,7 @@ class microcpu:
                 if context.Debug >= DBG_RUN:
                     dissasm(pc, 1, self)
 
+                context.record_execution_segments(self.CS, self.DS, self.ES)
                 optcnt.GlobalOptCnt += 1
 
                 size = op_size[optcode]
@@ -3574,7 +3678,8 @@ def _expand_percent_functions(line, filename, context, CPU, scan_mode=False):
 # We need that 'word' of storage to hold temporary values that will later be replaed. All other
 # values (such as when labels are themselves used a +/- modifiers) must resolve durring 1st pass.
 
-def FirstPassVal(instr, context, filename=None, allow_braces=True):
+def FirstPassVal(instr, context, filename=None, allow_braces=True,
+                 preserve_width=False):
     original = instr
 
     dprint(DBG_INTERNAL, f"[FP IN] {original!r}")
@@ -3619,7 +3724,7 @@ def FirstPassVal(instr, context, filename=None, allow_braces=True):
            f"[FP OUT] expr={expr!r} expanded={expanded_expr!r} "
            f"resolved={resolved!r} size={size}")
 
-    return Str2Word(resolved), size
+    return (int(resolved) if preserve_width else Str2Word(resolved)), size
 
 def parse_expression(expr):
     """
@@ -3689,6 +3794,15 @@ def decode_token(token, curaddress, CPU,  JUSTRESULT, context: AssemblerContext)
         return ("value",value)
     except ValueError:
         pass  # not a numeric constant — try label
+
+    # Numeric MF variables are valid in assembler expressions without brace
+    # expansion.  This specifically lets segment directives use HIGH_BANK+1.
+    macro_value = context.MacroData.get(token)
+    if macro_value is not None:
+        try:
+            return ("value", int(str(macro_value), 0))
+        except ValueError:
+            pass
 
     # Determine if it's a label
     labelname = token
@@ -4551,6 +4665,178 @@ def parse_macro_definition_command(line, key, size, cmdq=None):
 # Load file is also the effective main loop for the assembler
 # def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContext):
 
+def auto_bank_function_name(line):
+    """Return a plain @FUNCTION name, excluding special FUNCTION(F) wrappers."""
+    match = re.match(r"^@FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", line.strip())
+    return match.group(1) if match else None
+
+
+def split_macro_function_open(line):
+    """Split a macro-expanded leading plain @FUNCTION from its body."""
+    match = re.match(
+        r"^@FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)(?=\s|$)", line
+    )
+    if match is None or match.end() == len(line):
+        return None
+    return line[:match.end()], line[match.end():].strip()
+
+
+def split_macro_function_close(line):
+    """Split an unquoted trailing @ENDFUNCTION from a macro-expanded body."""
+    in_double = in_single = in_backquote = escaped = False
+    token = "@ENDFUNCTION"
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if char == "`" and not in_double and not in_single:
+            in_backquote = not in_backquote
+            index += 1
+            continue
+        if not in_backquote and char == '"' and not in_single:
+            in_double = not in_double
+            index += 1
+            continue
+        if not in_backquote and char == "'" and not in_double:
+            in_single = not in_single
+            index += 1
+            continue
+        if (not in_double and not in_single and not in_backquote and
+                line.startswith(token, index) and
+                (index == 0 or line[index - 1].isspace()) and
+                (index + len(token) == len(line) or
+                 line[index + len(token)].isspace()) and
+                not line[index + len(token):].strip()):
+            if index:
+                return line[:index].rstrip(), token
+            return None
+        index += 1
+    return None
+
+
+def clone_source_command(command):
+    return SourceCommand(
+        text=command.text,
+        filename=command.filename,
+        resolved_filename=command.resolved_filename,
+        line_num=command.line_num,
+        address=command.address,
+        origin=command.origin,
+        segments=command.segments,
+        tape_index=command.tape_index,
+    )
+
+
+def auto_bank_context_snapshot(context):
+    """Copy rollback state without duplicating the immutable command tape.
+
+    The tape is deliberately append-only and is retained across a rollback so
+    a label can continue to have distinct meanings at its individual tape
+    positions.  Including it in every function checkpoint made assembly grow
+    quadratically with library size.
+    """
+    return {
+        key: copy.deepcopy(value)
+        for key, value in context.__dict__.items()
+        if key not in {"CommandTape", "CommandPosition", "AutoBankCapture"}
+    }
+
+
+def restore_auto_bank_checkpoint(transaction, CPU, context):
+    """Restore a failed tentative function without flattening label history."""
+    global LocVarHist, UniqueID
+
+    tape = context.CommandTape
+    position = context.CommandPosition
+    context.__dict__.clear()
+    context.__dict__.update(copy.deepcopy(transaction["context_state"]))
+    context.CommandTape = tape
+    context.CommandPosition = position
+    context.AutoBankCapture = None
+    LocVarHist = copy.deepcopy(transaction["label_history"])
+    UniqueID = transaction["unique_id"]
+    start = transaction["memory_start"]
+    CPU.memspace[start:start + len(transaction["memory"])] = transaction["memory"]
+
+
+def assemble_auto_bank_function(transaction, CPU, context):
+    """Tentatively assemble one captured function, relocating it on overflow."""
+    global UniqueID
+
+    def assemble_in(bank, offset):
+        old_capture = context.AutoBankCaptureEnabled
+        old_active = context.AutoBankActiveFunction
+        context.AutoBankCaptureEnabled = False
+        context.AutoBankActiveFunction = {
+            "name": transaction["name"], "bank": bank, "address": (bank << 16) | offset,
+        }
+        context.CodeSegment = bank
+        context.CodeSegments.add(bank)
+        context.address = (bank << 16) | offset
+        context.CodeAddresses[bank] = offset
+        context.AutoBankOverflow = False
+        context.AutoBankHighOffset = offset
+        with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".asm", prefix="cpu24-autobank-", delete=False) as source:
+            source.write("\n".join(command.text for command in transaction["commands"]))
+            source.write("\n")
+            source_name = source.name
+        try:
+            loadfile(source_name, context.address, CPU, context.LORGFLAG,
+                     context.LocalID, context)
+        finally:
+            if context.KeepDynamicLibraries:
+                print(f"Keeping auto-bank assembly: {source_name}")
+            else:
+                os.unlink(source_name)
+            context.AutoBankCaptureEnabled = old_capture
+            context.AutoBankActiveFunction = old_active
+        context.AutoBankHighOffset = max(
+            context.AutoBankHighOffset,
+            context.address - (bank << 16),
+        )
+        context.CodeAddresses[bank] = context.address & 0xffff
+        return context.AutoBankHighOffset - offset
+
+    start_bank = transaction["bank"]
+    start_offset = transaction["offset"]
+    usable_end = 0x10000 - context.AutoBankVeneerBytes
+    size = assemble_in(start_bank, start_offset)
+    if (context.AutoBankOverflow or
+            start_offset + size > usable_end):
+        restore_auto_bank_checkpoint(transaction, CPU, context)
+        next_bank = max(context.HighBank + 1, start_bank + 1)
+        while next_bank in context.DataSegments or next_bank in context.CodeSegments:
+            next_bank += 1
+        if next_bank > 0xff:
+            CPU.raiseerror("Automatic code banking exhausted all CS banks")
+        context.note_bank(next_bank)
+        size = assemble_in(next_bank, 0)
+        if context.AutoBankOverflow or size > usable_end:
+            CPU.raiseerror(
+                f"Function {transaction['name']} is {size} bytes and cannot fit "
+                f"in one auto-bank code segment"
+            )
+        start_bank = next_bank
+        start_offset = 0
+
+    context.AutoBankFunctions[transaction["name"]] = {
+        "bank": start_bank,
+        "offset": start_offset,
+        "size": size,
+        "tape_start": transaction["tape_start"],
+        "tape_end": transaction["tape_end"],
+    }
+    context.AutoBankFunctionHistory.append(context.AutoBankFunctions[transaction["name"]])
+
+
 def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContext):
     global FileLineData
 
@@ -4582,9 +4868,58 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     else:
                         cmdq.append(cmds)
                 cmd = cmdq.popleft()
+                context.record_command(cmd)
                 line = removecomments(cmd.text).strip()
                 if not line:
                     continue                
+
+                # A plain @FUNCTION block is assembled as one transaction.
+                # Store raw commands so macro expansion and reused labels are
+                # replayed in their original order if the function is moved.
+                capture = context.AutoBankCapture
+                if capture is not None and cmd.origin == "macro":
+                    split = split_macro_function_close(line)
+                    if split is not None:
+                        body, closing = split
+                        enqueue_front(cmdq, cmd, closing, context, origin="macro")
+                        line = body
+                        cmd.text = body
+                if capture is not None:
+                    capture["commands"].append(clone_source_command(cmd))
+                    if line == "@ENDFUNCTION":
+                        capture["tape_end"] = context.CommandPosition
+                        context.AutoBankCapture = None
+                        assemble_auto_bank_function(capture, CPU, context)
+                    continue
+                if (
+                    context.AutoBank
+                    and context.AutoBankCaptureEnabled
+                    and cmd.origin == "macro"
+                ):
+                    split = split_macro_function_open(line)
+                    if split is not None:
+                        header, remainder = split
+                        enqueue_front(cmdq, cmd, remainder, context, origin="macro")
+                        line = header
+                        cmd.text = header
+                function_name = auto_bank_function_name(line)
+                if (context.AutoBank and context.AutoBankCaptureEnabled and
+                        function_name is not None):
+                    bank = context.CodeSegment
+                    memory_start = bank << 16
+                    context.AutoBankCapture = {
+                        "name": function_name,
+                        "bank": bank,
+                        "offset": context.address & 0xffff,
+                        "tape_start": context.CommandPosition,
+                        "commands": [clone_source_command(cmd)],
+                        "context_state": auto_bank_context_snapshot(context),
+                        "label_history": copy.deepcopy(LocVarHist),
+                        "unique_id": UniqueID,
+                        "memory_start": memory_start,
+                        "memory": CPU.memspace[memory_start:memory_start + 0x20000].copy(),
+                    }
+                    continue
 
                 context.ActiveFile = cmd.filename
                 context.ActiveResolvedFile = cmd.resolved_filename
@@ -4819,6 +5154,25 @@ def split_source_commands(text, filename, resolved_filename, line_num, address, 
     flush()
     return out
 
+def set_code_address(raw_offset, context):
+    """Set a code location, retaining auto-bank layout overflow information."""
+    raw_offset = int(raw_offset)
+
+    if context.AutoBankActiveFunction is not None:
+        context.AutoBankHighOffset = max(
+            context.AutoBankHighOffset, raw_offset
+        )
+        if raw_offset < 0 or raw_offset > 0xffff:
+            context.AutoBankOverflow = True
+
+    # Keep the historical 16-bit directive behavior outside an automatically
+    # relocated function.
+    offset = Str2Word(raw_offset)
+    context.address = (context.CodeSegment << 16) | offset
+    context.CodeAddresses[context.CodeSegment] = offset
+    return offset
+
+
 def execute_assembler_command(cmd, CPU, context):
     
     line = cmd.text.strip()
@@ -4944,7 +5298,8 @@ def execute_assembler_command(cmd, CPU, context):
             rest,
             context,
             filename=filename,
-            allow_braces=True
+            allow_braces=True,
+            preserve_width=True,
         )
 
         trailing = rest[used:].lstrip()
@@ -4954,9 +5309,7 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
 
-        offset = Str2Word(value)
-        context.address = (context.CodeSegment << 16) | offset
-        context.CodeAddresses[context.CodeSegment] = offset
+        offset = set_code_address(value, context)
         context.LegacyEntry = offset
         context.LegacyEntryBank = context.CodeSegment
         return
@@ -4969,7 +5322,8 @@ def execute_assembler_command(cmd, CPU, context):
             rest,
             context,
             filename=filename,
-            allow_braces=True
+            allow_braces=True,
+            preserve_width=True,
         )
 
         trailing = rest[used:].lstrip()
@@ -4979,9 +5333,7 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
 
-        offset = Str2Word(value)
-        context.address = (context.CodeSegment << 16) | offset
-        context.CodeAddresses[context.CodeSegment] = offset
+        set_code_address(value, context)
         return
     
     elif key.upper() == ".ORG":
@@ -4992,23 +5344,16 @@ def execute_assembler_command(cmd, CPU, context):
             rest,
             context,
             filename=filename,
-            allow_braces=True
+            allow_braces=True,
+            preserve_width=True,
         )
 
         trailing = rest[used:].lstrip()
-        if trailing:
-            CPU.raiseerror(
-                f"Unexpected trailing text after {key}: {trailing!r} "
-                f"{filename}:{context.FileLineNum}"
-            )
 
-        offset = Str2Word(value)
-        context.address = (context.CodeSegment << 16) | offset
-        context.CodeAddresses[context.CodeSegment] = offset
+        offset = set_code_address(value, context)
         context.LegacyEntry = offset
         context.LegacyEntryBank = context.CodeSegment
-        return
-
+        return trailing
     elif key.upper() == ".CODE":
         if not rest:
             CPU.raiseerror(f"Missing bank for .CODE {filename}:{context.FileLineNum}")
@@ -5030,6 +5375,7 @@ def execute_assembler_command(cmd, CPU, context):
         context.CodeAddresses[context.CodeSegment] = context.address & 0xffff
         context.CodeSegment = value
         context.CodeSegments.add(value)
+        context.note_bank(value)
         offset = context.CodeAddresses.get(value, 0)
         context.address = (value << 16) | offset
         return ""
@@ -5084,6 +5430,7 @@ def execute_assembler_command(cmd, CPU, context):
             )
         context.DataSegment = value
         context.DataSegments.add(value)
+        context.note_bank(value)
         context.InitialDS = value
         context.dataaddress = value << 16
         return ""
@@ -5110,7 +5457,81 @@ def execute_assembler_command(cmd, CPU, context):
             )
         context.DataCopyBank = value
         context.InitialDS = value
+        context.note_bank(value)
         return ""
+    elif key.upper() == ".AUTO_BANK":
+        mode, used = nextword(rest)
+        if mode.upper() not in {"ON", "OFF"}:
+            CPU.raiseerror(
+                f".AUTO_BANK requires ON or OFF, got {mode!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+        trailing = rest[used:].lstrip()
+        if trailing:
+            CPU.raiseerror(
+                f"Unexpected trailing text after .AUTO_BANK: {trailing!r} "
+                f"{filename}:{context.FileLineNum}"
+            )
+        context.AutoBank = mode.upper() == "ON"
+        return ""
+    elif key == "AUTOBANK_FUNCTION_BEGIN":
+        name, used = nextword(rest)
+        if not name:
+            CPU.raiseerror(f"AUTOBANK_FUNCTION_BEGIN missing name {filename}:{context.FileLineNum}")
+        if context.AutoBankActiveFunction is not None:
+            CPU.raiseerror(
+                f"Nested auto-bank function {name!r} inside "
+                f"{context.AutoBankActiveFunction['name']!r}"
+            )
+        context.AutoBankActiveFunction = {
+            "name": name,
+            "tape_start": context.CommandPosition,
+            "bank": context.CodeSegment,
+            "address": context.address,
+        }
+        return rest[used:].lstrip()
+    elif key == "AUTOBANK_FUNCTION_END":
+        expanded_rest = expand_brace_refs(
+            rest, filename, context, CPU, preserve_unresolved=False
+        )
+        name, used = nextword(expanded_rest)
+        active = context.AutoBankActiveFunction
+        # FUNCTION's deferred macro body can reach us with the symbolic
+        # __FUNC_LAST token still intact.  The active transaction is the
+        # authoritative name in that case.
+        if active is None or (name != "__FUNC_LAST" and active["name"] != name):
+            CPU.raiseerror(
+                f"AUTOBANK_FUNCTION_END {name!r} does not match active function"
+            )
+        active["tape_end"] = context.CommandPosition
+        active["end_address"] = context.address
+        active["size"] = context.address - active["address"]
+        context.AutoBankFunctions.setdefault(name, []).append(active)
+        context.AutoBankFunctionHistory.append(active)
+        context.AutoBankActiveFunction = None
+        return expanded_rest[used:].lstrip()
+    elif key == "AUTOBANK_CALL":
+        target, used = nextword(rest)
+        if not target:
+            CPU.raiseerror(f"AUTOBANK_CALL missing target {filename}:{context.FileLineNum}")
+        return_label = create_new_unique()
+        if not context.AutoBank or context.AutoBankActiveFunction is None:
+            return (f"@PUSH ${return_label} ; @JMP {target} ; "
+                    f":{return_label} " + rest[used:].lstrip())
+
+        target_symbol = IsLocalVar(target, context)
+        safe_target = re.sub(r"[^A-Za-z0-9_]", "_", target_symbol)
+        veneer = f"__AB_V_{context.CodeSegment}_{safe_target}"
+        context.AutoBankCallRelocations.append({
+            "source_bank": context.CodeSegment,
+            "target": target,
+            "target_symbol": target_symbol,
+            "veneer": veneer,
+            "function": (context.AutoBankActiveFunction or {}).get("name"),
+            "tape": context.CommandPosition,
+        })
+        return (f"@PUSH ${return_label} ; @JMP {veneer} ; "
+                f":{return_label} " + rest[used:].lstrip())
     elif key == "D":
         origfilename, used = nextword(rest)
         if not origfilename:
@@ -5374,10 +5795,122 @@ def execute_assembler_command(cmd, CPU, context):
 
         return rest.lstrip()
 
+def emit_auto_bank_veneers(context, CPU):
+    """Emit one caller-bank veneer per recorded automatic function call."""
+    if (not context.AutoBank or not context.AutoBankCallRelocations or
+            context.AutoBankVeneersEmitted):
+        return
+    # Mark this before loading the generated source: a top-level generated
+    # load also runs final resolution when it returns.
+    context.AutoBankVeneersEmitted = True
+
+    veneers = {}
+    for relocation in context.AutoBankCallRelocations:
+        target = relocation["target"]
+        target_symbol = relocation.get("target_symbol", target)
+        target_info = context.AutoBankFunctions.get(target)
+        target_bank = (
+            target_info["bank"] if target_info is not None else
+            context.CodeLabelBanks.get(
+                target_symbol, context.CodeLabelBanks.get(target)
+            )
+        )
+
+        if target_bank == relocation["source_bank"]:
+            # The call site was initially assembled as a jump to a veneer so
+            # a later function relocation could still change banks.  Once
+            # placement is final, a same-bank call needs no veneer at all.
+            for ref in context.FWORDLIST:
+                if ref.symbol == relocation["veneer"]:
+                    ref.symbol = target_symbol
+            continue
+
+        veneers[(relocation["source_bank"], target_symbol)] = relocation["veneer"]
+
+    veneer_start = 0x10000 - context.AutoBankVeneerBytes
+    veneer_lines = {}
+    return_veneers = {}
+    for (source_bank, target_symbol), veneer in sorted(veneers.items()):
+        target = next(
+            relocation["target"]
+            for relocation in context.AutoBankCallRelocations
+            if relocation["veneer"] == veneer
+        )
+        target_info = context.AutoBankFunctions.get(target)
+        bank_lines = veneer_lines.setdefault(source_bank, [])
+        bank_lines.append(f":{veneer}")
+        if target_info is None or target_info["bank"] == source_bank:
+            bank_lines.append(f"@JMP {target_symbol}")
+            continue
+        key = re.sub(r"[^A-Za-z0-9_]", "_", target)
+        return_veneer = f"__AB_RETURN_{source_bank}_{key}"
+        return_veneers[(target_info["bank"], return_veneer)] = return_veneer
+        # Convert the caller's normal near return into a far return pair on
+        # the software stack.  The target function remains an ordinary near
+        # function, so its RET can only reach a return veneer in its own CS.
+        # That remote veneer restores the saved far pair and performs FJMPS.
+        bank_lines.extend((
+            "@SGET SegCS", "@SWP", "@FENTER",
+            f"@PUSH {return_veneer}",
+            f"@PUSH {target_info['bank']}",
+            f"@PUSH {target_symbol}", "@FJMPS",
+        ))
+
+    for (target_bank, return_veneer), _ in sorted(return_veneers.items()):
+        veneer_lines.setdefault(target_bank, []).extend((
+            f":{return_veneer}",
+            "@FRET",
+        ))
+
+    lines = []
+    for bank in sorted(veneer_lines):
+        lines.extend((
+            f".CODE {bank}",
+            f".ORG 0x{veneer_start:04X}",
+            *veneer_lines[bank],
+        ))
+
+    old_capture = context.AutoBankCaptureEnabled
+    old_active = context.AutoBankActiveFunction
+    old_segment = context.CodeSegment
+    old_address = context.address
+    old_legacy_entry = context.LegacyEntry
+    old_legacy_entry_bank = context.LegacyEntryBank
+    context.AutoBankCaptureEnabled = False
+    context.AutoBankActiveFunction = None
+    with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".asm", prefix="cpu24-auto-veneers-", delete=False) as source:
+        source.write("\n".join(lines))
+        source.write("\n")
+        source_name = source.name
+    try:
+        loadfile(source_name, context.address, CPU, context.LORGFLAG,
+                 context.LocalID, context)
+        for bank in veneer_lines:
+            end = context.CodeAddresses.get(bank, veneer_start)
+            if end < veneer_start:
+                CPU.raiseerror(
+                    f"Automatic code veneers exceed the {context.AutoBankVeneerBytes} "
+                    f"byte reservation in CS bank {bank}"
+                )
+    finally:
+        if context.KeepDynamicLibraries:
+            print(f"Keeping auto-bank veneer assembly: {source_name}")
+        else:
+            os.unlink(source_name)
+        context.AutoBankCaptureEnabled = old_capture
+        context.AutoBankActiveFunction = old_active
+        context.CodeSegment = old_segment
+        context.address = old_address
+        context.LegacyEntry = old_legacy_entry
+        context.LegacyEntryBank = old_legacy_entry_bank
+
+
 def resolve_all_forward_references(context, CPU):
     #
     #
     # --------------------------------------------------
+    emit_auto_bank_veneers(context, CPU)
     # Resolve forward references (FWORDLIST)
     # --------------------------------------------------
 
@@ -6852,6 +7385,8 @@ def main():
             elif arg == "--trace-tail":
                 skipone = True
                 prpcmd = 6
+            elif arg == "--no_auto_bank":
+                context.AutoBank = False
             elif arg == "-w":
                 skipone = True
                 prpcmd = 1
@@ -6864,7 +7399,7 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n--trace-tail N Dump the last N executed instructions on a fatal error\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n--trace-tail N Dump the last N executed instructions on a fatal error\n--no_auto_bank Disable automatic function banking\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
