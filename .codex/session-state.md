@@ -73,6 +73,14 @@
   zero unresolved symbols, `Hello World`, 6,892 operations.  The lcc worktree
   already has unrelated uncommitted changes, so do not regenerate
   `ports/ex716/patches/ex716-lcc.patch` wholesale without separating them.
+- Post-commit MapMaker execution check: `cd tests/mapmaker && python3
+  cpu24_smoke.py` completes with zero unresolved symbols and
+  `MAPMAKER_CPU24_RESULT=0` after 295,987 CPU24 operations.  Separately, the
+  normal host generator and ANSI renderer pass:
+  `./mapmaker-host 12345 /tmp/mapmaker-ansi-test.map
+  /tmp/mapmaker-ansi-test.bmp 1 1`, `./mapmaker-validate` reports a valid
+  127x127 map with checksum `133372D2`, and `mapmaker-ansi` produces a
+  178,444-byte ANSI 256-color stdout rendering in `/tmp/mapmaker-ansi-test.out`.
 
 ## CPU24 automatic-bank follow-up (2026-10-30)
 
