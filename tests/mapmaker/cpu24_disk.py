@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build MapMaker for CPU24, write MAPMAKER.MAP to a temporary DISK00 image.
+"""Build MapMaker for CPU24 and write MAPMAKER.MAP to an existing DISK00 image.
 
 Use --smoke for a 7x7 execution check.  Without it, this builds the normal
 127x127 fixed-configuration target program; extraction is left in the chosen
@@ -18,7 +18,7 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 EX716 = HERE.parents[1]
 LCC = EX716.parent / "lcc"
-RESULT = re.compile(r"(?m)^MAPMAKER_CPU24_RESULT=(-?\d+)\s*$")
+RESULT = re.compile(r"(?m)^EX716_MAIN_STATUS=(-?\d+)\s*$")
 
 
 def run(command, cwd, environment=None):
@@ -26,7 +26,7 @@ def run(command, cwd, environment=None):
                           capture_output=True)
 
 
-def compile_unit(source, name, defines, work):
+def compile_unit(source, name, defines, work, rcc_options=()):
     cpp = [str(LCC / "build/cpp"), "-N", "-D__EX716__=1",
            "-I" + str(HERE), "-I" + str(LCC / "include/ex716")]
     cpp.extend(defines)
@@ -36,7 +36,8 @@ def compile_unit(source, name, defines, work):
         raise RuntimeError(result.stderr)
     intermediate = work / (name + ".i")
     intermediate.write_text(result.stdout, encoding="utf-8")
-    result = run([str(LCC / "build/rcc"), "-target=ex716", str(intermediate)], LCC)
+    result = run([str(LCC / "build/rcc"), "-target=ex716", *rcc_options,
+                  str(intermediate)], LCC)
     if result.returncode or "EX716: unhandled" in result.stderr:
         raise RuntimeError(result.stderr)
     return result.stdout
@@ -47,33 +48,42 @@ def main():
     parser.add_argument("--smoke", action="store_true",
                         help="run a fast 7x7 disk-write smoke test")
     parser.add_argument("--output-dir", type=Path, default=HERE,
-                        help="where DISK00.disk and the extracted map are retained")
+        help="where the extracted map and failure assembly are retained")
+    parser.add_argument("--disk", type=Path, default=HERE / "DISK00.disk",
+                        help="existing DiskOS image used by the target (default: %(default)s)")
     parser.add_argument("--cpu-debug", action="store_true",
                         help="run CPU24 with three assembler/debug trace levels")
     args = parser.parse_args()
     if not (LCC / "build/rcc").is_file() or not (LCC / "build/cpp").is_file():
         parser.error("missing lcc compiler tools")
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.disk = args.disk.resolve()
+    if args.disk.name != "DISK00.disk":
+        parser.error("--disk must be named DISK00.disk; target stdio opens that name")
+    if not args.disk.is_file():
+        parser.error("missing existing disk image: " + str(args.disk))
+    checked_disk = run([sys.executable, str(EX716 / "filesys/ex716disk.py"),
+                        "check", str(args.disk)], args.disk.parent)
+    if checked_disk.returncode:
+        parser.error("invalid disk image: " + checked_disk.stderr.strip())
     defines = []
     if args.smoke:
-        defines = ["-DMAP_WIDTH=7", "-DMAP_HEIGHT=7"]
+        defines = ["-DMAP_WIDTH=7", "-DMAP_HEIGHT=7",
+                   "-DMAPMAKER_CPU24_SMOKE=1"]
     with tempfile.TemporaryDirectory(prefix="mapmaker-disk-") as directory:
         work = Path(directory)
-        disk = work / "DISK00.disk"
-        format_disk = run([sys.executable, str(EX716 / "filesys/ex716disk.py"),
-                           "format", str(disk), "--disk-id", "0x0716",
-                           "--magic", "0x3044", "--create-time", "0"], work)
-        if format_disk.returncode:
-            raise RuntimeError(format_disk.stderr)
         runtime = compile_unit(EX716 / "lib/stdio_format.c", "stdio", [], work)
         core = compile_unit(HERE / "mapmaker.c", "mapmaker", defines, work)
-        program = compile_unit(HERE / "mapmaker_cpu24.c", "program", defines, work)
+        program = compile_unit(HERE / "mapmaker_cpu24.c", "program", defines, work,
+                               rcc_options=("-main-header=direct",))
         assembly = "\n".join((
             ".DATA 1", "I commonDS.mc", "@JMP __mapmaker_entry",
             ":__mapmaker_entry", ".ENTRY __mapmaker_entry", "@PUSH 1",
-            "@SSET SegDS", "@PUSH 1", "@ADM",
-            '@PRT "MAPMAKER_CPU24_RESULT="', "@CALL main", "@PRTTOP",
-            "@POPNULL", "@PRTNL", "@PUSH 0", "@ADM", "@END", ""))
+            "@SSET SegDS", "@PUSH 1", "@ADM", "@PUSH 0xfff0",
+            "@PUSH 0xf000", "@CALL SetSSStack",
+            # The direct header creates main's only synthetic near return;
+            # entering it through @CALL would add a second return frame.
+            "@FJMP 2 __ex716_main_direct", "@END", ""))
         assembly = "\n".join((assembly, "L clocals.ld", "L lmath.ld", "L farptr.ld",
                                runtime, core, program, ""))
         source = work / "mapmaker.asm"
@@ -81,10 +91,12 @@ def main():
         environment = dict(os.environ)
         environment["CPUPATH"] = os.pathsep.join((str(EX716 / "lib"), str(work)))
         cpu_command = [sys.executable, str(EX716 / "cpu24.py"), "--trace-tail", "64"]
+        if args.smoke:
+            cpu_command.append("-f")
         if args.cpu_debug:
             cpu_command.extend(("-d", "-d", "-d"))
         cpu_command.append(str(source))
-        executed = run(cpu_command, work,
+        executed = run(cpu_command, args.disk.parent,
                        environment)
         sys.stdout.write(executed.stdout)
         sys.stderr.write(executed.stderr)
@@ -103,15 +115,14 @@ def main():
                     except ValueError:
                         pass
             return 1
-        output_disk = args.output_dir / "DISK00.disk"
         output_map = args.output_dir / "MAPMAKER.MAP"
-        output_disk.write_bytes(disk.read_bytes())
         exported = run([sys.executable, str(EX716 / "filesys/ex716disk.py"), "export",
-                        str(disk), "MAPMAKER.MAP", "-o", str(output_map)], work)
+                        str(args.disk), "MAPMAKER.MAP", "-o", str(output_map)],
+                       args.disk.parent)
         if exported.returncode:
             sys.stderr.write(exported.stderr)
             return 1
-    print("wrote " + str(output_disk))
+    print("used " + str(args.disk))
     print("exported " + str(output_map))
     return 0
 

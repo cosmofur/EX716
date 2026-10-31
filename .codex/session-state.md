@@ -1,5 +1,171 @@
 # Session State
 
+## ECC / lcc / CPU24 workflow (2026-10-30)
+
+- `bin/ECC` is the single normal C workflow: it preprocesses and compiles with
+  sibling lcc, writes `out.asm` by default (or `-o FILE`), and emits an
+  explicit `.ENTRY __ECC_INIT_MAIN` in CS0.  Therefore
+  `CPUPATH=lib python3 cpu24.py out.asm` runs the generated program without
+  relying on legacy `.ORG` entry selection.
+- `__ECC_INIT_MAIN` is emitted after an explicit `.CODE 0`, so it cannot
+  inherit a compiler function's relocated bank.  CPU24 starts CS0 entries in
+  compatibility mode; the bootstrap sets DS=1, enables banking with `ADM`,
+  then calls the relocatable C `main` through normal auto-bank relocation.
+- Auto-bank replay now retains every captured command's original filename and
+  line number instead of reporting its temporary replay file.  A failed first
+  placement removes only its new address mappings before retrying, preventing
+  stale source locations without deep-copying the whole debugger map.
+- Auto-bank veneers now retain the file/line of the call that required each
+  cross-bank transfer.  Debug traces therefore show the originating source
+  line for the generated `SGET`/`FJMPS` and far-entry instructions, never
+  `/tmp/cpu24-auto-veneers-*.asm`; normal execution resumes with the called
+  function's own source mapping.
+- Added optional `ECC --run` plus repeatable `--cpu-arg ARG` to invoke that
+  final CPU24 step while leaving the generated assembly in place.  The output
+  now has begin/end comments around every unchanged lcc translation unit so
+  assembly-level debugging stays in the primary artifact, rather than in a
+  helper script or post-processed copy.
+- Verified `bash -n bin/ECC`, `git diff --check`, and
+  `bin/ECC -q --no-stdio --run --cpu-arg=--trace-tail --cpu-arg=16
+  -o /tmp/ecc-mixed.asm tests/csuite/cases/calls/mixed_width.c`: CPU24 reports
+  zero unresolved symbols and exits normally.
+- After the CS0/bootstrap and source-provenance follow-up, also verified
+  `python3 -m py_compile cpu24.py`, the same ECC `--run` mixed-width C case,
+  and `CPUPATH=lib python3 cpu24.py -q tests/cpu24-auto-bank-sequence.asm`.
+- Rechecked after veneer provenance was added:
+  `tests/cpu24-auto-bank-entry.asm` and the padded auto-bank sequence pass;
+  a `-d -d` trace of the entry test names only
+  `tests/cpu24-auto-bank-entry.asm` at generated veneer addresses.
+- MapMaker's freshly generated `out.asm` was confirmed to contain the new
+  `__ECC_INIT_MAIN` CS0 bootstrap; its observed initial CS2 trace is therefore
+  not a stale ECC binary or stale assembly artifact.  `cpu24.py -d` now prints
+  the final resolved `.ENTRY` bank and offset before execution so this
+  assembler-state mismatch can be isolated directly.
+- The supplied MapMaker trace actually enters `C00`, so the bootstrap works.
+  Its reported error at `heapmgr.ld:71` was being corrupted by `raiseerror`:
+  the formatter read instruction operands through DS after DS1 was selected
+  and could itself raise a segment-boundary exception.  The formatter now
+  reads instruction operands from CS; rerun the same command to expose the
+  underlying runtime error.
+- Follow-up showed the reported `220` was instead emitted by `DissAsm` under
+  `-d`: it annotates an instruction operand by double-dereferencing it and
+  attempted a word read from offset `0xffff`.  Both debugger display paths
+  now treat those dereferences as optional, so tracing no longer changes the
+  program's behavior.
+- Fixed post-relocation debugger source lines: auto-bank rollback had restored
+  `FileLineNum` from the relocated function's opening line even though the
+  outer reader had already consumed that function.  It now preserves the
+  outer reader's line/file state, so the later ECC bootstrap is mapped to its
+  actual lines 6428 onward rather than the earlier `fwrite` source lines.
+- Verified by the user with the MapMaker-directory Hello World input:
+  `cpu24.py out.asm -q` resolves all 2,587 uses, prints `Hello World`, exits
+  normally after 6,892 operations, and reports CS0-only execution with DS/ES
+  activity in banks 0 and 1.
+- LCC label-readability follow-up (outside this repo): frame offsets now emit
+  as `__ex716_frame_<function>_off<N>` and C locals as
+  `__ex716_<function>_local_<unique-id>_<source-name>`.  Private static
+  function labels retain their unit qualifier but do not repeat the
+  `__ex716_` prefix.  For example, generated output contains
+  `__ex716_frame_main_off0`, `__ex716_frame_strtol_off0`, and
+  `__ex716_u47dbbdb0_static_0_local_0_ap`.  Numeric compiler temporaries use
+  the honest `_tmp` suffix.  Rebuilt `../lcc/build/rcc`, compiled a temporary
+  MapMaker Hello World assembly, and ran it through CPU24 successfully:
+  zero unresolved symbols, `Hello World`, 6,892 operations.  The lcc worktree
+  already has unrelated uncommitted changes, so do not regenerate
+  `ports/ex716/patches/ex716-lcc.patch` wholesale without separating them.
+
+## CPU24 automatic-bank follow-up (2026-10-30)
+
+- Fixed automatic call relocation for startup/ordinary code: `AUTOBANK_CALL`
+  now records calls whenever automatic banking is enabled, rather than only
+  while capturing a function.  Final resolution still patches same-bank calls
+  directly, so they consume no veneer space.
+- Added `tests/cpu24-auto-bank-entry.asm`.  It forces its target into CS1 and
+  confirms a CS0 startup call reaches it and returns value 42.  It passes with
+  `CPUPATH=lib python3 cpu24.py tests/cpu24-auto-bank-entry.asm`.
+- A MapMaker disk-smoke trace exposed that cross-bank veneers used `__SS_SP`
+  to save their far return pair.  That corrupts calls to low-level soft-stack
+  helpers during C-frame teardown.  Veneers now use a dedicated 512-byte
+  `__AB_FAR_RETURN_STACK` and `__AB_FAR_SP`, defined for CPU24 in
+  `lib/commonDS.mc`.
+- `python3 -m py_compile cpu24.py`, `git diff --check`,
+  `tests/cpu24-auto-bank-entry.asm`, and `tests/cpu24-far-code.asm` pass.
+  MapMaker disk smoke now enters CS2 and makes a CS2->CS0 transition, but
+  fails after 158 operations with `Code Stack Out of Bounds` at `CS0:00a5`.
+  That address is in the low-level soft-stack helper path: those helpers save
+  their ordinary return address to `__SS_SP` and are not ordinary callable
+  functions, so a cross-bank veneer around them needs a separate mechanism.
+  Do not treat MapMaker as passing yet.
+- Added `tests/cpu24-auto-bank-sequence.asm`, a deliberately small allocator
+  regression: 28 functions print `test N`, skip a 2,500-byte reserved CS
+  region, increment their input, and return it.  The caller checks the final
+  value is 28.  `CPUPATH=lib python3 cpu24.py tests/cpu24-auto-bank-sequence.asm`
+  passes with three CS0->CS2 and three CS2->CS0 transitions.  The reservation
+  uses `.ORG` rather than a C string or 70,000 emitted NOP macro commands, so
+  its code-bank pressure is exact and it cannot be optimized away.
+- Prototyped scoped CS-local aliases for `__MOVE_HW_SS` and `__MOVE_SS_HW` in
+  `cpu24.py`: banked captured functions containing `@PUSHRETURN` or
+  `@POPRETURN` get local implementations, while the original symbols remain
+  active elsewhere.  Existing far-code and sequence regressions still pass.
+  MapMaker reaches the injected local `__MOVE_HW_SS`, but it immediately takes
+  its stack-underflow path after the startup `SetSSStack` call (stack report
+  `01d0 0202`).  Thus local label rebinding/copies work mechanically, but do
+  not alone repair the C startup far-return/frame protocol.
+- Added `tests/cpu24-far-stub-strlen.asm` as a direct experiment of the
+  proposed pattern: CS3 binds `strlen` to `strlen_stub`; the stub far-calls a
+  CS0 `strlen_far` adapter, which near-calls the saved `strlen_original`.
+  The test assembles with zero unresolved symbols and reaches CS3, but fails
+  returning through the soft-stack protocol (`Code Stack Out of Bounds`,
+  CS0/softstack line 183).  Thus a label-rebound far stub around a normal
+  near-return `strlen` reproduces the same fundamental return-frame issue.
+- Auto-bank metadata now records each captured function's `data_bank` beside
+  its CS `bank`, and each recorded automatic call includes `source_data_bank`.
+  This is metadata only so far; it is the basis for selecting future near/far
+  entries while preserving the function's DS ABI.  `py_compile`, the padded
+  auto-bank sequence test, and `cpu24-far-code.asm` pass afterward.
+- Replaced the experimental dedicated-return-stack veneers with generated
+  far-entry wrappers: a caller-bank stub forwards its existing `{CS, PC}`
+  pair; the target-bank entry does `FENTER`, near-jumps to the unmodified
+  body, then `FRET`.  The veneer tail reservation is now 8 KiB, which is
+  required for MapMaker's generated wrappers.  Entry, sequence, and explicit
+  far-code regressions pass.  MapMaker now completes its banked body and
+  returns to the startup harness, but the harness finds no main return value
+  at `@PRTTOP @POPNULL`.  Generated C `main` consumes/manages its incoming
+  return label specially, so it needs a dedicated far-entry adapter instead
+  of the generic function wrapper.
+- LCC follow-up (outside this repo): added opt-in `-main-header=direct` to
+  `../lcc/src/ex716.c`; default `-main-header=none` preserves historical
+  output.  The direct mode emits `__ex716_main_direct` (synthetic local
+  continuation), `__ex716_main_far` (`FENTER`/`FRET` launcher entry), and the
+  unchanged local `main` in the same `@FUNCTION main` transaction so automatic
+  banking co-locates them.  Rebuilt `../lcc/build/rcc` manually because the
+  full make rebuild requires unavailable `yacc`; a generated C compilation
+  confirmed the header is emitted only with the option.  The overlay patch
+  file still needs regeneration before distributing the LCC change.
+- MapMaker integration now compiles its program TU with
+  `-main-header=direct` and transfers to `__ex716_main_direct` using a raw
+  `@FJMP 2 ...`, so `main` receives exactly the one synthetic near return it
+  expects.  The runner also initializes `__SS_SP` with
+  `SetSSStack(0xfff0, 0xf000)` before that transfer.  Without that setup the
+  first target-bank `FRET` restored an overwritten return pair and failed with
+  `FJMPS code bank exceeds 8 bits`; the fault is gone after initialization.
+- `tests/mapmaker/cpu24_banked_smoke.py` still passes (`BANKED_RESULT=42`,
+  CS0<->CS3 transitions), and the standalone auto-bank entry/sequence tests
+  plus `py_compile` and `git diff --check` pass.  The reduced `--smoke` disk
+  path currently runs longer than two minutes in MapInitialize's far-backed
+  cell-write loop even with CPU24's `-f` evaluator, so it was stopped without
+  a status/export.  Do not claim the full MapMaker disk smoke passes yet;
+  next diagnose the long-running far-pointer/MapInitialize path or make an
+  instrumented bounded execution test.  `MAPMAKER_CPU24_SMOKE` now bypasses
+  terrain generation while retaining initialization and disk export; normal
+  builds retain the production workload.
+- `tests/mapmaker/cpu24_disk.py` now requires an existing, structurally valid
+  `DISK00.disk` (default `tests/mapmaker/DISK00.disk`) and executes against it
+  in place; it no longer formats a temporary disk or copies one over the
+  fixture.  Use `--disk PATH/DISK00.disk` to choose another fixture.  Verified
+  its syntax/help, `ex716disk.py check tests/mapmaker/DISK00.disk`, and
+  `git diff --check`.
+
 ## Current CPU24 automatic code-bank diagnostic (2026-10-29)
 
 - User is evaluating automatic CS banking once code exceeds 64 KiB, using `tests/fooa1.asm`.

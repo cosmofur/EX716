@@ -10,6 +10,7 @@ ECC -o hello.asm hello.c
 ECC -DDEBUG -I ./include --stack-size 8192 -o build/hello.asm hello.c
 ECC --no-stdio -o build/tiny.asm tiny.c
 ECC -g -o build/hello-debug.asm hello.c
+ECC --run --cpu-arg=--trace-tail --cpu-arg=64 hello.c
 ```
 
 The default output is `out.asm` in the current directory. The launcher locates
@@ -19,15 +20,26 @@ small `printf`/`snprintf` runtime with the program. `--no-stdio` omits that
 runtime when formatting is not needed. Set `ECC_LCC_ROOT` if lcc is not in the
 sibling directory; `ECC_CPP` and `ECC_RCC` override the built tools individually.
 
-The generated file targets the segmented CPU24 runtime. Assemble and run it
+The generated file targets the segmented CPU24 runtime. It includes an explicit
+`.ENTRY __ECC_INIT_MAIN`, so `cpu24.py out.asm` starts at the generated CS0
+compatibility bootstrap rather than depending on a legacy `.ORG` location. The
+bootstrap selects the C data segment, enables banking with `ADM`, and then
+calls the relocatable C `main`. Assemble and run it
 with the EX716 library path available to the assembler:
 
 ```sh
 CPUPATH=/path/to/EX716/lib python3 /path/to/EX716/cpu24.py out.asm
 ```
 
+`ECC --run` performs that exact final step after writing the assembly. Use a
+repeatable `--cpu-arg ARG` for ordinary CPU24 options such as `-g`, `-q`, or
+`--trace-tail 64`; the generated `.asm` remains on disk either way. Each lcc
+translation unit is delimited in that file, with no post-processing of the
+compiler's assembly, so the file is the artifact to inspect when debugging.
+
 Current launcher options are `-g`, `-o FILE`, `--stack-size BYTES`,
-`--no-stdio`, `-I DIR`, `-D NAME[=VALUE]`, `-U NAME`, and `-v`. `--no-stdio`
+`--no-stdio`, `--run`, `--cpu-arg ARG`, `-I DIR`, `-D NAME[=VALUE]`, `-U NAME`,
+and `-v`. `--no-stdio`
 omits the target's console stream and formatting runtime. `-g` adds
 `# C path/to/file.c:line` comments at generated-code source locations. These
 help correlate CPU24 assembly listings and runtime errors with C source, but

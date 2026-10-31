@@ -5,8 +5,13 @@
 #include "mapmaker.h"
 
 #define MAPMAKER_CPU24_SEED 12345UL
+#ifdef MAPMAKER_CPU24_SMOKE
+#define MAPMAKER_CPU24_AGE 1
+#define MAPMAKER_CPU24_RANGES 1
+#else
 #define MAPMAKER_CPU24_AGE 10
 #define MAPMAKER_CPU24_RANGES 4
+#endif
 
 static Map mapmaker_cpu24_map;
 static Settlement mapmaker_cpu24_settlements[16];
@@ -43,17 +48,21 @@ int main(void)
 
     if (!MapInitialize(&mapmaker_cpu24_map, MAPMAKER_CPU24_SEED, 0))
         return 1;
+#ifndef MAPMAKER_CPU24_SMOKE
     for (range = 0; range < MAPMAKER_CPU24_RANGES; ++range)
         if (!MapAddMountainRange(&mapmaker_cpu24_map, 100, 120, MAPMAKER_CPU24_AGE))
             return 2;
+#endif
     SettlementListInitialize(&mapmaker_cpu24_settlement_list,
                              mapmaker_cpu24_settlements, 16U);
+#ifndef MAPMAKER_CPU24_SMOKE
     if (!MapClassifyTerrain(&mapmaker_cpu24_map, 24U) ||
         MapAddRivers(&mapmaker_cpu24_map, 80, 8) < 0 ||
         MapAddForests(&mapmaker_cpu24_map, 30) < 0 ||
         MapAddSettlements(&mapmaker_cpu24_map,
                           &mapmaker_cpu24_settlement_list, 12) < 0)
         return 3;
+#endif
     output = fopen("MAPMAKER.MAP", "wb");
     if (output == 0)
         return 4;

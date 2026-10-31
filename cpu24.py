@@ -369,7 +369,10 @@ class AssemblerContext:
         self.CommandTape = []
         self.CommandPosition = -1
         self.AutoBank = True
-        self.AutoBankVeneerBytes = 1024
+        # Far entries plus caller stubs are emitted per cross-bank call/target
+        # pair.  A 1 KiB tail is enough for simple probes but not a C runtime
+        # such as MapMaker; reserve 8 KiB so placement accounts for them.
+        self.AutoBankVeneerBytes = 8192
         self.AutoBankFunctions = {}
         self.AutoBankActiveFunction = None
         self.AutoBankFunctionHistory = []
@@ -1323,12 +1326,27 @@ class microcpu:
             if 0 <= i < 0xffff:
                 try:
                     try:
-                        optcode = mem[i]
+                        code_address = self.code_address(i)
+                        optcode = mem[code_address]
                     except:
                         optcode = 0
-                    P1 = self.getwordat(i+1)
-                    PI = self.getwordat(P1 & 0xfffe)
-                    PII = self.getwordat(PI)
+                    # This is fault reporting, so never route instruction
+                    # operands through DS.  Doing so after a CS0 bootstrap
+                    # selects DS1 could itself raise an unrelated boundary
+                    # error and hide the original failure.
+                    operand_address = self.code_address(i + 1)
+                    P1 = self.getwordmem(operand_address)
+                    PI = 0
+                    PII = 0
+                    # These indirect values are display-only.  A valid word
+                    # operand may point at the final byte in a segment, where
+                    # an attempted *word* dereference is invalid.
+                    if P1 < MAXMEMSP:
+                        data_address = self.data_address(P1)
+                        PI = self.getwordmem(data_address)
+                        if PI < MAXMEMSP:
+                            indirect_address = self.data_address(PI)
+                            PII = self.getwordmem(indirect_address)
                     ZF = 1 if self.flags & 1 else 0
                     NF = 1 if self.flags & 2 else 0
                     CF = 1 if self.flags & 4 else 0
@@ -3107,8 +3125,11 @@ def DissAsm(start, length, CPU):
         if str(optcode) in OPTDICT:
             if (OPTDICT[str(optcode)][2] == 3):
                 P1 = CPU.getwordmem(physical_i + 1)
-                PI = CPU.getwordat(P1)
-                PII = CPU.getwordat(PI)
+                # P1 is an instruction operand.  The two dereferences are
+                # merely debugger annotations, so do not make tracing fail
+                # when the value denotes the final byte of a data segment.
+                PI = CPU.getwordat(P1) if P1 < MAXMEMSP else 0
+                PII = CPU.getwordat(PI) if PI < MAXMEMSP else 0
             else:
                 P1=PI=PII=0              # For Byte size commands, there are no labels.
         ZF = 1 if CPU.flags & 1 else 0
@@ -4751,16 +4772,42 @@ def auto_bank_context_snapshot(context):
 
 def restore_auto_bank_checkpoint(transaction, CPU, context):
     """Restore a failed tentative function without flattening label history."""
-    global LocVarHist, UniqueID
+    global FileLineData, LocVarHist, UniqueID
 
     tape = context.CommandTape
     position = context.CommandPosition
+    # The function's transaction snapshot was taken at its opening command,
+    # but the outer source reader has advanced through the complete function
+    # before a failed tentative placement is rolled back.  Its physical line
+    # counter is not assembly state and must not jump back to the function
+    # header, or all following source locations are shifted in the debugger.
+    outer_file_line_num = context.FileLineNum
+    outer_active_file = context.ActiveFile
+    outer_active_resolved_file = context.ActiveResolvedFile
     context.__dict__.clear()
     context.__dict__.update(copy.deepcopy(transaction["context_state"]))
     context.CommandTape = tape
     context.CommandPosition = position
     context.AutoBankCapture = None
+    context.FileLineNum = outer_file_line_num
+    context.ActiveFile = outer_active_file
+    context.ActiveResolvedFile = outer_active_resolved_file
     LocVarHist = copy.deepcopy(transaction["label_history"])
+    # The first placement may have emitted source-address mappings before it
+    # overflowed.  They describe discarded bytes, so do not leave them in the
+    # debugger after replaying the function in its final bank.
+    preserved_addresses = transaction["file_line_addresses"]
+    FileLineData.address_map = {
+        address: source
+        for address, source in FileLineData.address_map.items()
+        if address in preserved_addresses
+    }
+    FileLineData.sorted_addresses = sorted(FileLineData.address_map)
+    FileLineData.file_data = {}
+    for address, (filename, line_number) in FileLineData.address_map.items():
+        FileLineData.file_data.setdefault(filename, {}).setdefault(
+            line_number, []
+        ).append(address)
     UniqueID = transaction["unique_id"]
     start = transaction["memory_start"]
     CPU.memspace[start:start + len(transaction["memory"])] = transaction["memory"]
@@ -4775,7 +4822,10 @@ def assemble_auto_bank_function(transaction, CPU, context):
         old_active = context.AutoBankActiveFunction
         context.AutoBankCaptureEnabled = False
         context.AutoBankActiveFunction = {
-            "name": transaction["name"], "bank": bank, "address": (bank << 16) | offset,
+            "name": transaction["name"],
+            "bank": bank,
+            "data_bank": context.DataSegment,
+            "address": (bank << 16) | offset,
         }
         context.CodeSegment = bank
         context.CodeSegments.add(bank)
@@ -4789,8 +4839,13 @@ def assemble_auto_bank_function(transaction, CPU, context):
             source.write("\n")
             source_name = source.name
         try:
+            # The temporary file makes relocation replay simple, but it must
+            # not become the debugger's source.  Its physical lines are one
+            # for one with the captured commands, so restore their original
+            # provenance as they are read below.
             loadfile(source_name, context.address, CPU, context.LORGFLAG,
-                     context.LocalID, context)
+                     context.LocalID, context,
+                     source_line_map=transaction["commands"])
         finally:
             if context.KeepDynamicLibraries:
                 print(f"Keeping auto-bank assembly: {source_name}")
@@ -4829,6 +4884,7 @@ def assemble_auto_bank_function(transaction, CPU, context):
 
     context.AutoBankFunctions[transaction["name"]] = {
         "bank": start_bank,
+        "data_bank": context.DataSegment,
         "offset": start_offset,
         "size": size,
         "tape_start": transaction["tape_start"],
@@ -4837,7 +4893,8 @@ def assemble_auto_bank_function(transaction, CPU, context):
     context.AutoBankFunctionHistory.append(context.AutoBankFunctions[transaction["name"]])
 
 
-def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContext):
+def loadfile(filename, offset, CPU, LorgFlag, LocalID, context: AssemblerContext,
+             source_line_map=None):
     global FileLineData
 
     context.LoadDepth += 1
@@ -4864,9 +4921,33 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                     if not cmds :
                         break
                     if isinstance(cmds, list):
-                        cmdq.extend(cmds)
+                        loaded_commands = cmds
                     else:
-                        cmdq.append(cmds)
+                        loaded_commands = [cmds]
+
+                    # Auto-bank replay writes captured logical commands to a
+                    # temporary file.  Keep its line layout as an internal
+                    # transport detail: emitted addresses and debugger source
+                    # navigation must continue to name the original file and
+                    # line, including macro expansions derived from it.
+                    if source_line_map is not None:
+                        remapped_commands = []
+                        for loaded in loaded_commands:
+                            source_index = loaded.line_num - 1
+                            if (loaded.origin == "file" and
+                                    0 <= source_index < len(source_line_map)):
+                                original = source_line_map[source_index]
+                                loaded = SourceCommand(
+                                    text=loaded.text,
+                                    filename=original.filename,
+                                    resolved_filename=original.resolved_filename,
+                                    line_num=original.line_num,
+                                    address=loaded.address,
+                                    origin=loaded.origin,
+                                )
+                            remapped_commands.append(loaded)
+                        loaded_commands = remapped_commands
+                    cmdq.extend(loaded_commands)
                 cmd = cmdq.popleft()
                 context.record_command(cmd)
                 line = removecomments(cmd.text).strip()
@@ -4915,6 +4996,7 @@ def loadfile(filename, offset, CPU, LorgFlag,  LocalID, context: AssemblerContex
                         "commands": [clone_source_command(cmd)],
                         "context_state": auto_bank_context_snapshot(context),
                         "label_history": copy.deepcopy(LocVarHist),
+                        "file_line_addresses": set(FileLineData.address_map),
                         "unique_id": UniqueID,
                         "memory_start": memory_start,
                         "memory": CPU.memspace[memory_start:memory_start + 0x20000].copy(),
@@ -5402,6 +5484,11 @@ def execute_assembler_command(cmd, CPU, context):
             symbol, context.CodeLabelBanks.get(target, context.CodeSegment)
         )
         context.EntryExplicit = True
+        dprint(
+            DBG_RUN,
+            f"Entry selected: {context.EntryBank:02x}:{context.Entry:04x} "
+            f"from {target} at {filename}:{context.FileLineNum}",
+        )
         return ""
 
     elif key.upper() == ".DATA":
@@ -5487,6 +5574,7 @@ def execute_assembler_command(cmd, CPU, context):
             "name": name,
             "tape_start": context.CommandPosition,
             "bank": context.CodeSegment,
+            "data_bank": context.DataSegment,
             "address": context.address,
         }
         return rest[used:].lstrip()
@@ -5515,7 +5603,12 @@ def execute_assembler_command(cmd, CPU, context):
         if not target:
             CPU.raiseerror(f"AUTOBANK_CALL missing target {filename}:{context.FileLineNum}")
         return_label = create_new_unique()
-        if not context.AutoBank or context.AutoBankActiveFunction is None:
+        # Calls in startup/ordinary code can target a function that is later
+        # relocated into another CS bank just as calls inside a captured
+        # function can.  Record every automatic-banking call; final veneer
+        # generation retargets same-bank calls directly, so this does not
+        # consume tail space for ordinary local calls.
+        if not context.AutoBank:
             return (f"@PUSH ${return_label} ; @JMP {target} ; "
                     f":{return_label} " + rest[used:].lstrip())
 
@@ -5524,11 +5617,19 @@ def execute_assembler_command(cmd, CPU, context):
         veneer = f"__AB_V_{context.CodeSegment}_{safe_target}"
         context.AutoBankCallRelocations.append({
             "source_bank": context.CodeSegment,
+            "source_data_bank": (context.AutoBankActiveFunction or {}).get(
+                "data_bank", context.DataSegment
+            ),
             "target": target,
             "target_symbol": target_symbol,
             "veneer": veneer,
             "function": (context.AutoBankActiveFunction or {}).get("name"),
             "tape": context.CommandPosition,
+            "source_file": (getattr(context, "CurrentSourceFile", "") or
+                            context.ActiveFile),
+            "source_resolved_file": context.ActiveResolvedFile,
+            "source_line": (getattr(context, "CurrentSourceLine", 0) or
+                            context.FileLineNum),
         })
         return (f"@PUSH ${return_label} ; @JMP {veneer} ; "
                 f":{return_label} " + rest[used:].lstrip())
@@ -5805,6 +5906,7 @@ def emit_auto_bank_veneers(context, CPU):
     context.AutoBankVeneersEmitted = True
 
     veneers = {}
+    veneer_origins = {}
     for relocation in context.AutoBankCallRelocations:
         target = relocation["target"]
         target_symbol = relocation.get("target_symbol", target)
@@ -5825,50 +5927,83 @@ def emit_auto_bank_veneers(context, CPU):
                     ref.symbol = target_symbol
             continue
 
-        veneers[(relocation["source_bank"], target_symbol)] = relocation["veneer"]
+        veneer_key = (relocation["source_bank"], target_symbol)
+        veneers[veneer_key] = relocation["veneer"]
+        veneer_origins.setdefault(veneer_key, relocation)
 
     veneer_start = 0x10000 - context.AutoBankVeneerBytes
-    veneer_lines = {}
-    return_veneers = {}
-    for (source_bank, target_symbol), veneer in sorted(veneers.items()):
-        target = next(
-            relocation["target"]
-            for relocation in context.AutoBankCallRelocations
-            if relocation["veneer"] == veneer
+    # Keep generated instructions attributable to the original call site.
+    # The source file is especially important when a C function has been
+    # relocated: the generated veneer has no useful standalone source file.
+    def veneer_source(relocation):
+        return SourceCommand(
+            text="",
+            filename=relocation.get("source_file") or "<auto-bank veneer>",
+            resolved_filename=(relocation.get("source_resolved_file") or
+                               relocation.get("source_file") or
+                               "<auto-bank veneer>"),
+            line_num=relocation.get("source_line") or 1,
+            address=0,
         )
+
+    veneer_lines = {}
+    far_entries = {}
+    for (source_bank, target_symbol), veneer in sorted(veneers.items()):
+        origin = veneer_origins[(source_bank, target_symbol)]
+        source = veneer_source(origin)
+        target = origin["target"]
         target_info = context.AutoBankFunctions.get(target)
         bank_lines = veneer_lines.setdefault(source_bank, [])
-        bank_lines.append(f":{veneer}")
-        if target_info is None or target_info["bank"] == source_bank:
-            bank_lines.append(f"@JMP {target_symbol}")
-            continue
+        bank_lines.append((f":{veneer}", source))
         key = re.sub(r"[^A-Za-z0-9_]", "_", target)
-        return_veneer = f"__AB_RETURN_{source_bank}_{key}"
-        return_veneers[(target_info["bank"], return_veneer)] = return_veneer
-        # Convert the caller's normal near return into a far return pair on
-        # the software stack.  The target function remains an ordinary near
-        # function, so its RET can only reach a return veneer in its own CS.
-        # That remote veneer restores the saved far pair and performs FJMPS.
+        target_bank = (
+            target_info["bank"] if target_info is not None else
+            context.CodeLabelBanks.get(target_symbol, context.CodeLabelBanks.get(target))
+        )
+        if target_bank is None:
+            # Some library-scoped forward references have no published code
+            # bank at this point.  Retain the historical direct near jump for
+            # those until their placement metadata can be published.
+            bank_lines.append((f"@JMP {target_symbol}", source))
+            continue
+        far_entry = f"__AB_ENTRY_{target_bank}_{key}"
+        far_entries[(target_bank, target_symbol)] = far_entry
+        # The caller already has its ordinary near return PC on the hardware
+        # stack.  Add its CS and tail-jump to a target-bank far entry.  FENTER
+        # there receives the standard [source CS, return PC] pair, runs the
+        # unchanged near body, and FRET returns directly to this call site.
         bank_lines.extend((
-            "@SGET SegCS", "@SWP", "@FENTER",
-            f"@PUSH {return_veneer}",
-            f"@PUSH {target_info['bank']}",
-            f"@PUSH {target_symbol}", "@FJMPS",
+            ("@SGET SegCS", source), ("@SWP", source),
+            (f"@PUSH {target_bank}", source), (f"@PUSH {far_entry}", source),
+            ("@FJMPS", source),
         ))
 
-    for (target_bank, return_veneer), _ in sorted(return_veneers.items()):
+    for (target_bank, target_symbol), far_entry in sorted(far_entries.items()):
+        origin = next(
+            origin for key, origin in veneer_origins.items()
+            if key[1] == target_symbol
+        )
+        source = veneer_source(origin)
+        key = re.sub(r"[^A-Za-z0-9_]", "_", target_symbol)
+        near_return = f"__AB_ENTRY_RETURN_{target_bank}_{key}"
         veneer_lines.setdefault(target_bank, []).extend((
-            f":{return_veneer}",
-            "@FRET",
+            (f":{far_entry}", source), ("@FENTER", source),
+            (f"@PUSH ${near_return}", source), (f"@JMP {target_symbol}", source),
+            (f":{near_return}", source), ("@FRET", source),
         ))
 
     lines = []
+    source_line_map = []
     for bank in sorted(veneer_lines):
+        directive_source = veneer_lines[bank][0][1]
         lines.extend((
             f".CODE {bank}",
             f".ORG 0x{veneer_start:04X}",
-            *veneer_lines[bank],
         ))
+        source_line_map.extend((directive_source, directive_source))
+        for line, source in veneer_lines[bank]:
+            lines.append(line)
+            source_line_map.append(source)
 
     old_capture = context.AutoBankCaptureEnabled
     old_active = context.AutoBankActiveFunction
@@ -5885,7 +6020,7 @@ def emit_auto_bank_veneers(context, CPU):
         source_name = source.name
     try:
         loadfile(source_name, context.address, CPU, context.LORGFLAG,
-                 context.LocalID, context)
+                 context.LocalID, context, source_line_map=source_line_map)
         for bank in veneer_lines:
             end = context.CodeAddresses.get(bank, veneer_start)
             if end < veneer_start:
@@ -7263,7 +7398,9 @@ def load_exc01(filename, CPU, context):
     CPU.CS = entry_bank
     CPU.DS = initial_ds
     CPU.ES = initial_ds
-    CPU.SegmentMode = int(any(bank != 0 for _, bank, _ in descriptors))
+    # CS0 is the compatibility boot mode.  A program that needs banked
+    # data/code explicitly enables Ring 1 with ADM after it starts.
+    CPU.SegmentMode = int(entry_bank != 0)
     CPU.pc = entry_address
     if message:
         safeprint(message)
@@ -7539,11 +7676,10 @@ def main():
         CPU.DS = context.InitialDS
         CPU.ES = context.InitialDS
         CPU.CS = context.EntryBank
-        CPU.SegmentMode = int(
-            context.EntryBank != 0
-            or context.InitialDS != 0
-            or any(bank != 0 for bank in context.SegmentHighWater)
-        )
+        # A CS0 entry deliberately starts in cpu.py-compatible mode even if
+        # the image also contains banked data or later code banks.  Its CS0
+        # bootstrap selects DS/ES and enables Ring 1 with ADM when ready.
+        CPU.SegmentMode = int(context.EntryBank != 0)
         CPU.pc = context.Entry
 
     if ExecutableOutFlag:
