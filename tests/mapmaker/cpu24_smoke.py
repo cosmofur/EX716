@@ -20,8 +20,9 @@ def main():
     # A 7x7 target build keeps the emulator smoke test fast while exercising
     # the identical far-scratch smoothing path used by the 127x127 build.
     preprocessed = subprocess.run([str(preprocessor), "-N", "-D__EX716__=1",
+                                  "-DMAPMAKER_CPU24_SMOKE=1",
                                   "-DMAP_WIDTH=7", "-DMAP_HEIGHT=7",
-                                  "-I" + str(HERE),
+                                  "-I" + str(EX716 / "lib/mapmaker"),
                                   "-I" + str(LCC / "include/ex716"),
                                   "cpu24_smoke.c"],
                                  cwd=HERE, text=True, capture_output=True)

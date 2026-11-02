@@ -134,6 +134,14 @@ int MapInitialize(Map *map, unsigned long seed, unsigned short type)
     map->prng_state = (unsigned short)map->seed;
     if (map->prng_state == 0)
         map->prng_state = 0xace1U;
+    map->meters_per_cell = 1000U;
+    map->meters_per_height_unit = 10U;
+    map->elevation_datum_meters = -240L;
+    map->tile_x = 0;
+    map->tile_y = 0;
+    map->half_meters_per_cell = 2000U;
+    map->origin_x_half_meters = 0L;
+    map->origin_y_half_meters = 0L;
     for (index = 0; index < MAP_CELLS; ++index)
         map->cells[index] = MAKE_CELL(0, TERRAIN_DIRT);
     return 1;
@@ -538,6 +546,16 @@ void SettlementListInitialize(SettlementList *list, Settlement *items,
     list->capacity = capacity;
 }
 
+void MapFeatureListInitialize(MapFeatureList *list, MapFeature *items,
+                              unsigned short capacity)
+{
+    if (list == 0)
+        return;
+    list->items = items;
+    list->count = 0;
+    list->capacity = capacity;
+}
+
 Settlement *MapFindSettlement(SettlementList *list, unsigned short cell_index)
 {
     unsigned int index;
@@ -669,7 +687,154 @@ unsigned long MapChecksum(const Map *map)
     sum = MAP_U32((sum ^ map->format_version) * 16777619UL);
     sum = MAP_U32((sum ^ map->seed) * 16777619UL);
     sum = MAP_U32((sum ^ map->prng_state) * 16777619UL);
+    sum = MAP_U32((sum ^ map->meters_per_cell) * 16777619UL);
+    sum = MAP_U32((sum ^ map->meters_per_height_unit) * 16777619UL);
+    sum = MAP_U32((sum ^ (unsigned long)map->elevation_datum_meters) * 16777619UL);
+    sum = MAP_U32((sum ^ (unsigned long)map->tile_x) * 16777619UL);
+    sum = MAP_U32((sum ^ (unsigned long)map->tile_y) * 16777619UL);
+    sum = MAP_U32((sum ^ map->half_meters_per_cell) * 16777619UL);
+    sum = MAP_U32((sum ^ (unsigned long)map->origin_x_half_meters) * 16777619UL);
+    sum = MAP_U32((sum ^ (unsigned long)map->origin_y_half_meters) * 16777619UL);
     for (index = 0; index < MAP_CELLS; ++index)
         sum = MAP_U32((sum ^ map->cells[index]) * 16777619UL);
     return sum;
 }
+
+/* The original terrain utility surface is exercised on CPU24.  The new
+ * complete generators are kept out of its compact 7x7 ABI smoke image; they
+ * are fully exercised by the host suite. */
+#ifndef MAPMAKER_CPU24_SMOKE
+static void mapmaker_set_ground(Map *map, int x, int y, unsigned int ground,
+                                unsigned int feature)
+{
+    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT)
+        return;
+    map->cells[(unsigned int)y * MAP_WIDTH + x] = MAKE_CELL(0U, ground | feature);
+}
+
+int MapGenerateWilderness(Map *map, int ranges, int age,
+                          SettlementList *settlements)
+{
+    int range;
+
+    if (map == 0 || ranges < 1 || ranges > 16 || age < 0 || age > 100)
+        return 0;
+    map->type = MAP_TYPE_WILDERNESS;
+    for (range = 0; range < ranges; ++range)
+        if (!MapAddMountainRange(map, 100, 120, age))
+            return 0;
+    if (!MapClassifyTerrain(map, 24U) || MapAddRivers(map, 80, 8) < 0 ||
+        MapAddForests(map, 30) < 0)
+        return 0;
+    if (settlements != 0 && MapAddSettlements(map, settlements, 12) < 0)
+        return 0;
+    return 1;
+}
+
+int MapGenerateTown(Map *map, int city)
+{
+    int x;
+    int y;
+    int spacing;
+    int blocks;
+    int block;
+    int left;
+    int top;
+    int width;
+    int height;
+
+    if (map == 0)
+        return 0;
+    map->type = city ? MAP_TYPE_CITY : MAP_TYPE_TOWN;
+    for (y = 0; y < MAP_HEIGHT; ++y)
+        for (x = 0; x < MAP_WIDTH; ++x)
+            mapmaker_set_ground(map, x, y, TERRAIN_GRASS, 0U);
+    spacing = city ? 8 : 12;
+    for (x = MAP_WIDTH / 2; x < MAP_WIDTH; x += spacing)
+        for (y = 0; y < MAP_HEIGHT; ++y)
+            mapmaker_set_ground(map, x, y, TERRAIN_PAVEMENT, FEATURE_ROAD);
+    for (x = MAP_WIDTH / 2 - spacing; x >= 0; x -= spacing)
+        for (y = 0; y < MAP_HEIGHT; ++y)
+            mapmaker_set_ground(map, x, y, TERRAIN_PAVEMENT, FEATURE_ROAD);
+    for (y = MAP_HEIGHT / 2; y < MAP_HEIGHT; y += spacing)
+        for (x = 0; x < MAP_WIDTH; ++x)
+            mapmaker_set_ground(map, x, y, TERRAIN_PAVEMENT, FEATURE_ROAD);
+    for (y = MAP_HEIGHT / 2 - spacing; y >= 0; y -= spacing)
+        for (x = 0; x < MAP_WIDTH; ++x)
+            mapmaker_set_ground(map, x, y, TERRAIN_PAVEMENT, FEATURE_ROAD);
+    blocks = city ? 48 : 20;
+    for (block = 0; block < blocks; ++block) {
+        width = 2 + (int)MapRandomBelow(map, city ? 5U : 4U);
+        height = 2 + (int)MapRandomBelow(map, city ? 5U : 4U);
+        left = 1 + (int)MapRandomBelow(map, MAP_WIDTH - 2U);
+        top = 1 + (int)MapRandomBelow(map, MAP_HEIGHT - 2U);
+        for (y = top; y < top + height && y < MAP_HEIGHT - 1; ++y)
+            for (x = left; x < left + width && x < MAP_WIDTH - 1; ++x)
+                if (!(CELL_TERRAIN(map->cells[(unsigned int)y * MAP_WIDTH + x]) &
+                      FEATURE_ROAD))
+                    mapmaker_set_ground(map, x, y, TERRAIN_BUILDING,
+                                         (block == 0) ? FEATURE_SITE : 0U);
+    }
+    return 1;
+}
+
+static void mapmaker_dungeon_corridor(Map *map, int x, int y, int target_x,
+                                      int target_y)
+{
+    int step;
+
+    step = target_x >= x ? 1 : -1;
+    while (x != target_x) {
+        mapmaker_set_ground(map, x, y, TERRAIN_DUNGEON_FLOOR, 0U);
+        x += step;
+    }
+    step = target_y >= y ? 1 : -1;
+    while (y != target_y) {
+        mapmaker_set_ground(map, x, y, TERRAIN_DUNGEON_FLOOR, 0U);
+        y += step;
+    }
+    mapmaker_set_ground(map, x, y, TERRAIN_DUNGEON_FLOOR, 0U);
+}
+
+int MapGenerateDungeon(Map *map, int rooms)
+{
+    int x;
+    int y;
+    int room;
+    int left;
+    int top;
+    int width;
+    int height;
+    int center_x;
+    int center_y;
+    int previous_x;
+    int previous_y;
+
+    if (map == 0 || rooms < 1 || rooms > 32 || MAP_WIDTH < 7 || MAP_HEIGHT < 7)
+        return 0;
+    map->type = MAP_TYPE_DUNGEON;
+    for (y = 0; y < MAP_HEIGHT; ++y)
+        for (x = 0; x < MAP_WIDTH; ++x)
+            mapmaker_set_ground(map, x, y, TERRAIN_DUNGEON_WALL, 0U);
+    previous_x = -1;
+    previous_y = -1;
+    for (room = 0; room < rooms; ++room) {
+        width = 3 + (int)MapRandomBelow(map, 8U);
+        height = 3 + (int)MapRandomBelow(map, 6U);
+        if (width >= MAP_WIDTH - 2) width = MAP_WIDTH - 3;
+        if (height >= MAP_HEIGHT - 2) height = MAP_HEIGHT - 3;
+        left = 1 + (int)MapRandomBelow(map, (unsigned int)(MAP_WIDTH - width - 1));
+        top = 1 + (int)MapRandomBelow(map, (unsigned int)(MAP_HEIGHT - height - 1));
+        for (y = top; y < top + height; ++y)
+            for (x = left; x < left + width; ++x)
+                mapmaker_set_ground(map, x, y, TERRAIN_DUNGEON_FLOOR, 0U);
+        center_x = left + width / 2;
+        center_y = top + height / 2;
+        if (previous_x >= 0)
+            mapmaker_dungeon_corridor(map, previous_x, previous_y, center_x, center_y);
+        previous_x = center_x;
+        previous_y = center_y;
+    }
+    return 1;
+}
+#endif

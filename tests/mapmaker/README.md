@@ -1,61 +1,79 @@
-# EX716 MapMaker (Milestone 2 — host reference)
+# MapMaker library tests
 
-This directory contains the portable MapMaker core and its Linux reference
-program.  The core uses a caller-supplied `Map`; its 16,129 packed 16-bit cells
-consume 32,258 bytes, while metadata holds dimensions, type, format version,
-original seed, and current 16-bit PRNG state.  It never allocates dynamically.
+The production library is [`lib/mapmaker`](../../lib/mapmaker), not this
+directory. It is portable C89, uses caller-owned map and settlement storage,
+and does not allocate dynamically.
 
-`MapCell` stores elevation in its low byte.  Its high byte uses the low nibble
-for ground type and the upper nibble for feature flags. `mapmaker_host` writes
-the deterministic `EX716MAP 2` text format. It records the PRNG state and a
-settlement section before the HEX16 cells:
+The library supplies deterministic utility functions for cells, random values,
+terrain shaping, rivers, forests, and settlement placement. Its complete map
+generators currently cover wilderness islands, towns/cities, and
+room-and-corridor dungeons. `worldglobe.c` supplies the persistent planetary
+overview used before local tiles: 64 wrapping latitude rings, 32--127 cells
+per ring, continent/ocean influences, plate-boundary relief, and broad
+latitude moisture bands. It needs 5,860 caller-owned bytes for active cells.
+`regionalmap.c` is the first consumer: it generates 127×127 regional maps at
+5 km per cell (635 km square), sampling and smoothing a one-cell global halo
+so adjacent regional maps join without clamped-edge seams. Five 1 km world
+maps fit exactly across a regional map.
+`worldmap.c` refines that field into a 127 km, 1 km/cell world tile. It uses a
+tile-local elevation datum with 5 m height units, preserves regional terrain
+continuity with a global smoothing halo, and returns caller-owned pond, grove,
+and hill records through `MapFeatureList`. Each of those structures is formed
+from two to four deterministic cores, then blended with a 3×3 global smoothing
+kernel, avoiding repeated diamond-shaped terrain stamps.
 
-```text
-SETTLEMENTS=12
-SITE=15177,1,1,0
-DATA=HEX16
-```
+`localmap.c` is the generic site-map layer. Its location and resolution are
+stored in canonical half-metre units, so a 127×127 local map can be generated
+at 10 m, 5 m, 2 m, 1 m, or 0.5 m per cell without floating point or
+scale-specific tile coordinates. `MapGenerateLocalMap` currently develops the
+wilderness-site and settlement profiles from the globe-backed regional field:
+it adds seam-safe local relief, water, groves, rock fields, route corridors,
+and settlement building footprints, returning feature records in caller-owned
+storage. The tactical, interior, cave, and simulation profile identifiers are
+stable API reservations for their later fine-scale generators.
 
-Each `SITE` is `cell_index,type,size,tech_level`. `mapmaker-validate` rebuilds
-the settlement list, rejects duplicate/out-of-range records, and verifies that
-every record has a matching `FEATURE_SITE` cell. The checksum is FNV-1a over
-metadata and cells.
+`test_mapmaker.c` is deliberately a test harness rather than an application.
+It asserts API behavior and prints sampled ASCII previews so generated maps
+remain easy to inspect in ordinary test output. Legend: `~` water, `^` rock,
+`f` forest, `+` road, `#` building, `X` dungeon wall, and `.` dungeon floor.
+The final preview is the globe: `~` ocean, `,` shallow sea, `.` coast, `+`
+lowland, `^` upland, `A` plateau, `M` mountain belt, and `*` polar ice.
+The final regional previews print north/south and west/east boundary strips
+from three adjacent 5 km tiles; the west/east output is rotated 90 degrees
+with the western source column printed first. `.` is grassland and `:` is dry
+ground.
+The last preview is three north/south adjacent 1 km tiles; `f` marks grove
+cover and its feature summary reports deterministic ponds, groves, and hills.
 
-The current host pipeline creates one deterministic mountain ridge (five to ten
-intermediate control points), stamps integer foothills, then performs the
-requested number of full-buffer smoothing passes. It classifies elevations at
-or below sea level 24 as water, producing mountain islands; exposed elevations
-become grass, rock, or snow. It then starts eight rivers at elevation 80 or
-higher; each follows cardinal steepest descent to ocean water or a small lake
-at a local minimum. Finally, clustered forest covers 30% of eligible inland
-grassland. Twelve settlements are then placed, preferring river mouths and
-other coastlines; their map cells are marked as sites and their extra metadata
-lives in a caller-owned settlement list keyed by cell index. Smoothing preserves
-terrain and feature bits and avoids in-place traversal bias. `mapmaker-host` writes
-both the map file and a 24-bit color BMP. BMP is directly viewable in Windows
-11 Photos; terrain chooses the base color and elevation lightens it.
-
-Build and test on Linux:
+Run the complete host suite with:
 
 ```sh
 make test
-make
-./mapmaker-host 12345 example.map example.bmp 10 4
-./mapmaker-validate example.map
-./mapmaker-ansi example.map
 ```
 
-`mapmaker-ansi` renders each map cell as one terminal background-color space,
-so its 127-cell rows fit terminals at least 127 columns wide.
-It uses ANSI SGR `48;5;N` colors from a 64-color subset of the 256-color xterm
-palette: a 4×4×4 RGB table with component levels 0, 2, 4, and 5. Elevation
-chooses dark through light shades; dirt is brown, grass green, and water blue.
-Rock and snow use the terminal's 24-step ANSI grayscale ramp so mountain
-erosion remains visible. The optional `AGE` argument is the smoothing-pass
-count (default 10); `RANGES` is the number of layered mountain ranges (default
-4). Use a terminal with ANSI 256-color support.
+Run the CPU24/lcc smoke separately with:
 
-Milestone 2 is intentionally GCC-only while far data pointers and multi-bank
-allocation are absent from lcc. The next step is visual inspection and tuning
-of the ridge/erosion parameters, followed by a far-pointer compiler milestone
-before restoring CPU24 parity.
+```sh
+make test-lcc
+```
+
+Build and run the host ANSI explorer with:
+
+```sh
+make explorer
+./mapmaker-explorer
+```
+
+It uses raw terminal input: `W`, `A`, `S`, and `D` move one cell at the
+active scale; `+` zooms in and `-` zooms out; `Q` exits. The player remains
+at the screen center while a local map is regenerated around its canonical
+physical position. Cell glyph blocks are 6×3 at 0.5 m, 4×2 at 1 m, 2×1 at
+2 m, and 1×1 at 5 m; at 10 m the player is shown as `+`.
+The player starts on the first land cell found near canonical world center and
+cannot step into water. Terrain glyph/color choices are centralized in
+`explorer_style` in `mapmaker_explorer.c` for quick visual experimentation.
+
+The target smoke is intentionally small (7x7) and verifies initialization,
+cell access, smoothing, and deterministic PRNG behavior through the lcc/CPU24
+pipeline. The host suite exercises every full generator; its new complete-map
+entry points are omitted from the compact target image.

@@ -1,8 +1,2 @@
-/mapmaker-host
-/mapmaker-validate
-/mapmaker-ansi
 /test_mapmaker
-/out.asm
-/*.map
-/*.bmp
-/*.ansi
+/mapmaker-explorer

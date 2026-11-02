@@ -1,6 +1,6 @@
-/* One translation unit makes the initial CPU24 smoke test independent of
-   multi-unit linking while still exercising the production core. */
-#include "mapmaker.c"
+/* One translation unit makes the CPU24 smoke test independent of linking
+   while still compiling the production library implementation. */
+#include "../../lib/mapmaker/mapmaker.c"
 
 int main(void)
 {

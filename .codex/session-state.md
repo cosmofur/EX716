@@ -1,5 +1,158 @@
 # Session State
 
+## MapMaker library refactor (2026-11-02)
+
+- Moved the portable C89 MapMaker implementation from `tests/mapmaker` to
+  `lib/mapmaker/mapmaker.c` and `.h`. The public API now includes complete,
+  deterministic `MapGenerateWilderness`, `MapGenerateTown` (town/city mode),
+  and `MapGenerateDungeon` utilities alongside the existing lower-level map
+  operations.
+- Removed obsolete MapMaker applications, disk fixture, CPU24 bank/far-pointer
+  diagnostics, captured failure assembly, conversion binary, generated output,
+  and scratch files. `tests/mapmaker` now retains just its test harness,
+  GCC Makefile, compact lcc/CPU24 smoke, and library-test README.
+- `make -C tests/mapmaker test` passes and prints sampled ASCII previews of
+  wilderness, town, city, and dungeon maps. `make -C tests/mapmaker test-lcc`
+  passes with `MAPMAKER_CPU24_RESULT=0`; its small `MAPMAKER_CPU24_SMOKE`
+  profile retains the original terrain utility surface (including smoothing)
+  and omits only the newly added complete-map entry points, which the host
+  suite fully exercises.
+- `git diff --check` passes. Next: evolve the simple road-grid and
+  room/corridor algorithms based on desired map semantics (building types,
+  doors/stairs, districts, or serialization) without turning tests into a
+  standalone MapMaker product.
+
+## MapMaker WorldGlobe first version (2026-11-02)
+
+- Added `lib/mapmaker/mapmath.c`/`.h`: one 64-word Q15 quarter-wave sine
+  table. Quadrant reflection/sign supplies `MapMathSin` for the complete
+  256-angle circle; cosine delegates to sine one quarter turn ahead.
+- Added caller-owned `lib/mapmaker/worldglobe.c`/`.h`. It creates an in-memory
+  64-ring globe, with each longitude ring wrapping and smoothly ranging from
+  32 to 127 cells. The active packed one-byte cells occupy exactly 5,860 bytes
+  (`WORLD_GLOBE_STORAGE_CELLS`), plus small row geometry metadata.
+- The initial generator uses deterministic continent and ocean influences,
+  nearest/second-nearest plate boundary relief, latitude moisture, and polar
+  caps. It packs landform, moisture, roughness, and coast/boundary hint into
+  every persistent globe cell. It is intentionally a broad overview, not a
+  source of individual rivers or local terrain detail yet.
+- The host test now checks the trig quadrants, 32/127/32 geometry, exact
+  storage count, deterministic generation, land/ocean/mountain presence, and
+  longitude wrap; it prints a compact globe preview. `make -C tests/mapmaker
+  test` passes. The established `make -C tests/mapmaker test-lcc` passes.
+  Including the complete new WorldGlobe translation unit in that old
+  single-unit lcc smoke pushes the legacy harness into its known code-layout
+  return failure, so target execution coverage remains limited to the prior
+  MapMaker core until the target build is split/banked.
+- Development policy requested by the user: keep new MapMaker code in the
+  portable C89/basic-runtime subset where feasible, but let the GCC host suite
+  validate the complete evolving library. Do not suppress or reshape new
+  library functionality solely to satisfy the current lcc single-unit smoke;
+  lcc target coverage expands when its runtime/linking support is ready.
+
+## MapMaker 5 km regional bridge (2026-11-02)
+
+- `Map` format is now version 3 and records `meters_per_cell`,
+  `meters_per_height_unit`, and signed `tile_x`/`tile_y` metadata. Ordinary
+  initialized maps default to 1 km per cell and 10 m height units; checksums
+  include all new metadata.
+- Added `lib/mapmaker/regionalmap.c`/`.h` and
+  `MapGenerateRegionalTile(Map *, WorldGlobe *, tile_x, tile_y)`. A regional
+  tile is 127×127 at 5 km/cell (635 km side), so exactly five 127 km / 1 km
+  world maps fit per side. It samples the WorldGlobe bilinearly across its
+  300 km cells, adds stable 20 km detail, and applies a one-pass cardinal
+  smoothing kernel whose halo is read from global coordinates.
+- The GCC test constructs north/middle/south adjacent regional tiles at
+  `(0,-1)`, `(0,0)`, and `(0,1)`, confirms scale/location metadata and
+  determinism, then prints the joining edge strips. The strips visibly carry
+  coastline/land patterns across both joins rather than using clamped edges.
+- The same test now constructs west/middle/east tiles at `(-1,0)`, `(0,0)`,
+  and `(1,0)`. It prints the corresponding edge columns as a 90-degree rotated
+  view, with western columns first. The current seed visibly continues the
+  eastern water boundary across the join and has no direction-specific clamp.
+- Verified `make -C tests/mapmaker test`, `make -C tests/mapmaker test-lcc`,
+  and `git diff --check`; cleaned the generated host test executable.
+
+## MapMaker 1 km world tiles and detail features (2026-11-02)
+
+- Added `elevation_datum_meters` to `Map` metadata and to `MapChecksum`; map
+  format remains version 3. Added caller-owned `MapFeatureList` records for
+  ponds, groves, and hills.
+- Added `lib/mapmaker/worldmap.c`/`.h` with `MapGenerateWorldTile`. It builds
+  a 127 km tile at 1 km/cell from bilinearly sampled 5 km regional elevation,
+  uses five-metre height units and a center-derived local datum, adds stable
+  16 km hill fields, pond depressions in wet areas, and grove cover. Terrain
+  classes use global sampled elevation rather than the tile-relative byte so
+  neighboring tiles remain physically consistent despite different datums.
+- GCC tests generate north/middle/south adjacent 1 km tiles and a repeated
+  middle tile, assert deterministic map and feature output, and print their
+  join strips. Current seed reports 27 ponds, 47 groves, and 54 hill records;
+  forest/pond patterns visibly cross both joins. `make test`, `make test-lcc`,
+  and `git diff --check` pass.
+- Detail-shape follow-up: hills, ponds, and groves now each use two to four
+  hash-derived cores within their macro region and an octile distance falloff;
+  the local terrain filter is now a seam-safe 3×3 weighted global kernel.
+  This removes the visibly regular single-core diamond stamps. Current test
+  seed reports 15 ponds, 31 groves, and 64 hills after the clustering change.
+
+## Next MapMaker direction: generic local scales (2026-11-02)
+
+- User agreed that the next layer should begin at 10 m/cell as a site-scale
+  map, but it must be the first instance of a generic local-map generator,
+  not a one-off 10 m API. Planned supported scales are 10 m, 5 m, 2 m, 1 m,
+  and 0.5 m per cell; every 127×127 map has the corresponding physical width.
+- Represent local scale without floating point using canonical half-metre cell
+  units: 20, 10, 4, 2, and 1. Future map locations should use the same
+  canonical physical coordinate system, rather than only scale-specific tile
+  coordinates, so features line up across all zoom levels.
+- The future generic local API needs a location, scale, generation profile,
+  WorldGlobe/parent-field input, and optional caller-owned feature list.
+  Profiles distinguish wilderness site, settlement district, tactical outdoor,
+  building interior, cave/dungeon, and simulation terrain; scale alone does
+  not choose content.
+- First 10 m implementation should refine terrain/slope and local water,
+  groves, rock fields, route corridors, building footprints, and site feature
+  records, while leaving precise walls, doors, furniture, and actor behavior
+  to 2 m/1 m/0.5 m profile expansion.
+
+## MapMaker generic local site maps (2026-11-02)
+
+- Added `lib/mapmaker/localmap.c`/`.h` with `MapGenerateLocalMap`. It uses
+  canonical physical upper-left coordinates and cell resolution in half-metre
+  units, accepting the planned 10 m, 5 m, 2 m, 1 m, and 0.5 m scales. Map
+  format v4 adds the canonical origin and scale to `Map`; checksum coverage
+  includes them.
+- The first generated profiles are globe-backed wilderness site and
+  settlement maps. A globally evaluated local-detail field keeps adjacent
+  maps compatible, while the initial content covers height/slope, local water,
+  groves, rock fields, route corridors, settlement building footprints, and
+  caller-owned feature records. Tactical outdoor, building interior, cave,
+  and simulation profile identifiers are intentionally stable API slots for
+  later scale-specific work.
+- Host coverage checks deterministic 10 m generation and caller-owned
+  feature lists, canonical adjacent origins, 5 m settlement roads/buildings,
+  rejected scales, and a 0.5 m tactical-profile map. `make -C
+  tests/mapmaker test`, `make -C tests/mapmaker test-lcc`, and `git diff
+  --check` pass.
+
+## MapMaker ANSI explorer (2026-11-02)
+
+- Added `tests/mapmaker/mapmaker_explorer.c`, built with `make explorer` as
+  `mapmaker-explorer`. It is a host-only raw-TTY ANSI visualizer of a local
+  wilderness map, regenerating a 127×127 window around the player so the
+  player remains centered while moving.
+- `WASD` moves one active-scale cell, `+` moves through 5 m/2 m/1 m/0.5 m
+  zoom levels, `-` reverses that sequence, and `Q` restores the terminal and
+  exits. Glyph blocks are 6×3 (0.5 m), 4×2 (1 m), 2×1 (2 m), and 1×1 (5 m);
+  the 10 m overview uses `+` for the player. Color glyphs distinguish grass,
+  trees, water, stone, roads, and buildings.
+- Verified `make explorer`, `make test`, `git diff --check`, and a
+  pseudoterminal launch/quit smoke using `script`.
+- Explorer follow-up: startup now scans a bounded spiral from world center for
+  an actual land cell, and `WASD` validates the neighboring generated cell
+  before moving so water cannot be crossed. `explorer_style` is deliberately
+  the single glyph/color mapping point for visual experiments.
+
 ## ECC / lcc / CPU24 workflow (2026-10-30)
 
 - `bin/ECC` is the single normal C workflow: it preprocesses and compiles with
