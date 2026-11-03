@@ -67,8 +67,11 @@ make explorer
 It uses raw terminal input: `W`, `A`, `S`, and `D` move one cell at the
 active scale; `+` zooms in and `-` zooms out; `Q` exits. The player remains
 at the screen center while a local map is regenerated around its canonical
-physical position. Cell glyph blocks are 6×3 at 0.5 m, 4×2 at 1 m, 2×1 at
-2 m, and 1×1 at 5 m; at 10 m the player is shown as `+`.
+physical position. It supports 0.5 m, 1 m, 2 m, 5 m, 10 m, 20 m, 50 m, and
+100 m cells; the 100 m overview displays a 12.7 km square. Cell glyph blocks
+are 6×3 at 0.5 m, 4×2 at 1 m, 2×1 at 2 m, and 1×1 at coarser scales. Forest
+edges use dim `t` and interiors bright `T`; cyan `.` is shallow/shore water
+and dark-blue `~` is deeper water or a river.
 The player starts on the first land cell found near canonical world center and
 cannot step into water. Terrain glyph/color choices are centralized in
 `explorer_style` in `mapmaker_explorer.c` for quick visual experimentation.

@@ -1,6 +1,8 @@
 #ifndef WORLDGLOBE_H
 #define WORLDGLOBE_H
 
+#include "worldlandscape.h"
+
 #define WORLD_GLOBE_LATITUDE_RINGS 64U
 #define WORLD_GLOBE_EQUATOR_CELLS 127U
 #define WORLD_GLOBE_POLAR_CELLS 32U
@@ -31,12 +33,15 @@ typedef struct WorldGlobe {
     unsigned short row_start[WORLD_GLOBE_LATITUDE_RINGS + 1U];
     unsigned char *cells;
     unsigned short cell_capacity;
+    const WorldLandscape *landscape;
 } WorldGlobe;
 
 /* The caller owns the compact backing storage; no dynamic allocation occurs. */
 int WorldGlobeInitialize(WorldGlobe *globe, unsigned char *storage,
                          unsigned short capacity, unsigned long seed);
 int WorldGlobeGenerate(WorldGlobe *globe);
+void WorldGlobeSetLandscape(WorldGlobe *globe,
+                            const WorldLandscape *landscape);
 unsigned int WorldGlobeRowWidth(const WorldGlobe *globe, unsigned int row);
 int WorldGlobeGetCell(const WorldGlobe *globe, unsigned int row,
                       unsigned int column, unsigned char *cell);

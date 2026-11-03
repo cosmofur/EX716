@@ -38,7 +38,13 @@ static int local_distance(long x, long y, long center_x, long center_y)
 
 static int local_valid_scale(unsigned short scale)
 {
-    return scale == MAP_LOCAL_CELL_HALF_METERS_10M ||
+    return scale == MAP_LOCAL_CELL_HALF_METERS_5KM ||
+           scale == MAP_LOCAL_CELL_HALF_METERS_1KM ||
+           scale == MAP_LOCAL_CELL_HALF_METERS_500M ||
+           scale == MAP_LOCAL_CELL_HALF_METERS_100M ||
+           scale == MAP_LOCAL_CELL_HALF_METERS_50M ||
+           scale == MAP_LOCAL_CELL_HALF_METERS_20M ||
+           scale == MAP_LOCAL_CELL_HALF_METERS_10M ||
            scale == MAP_LOCAL_CELL_HALF_METERS_5M ||
            scale == MAP_LOCAL_CELL_HALF_METERS_2M ||
            scale == MAP_LOCAL_CELL_HALF_METERS_1M ||
@@ -97,6 +103,62 @@ static int local_detail(const WorldGlobe *globe, long x, long y)
     return (int)value - 45;
 }
 
+/* These fields are evaluated in global coordinates.  Unlike a single stamped
+ * circle per macro cell, several overlapping, irregular cores make a feature
+ * grow, meet its neighbours and then soften back into the underlying terrain.
+ * This keeps local-map borders exact without making the landscape look tiled. */
+static int local_feature_strength(const WorldGlobe *globe, unsigned long domain,
+                                  long x, long y, long span, int chance,
+                                  int base_radius)
+{
+    long macro_x;
+    long macro_y;
+    long center_x;
+    long center_y;
+    unsigned long structure;
+    unsigned long core_hash;
+    int offset_x;
+    int offset_y;
+    unsigned int core;
+    unsigned int cores;
+    int distance;
+    int radius;
+    int strength;
+    int best;
+
+    macro_x = local_floor_divide(x, span);
+    macro_y = local_floor_divide(y, span);
+    best = 0;
+    for (offset_y = -1; offset_y <= 1; ++offset_y) {
+        for (offset_x = -1; offset_x <= 1; ++offset_x) {
+            structure = local_hash(globe->seed, domain, macro_x + offset_x,
+                                   macro_y + offset_y);
+            if ((int)(structure & 31UL) >= chance)
+                continue;
+            cores = 2U + (unsigned int)((structure >> 5) % 3UL);
+            for (core = 0U; core < cores; ++core) {
+                core_hash = local_hash(globe->seed, domain + 0x31UL + core,
+                                       macro_x + offset_x, macro_y + offset_y);
+                center_x = (macro_x + offset_x) * span +
+                           (long)(core_hash % (unsigned long)span);
+                center_y = (macro_y + offset_y) * span +
+                           (long)((core_hash >> 12) % (unsigned long)span);
+                radius = base_radius + (int)((core_hash >> 20) %
+                                              (unsigned long)(base_radius + 1));
+                distance = local_distance(x, y, center_x, center_y);
+                /* A little high-frequency displacement erodes the otherwise
+                 * perfectly round core outline. */
+                distance -= (int)(local_hash(globe->seed, domain + 0x71UL,
+                                              x / 80L, y / 80L) % 61UL) - 30;
+                strength = radius - distance;
+                if (strength > best)
+                    best = strength;
+            }
+        }
+    }
+    return best;
+}
+
 int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
                         long origin_x_half_meters,
                         long origin_y_half_meters,
@@ -114,12 +176,11 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
     unsigned int meters;
     unsigned int height;
     unsigned int terrain;
-    unsigned long marker;
-    long macro_x;
-    long macro_y;
-    long center_x;
-    long center_y;
-    int distance;
+    unsigned char world_cell;
+    int pond_strength;
+    int grove_strength;
+    int rock_strength;
+    int settlement_strength;
     int pond;
     int grove;
     int rocks;
@@ -160,31 +221,60 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
             kilometre_x = local_floor_divide(physical_x, 2000L);
             kilometre_y = local_floor_divide(physical_y, 2000L);
             base_height = MapSampleRegionalHeight(globe, kilometre_x,
-                                                   kilometre_y, 0) *
+                                                   kilometre_y, &world_cell) *
                           MAP_REGIONAL_HEIGHT_METERS_PER_UNIT;
-            meters = base_height + local_detail(globe, physical_x, physical_y);
+            /* Layer broad relief with two progressively smaller fields.  The
+             * latter terms are deliberately weaker: they weather contours
+             * without turning a regional slope into visual static. */
+            meters = base_height + local_detail(globe, physical_x, physical_y) +
+                     local_detail(globe, physical_x / 3L, physical_y / 3L) / 3 +
+                     local_detail(globe, physical_x / 9L, physical_y / 9L) / 6;
             if ((long)meters <= map->elevation_datum_meters) height = 0U;
             else height = (unsigned int)((long)meters - map->elevation_datum_meters);
             if (height > 255U) height = 255U;
-            terrain = meters < 780U ? TERRAIN_WATER : TERRAIN_GRASS;
-            macro_x = local_floor_divide(physical_x, 1400L);
-            macro_y = local_floor_divide(physical_y, 1400L);
-            marker = local_hash(globe->seed, 0x504f4e44UL, macro_x, macro_y);
-            center_x = macro_x * 1400L + (long)(marker % 1400UL);
-            center_y = macro_y * 1400L + (long)((marker >> 12) % 1400UL);
-            distance = local_distance(physical_x, physical_y, center_x, center_y);
-            pond = (marker & 15UL) == 0UL && distance < 110;
-            marker = local_hash(globe->seed, 0x47524f56UL, macro_x, macro_y);
-            center_x = macro_x * 1400L + (long)(marker % 1400UL);
-            center_y = macro_y * 1400L + (long)((marker >> 12) % 1400UL);
-            distance = local_distance(physical_x, physical_y, center_x, center_y);
-            grove = (marker & 7UL) < 3UL && distance < 260;
-            rocks = meters > 3600U || ((marker >> 24) & 31UL) == 0UL;
-            route = local_abs((int)(physical_y - (macro_y * 1400L + 700L))) <
+            /* Sea is a persistent globe landform, not an arbitrary local
+             * height threshold.  The latter made low coastal land disappear
+             * as a player changed seed or zoom level. */
+            if (cell_half_meters >= MAP_LOCAL_CELL_HALF_METERS_500M)
+                terrain = base_height <= 750U ? TERRAIN_WATER : TERRAIN_GRASS;
+            else
+                terrain = (world_cell & WORLD_LANDFORM_MASK) <= WORLD_SHALLOW_SEA ?
+                          TERRAIN_WATER : TERRAIN_GRASS;
+            if (cell_half_meters < MAP_LOCAL_CELL_HALF_METERS_500M) {
+                pond_strength = local_feature_strength(globe, 0x504f4e44UL,
+                                                      physical_x, physical_y,
+                                                      2800L, 3, 95);
+                grove_strength = local_feature_strength(globe, 0x47524f56UL,
+                                                       physical_x, physical_y,
+                                                       3400L, 4, 110);
+                rock_strength = local_feature_strength(globe, 0x524f434bUL,
+                                                      physical_x, physical_y,
+                                                      3000L, 6, 120);
+            } else {
+                pond_strength = 0;
+                grove_strength = 0;
+                rock_strength = 0;
+            }
+            settlement_strength = local_feature_strength(globe, 0x53495445UL,
+                                                        physical_x, physical_y,
+                                                        4800L, 32, 450);
+            /* Surface features belong to land.  Applying the old stamp
+             * fields indiscriminately was what made small "ponds" appear in
+             * open sea. */
+            pond = pond_strength > 0 && meters >= 850U && meters < 3000U;
+            grove = grove_strength > 0 && meters >= 850U && meters < 3000U;
+            rocks = meters > 3600U || rock_strength > 0;
+            /* The old unconditional horizontal route and 900 m building grid
+             * made ordinary wilderness visibly artificial.  Settlements now
+             * grow as sparse, irregular clusters around globally stable sites. */
+            route = profile == MAP_LOCAL_PROFILE_SETTLEMENT &&
+                    local_abs((int)(physical_y - 300L -
+                    (long)local_detail(globe, physical_x / 5L, 0L) * 3L)) <
                     (int)cell_half_meters;
             building = profile == MAP_LOCAL_PROFILE_SETTLEMENT &&
-                       physical_x % 900L > 150L && physical_x % 900L < 650L &&
-                       physical_y % 900L > 150L && physical_y % 900L < 650L;
+                       settlement_strength > 0 &&
+                       (local_hash(globe->seed, 0x4255494cUL,
+                                   physical_x / 80L, physical_y / 80L) & 7UL) < 3UL;
             if (pond) terrain = TERRAIN_WATER;
             else if (building) terrain = TERRAIN_BUILDING;
             else if (route) terrain = TERRAIN_PAVEMENT | FEATURE_ROAD;
@@ -193,19 +283,24 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
             map->cells[index] = MAKE_CELL(height, terrain);
             if (pond) local_add_feature(features, index, MAP_FEATURE_POND, 55U,
                                         local_hash(globe->seed, 0x504f4e44UL,
-                                                   macro_x, macro_y));
+                                                   physical_x / 2800L,
+                                                   physical_y / 2800L));
             if (grove) local_add_feature(features, index, MAP_FEATURE_GROVE, 130U,
                                          local_hash(globe->seed, 0x47524f56UL,
-                                                    macro_x, macro_y));
+                                                    physical_x / 3400L,
+                                                    physical_y / 3400L));
             if (rocks) local_add_feature(features, index, MAP_FEATURE_ROCK_FIELD,
                                          80U, local_hash(globe->seed, 0x524f434bUL,
-                                                          macro_x, macro_y));
+                                                          physical_x / 3000L,
+                                                          physical_y / 3000L));
             if (route) local_add_feature(features, index, MAP_FEATURE_ROUTE, 10U,
                                          local_hash(globe->seed, 0x524f5554UL,
-                                                    macro_x, macro_y));
+                                                    physical_x / 4800L,
+                                                    physical_y / 4800L));
             if (building) local_add_feature(features, index, MAP_FEATURE_BUILDING,
                                             120U, local_hash(globe->seed, 0x4255494cUL,
-                                                             macro_x, macro_y));
+                                                             physical_x / 4800L,
+                                                             physical_y / 4800L));
         }
     }
     return 1;

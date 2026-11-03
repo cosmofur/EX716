@@ -98,6 +98,10 @@ static unsigned int regional_raw_height(const WorldGlobe *globe,
               next_height * (unsigned int)row_fraction + 30U) / 60U;
     if (row_fraction >= 30L)
         cell = next_cell;
+    if (globe->landscape != 0)
+        height += WorldLandscapeUplift(globe->landscape, global_x * 5L,
+                                       global_y * 5L) /
+                  MAP_REGIONAL_HEIGHT_METERS_PER_UNIT;
     noise = (int)(regional_hash(globe->seed, global_x / 4L, global_y / 4L) % 25UL) - 12;
     if (noise < 0 && height < (unsigned int)(-noise))
         height = 0;

@@ -2,7 +2,8 @@ CC ?= gcc
 CFLAGS ?= -std=c89 -Wall -Wextra -Werror -pedantic
 LIBRARY = ../../lib/mapmaker/mapmaker.c ../../lib/mapmaker/mapmath.c \
 	../../lib/mapmaker/worldglobe.c ../../lib/mapmaker/regionalmap.c \
-	../../lib/mapmaker/worldmap.c ../../lib/mapmaker/localmap.c
+	../../lib/mapmaker/worldmap.c ../../lib/mapmaker/localmap.c \
+	../../lib/mapmaker/worldlandscape.c
 INCLUDES = -I../../lib/mapmaker
 
 .PHONY: all test test-gcc test-lcc explorer clean

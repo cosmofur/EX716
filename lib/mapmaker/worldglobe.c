@@ -97,6 +97,7 @@ int WorldGlobeInitialize(WorldGlobe *globe, unsigned char *storage,
     if (globe == 0 || storage == 0)
         return 0;
     globe->seed = worldglobe_u32(seed);
+    globe->landscape = 0;
     globe->cells = storage;
     globe->cell_capacity = capacity;
     globe->row_start[0] = 0;
@@ -111,6 +112,12 @@ int WorldGlobeInitialize(WorldGlobe *globe, unsigned char *storage,
     }
     globe->cell_count = globe->row_start[WORLD_GLOBE_LATITUDE_RINGS];
     return globe->cell_count <= capacity;
+}
+
+void WorldGlobeSetLandscape(WorldGlobe *globe,
+                            const WorldLandscape *landscape)
+{
+    if (globe != 0) globe->landscape = landscape;
 }
 
 unsigned int WorldGlobeRowWidth(const WorldGlobe *globe, unsigned int row)
