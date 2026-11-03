@@ -15,6 +15,8 @@
 #include <unistd.h>
 
 #include "speedCPU.h"
+#include "vm_console.h"
+#include "vm_events.h"
 
 #define MAXMEM 0x10000
 #define MAXPHYSMEM 0x1000000
@@ -37,6 +39,7 @@
 #define RC_DEVICE_WRITE_FAIL -9
 #define RC_DEVICE_GENERAL_FAIL -10
 #define RC_DEBUG_TOGGLE    -11
+#define RC_EVENT_SERVICE_FAIL -12
 
 /* CPU24 execution state. Logical operands remain 16-bit; this state maps
  * them to 24-bit physical memory addresses. A NULL state means legacy mode. */
@@ -113,6 +116,14 @@ static int g_saved_valid = 0;
 static int g_saved_flags = 0;
 static int g_saved_flags_valid = 0;
 static int g_poll_raw_active = 0;
+static VMEventState g_events;
+static VMConsole g_console;
+typedef struct {
+    uint64_t period;
+    uint64_t service_count;
+    uint32_t flags;
+} VMPeriodicEventTest;
+static VMPeriodicEventTest g_periodic_event_test;
 
 /*
  * What it does:
@@ -130,6 +141,39 @@ static void handle_ctrl_c(int sig) {
     g_interrupt_requested = RC_USER_HALT;
     ssize_t ignored = write(STDERR_FILENO, "^C\n", 3);
     (void)ignored;
+}
+
+/* Service hardware work after a completed instruction.  A device-service
+ * failure is reported only when the instruction itself succeeded; an existing
+ * signed RC_* value always wins.  Pending interrupts are deliberately not
+ * delivered here because CPU24 interrupt entry is not specified yet. */
+static int instruction_retired(int return_code) {
+    return return_code == 0 || return_code == RC_END_PROGRAM ||
+           return_code == RC_DEBUG_TOGGLE;
+}
+
+static int service_events_after_instruction(int return_code) {
+    if (!instruction_retired(return_code)) return return_code;
+    if (vm_events_after_instruction(&g_events)) {
+        VMEventServiceResult service_result = vm_events_service(&g_events);
+        return vm_events_resolve_return_code(return_code, service_result,
+                                             RC_EVENT_SERVICE_FAIL);
+    }
+    return return_code;
+}
+
+/* A deliberately small native test service used only for dispatcher
+ * throughput coverage.  It models a coalescible periodic device event without
+ * adding a device or an interrupt architecture. */
+static VMEventServiceResult service_periodic_test_event(VMEventState *state,
+                                                         void *context) {
+    VMPeriodicEventTest *periodic = context;
+    if ((state->pending_events & periodic->flags) != 0) {
+        state->pending_events &= ~periodic->flags;
+        ++periodic->service_count;
+        vm_events_schedule_after(state, periodic->period, periodic->flags);
+    }
+    return VM_EVENT_SERVICE_OK;
 }
 
 /*
@@ -528,9 +572,10 @@ static void disable_raw(void) {
 static void tty_state(void) {
     struct termios attrs;
     if (tcgetattr(STDIN_FILENO, &attrs) == 0) {
-        fprintf(stderr, "iflag=0x%08x oflag=0x%08x cflag=0x%08x lflag=0x%08x\n",
-                (unsigned)attrs.c_iflag, (unsigned)attrs.c_oflag,
-                (unsigned)attrs.c_cflag, (unsigned)attrs.c_lflag);
+        vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
+                          "iflag=0x%08x oflag=0x%08x cflag=0x%08x lflag=0x%08x\n",
+                          (unsigned)attrs.c_iflag, (unsigned)attrs.c_oflag,
+                          (unsigned)attrs.c_cflag, (unsigned)attrs.c_lflag);
     }
 }
 
@@ -569,9 +614,9 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             while (i < 0xFFFF && vm_getbyte(mem, i) != 0) {
                 unsigned char c = vm_getbyte(mem, i++);
                 if ((c < 32) && c != 7 && c != 8 && c !=9  && c != 10 && c!=13 && c != 27 && c != 30) {
-                    printf("%02x", c);
+                    vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%02x", c);
                 } else {
-                    putchar((int)c);
+                    vm_console_write(&g_console, VM_CONSOLE_GUEST_TEXT, &c, 1);
                 }
             }
             break;
@@ -581,32 +626,33 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             while (i < 0xFFFF && vm_getbyte(mem, i) != 0) {
                 unsigned char c = vm_getbyte(mem, i++);
                 if ((c < 32 || c > 127) && c != 7 && c != 9 && c != 10 && c != 27 && c != 30) {
-                    fprintf(stderr, "%02x", c);
+                    vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC, "%02x", c);
                 } else {
-                    fputc((int)c, stderr);
+                    vm_console_write(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC, &c, 1);
                 }
             }
             break;
         }
         case CastPrintInt:
-            printf("%u", (unsigned)(arg & 0xFFFFu));
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%u", (unsigned)(arg & 0xFFFFu));
             break;
         case CastPrintIntI:
-            printf("%u", (unsigned)(argi & 0xFFFFu));
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%u", (unsigned)(argi & 0xFFFFu));
             break;
         case CastPrintSignI:
-            printf("%d", (int16_t)argi);
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%d", (int16_t)argi);
             break;
         case CastPrintBinI: {
             uint16_t v = argi;
             for (int bit = 15; bit >= 0; --bit) {
-                putchar((v & (1u << bit)) ? '1' : '0');
+                unsigned char digit = (unsigned char)((v & (1u << bit)) ? '1' : '0');
+                vm_console_write(&g_console, VM_CONSOLE_GUEST_TEXT, &digit, 1);
             }
             break;
         }
         case CastPrintChar: {
             unsigned char c = vm_getbyte(mem, arg);
-            putchar((int)c);
+            vm_console_write(&g_console, VM_CONSOLE_GUEST_TEXT, &c, 1);
             break;
         }
         case CastPrintStrI: {
@@ -614,24 +660,24 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             while (i < 0xFFFF && vm_getbyte(mem, i) != 0) {
                 unsigned char c = vm_getbyte(mem, i++);
                 if ((c < 32) && c != 7 && c != 8 && c !=9  && c != 10 && c!=13 && c != 27 && c != 30) {                
-                    printf("%02x", c);
+                    vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%02x", c);
                 } else {
-                    putchar((int)c);
+                    vm_console_write(&g_console, VM_CONSOLE_GUEST_TEXT, &c, 1);
                 }
             }
             break;
         }
         case CastPrintIntUI:
-            printf("%u", (unsigned)(argi & 0xFFFFu));
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%u", (unsigned)(argi & 0xFFFFu));
             break;
         case CastPrintCharI:
-            putchar((int)(argi & 0xFFu));
+            { unsigned char c = (unsigned char)(argi & 0xFFu); vm_console_write(&g_console, VM_CONSOLE_GUEST_TEXT, &c, 1); }
             break;
         case CastPrintHexI:
-            printf("%04x", (unsigned)(argi & 0xFFFFu));
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%04x", (unsigned)(argi & 0xFFFFu));
             break;
         case CastPrintHexII:
-            printf("%04x", (unsigned)(argii & 0xFFFFu));
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%04x", (unsigned)(argii & 0xFFFFu));
             break;
         case CastSelectDisk: {
             if (g_disk != NULL) {
@@ -707,13 +753,13 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             break;
         case CastPrint32I: {
             uint32_t v = (uint32_t)get16(mem, arg) | ((uint32_t)get16(mem, arg + 2) << 16);
-            printf("%u", (unsigned)v);
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%u", (unsigned)v);
             break;
         }
         case CastPrint32II: {
             uint32_t base = get16(mem, arg);
             uint32_t v = (uint32_t)get16(mem, (int)base) | ((uint32_t)get16(mem, (int)base + 2) << 16);
-            printf("%u", (unsigned)v);
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%u", (unsigned)v);
             break;
         }
         case CastPrint32S: {
@@ -725,12 +771,12 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             if (pop16(stack, sp, &hi) != 0 || pop16(stack, sp, &lo) != 0) {
                 return RC_STACK_UNDERFLOW;
             }
-            printf("%u", (unsigned)v);
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%u", (unsigned)v);
             break;
         }
         case CastPrint32SignI: {
             int32_t v = (int32_t)((uint32_t)get16(mem, arg) | ((uint32_t)get16(mem, arg + 2) << 16));
-            printf("%d", v);
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%d", v);
             break;
         }
         case CastPrint32SignS: {
@@ -743,7 +789,7 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             if (pop16(stack, sp, &hi) != 0 || pop16(stack, sp, &lo) != 0) {
                 return RC_STACK_UNDERFLOW;
             }
-            printf("%d", v);
+            vm_console_printf(&g_console, VM_CONSOLE_GUEST_TEXT, "%d", v);
             break;
         }
         case CastTapeWrite:
@@ -766,11 +812,13 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
         case CastDebugToggle:
             return RC_DEBUG_TOGGLE;
         case CastStackDump: {
-            fprintf(stderr, " %04x:Stack:(%d)", (unsigned)pc, *sp);
+            vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
+                              " %04x:Stack:(%d)", (unsigned)pc, *sp);
             for (int i = 0; i < *sp; ++i) {
-                fprintf(stderr, " %04x", (unsigned)stack[i]);
+                vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
+                                  " %04x", (unsigned)stack[i]);
             }
-            fputc('\n', stderr);
+            vm_console_write(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC, "\n", 1);
             break;
         }
         default:
@@ -1355,7 +1403,9 @@ static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp
             if (push16(stack, sp, (uint16_t)(*sp & 0xFFFF)) != 0) return RC_STACK_OVERFLOW;
             break;
         default:
-            fprintf(stderr, "Unknown OptCode %u at address %04x\n", (unsigned)op, (unsigned)cur_pc);
+            vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
+                              "Unknown OptCode %u at address %04x\n",
+                              (unsigned)op, (unsigned)cur_pc);
             return RC_DEVICE_GENERAL_FAIL;
     }
 
@@ -1462,6 +1512,7 @@ static PyObject *c_EvalOne(PyObject *self, PyObject *args)
     if (steps == -1) {
         while (return_code == 0 && !g_interrupt_requested) {
             return_code = step_once(mem, stack, &pc, &flags, &sp);
+            return_code = service_events_after_instruction(return_code);
         }
     } else if (steps > 0) {
         for (int i = 0;
@@ -1470,6 +1521,7 @@ static PyObject *c_EvalOne(PyObject *self, PyObject *args)
              !g_interrupt_requested;
              ++i) {
             return_code = step_once(mem, stack, &pc, &flags, &sp);
+            return_code = service_events_after_instruction(return_code);
         }
     }
 
@@ -1545,11 +1597,13 @@ static PyObject *c_EvalOne24(PyObject *self, PyObject *args)
     if (steps == -1) {
         while (return_code == 0 && !g_interrupt_requested) {
             return_code = step_once(mem, stack, &pc, &flags, &sp);
+            return_code = service_events_after_instruction(return_code);
         }
     } else if (steps > 0) {
         for (int i = 0; i < steps && return_code == 0 &&
              !g_interrupt_requested; ++i) {
             return_code = step_once(mem, stack, &pc, &flags, &sp);
+            return_code = service_events_after_instruction(return_code);
         }
     }
     if (g_interrupt_requested && return_code == 0) {
@@ -1567,9 +1621,120 @@ static PyObject *c_EvalOne24(PyObject *self, PyObject *args)
                          state.segment_mode, state.segment_override);
 }
 
+/* These small management APIs are intentionally separate from CPU execution.
+ * They let a future display frontend capture only guest text without hiding
+ * diagnostics, and make the bounded buffer observable to callers. */
+static PyObject *c_ConsoleSetGuestBuffered(PyObject *self, PyObject *args)
+{
+    int buffered;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "p", &buffered)) return NULL;
+    vm_console_set_guest_mode(&g_console, buffered ? VM_CONSOLE_GUEST_BUFFERED :
+                               VM_CONSOLE_GUEST_DIRECT);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_ConsoleDrainGuest(PyObject *self, PyObject *args)
+{
+    unsigned char buffer[VM_CONSOLE_GUEST_BUFFER_SIZE];
+    size_t count;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    count = vm_console_drain_guest(&g_console, buffer, sizeof(buffer));
+    return PyBytes_FromStringAndSize((const char *)buffer, (Py_ssize_t)count);
+}
+
+static PyObject *c_ConsoleStatus(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    return Py_BuildValue("kk", (unsigned long)vm_console_guest_length(&g_console),
+                         vm_console_guest_overflow(&g_console));
+}
+
+static PyObject *c_ConsoleReset(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    vm_console_init(&g_console);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EventsReset(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    vm_events_init(&g_events);
+    memset(&g_periodic_event_test, 0, sizeof(g_periodic_event_test));
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EventsScheduleAfter(PyObject *self, PyObject *args)
+{
+    unsigned long long instructions;
+    unsigned int flags;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "KI", &instructions, &flags)) return NULL;
+    vm_events_schedule_after(&g_events, (uint64_t)instructions, flags);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EventsStatus(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    return Py_BuildValue("IIK", g_events.pending_events,
+                         g_events.pending_interrupts,
+                         (unsigned long long)g_events.instruction_count);
+}
+
+static PyObject *c_EventsSetPeriodicTest(PyObject *self, PyObject *args)
+{
+    unsigned long long period;
+    unsigned int flags;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "KI", &period, &flags)) return NULL;
+    if (period == 0 || flags == 0) {
+        PyErr_SetString(PyExc_ValueError, "period and event flags must be nonzero");
+        return NULL;
+    }
+    g_periodic_event_test.period = (uint64_t)period;
+    g_periodic_event_test.flags = flags;
+    g_periodic_event_test.service_count = 0;
+    vm_events_set_service(&g_events, service_periodic_test_event,
+                          &g_periodic_event_test);
+    vm_events_schedule_after(&g_events, (uint64_t)period, flags);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EventsPeriodicTestCount(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    return PyLong_FromUnsignedLongLong(g_periodic_event_test.service_count);
+}
+
 static PyMethodDef cpuCfuncMethods[] = {
     {"EvalOne", c_EvalOne, METH_VARARGS, "Evaluate one or more EX716 instructions"},
     {"EvalOne24", c_EvalOne24, METH_VARARGS, "Evaluate CPU24 instructions"},
+    {"ConsoleSetGuestBuffered", c_ConsoleSetGuestBuffered, METH_VARARGS,
+     "Choose direct or bounded-buffer guest CAST output"},
+    {"ConsoleDrainGuest", c_ConsoleDrainGuest, METH_VARARGS,
+     "Return and clear buffered guest CAST output"},
+    {"ConsoleStatus", c_ConsoleStatus, METH_VARARGS,
+     "Return (buffered bytes, discarded bytes) for guest CAST output"},
+    {"ConsoleReset", c_ConsoleReset, METH_VARARGS,
+     "Restore direct guest output and clear the bounded buffer"},
+    {"EventsReset", c_EventsReset, METH_VARARGS,
+     "Clear native hardware-event and interrupt state"},
+    {"EventsScheduleAfter", c_EventsScheduleAfter, METH_VARARGS,
+     "Schedule coalescible hardware event flags after an instruction count"},
+    {"EventsStatus", c_EventsStatus, METH_VARARGS,
+     "Return (pending events, pending interrupts, instruction count)"},
+    {"EventsSetPeriodicTest", c_EventsSetPeriodicTest, METH_VARARGS,
+     "Install a native periodic event service for dispatcher benchmarks"},
+    {"EventsPeriodicTestCount", c_EventsPeriodicTestCount, METH_VARARGS,
+     "Return periodic-event services since EventsSetPeriodicTest"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -1598,5 +1763,7 @@ static struct PyModuleDef cpuCfunc = {
 PyMODINIT_FUNC PyInit_cpuCfunc(void) {
     import_array();
     setvbuf(stdin, NULL, _IONBF, 0);
+    vm_events_init(&g_events);
+    vm_console_init(&g_console);
     return PyModule_Create(&cpuCfunc);
 }

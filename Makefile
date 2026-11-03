@@ -1,7 +1,7 @@
 PYTHON ?= python3
 DEBUG ?= 1
 
-EXT_SRC := speedCPU.c
+EXT_SRC := speedCPU.c vm_events.c vm_console.c
 EXT_NAME := cpuCfunc
 PLATFORM := $(shell $(PYTHON) -c "import os; print(os.name)")
 EXT_SUFFIX := $(shell $(PYTHON) -c "import os, sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or ('.pyd' if os.name == 'nt' else '.so'))")
@@ -32,13 +32,13 @@ else
   SHARED_FLAGS := -shared -fPIC
 endif
 
-.PHONY: all extension check clean help
+.PHONY: all extension check test clean help
 
 all: extension
 
 extension: $(EXT_TARGET)
 
-$(EXT_TARGET): $(EXT_SRC) speedCPU.h
+$(EXT_TARGET): $(EXT_SRC) speedCPU.h vm_events.h vm_console.h
 ifeq ($(EXTENSION_SUPPORTED),0)
 	$(error Native Windows builds of $(EXT_NAME) are not supported yet because $(EXT_SRC) uses POSIX terminal APIs. Use WSL/Linux/Termux, or run cpu.py without -f)
 else
@@ -53,6 +53,11 @@ check:
 	@echo "CC: $(CC)"
 	@echo "target: $(EXT_TARGET)"
 	@echo "supported: $(EXTENSION_SUPPORTED)"
+
+test: extension
+	$(CC) -Wall -Werror -I. tests/test_vm_infrastructure.c vm_events.c vm_console.c -o /tmp/ex716-vm-infrastructure-test
+	/tmp/ex716-vm-infrastructure-test
+	$(PYTHON) tests/test_fast_console.py
 
 clean:
 	$(PYTHON) -c "import pathlib; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.so') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.pyd') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.dll') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('*.o') if p.is_file()]"

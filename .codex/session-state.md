@@ -1,5 +1,46 @@
 # Session State
 
+## Event/console verification finding (2026-11-03)
+
+- Corrected the event clock: `instruction_count` now advances after each
+  successfully retired native instruction whether or not a deadline is armed.
+  Errors do not advance it; `CAST End` and debug-toggle do. Immediate events
+  become pending immediately for the next instruction-boundary service point.
+  State remains explicit-reset, native-module-global state that persists across
+  bounded/unlimited calls and debugger entry.
+- Added no-event advancement, late-deadline, immediate-deadline, simultaneous
+  flag, terminal-instruction, and execution-error checks to the fast native
+  test. Added `tests/benchmark_event_clock.py`; the optimized three-sample
+  50M-NOP median was 173.9 M/s no-event and 164.9 M/s with a coalescible event
+  every 1,024 retired instructions (5.15% lower). Results and conditions are
+  recorded in `docs/event-console-verification.md`.
+
+## CPU24 event dispatcher and console infrastructure (2026-11-03)
+
+- Added portable C `vm_events` and `vm_console` modules for reusable native
+  emulator infrastructure; this work intentionally does not implement EXGC
+  memory mapping, video registers, graphics, SIXEL, or CPU interrupts.
+- Both `speedCPU.c` loops (`EvalOne` and `EvalOne24`) now run an event service
+  point after each executed instruction, including bounded calls. Event flags,
+  pending interrupt flags, and executor `RC_*` codes are distinct. A service
+  failure maps to `RC_EVENT_SERVICE_FAIL` only after a successful instruction;
+  instruction stop/error codes keep priority. Interrupt delivery remains a
+  no-op by design.
+- Native fast-mode CAST guest output now passes through the `GUEST_TEXT`
+  channel. Direct mode preserves stdout; optional capture uses a fixed 8 KiB
+  ring with a visible discard counter. Host diagnostics remain stderr, and
+  Ctrl-C continues to use only async-signal-safe `write(2, ...)`. Disk/tape
+  file writes are deliberately untouched.
+- Added extension management hooks for focused console/event testing, tests
+  `tests/test_vm_infrastructure.c` and `tests/test_fast_console.py`, and
+  `docs/vm-infrastructure.md` with the code/output-path audit and the Python
+  integration boundary.
+- Verified `make DEBUG=0`, `make test`, `python3 -m py_compile cpu24.py`, and
+  `git diff --check`. `make test` intentionally exercises an invalid opcode;
+  its `Unknown OptCode 255` stderr diagnostic is expected. A one-million-NOP
+  CPU24 bounded no-event run took 0.005 s in this environment (informational,
+  not a cross-version benchmark).
+
 ## MapMaker library refactor (2026-11-02)
 
 - Moved the portable C89 MapMaker implementation from `tests/mapmaker` to

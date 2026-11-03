@@ -117,6 +117,7 @@ PrevPC=0
 RC_END_PROGRAM=-1
 RC_USER_HALT=-4
 RC_DEBUG_TOGGLE=-11
+RC_EVENT_SERVICE_FAIL=-12
 RC_STACK_UNDERFLOW=-2
 RC_STACK_OVERFLOW=-3
 RC_INVALID_INPUT=-5
@@ -2780,6 +2781,8 @@ class microcpu:
         elif code == RC_DEBUG_TOGGLE:
             print(f"Debug Toggle")
             current_context.Debug = 0 if current_context.Debug else 1 
+        elif code == RC_EVENT_SERVICE_FAIL:
+            print("Hardware event service failed")
         else:
             print("Return Code:", code)
 
