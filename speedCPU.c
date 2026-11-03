@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "speedCPU.h"
+#include "exgc_device.h"
 #include "vm_console.h"
 #include "vm_events.h"
 
@@ -53,6 +54,7 @@ typedef struct {
 } VM24State;
 
 static VM24State *g_vm24 = NULL;
+static int g_exgc_mmio_fault = 0;
 
 /* CAST commands */
 #define CastPrintStr 1
@@ -199,6 +201,11 @@ static inline uint32_t vm_data_address(int addr) {
     return ((uint32_t)bank << 16) | offset;
 }
 
+static inline uint8_t vm_data_segment(void) {
+    if (g_vm24 == NULL || !g_vm24->segment_mode) return 0;
+    return g_vm24->segment_override >= 0 ? (uint8_t)g_vm24->segment_override : g_vm24->ds;
+}
+
 static inline uint32_t vm_code_address(int addr) {
     uint16_t offset = (uint16_t)(addr & 0xFFFF);
     if (g_vm24 == NULL || !g_vm24->segment_mode) {
@@ -208,6 +215,17 @@ static inline uint32_t vm_code_address(int addr) {
 }
 
 static inline uint16_t get16(const uint8_t *mem, int addr) {
+    uint16_t offset = (uint16_t)(addr & 0xffff);
+    uint16_t value;
+    EXGCMMIOResult mmio;
+    if (vm_data_segment() == EXGC_SEGMENT) {
+        mmio = exgc_device_read_word(mem + ((uint32_t)EXGC_SEGMENT << 16), offset, &value);
+        if (mmio == EXGC_MMIO_HANDLED) return value;
+        if (mmio == EXGC_MMIO_INVALID) {
+            g_exgc_mmio_fault = 1;
+            return 0;
+        }
+    }
     uint32_t a = vm_data_address(addr);
     uint32_t b = vm_data_address((addr & 0xFFFF) + 1);
     return (uint16_t)(mem[a] | ((uint16_t)mem[b] << 8));
@@ -232,6 +250,16 @@ static inline uint16_t get16_code(const uint8_t *mem, int addr) {
  * - Internal helper called by step_once() and handle_poll().
  */
 static inline void put16(uint8_t *mem, int addr, uint16_t val) {
+    uint16_t offset = (uint16_t)(addr & 0xffff);
+    EXGCMMIOResult mmio;
+    if (vm_data_segment() == EXGC_SEGMENT) {
+        mmio = exgc_device_write_word(mem + ((uint32_t)EXGC_SEGMENT << 16), offset, val);
+        if (mmio == EXGC_MMIO_HANDLED) return;
+        if (mmio == EXGC_MMIO_INVALID) {
+            g_exgc_mmio_fault = 1;
+            return;
+        }
+    }
     uint32_t a = vm_data_address(addr);
     uint32_t b = vm_data_address((addr & 0xFFFF) + 1);
     mem[a] = (uint8_t)(val & 0xFF);
@@ -239,10 +267,20 @@ static inline void put16(uint8_t *mem, int addr, uint16_t val) {
 }
 
 static inline uint8_t vm_getbyte(const uint8_t *mem, int addr) {
+    if (vm_data_segment() == EXGC_SEGMENT &&
+        exgc_device_byte_access((uint16_t)(addr & 0xffff)) == EXGC_MMIO_INVALID) {
+        g_exgc_mmio_fault = 1;
+        return 0;
+    }
     return mem[vm_data_address(addr)];
 }
 
 static inline void vm_putbyte(uint8_t *mem, int addr, uint8_t value) {
+    if (vm_data_segment() == EXGC_SEGMENT &&
+        exgc_device_byte_access((uint16_t)(addr & 0xffff)) == EXGC_MMIO_INVALID) {
+        g_exgc_mmio_fault = 1;
+        return;
+    }
     mem[vm_data_address(addr)] = value;
 }
 
@@ -1031,6 +1069,21 @@ static const uint8_t OP_SIZE[256] = {
     [61] = 3,
 };
 
+static const uint8_t OP_NEEDS_ARGI[256] = {
+    [OptValPUSHI] = 1, [OptValPUSHII] = 1, [OptValPOPII] = 1,
+    [OptValCMPI] = 1, [OptValCMPII] = 1, [OptValADDI] = 1,
+    [OptValADDII] = 1, [OptValSUBI] = 1, [OptValSUBII] = 1,
+    [OptValORI] = 1, [OptValORII] = 1, [OptValANDI] = 1,
+    [OptValANDII] = 1, [OptValXORI] = 1, [OptValXORII] = 1,
+    [OptValJMPI] = 1
+};
+
+static const uint8_t OP_NEEDS_ARGII[256] = {
+    [OptValPUSHII] = 1, [OptValCMPII] = 1, [OptValADDII] = 1,
+    [OptValSUBII] = 1, [OptValORII] = 1, [OptValANDII] = 1,
+    [OptValXORII] = 1
+};
+
 /*
  * What it does:
  * - Executes exactly one VM instruction and updates machine state in place.
@@ -1053,9 +1106,18 @@ static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp
     uint8_t op = mem[vm_code_address(cur_pc)];
     uint8_t size = OP_SIZE[op] == 0 ? 1 : OP_SIZE[op];
     uint16_t arg = (size == 3) ? get16_code(mem, (int)cur_pc + 1) : 0;
-    uint16_t argi = get16(mem, arg);
-    uint16_t argii = get16(mem, argi);
+    uint16_t argi = 0;
+    uint16_t argii = 0;
+    int need_argi;
+    int need_argii;
     uint16_t a, b, r;
+
+    g_exgc_mmio_fault = 0;
+    need_argi = OP_NEEDS_ARGI[op];
+    need_argii = OP_NEEDS_ARGII[op];
+    if (need_argi) argi = get16(mem, arg);
+    if (need_argii) argii = get16(mem, argi);
+    if (g_exgc_mmio_fault) return RC_DEVICE_GENERAL_FAIL;
 
     *pc = (int)((cur_pc + size) & 0xFFFF);
 
@@ -1284,11 +1346,13 @@ static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp
             break;
         case OptValCAST: {
             int rc = handle_cast(mem, stack, sp, flags, arg, cur_pc);
+            if (g_exgc_mmio_fault) return RC_DEVICE_GENERAL_FAIL;
             if (rc != 0) return rc;
             break;
         }
         case OptValPOLL: {
             int rc = handle_poll(mem, stack, sp, arg);
+            if (g_exgc_mmio_fault) return RC_DEVICE_GENERAL_FAIL;
             if (rc != 0) return rc;
             break;
         }
@@ -1409,6 +1473,7 @@ static int step_once(uint8_t *mem, uint16_t *stack, int *pc, int *flags, int *sp
             return RC_DEVICE_GENERAL_FAIL;
     }
 
+    if (g_exgc_mmio_fault) return RC_DEVICE_GENERAL_FAIL;
     if (g_vm24 != NULL && !g_vm24->prefix_just_set) {
         g_vm24->segment_override = -1;
     }
@@ -1714,6 +1779,64 @@ static PyObject *c_EventsPeriodicTestCount(PyObject *self, PyObject *args)
     return PyLong_FromUnsignedLongLong(g_periodic_event_test.service_count);
 }
 
+typedef struct {
+    size_t bytes;
+} EXGCVideoWriter;
+
+static int exgc_console_video_write(void *context, const void *data, size_t length)
+{
+    EXGCVideoWriter *writer = context;
+    vm_console_write(&g_console, VM_CONSOLE_VIDEO, data, length);
+    writer->bytes += length;
+    return 0;
+}
+
+static PyObject *c_EXGCReset(PyObject *self, PyObject *args)
+{
+    PyObject *mem_obj;
+    PyArrayObject *mem_arr;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "O", &mem_obj)) return NULL;
+    mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
+    if (mem_arr == NULL) return NULL;
+    if (PyArray_SIZE(mem_arr) < MAXPHYSMEM) {
+        PyErr_SetString(PyExc_ValueError, "CPU24 memory array must contain at least 16 MiB");
+        Py_DECREF(mem_arr);
+        return NULL;
+    }
+    exgc_device_reset((uint8_t *)PyArray_DATA(mem_arr) + ((uint32_t)EXGC_SEGMENT << 16),
+                      EXGC_SEGMENT_BYTES);
+    Py_DECREF(mem_arr);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EXGCRender(PyObject *self, PyObject *args)
+{
+    PyObject *mem_obj;
+    PyArrayObject *mem_arr;
+    unsigned int scale_x, scale_y;
+    EXGCVideoWriter writer = {0};
+    int result;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "OII", &mem_obj, &scale_x, &scale_y)) return NULL;
+    mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
+    if (mem_arr == NULL) return NULL;
+    if (PyArray_SIZE(mem_arr) < MAXPHYSMEM) {
+        PyErr_SetString(PyExc_ValueError, "CPU24 memory array must contain at least 16 MiB");
+        Py_DECREF(mem_arr);
+        return NULL;
+    }
+    result = exgc_device_render((uint8_t *)PyArray_DATA(mem_arr) +
+                                ((uint32_t)EXGC_SEGMENT << 16),
+                                scale_x, scale_y, exgc_console_video_write, &writer);
+    Py_DECREF(mem_arr);
+    if (result != EXGC_SIXEL_OK) {
+        PyErr_SetString(PyExc_RuntimeError, "EXGC SIXEL render failed");
+        return NULL;
+    }
+    return PyLong_FromSize_t(writer.bytes);
+}
+
 static PyMethodDef cpuCfuncMethods[] = {
     {"EvalOne", c_EvalOne, METH_VARARGS, "Evaluate one or more EX716 instructions"},
     {"EvalOne24", c_EvalOne24, METH_VARARGS, "Evaluate CPU24 instructions"},
@@ -1735,6 +1858,10 @@ static PyMethodDef cpuCfuncMethods[] = {
      "Install a native periodic event service for dispatcher benchmarks"},
     {"EventsPeriodicTestCount", c_EventsPeriodicTestCount, METH_VARARGS,
      "Return periodic-event services since EventsSetPeriodicTest"},
+    {"EXGCReset", c_EXGCReset, METH_VARARGS,
+     "Cold-reset the memory-backed EXGC segment in a CPU24 memory array"},
+    {"EXGCRender", c_EXGCRender, METH_VARARGS,
+     "Render the selected EXGC framebuffer to the VIDEO console channel"},
     {NULL, NULL, 0, NULL}
 };
 

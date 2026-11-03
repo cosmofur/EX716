@@ -1,5 +1,33 @@
 # Session State
 
+## EXGC Phase 2: CPU24 framebuffer/MMIO integration (2026-11-03)
+
+- Added `exgc_device.c`/`.h`, a memory-backed device layer shared by native
+  CPU24 and Python. Cold reset clears DS `FC`, loads the renderer's default
+  palette, selects framebuffer A, and leaves graphics/timing/page flips off.
+  Framebuffers/video RAM remain direct shared memory; only `F800–FFFF` is
+  MMIO. Phase 2 supports `F802 VIDEO_PAGE` immediate bit-1 selection and
+  `F840–F85E` palette words; other current registers read zero/ignore writes.
+- Updated `EXGC.md` with the approved immediate page, cold-reset, and
+  even-word-only MMIO decisions. Both paths reject byte and unaligned word
+  register access. Native `EXGCReset` and `EXGCRender(memory,x,y)` are exposed
+  by `cpuCfunc`; `microcpu.reset_exgc()` and `render_exgc()` wrap them. Render
+  sends the selected page's SIXEL stream to `vm_console` VIDEO explicitly and
+  never changes a page, VBlank state, frame counter, or scheduler state.
+- Added C device tests, a CPU24/Python shared-memory smoke, and
+  `tests/exgc-phase2.asm`. Verified renderer/device/native/Python tests,
+  `CPUPATH=lib python3 cpu24.py -q -f tests/exgc-phase2.asm`, and explicit host
+  render to a 504-byte SIXEL stream with `ESC P q` / 240×192 raster prefix.
+- Added the explicit `cpu24.py --exgc-render` host switch and made
+  `tests/exgc-phase2.asm` a visual assembly smoke: it preloads framebuffer A
+  with index 1 and programs index 1 as red. Verified the command emits a
+  720×384 SIXEL stream after normal execution status (749 bytes of SIXEL,
+  `ESC P q` prefix); it does not add an automatic guest-side refresh.
+  The optimized no-event NOP benchmark was 165.9 M/s versus a prior 173.9 M/s
+  reference; NOP does not access MMIO and host variance is visible, so this is
+  an observation, not a proven EXGC access penalty. Renderer performance stays
+  near the standalone null-sink benchmark (solid 6×3 ~2.8 ms; noise ~27.9 ms).
+
 ## EXGC SIXEL solid-colour profiling (2026-11-03)
 
 - Profiled the standalone encoder only, using a counting sink (no terminal

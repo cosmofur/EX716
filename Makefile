@@ -1,7 +1,7 @@
 PYTHON ?= python3
 DEBUG ?= 1
 
-EXT_SRC := speedCPU.c vm_events.c vm_console.c
+EXT_SRC := speedCPU.c vm_events.c vm_console.c exgc_device.c exgc_sixel.c
 EXT_NAME := cpuCfunc
 PLATFORM := $(shell $(PYTHON) -c "import os; print(os.name)")
 EXT_SUFFIX := $(shell $(PYTHON) -c "import os, sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or ('.pyd' if os.name == 'nt' else '.so'))")
@@ -34,13 +34,13 @@ else
   SHARED_FLAGS := -shared -fPIC
 endif
 
-.PHONY: all extension check test exgc-sixel test-exgc-sixel benchmark-exgc-sixel clean help
+.PHONY: all extension check test exgc-sixel test-exgc-sixel test-exgc-device benchmark-exgc-sixel clean help
 
 all: extension
 
 extension: $(EXT_TARGET)
 
-$(EXT_TARGET): $(EXT_SRC) speedCPU.h vm_events.h vm_console.h
+$(EXT_TARGET): $(EXT_SRC) speedCPU.h vm_events.h vm_console.h exgc_device.h exgc_sixel.h
 ifeq ($(EXTENSION_SUPPORTED),0)
 	$(error Native Windows builds of $(EXT_NAME) are not supported yet because $(EXT_SRC) uses POSIX terminal APIs. Use WSL/Linux/Termux, or run cpu.py without -f)
 else
@@ -56,10 +56,11 @@ check:
 	@echo "target: $(EXT_TARGET)"
 	@echo "supported: $(EXTENSION_SUPPORTED)"
 
-test: extension test-exgc-sixel
+test: extension test-exgc-sixel test-exgc-device
 	$(CC) -Wall -Werror -I. tests/test_vm_infrastructure.c vm_events.c vm_console.c -o /tmp/ex716-vm-infrastructure-test
 	/tmp/ex716-vm-infrastructure-test
 	$(PYTHON) tests/test_fast_console.py
+	$(PYTHON) tests/test_exgc_cpu24.py
 
 exgc-sixel: $(EXGC_SIXEL_DEMO)
 
@@ -71,6 +72,10 @@ $(EXGC_SIXEL_UNIT): tests/test_exgc_sixel.c exgc_sixel.c exgc_sixel.h
 
 test-exgc-sixel: $(EXGC_SIXEL_UNIT)
 	./$(EXGC_SIXEL_UNIT)
+
+test-exgc-device:
+	$(CC) -std=c99 -Wall -Werror -O2 -g -I. tests/test_exgc_device.c exgc_device.c exgc_sixel.c -o /tmp/ex716-exgc-device-test
+	/tmp/ex716-exgc-device-test
 
 benchmark-exgc-sixel: $(EXGC_SIXEL_DEMO)
 	./$(EXGC_SIXEL_DEMO) --benchmark

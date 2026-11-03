@@ -647,6 +647,15 @@ GLOBALFLAG = 1
 LOCALFLAG = 2
 MAXMEMSP = 0xffff
 MAXPHYSMEM = 0x1000000
+EXGC_SEGMENT = 0xfc
+EXGC_BASE = EXGC_SEGMENT << 16
+EXGC_MMIO_START = 0xf800
+EXGC_VIDEO_PAGE = 0xf802
+EXGC_PALETTE_BASE = 0xf840
+EXGC_DEFAULT_PALETTE = (0x0000, 0x4210, 0x001f, 0x03ff,
+                        0x7c00, 0x7c1f, 0x7fe0, 0x7fff,
+                        0x2108, 0x6318, 0x021f, 0x03ff,
+                        0x7c10, 0x7c1f, 0x7ff0, 0x7fff)
 MAXHWSTACK = 0xff - 2
 
 
@@ -1148,6 +1157,56 @@ class InputFileData:
 
 FileLineData = InputFileData()
 
+class EXGCDevice:
+    """Memory-backed Phase 2 EXGC MMIO shared with native fast execution."""
+    def __init__(self, memory):
+        self.memory = memory
+
+    def reset(self):
+        self.memory[EXGC_BASE:EXGC_BASE + 0x10000] = 0
+        for index, value in enumerate(EXGC_DEFAULT_PALETTE):
+            address = EXGC_BASE + EXGC_PALETTE_BASE + index * 2
+            self.memory[address] = value & 0xff
+            self.memory[address + 1] = value >> 8
+
+    def _offset(self, address):
+        if EXGC_BASE <= address < EXGC_BASE + 0x10000:
+            return address - EXGC_BASE
+        return None
+
+    def read_word(self, address):
+        offset = self._offset(address)
+        if offset is None or offset < EXGC_MMIO_START:
+            return None
+        if offset & 1 or offset == 0xffff:
+            raise ValueError("EXGC MMIO requires an even-aligned 16-bit access")
+        if offset == EXGC_VIDEO_PAGE:
+            page = int(self.memory[address]) & 1
+            return page | (page << 1)
+        if EXGC_PALETTE_BASE <= offset < EXGC_PALETTE_BASE + 32:
+            return int(self.memory[address]) | (int(self.memory[address + 1]) << 8)
+        return 0
+
+    def write_word(self, address, value):
+        offset = self._offset(address)
+        if offset is None or offset < EXGC_MMIO_START:
+            return False
+        if offset & 1 or offset == 0xffff:
+            raise ValueError("EXGC MMIO requires an even-aligned 16-bit access")
+        if offset == EXGC_VIDEO_PAGE:
+            page = (int(value) >> 1) & 1
+            self.memory[address] = page | (page << 1)
+            self.memory[address + 1] = 0
+        elif EXGC_PALETTE_BASE <= offset < EXGC_PALETTE_BASE + 32:
+            self.memory[address] = int(value) & 0xff
+            self.memory[address + 1] = (int(value) >> 8) & 0xff
+        return True
+
+    def byte_access(self, address):
+        offset = self._offset(address)
+        if offset is not None and offset >= EXGC_MMIO_START:
+            raise ValueError("EXGC MMIO does not support byte accesses in Phase 2")
+
 def safeprint(*args, **kwargs):
     try:
         print(*args, **kwargs)
@@ -1185,6 +1244,9 @@ class microcpu:
         self.hwstack = np.zeros(MAXHWSTACK, dtype=np.uint16)
         self.hwstacksp = 0
         self.memspace = np.zeros(memsize, dtype=np.uint8)
+        self.exgc = EXGCDevice(self.memspace)
+        if memsize >= MAXPHYSMEM:
+            self.exgc.reset()
         self.netqueue = []
         self.netapps = []
         self.hwtimer = 0
@@ -1448,6 +1510,12 @@ class microcpu:
             address = self.data_address(address)
         if address < 0 or address + 1 >= len(self.memspace):
             self.raiseerror("220 Invalid Physical Address: %d, getwordat" % address)
+        try:
+            exgc_value = self.exgc.read_word(address)
+        except ValueError as error:
+            self.raiseerror("620 %s" % error)
+        if exgc_value is not None:
+            return exgc_value
         return self.getwordmem(address)
 
     def getbyteat(self, address):
@@ -1457,6 +1525,10 @@ class microcpu:
             address = self.data_address(address)
         if address < 0 or address >= len(self.memspace):
             self.raiseerror("220 Invalid Physical Address: %d, getbyteat" % address)
+        try:
+            self.exgc.byte_access(address)
+        except ValueError as error:
+            self.raiseerror("620 %s" % error)
         return int(self.memspace[address])
 
     def putwordat(self, address, value):
@@ -1467,8 +1539,23 @@ class microcpu:
             address = self.data_address(address)
         if address < 0 or address + 1 >= len(self.memspace):
             self.raiseerror("230 Invalid Physical Address: %d, putwordat" % address)
+        try:
+            if self.exgc.write_word(address, value):
+                return
+        except ValueError as error:
+            self.raiseerror("620 %s" % error)
         self.insertbyte(address, self.lowbyte(value))
         self.insertbyte(address + 1, self.highbyte(value))
+
+    def reset_exgc(self):
+        self.exgc.reset()
+        if HAS_CPUCFUNC:
+            cpuCfunc.EXGCReset(self.memspace)
+
+    def render_exgc(self, scale_x=3, scale_y=2):
+        if not HAS_CPUCFUNC:
+            raise RuntimeError("EXGC rendering requires the cpuCfunc extension")
+        return cpuCfunc.EXGCRender(self.memspace, int(scale_x), int(scale_y))
 
     def optNOP(self, count):
         return
@@ -7449,6 +7536,7 @@ def main():
     BinaryOutFlag = False
     ExecutableOutFlag = False
     ExecutableMessage = ""
+    EXGCRenderFlag = False
     UseDebugger = False
     breakafter = ()
 
@@ -7525,6 +7613,11 @@ def main():
             elif arg == "--trace-tail":
                 skipone = True
                 prpcmd = 6
+            elif arg == "--exgc-render":
+                if not HAS_CPUCFUNC:
+                    safeprint("EXGC rendering requires the optional cpuCfunc extension. Run make to build it.", file=DebugOut)
+                    sys.exit(1)
+                EXGCRenderFlag = True
             elif arg == "--no_auto_bank":
                 context.AutoBank = False
             elif arg == "-w":
@@ -7539,7 +7632,7 @@ def main():
                 UseDebugger = True
 #                DebugOut=sys.stdout
             elif arg == "-h":
-                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n--trace-tail N Dump the last N executed instructions on a fatal error\n--no_auto_bank Disable automatic function banking\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
+                safeprint("-d Debug Assembly and Run\n-d more debugging info.\n-l List Src\n-g Run interactive debugger\n-K Keep generated dynamic library temp files\n-q Quiet assembly-time P messages\n-c Hex Dump of Assembly\n-O Binary Dump of Assembly\n--exe Write an EXC01 executable\n--exe-message TEXT Set its load-time message\n--trace-tail N Dump the last N executed instructions on a fatal error\n--exgc-render Explicitly render selected EXGC page after normal execution\n--no_auto_bank Disable automatic function banking\n-w Add Watch Address to debug listing\n-b Set Breakpoint to debugger\n-f Run with Fash Emulation\n-h help, this listing\n-X debugging mode compare Python and C emulations\n-e 'command' pass to debugger")
             elif arg[0] >= "0" and arg[0] <= "9":
                 breakafter += (arg)
             else:
@@ -7707,7 +7800,12 @@ def main():
     elif UseDebugger:
         debugger(firstcmd,context)
     else:
-        CPU.evalpc(context,-1)
+        try:
+            CPU.evalpc(context,-1)
+        except SystemExit:
+            if EXGCRenderFlag:
+                CPU.render_exgc()
+            raise
 
 
 if __name__ == '__main__':
