@@ -1,5 +1,42 @@
 # Session State
 
+## EXGC SIXEL solid-colour profiling (2026-11-03)
+
+- Profiled the standalone encoder only, using a counting sink (no terminal
+  output). Optimized `gprof` attributes 97.9% of sampled time to
+  `exgc_sixel_render`; the callback/RLE output path is below 2%. A 6×3 solid
+  frame is only 1,103 bytes but takes ~23.9 ms because it performs about 14.1M
+  packed-pixel fetches while probing all 16 palette planes per six-row band.
+- Implemented the requested one-pass `present[16]` band scan with no API or
+  encoded-size changes. Solid 6×3 now measures 2.74 ms / 365.2 FPS rather than
+  23.93 ms / 41.8 FPS (~8.7×), and noisy 6×3 drops from 49.92 to 26.83 ms
+  (~1.9×). Decoder-backed tests and all 12 benchmark byte counts remain stable.
+  Details are in `docs/exgc-sixel-profile.md`.
+
+## EXGC Phase 2: standalone SIXEL renderer (2026-11-03)
+
+- Added independent `exgc_sixel.c`/`.h`: a callback-only, no-allocation SIXEL
+  encoder for caller-owned high-nibble-first 4bpp framebuffer memory and a
+  caller-supplied RGB555 palette. It validates dimensions/stride/buffer size,
+  ignores palette bit 15, uses integer nearest-neighbour X/Y scaling, defines
+  all 16 SIXEL colors, emits six-row color planes and RLE, and never touches
+  CPU24, EXGC memory mapping, events, or interrupts.
+- Added `tests/exgc_sixel_test.c` standalone pattern program (bars, checker,
+  diagonal, solid, all16, noise; file/stdout/benchmark modes) and
+  `tests/test_exgc_sixel.c`, whose limited SIXEL decoder validates source
+  nibble order, scaled output, palette definitions, planes/RLE, partial bands,
+  validation, source immutability, and callback errors. Make targets are
+  `exgc-sixel`, `test-exgc-sixel`, and `benchmark-exgc-sixel`.
+- Added `docs/exgc-sixel-renderer.md`, with the API, stream format, commands,
+  compatibility limitation, future VIDEO-channel boundary, and baseline
+  benchmark. Optimized `-O2 -DNDEBUG` WSL run: noisy 6×3 encoded at 20.0 FPS
+  before terminal writes but is 295,801 bytes/frame (17,332 KiB/s at 60 FPS),
+  so SIXEL terminal bandwidth is expected to dominate high-detail output.
+- Verified `make -B DEBUG=0 exgc-sixel test-exgc-sixel`, `make DEBUG=0 test`,
+  direct all16 output (correct `ESC P q` prefix and 240×192 raster),
+  `python3 -m py_compile cpu24.py`, and `git diff --check`. No visual Windows
+  Terminal SIXEL smoke was possible in this non-graphical environment.
+
 ## Event/console verification finding (2026-11-03)
 
 - Corrected the event clock: `instruction_count` now advances after each

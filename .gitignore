@@ -3,3 +3,5 @@ __pycache__/
 /venv/
 /.venv/
 /.cpu_history
+/exgc_sixel_test
+/test_exgc_sixel
