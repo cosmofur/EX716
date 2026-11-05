@@ -115,9 +115,15 @@ Initial implementation proposal:
 - Global magnification selectable between **1×** and **2×**.
 - Each sprite uses the same 16-color palette as graphics.
 - Patterns use the same packed 4bpp format as framebuffer pixels.
-- Fixed **128-byte pattern slots** (16×16×4bpp); 8×8 mode uses a specified 8×8 subset of each slot.
-- `11,264 / 128 = 88` pattern slots (`0–87`). This intentionally favors simple indexing over maximum storage efficiency.
-- Pattern references outside the valid range must not read into attribute memory; behavior should be defined as transparent sprite plus an error/status flag.
+- Pattern slots are packed according to the global sprite size: **32 bytes**
+  for 8×8 (two 16-bit words per row), or **128 bytes** for 16×16 (four
+  words per row). Rows are contiguous and even-X pixels use the high nibble.
+- The 11,264-byte table holds **352** 8×8 slots (`0–351`) or **88** 16×16
+  slots (`0–87`). Slot `n` begins at `B400 + n * slot_size`.
+- Changing the global sprite size changes the slot-to-memory mapping. Programs
+  must arrange or reload pattern data for the selected size.
+- Out-of-range pattern references render transparently without reading into
+  attribute memory. An error/status flag remains future work.
 
 The pattern table is shared: multiple sprite descriptors can reference the same pattern. 2× magnification duplicates pixels during composition, without increasing pattern RAM usage.
 
@@ -129,10 +135,15 @@ Sprite attribute RAM begins at `E000`. Each of 32 descriptors occupies four 16-b
 |---|---|---|
 | +0 | X | Signed 16-bit horizontal position in logical pixels |
 | +2 | Y | Signed 16-bit vertical position in logical pixels |
-| +4 | Pattern | Pattern slot index (`0–87`) |
-| +6 | Attributes | Visibility, priority, flipping |
+| +4 | Pattern | Pattern slot index (`0–351` in 8×8 mode; `0–87` in 16×16 mode) |
+| +6 | Attributes | Visibility, priority, flipping, rotation |
 
-Proposed attribute bits: bit 0 visible; bit 1 foreground/background priority; bit 2 horizontal flip; bit 3 vertical flip; others reserved. Sprites may be partially off-screen; clipping is performed by the card.
+Attribute bits: bit 0 visible; bit 1 reserved for future priority; bit 2
+horizontal flip; bit 3 vertical flip; bits 4–5 rotate clockwise by 0, 90, 180,
+or 270 degrees (values 0–3). Remaining bits are reserved. Flips apply to the
+source pattern before rotation; magnification and screen clipping follow.
+Rotation preserves the sprite's top-left position and needs no extra pattern
+storage. Sprites may be partially off-screen; clipping is performed by the card.
 
 Sprite ordering defaults to lower sprite index in front of higher sprite index. A future priority mode may use the descriptor's priority bit. There is no initial artificial per-scanline sprite limit; an optional limit/overflow mode can be introduced for period accuracy.
 
@@ -144,7 +155,10 @@ No autonomous sprite animation engine is planned. Software animates sprites by c
 
 ## 6. Proposed control register map
 
-**Important:** The offsets and bit assignments below are a proposed ABI for review, not yet an implemented contract.
+**Implementation status:** `VIDEO_TIMING`, `VIDEO_FRAME`, `VIDEO_PAGE`, the
+palette, and the sprite enable/size/magnification/count controls described
+below are implemented. Other listed register behavior remains proposed or
+reserved until its respective device phase.
 
 | Offset | Name | Access | Purpose |
 |---|---|---|---|
@@ -171,7 +185,13 @@ No autonomous sprite animation engine is planned. Software animates sprites by c
 - Bit 15: vertical blank active.
 - Bits 8–14: reserved.
 
-Proposed nominal video timing: 60 Hz, 262 total scanlines, 192 visible lines, 70 blanking lines. Scanline time is approximately `1/(60*262) = 63.6 µs`.
+The deterministic initial timing ratio is **256 retired CPU24 instructions per
+scanline**. This yields 67,072 instructions/frame and a nominal emulated clock
+of 4.02432 MHz at 60 Hz. It is an EXGC emulation constant, not a measurement or
+assumption about host MIPS. Each 256-instruction boundary advances one line;
+the frame counter increments when line 261 wraps to line 0. Timing persists
+across bounded/unlimited native calls and debugger transitions, and resets only
+as part of explicit EXGC device reset.
 
 Timing reflects **emulated video time**, never the time taken to emit SIXEL output. A future cycle-based implementation may derive the scanline from CPU24 emulated cycles; a wall-clock-paced implementation must avoid guest-visible dependence on terminal output throughput. The timing source and interaction with unthrottled `-f` execution remain open design decisions.
 
@@ -183,13 +203,17 @@ Timing reflects **emulated video time**, never the time taken to emit SIXEL outp
 - Bit 3: swap pending, read-only.
 - Other bits reserved.
 
-Writing bit 1 without bit 2 may select the page immediately (diagnostic/compatibility behavior; **confirm before ABI freeze**). Writing a page request with bit 2 sets pending state; at VBlank, displayed page changes and pending clears. If multiple requests arrive before VBlank, the latest requested page wins. A read returns current page, requested page, and pending state; bit 2 always reads zero.
+Writing bit 1 without bit 2 immediately selects that page and clears any
+pending deferred request. Writing bit 2 requests the page encoded in bit 1:
+the displayed page remains unchanged, requested page updates, and pending sets.
+At the 191→VBlank boundary, displayed page becomes requested and pending
+clears. If multiple deferred requests arrive before VBlank, the latest wins. A
+read returns current page, requested page, and pending state; bit 2 always
+reads zero.
 
-**Phase 2 page-control decision:** writing bit 1 selects that framebuffer
-immediately. There is no VBlank page-swap command or pending state yet, so bit
-2 reads zero and bit 3 reads zero. Host rendering merely refreshes the currently
-selected page; it never applies a deferred page change. VBlank-synchronized
-swapping remains future timing work.
+The existing immediate bit-1 behavior is retained for compatibility. Host
+rendering only reads the already displayed page; it never applies a pending
+page change, advances timing, or increments `VIDEO_FRAME`.
 
 ### 6.3 `VIDEO_MODE` (`F804`)
 
@@ -203,7 +227,10 @@ swapping remains future timing work.
 | 7 | Enable raster interrupts (reserved initially) |
 | 8–15 | Reserved |
 
-The initial implementation need only support resolution code 0. Resolution code 1 is a planned extension whose buffer locations are already fixed by this specification. Unsupported mode selections must have a defined fallback/error behavior before release.
+The initial implementation supports only bit 4 (sprite enable); the other
+`VIDEO_MODE` bits read as zero and ignore writes. The native framebuffer remains
+visible without a display-enable bit. The initial implementation need only
+support resolution code 0. Resolution code 1 is a planned extension whose buffer locations are already fixed by this specification. Unsupported mode selections must have a defined fallback/error behavior before release.
 
 ### 6.4 `SPRITE_CONTROL` (`F808`)
 
@@ -219,7 +246,11 @@ The initial implementation need only support resolution code 0. Resolution code 
 | 8–13 | Active sprite count, `0–32` |
 | 14–15 | Reserved |
 
-Global sprite enable in `VIDEO_MODE` and engine enable here are both required to render sprites; this redundancy is **provisional** and can be simplified before ABI freeze.
+Global sprite enable in `VIDEO_MODE` and engine enable here are both required
+to render sprites. In the initial implementation, bits 0–2 and 8–13 are
+writable; count values above 32 render the first 32 descriptors. Bits 3–7 and
+14–15 read zero and ignore writes. Collision, overflow, status and interrupts
+are not implemented. The two enable bits remain provisional pending ABI freeze.
 
 ### 6.5 Status and interrupts
 
@@ -295,7 +326,7 @@ SIXEL graphics typically render relative to the terminal cursor; the backend mus
 4. **Basic graphics:** 240×192×4bpp, palette, page A/B, visible-page selection.
 5. **Timing:** scanline, VBlank, frame counter, synchronized page swap, independent terminal refresh.
 6. **Text:** ROM glyphs, RAM glyphs, text-only and overlay, cursor.
-7. **Sprites:** patterns, 32 descriptors, transparency, clipping, global size/magnification, collisions.
+7. **Sprites:** patterns, 32 descriptors, transparency, clipping, global size/magnification, flips and quarter-turn rotation implemented; collisions remain.
 8. **Extensions:** 120×96 mode, interrupts, additional priority rules, auto terminal sizing, other host backends.
 
 ## 11. Open design decisions before coding
@@ -308,7 +339,7 @@ These are intentionally **not** silently treated as settled hardware behavior:
 4. **Pixel packing:** high-nibble-first proposal; confirm against CPU24's practical byte operations.
 5. **Text attributes:** exact foreground/background layout, overlay transparent-background selection, glyph bit order, cursor encoding.
 6. **Sprite priority:** interaction with opaque framebuffer and text overlay; whether text-only mode supports sprites.
-7. **Sprite size:** fixed 128-byte slots versus compact 8×8 storage; how 8×8 patterns are located within slots.
+7. **Sprite size:** mode-dependent packed 32-byte and 128-byte slots are implemented; per-sprite sizes remain a possible extension.
 8. **Register minimalism:** whether fixed sprite tables need writable base-pointer registers at all; whether to consolidate redundant sprite enable bits.
 9. **Reset state:** default palette, mode, page, font source, RAM initialization, sprite count, and display enable.
 10. **Interrupts and unsupported modes:** whether to reserve only or implement; defined behavior for invalid mode values.

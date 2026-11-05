@@ -7,6 +7,7 @@
 #define WORLD_GLOBE_EQUATOR_CELLS 127U
 #define WORLD_GLOBE_POLAR_CELLS 32U
 #define WORLD_GLOBE_STORAGE_CELLS 5860U
+#define WORLD_GLOBE_MAX_CONTINENTS 8U
 
 /* Packed WorldGlobe cell: three-bit landform, two-bit moisture, two-bit
  * tectonic roughness, and a coast/boundary hint. */
@@ -34,14 +35,29 @@ typedef struct WorldGlobe {
     unsigned char *cells;
     unsigned short cell_capacity;
     const WorldLandscape *landscape;
+    unsigned char continent_count;
+    unsigned char ocean_count;
+    unsigned char continent_radius;
+    unsigned char ocean_radius;
+    unsigned char continent_rows[WORLD_GLOBE_MAX_CONTINENTS];
+    unsigned char continent_longitudes[WORLD_GLOBE_MAX_CONTINENTS];
+    unsigned char continent_points_ready;
 } WorldGlobe;
 
 /* The caller owns the compact backing storage; no dynamic allocation occurs. */
 int WorldGlobeInitialize(WorldGlobe *globe, unsigned char *storage,
                          unsigned short capacity, unsigned long seed);
+int WorldGlobeInitializeWithContinents(WorldGlobe *globe,
+                                       unsigned char *storage,
+                                       unsigned short capacity,
+                                       unsigned long seed,
+                                       unsigned char continents);
 int WorldGlobeGenerate(WorldGlobe *globe);
 void WorldGlobeSetLandscape(WorldGlobe *globe,
                             const WorldLandscape *landscape);
+void WorldGlobeSetFormation(WorldGlobe *globe, unsigned char continents,
+                            unsigned char oceans, unsigned char continent_radius,
+                            unsigned char ocean_radius);
 unsigned int WorldGlobeRowWidth(const WorldGlobe *globe, unsigned int row);
 int WorldGlobeGetCell(const WorldGlobe *globe, unsigned int row,
                       unsigned int column, unsigned char *cell);

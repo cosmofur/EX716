@@ -327,25 +327,24 @@ G Time2Units G IsLeapYear G DaysInYear G DaysInMonth G TimeCalabrate G Sleep G S
 @PUSHRETURN
 @Locals
 @Local Count
-@Local Limit
-#
+@Local StartTime
+   #
+   @POPI Count
+   @GETTIME
+   @POPNULL   # Get rid of the high word for now
+   @POPI StartTime
+   # Poll until elapsed seconds >= Count.
+   @GETTIME
+   @POPNULL
+   @SUBI StartTime
 
-@POPI Count
-# Check if we need to calabrate
-@IF_EQ_AV 0 ClockCalib
-   @CALL TimeCalabrate
-@ENDIF
-#
-@GETTIME
-@POPNULL   # Get rid of the high word for now
-@ADDI Count
-@POPI Limit     # Note if current time is > 0xffff - Count, then it will wrap around to smaller number.
-#
-# Do not try to single step here, logic only works if time will eventuly be exactly Limit.
-# Single stepsing or debugging will make the count be too slow.
-@GETTIME @POPNULL
-@WHILE_NEQ_V Limit    @POPNULL   @GETTIME @POPNULL @ENDWHILE
-@POPNULL
+   @WHILE_LT_V Count
+       @POPNULL
+       @GETTIME
+       @POPNULL
+       @SUBI StartTime
+   @ENDWHILE
+   @POPNULL
 @EndLocals
 @POPRETURN
 @RET

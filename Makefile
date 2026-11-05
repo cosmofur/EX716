@@ -34,7 +34,7 @@ else
   SHARED_FLAGS := -shared -fPIC
 endif
 
-.PHONY: all extension check test exgc-sixel test-exgc-sixel test-exgc-device benchmark-exgc-sixel clean help
+.PHONY: all extension check test exgc-sixel test-exgc-sixel test-exgc-device test-exgc-sprites benchmark-exgc-sixel benchmark-exgc-timing clean help
 
 all: extension
 
@@ -56,11 +56,17 @@ check:
 	@echo "target: $(EXT_TARGET)"
 	@echo "supported: $(EXTENSION_SUPPORTED)"
 
-test: extension test-exgc-sixel test-exgc-device
+test: extension test-exgc-sixel test-exgc-device test-exgc-sprites
 	$(CC) -Wall -Werror -I. tests/test_vm_infrastructure.c vm_events.c vm_console.c -o /tmp/ex716-vm-infrastructure-test
 	/tmp/ex716-vm-infrastructure-test
 	$(PYTHON) tests/test_fast_console.py
 	$(PYTHON) tests/test_exgc_cpu24.py
+	$(PYTHON) tests/test_exgc_sprites.py
+	$(PYTHON) tests/test_exgc_timing.py
+	$(PYTHON) tests/test_exgc_phase2_validation.py
+	$(PYTHON) tests/test_cpu24_segment_memory.py
+	$(PYTHON) tests/test_cpu24_ds_runtime.py
+	CPUPATH=lib $(PYTHON) tests/exgc_animation_host.py --headless --seconds 0.05
 
 exgc-sixel: $(EXGC_SIXEL_DEMO)
 
@@ -77,8 +83,15 @@ test-exgc-device:
 	$(CC) -std=c99 -Wall -Werror -O2 -g -I. tests/test_exgc_device.c exgc_device.c exgc_sixel.c -o /tmp/ex716-exgc-device-test
 	/tmp/ex716-exgc-device-test
 
+test-exgc-sprites:
+	$(CC) -std=c99 -Wall -Werror -O2 -g -I. tests/test_exgc_sprites.c exgc_device.c exgc_sixel.c -o /tmp/ex716-exgc-sprites-test
+	/tmp/ex716-exgc-sprites-test
+
 benchmark-exgc-sixel: $(EXGC_SIXEL_DEMO)
 	./$(EXGC_SIXEL_DEMO) --benchmark
+
+benchmark-exgc-timing: extension
+	$(PYTHON) tests/benchmark_exgc_timing.py
 
 clean:
 	$(PYTHON) -c "import pathlib; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.so') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.pyd') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('$(EXT_NAME)*.dll') if p.is_file()]; [p.unlink() for p in pathlib.Path('.').glob('*.o') if p.is_file()]; [p.unlink() for p in (pathlib.Path('$(EXGC_SIXEL_DEMO)'), pathlib.Path('$(EXGC_SIXEL_UNIT)')) if p.is_file()]"

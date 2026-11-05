@@ -63,3 +63,20 @@ hook only; no renderer exists here.
 The console accepts byte spans, so guest control characters and escapes are
 not transformed. It does not own disk, tape, generated-file, or signal-handler
 I/O.
+
+### In-place VIDEO presentation
+
+The console also provides an explicit host-side VIDEO display session. Start
+saves the normal-screen cursor and moves to terminal home; each completed
+frame is prepared by an explicit home cursor movement, and stop restores the
+saved cursor. It does not select an alternate screen, clear the terminal,
+schedule a device event, or render a frame by itself. VIDEO is flushed once at
+the end of an explicit frame, avoiding both delayed small-frame output and a
+flush per SIXEL encoder callback.
+
+While this session is active, native guest text is temporarily routed to the
+existing bounded guest ring buffer. It is flushed after cursor restoration at
+stop if the session changed a formerly-direct guest channel. Diagnostics keep
+using stderr. The console checks terminal pixel viewport dimensions before
+each frame when available and rejects a too-large frame; no made-up cell/pixel
+conversion is used when the terminal does not expose pixel dimensions.

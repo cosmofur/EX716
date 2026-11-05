@@ -651,7 +651,14 @@ EXGC_SEGMENT = 0xfc
 EXGC_BASE = EXGC_SEGMENT << 16
 EXGC_MMIO_START = 0xf800
 EXGC_VIDEO_PAGE = 0xf802
+EXGC_VIDEO_MODE = 0xf804
+EXGC_SPRITE_CONTROL = 0xf808
+EXGC_VIDEO_TIMING = 0xf800
+EXGC_VIDEO_FRAME = 0xf814
 EXGC_PALETTE_BASE = 0xf840
+EXGC_VISIBLE_SCANLINES = 192
+EXGC_TOTAL_SCANLINES = 262
+EXGC_INSTRUCTIONS_PER_SCANLINE = 256
 EXGC_DEFAULT_PALETTE = (0x0000, 0x4210, 0x001f, 0x03ff,
                         0x7c00, 0x7c1f, 0x7fe0, 0x7fff,
                         0x2108, 0x6318, 0x021f, 0x03ff,
@@ -1161,6 +1168,13 @@ class EXGCDevice:
     """Memory-backed Phase 2 EXGC MMIO shared with native fast execution."""
     def __init__(self, memory):
         self.memory = memory
+        self.timing_phase = 0
+        self.scanline = 0
+        self.frame = 0
+
+    def _write_word(self, address, value):
+        self.memory[address] = value & 0xff
+        self.memory[address + 1] = (value >> 8) & 0xff
 
     def reset(self):
         self.memory[EXGC_BASE:EXGC_BASE + 0x10000] = 0
@@ -1168,6 +1182,34 @@ class EXGCDevice:
             address = EXGC_BASE + EXGC_PALETTE_BASE + index * 2
             self.memory[address] = value & 0xff
             self.memory[address + 1] = value >> 8
+        self.timing_phase = 0
+        self.scanline = 0
+        self.frame = 0
+        self._write_word(EXGC_BASE + EXGC_VIDEO_TIMING, 0)
+        self._write_word(EXGC_BASE + EXGC_VIDEO_FRAME, 0)
+
+    def advance_instruction(self):
+        """Advance fallback timing; native timing is shared through cpuCfunc."""
+        if HAS_CPUCFUNC:
+            cpuCfunc.EXGCTimingAdvance(self.memory, 1)
+            return
+        self.timing_phase += 1
+        if self.timing_phase != EXGC_INSTRUCTIONS_PER_SCANLINE:
+            return
+        self.timing_phase = 0
+        self.scanline += 1
+        if self.scanline == EXGC_VISIBLE_SCANLINES:
+            page_address = EXGC_BASE + EXGC_VIDEO_PAGE
+            page = int(self.memory[page_address]) | (int(self.memory[page_address + 1]) << 8)
+            if page & 8:
+                self._write_word(page_address, ((page >> 1) & 1) | (page & 2))
+        if self.scanline >= EXGC_TOTAL_SCANLINES:
+            self.scanline = 0
+            self.frame = (self.frame + 1) & 0xffff
+            self._write_word(EXGC_BASE + EXGC_VIDEO_FRAME, self.frame)
+        timing = (0x8000 if self.scanline >= EXGC_VISIBLE_SCANLINES else 0)
+        timing |= min(self.scanline, EXGC_VISIBLE_SCANLINES - 1)
+        self._write_word(EXGC_BASE + EXGC_VIDEO_TIMING, timing)
 
     def _offset(self, address):
         if EXGC_BASE <= address < EXGC_BASE + 0x10000:
@@ -1180,9 +1222,10 @@ class EXGCDevice:
             return None
         if offset & 1 or offset == 0xffff:
             raise ValueError("EXGC MMIO requires an even-aligned 16-bit access")
+        if offset in (EXGC_VIDEO_TIMING, EXGC_VIDEO_FRAME, EXGC_VIDEO_MODE, EXGC_SPRITE_CONTROL):
+            return int(self.memory[address]) | (int(self.memory[address + 1]) << 8)
         if offset == EXGC_VIDEO_PAGE:
-            page = int(self.memory[address]) & 1
-            return page | (page << 1)
+            return (int(self.memory[address]) | (int(self.memory[address + 1]) << 8)) & 0x000b
         if EXGC_PALETTE_BASE <= offset < EXGC_PALETTE_BASE + 32:
             return int(self.memory[address]) | (int(self.memory[address + 1]) << 8)
         return 0
@@ -1195,8 +1238,15 @@ class EXGCDevice:
             raise ValueError("EXGC MMIO requires an even-aligned 16-bit access")
         if offset == EXGC_VIDEO_PAGE:
             page = (int(value) >> 1) & 1
-            self.memory[address] = page | (page << 1)
-            self.memory[address + 1] = 0
+            if int(value) & 4:
+                displayed = int(self.memory[address]) & 1
+                self._write_word(address, displayed | (page << 1) | 8)
+            else:
+                self._write_word(address, page | (page << 1))
+        elif offset == EXGC_VIDEO_MODE:
+            self._write_word(address, int(value) & 0x0010)
+        elif offset == EXGC_SPRITE_CONTROL:
+            self._write_word(address, int(value) & 0x3f07)
         elif EXGC_PALETTE_BASE <= offset < EXGC_PALETTE_BASE + 32:
             self.memory[address] = int(value) & 0xff
             self.memory[address + 1] = (int(value) >> 8) & 0xff
@@ -1206,6 +1256,43 @@ class EXGCDevice:
         offset = self._offset(address)
         if offset is not None and offset >= EXGC_MMIO_START:
             raise ValueError("EXGC MMIO does not support byte accesses in Phase 2")
+
+
+class EXGCHostRefresher:
+    """Optional host-clock presentation policy for explicit EXGC rendering.
+
+    It is intentionally outside device timing: callers run guest instructions,
+    call poll(), and missed wall-clock deadlines collapse into one current-page
+    render instead of accumulating a frame queue.
+    """
+    def __init__(self, cpu, fps=12.0, scale_x=3, scale_y=2):
+        if fps <= 0:
+            raise ValueError("EXGC refresh FPS must be positive")
+        self.cpu = cpu
+        self.interval = 1.0 / float(fps)
+        self.scale_x = int(scale_x)
+        self.scale_y = int(scale_y)
+        self.next_deadline = None
+        self.active = False
+
+    def start(self):
+        if not self.active:
+            self.cpu.start_exgc_display()
+            self.active = True
+            self.next_deadline = time.monotonic()
+
+    def poll(self):
+        if not self.active or time.monotonic() < self.next_deadline:
+            return False
+        self.cpu.render_exgc(self.scale_x, self.scale_y)
+        self.next_deadline = time.monotonic() + self.interval
+        return True
+
+    def stop(self):
+        if self.active:
+            self.cpu.stop_exgc_display()
+            self.active = False
+            self.next_deadline = None
 
 def safeprint(*args, **kwargs):
     try:
@@ -1247,6 +1334,8 @@ class microcpu:
         self.exgc = EXGCDevice(self.memspace)
         if memsize >= MAXPHYSMEM:
             self.exgc.reset()
+            if HAS_CPUCFUNC:
+                cpuCfunc.EXGCReset(self.memspace)
         self.netqueue = []
         self.netapps = []
         self.hwtimer = 0
@@ -1556,6 +1645,22 @@ class microcpu:
         if not HAS_CPUCFUNC:
             raise RuntimeError("EXGC rendering requires the cpuCfunc extension")
         return cpuCfunc.EXGCRender(self.memspace, int(scale_x), int(scale_y))
+
+    def start_exgc_display(self):
+        """Begin explicit normal-screen, in-place SIXEL presentation.
+
+        This is host policy only: it saves the terminal cursor, uses home as
+        the display origin, and buffers native guest CAST until stopped.
+        """
+        if not HAS_CPUCFUNC:
+            raise RuntimeError("EXGC display requires the optional cpuCfunc extension")
+        cpuCfunc.ConsoleVideoDisplayStart()
+
+    def stop_exgc_display(self):
+        """End explicit in-place SIXEL presentation and restore host output."""
+        if not HAS_CPUCFUNC:
+            raise RuntimeError("EXGC display requires the optional cpuCfunc extension")
+        cpuCfunc.ConsoleVideoDisplayStop()
 
     def optNOP(self, count):
         return
@@ -2152,6 +2257,9 @@ class microcpu:
             self.optPOPNULL(address)            
             safeprint("\nEND of Run:(%d Opts)" % current_context.GlobalOptCnt)
             safeprint(current_context.bank_execution_report())
+            # CAST End is architecturally retired before it terminates the
+            # Python executor, matching the native event-clock rule.
+            self.exgc.advance_instruction()
             sys.exit(address)
         if cmd == CastDebugToggle:
             self.optPOPNULL(address)            
@@ -2585,7 +2693,7 @@ class microcpu:
                 # --- detect HALT or stop condition ---
                 halted = (rcC == 0 or rcPy == 0)  # adjust condition to your return codes
         elif context.Fast:
-            safeprint("Fast Mode:")
+            #safeprint("Fast Mode:")
             return self._evalpc_c(context, dosteps)
         else:
             return self._evalpc_py(context, dosteps)
@@ -2778,6 +2886,7 @@ class microcpu:
                         "ds": self.DS, "es": self.ES, "cs": self.CS,
                     })
                 func(argument)
+                self.exgc.advance_instruction()
                 if context.TraceTail is not None:
                     context.TraceTail.append({
                         "pc": pc, "next_pc": self.pc & 0xffff,
@@ -2829,6 +2938,7 @@ class microcpu:
                         "ds": self.DS, "es": self.ES, "cs": self.CS,
                     })
                 func(argument)
+                self.exgc.advance_instruction()
                 if context.TraceTail is not None:
                     context.TraceTail.append({
                         "pc": pc, "next_pc": self.pc & 0xffff,
@@ -7799,15 +7909,21 @@ def main():
         DissAsm(0, maxusedmem, CPU)
     elif UseDebugger:
         debugger(firstcmd,context)
+
     else:
+        if EXGCRenderFlag:
+            CPU.start_exgc_display()
+            cpuCfunc.EXGCAutoRefresh(CPU.memspace, True)
+
         try:
-            CPU.evalpc(context,-1)
-        except SystemExit:
+            CPU.evalpc(context, -1)
+        finally:
             if EXGCRenderFlag:
-                CPU.render_exgc()
-            raise
-
-
+                cpuCfunc.EXGCAutoRefresh(CPU.memspace, False)
+                try:
+                    CPU.render_exgc()
+                finally:
+                    CPU.stop_exgc_display()
 if __name__ == '__main__':
     main()
 

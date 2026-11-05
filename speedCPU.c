@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -41,6 +42,8 @@
 #define RC_DEVICE_GENERAL_FAIL -10
 #define RC_DEBUG_TOGGLE    -11
 #define RC_EVENT_SERVICE_FAIL -12
+/* Provisional instruction-clocked refresh interval; calibrate for ~30 FPS. */
+#define EXGC_REFRESH_INSTRUCTIONS 1000000u
 
 /* CPU24 execution state. Logical operands remain 16-bit; this state maps
  * them to 24-bit physical memory addresses. A NULL state means legacy mode. */
@@ -120,12 +123,42 @@ static int g_saved_flags_valid = 0;
 static int g_poll_raw_active = 0;
 static VMEventState g_events;
 static VMConsole g_console;
+static EXGCTimingState g_exgc_timing;
+static uint8_t *g_event_memory = NULL;
+static int g_exgc_timing_enabled = 1;
+static int g_exgc_refresh_enabled = 0;
+static uint8_t *g_exgc_refresh_memory = NULL;
+static unsigned g_exgc_refresh_scale_x = 3;
+static unsigned g_exgc_refresh_scale_y = 2;
+/* EXGC refresh performance counters */
+static uint64_t g_refresh_count = 0;
+static uint64_t g_refresh_total_us = 0;
+static uint64_t g_refresh_max_us = 0;
+
+static uint64_t exgc_monotonic_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    return (uint64_t)ts.tv_sec * 1000000ULL
+         + (uint64_t)ts.tv_nsec / 1000ULL;
+}
+
 typedef struct {
     uint64_t period;
     uint64_t service_count;
     uint32_t flags;
 } VMPeriodicEventTest;
 static VMPeriodicEventTest g_periodic_event_test;
+static int exgc_render_memory(uint8_t *memory, unsigned scale_x, unsigned scale_y, size_t *bytes);
+
+static void schedule_exgc_timing(void)
+{
+    vm_events_cancel(&g_events, VM_EVENT_EXGC_VIDEO);
+    if (g_exgc_timing_enabled)
+        vm_events_schedule_after(&g_events, EXGC_INSTRUCTIONS_PER_SCANLINE,
+                                 VM_EVENT_EXGC_VIDEO);
+}
 
 /*
  * What it does:
@@ -167,9 +200,49 @@ static int service_events_after_instruction(int return_code) {
 /* A deliberately small native test service used only for dispatcher
  * throughput coverage.  It models a coalescible periodic device event without
  * adding a device or an interrupt architecture. */
-static VMEventServiceResult service_periodic_test_event(VMEventState *state,
-                                                         void *context) {
+static VMEventServiceResult service_device_events(VMEventState *state,
+                                                  void *context) {
     VMPeriodicEventTest *periodic = context;
+    if ((state->pending_events & VM_EVENT_EXGC_VIDEO) != 0) {
+        state->pending_events &= ~VM_EVENT_EXGC_VIDEO;
+        if (g_event_memory != NULL) {
+            exgc_timing_advance_scanline(&g_exgc_timing,
+                g_event_memory + ((uint32_t)EXGC_SEGMENT << 16),
+                EXGC_SEGMENT_BYTES);
+        }
+        vm_events_schedule_after(state, EXGC_INSTRUCTIONS_PER_SCANLINE,
+                                 VM_EVENT_EXGC_VIDEO);
+    }
+
+    if ((state->pending_events & VM_EVENT_EXGC_REFRESH) != 0) {
+    state->pending_events &= ~VM_EVENT_EXGC_REFRESH;
+
+    if (g_exgc_refresh_enabled && g_exgc_refresh_memory != NULL) {
+        uint64_t start_us = exgc_monotonic_us();
+
+        int result = exgc_render_memory(
+            g_exgc_refresh_memory,
+            g_exgc_refresh_scale_x,
+            g_exgc_refresh_scale_y, NULL
+        );
+
+        uint64_t elapsed_us = exgc_monotonic_us() - start_us;
+
+        ++g_refresh_count;
+        g_refresh_total_us += elapsed_us;
+
+        if (elapsed_us > g_refresh_max_us)
+            g_refresh_max_us = elapsed_us;
+
+        if (result != EXGC_SIXEL_OK)
+            return VM_EVENT_SERVICE_FAILED;
+    }
+
+    if (g_exgc_refresh_enabled)
+        vm_events_schedule_after(state, EXGC_REFRESH_INSTRUCTIONS,
+                                 VM_EVENT_EXGC_REFRESH);
+    }
+
     if ((state->pending_events & periodic->flags) != 0) {
         state->pending_events &= ~periodic->flags;
         ++periodic->service_count;
@@ -1655,6 +1728,7 @@ static PyObject *c_EvalOne24(PyObject *self, PyObject *args)
         .prefix_just_set = 0,
     };
     g_vm24 = &state;
+    g_event_memory = mem;
 
     PyOS_sighandler_t old_sigint = PyOS_setsig(SIGINT, handle_ctrl_c);
     int return_code = in_rc;
@@ -1676,6 +1750,7 @@ static PyObject *c_EvalOne24(PyObject *self, PyObject *args)
     }
     PyOS_setsig(SIGINT, old_sigint);
     g_vm24 = NULL;
+    g_event_memory = NULL;
 
     PyArray_ResolveWritebackIfCopy(mem_arr);
     PyArray_ResolveWritebackIfCopy(stack_arr);
@@ -1721,7 +1796,34 @@ static PyObject *c_ConsoleReset(PyObject *self, PyObject *args)
 {
     (void)self;
     if (!PyArg_ParseTuple(args, "")) return NULL;
+    vm_console_video_display_stop(&g_console);
     vm_console_init(&g_console);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_ConsoleVideoDisplayStart(PyObject *self, PyObject *args)
+{
+    int result;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    result = vm_console_video_display_start(&g_console);
+    if (result == VM_CONSOLE_VIDEO_DISPLAY_NOT_TTY) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "in-place EXGC display requires stdout to be a terminal");
+        return NULL;
+    }
+    if (result != VM_CONSOLE_VIDEO_DISPLAY_OK) {
+        PyErr_SetString(PyExc_RuntimeError, "could not start in-place EXGC display");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_ConsoleVideoDisplayStop(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, "")) return NULL;
+    vm_console_video_display_stop(&g_console);
     Py_RETURN_NONE;
 }
 
@@ -1731,6 +1833,12 @@ static PyObject *c_EventsReset(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "")) return NULL;
     vm_events_init(&g_events);
     memset(&g_periodic_event_test, 0, sizeof(g_periodic_event_test));
+    vm_events_set_service(&g_events, service_device_events,
+                          &g_periodic_event_test);
+    schedule_exgc_timing();
+    if (g_exgc_refresh_enabled)
+        vm_events_schedule_after(&g_events, EXGC_REFRESH_INSTRUCTIONS,
+                                 VM_EVENT_EXGC_REFRESH);
     Py_RETURN_NONE;
 }
 
@@ -1766,7 +1874,7 @@ static PyObject *c_EventsSetPeriodicTest(PyObject *self, PyObject *args)
     g_periodic_event_test.period = (uint64_t)period;
     g_periodic_event_test.flags = flags;
     g_periodic_event_test.service_count = 0;
-    vm_events_set_service(&g_events, service_periodic_test_event,
+    vm_events_set_service(&g_events, service_device_events,
                           &g_periodic_event_test);
     vm_events_schedule_after(&g_events, (uint64_t)period, flags);
     Py_RETURN_NONE;
@@ -1791,6 +1899,69 @@ static int exgc_console_video_write(void *context, const void *data, size_t leng
     return 0;
 }
 
+static int exgc_render_memory(uint8_t *memory, unsigned scale_x, unsigned scale_y, size_t *bytes)
+{
+    EXGCVideoWriter writer = {0};
+    int result;
+    if (memory == NULL) return EXGC_SIXEL_INVALID_ARGUMENT;
+    if (vm_console_video_display_prepare(&g_console,
+            scale_x * EXGC_SIXEL_NATIVE_WIDTH,
+            scale_y * EXGC_SIXEL_NATIVE_HEIGHT) != VM_CONSOLE_VIDEO_DISPLAY_OK)
+        return -3; /* Terminal viewport cannot contain the frame. */
+    result = exgc_device_render(memory + ((uint32_t)EXGC_SEGMENT << 16),
+                                scale_x, scale_y,
+                                exgc_console_video_write, &writer);
+    if (result == EXGC_SIXEL_OK) vm_console_flush_video();
+    if (bytes != NULL) *bytes = writer.bytes;
+    return result;
+}
+
+static PyObject *c_EXGCAutoRefresh(PyObject *self, PyObject *args)
+{
+    PyObject *mem_obj;
+    PyArrayObject *mem_arr;
+    int enabled;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "Op", &mem_obj, &enabled)) return NULL;
+    mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
+    if (mem_arr == NULL) return NULL;
+    if (PyArray_SIZE(mem_arr) < MAXPHYSMEM) {
+        PyErr_SetString(PyExc_ValueError, "CPU24 memory array must contain at least 16 MiB");
+        Py_DECREF(mem_arr);
+        return NULL;
+    }
+
+   g_exgc_refresh_memory = (uint8_t *)PyArray_DATA(mem_arr);
+   g_exgc_refresh_enabled = enabled;
+
+   if (enabled) {
+     g_refresh_count = 0;
+     g_refresh_total_us = 0;
+     g_refresh_max_us = 0;
+   } else {
+     fprintf(stderr,
+             "\nEXGC PERFORMANCE:\n"
+             "  Refreshes: %llu\n"
+             "  Average:   %.2f ms\n"
+             "  Maximum:   %.2f ms\n"
+             "  Total:     %.2f seconds\n",
+             (unsigned long long)g_refresh_count,
+             g_refresh_count
+             ? (double)g_refresh_total_us / g_refresh_count / 1000.0
+             : 0.0,
+             (double)g_refresh_max_us / 1000.0,
+             (double)g_refresh_total_us / 1000000.0);
+   }
+
+   vm_events_cancel(&g_events, VM_EVENT_EXGC_REFRESH); 
+
+    if (enabled)
+        vm_events_schedule_after(&g_events, EXGC_REFRESH_INSTRUCTIONS,
+                                 VM_EVENT_EXGC_REFRESH);
+    Py_DECREF(mem_arr);
+    Py_RETURN_NONE;
+}
+
 static PyObject *c_EXGCReset(PyObject *self, PyObject *args)
 {
     PyObject *mem_obj;
@@ -1806,7 +1977,47 @@ static PyObject *c_EXGCReset(PyObject *self, PyObject *args)
     }
     exgc_device_reset((uint8_t *)PyArray_DATA(mem_arr) + ((uint32_t)EXGC_SEGMENT << 16),
                       EXGC_SEGMENT_BYTES);
+    exgc_timing_reset(&g_exgc_timing,
+                      (uint8_t *)PyArray_DATA(mem_arr) + ((uint32_t)EXGC_SEGMENT << 16),
+                      EXGC_SEGMENT_BYTES);
+    schedule_exgc_timing();
     Py_DECREF(mem_arr);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EXGCTimingAdvance(PyObject *self, PyObject *args)
+{
+    PyObject *mem_obj;
+    PyArrayObject *mem_arr;
+    unsigned long long instructions;
+    uint8_t *previous_memory;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "OK", &mem_obj, &instructions)) return NULL;
+    mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
+    if (mem_arr == NULL) return NULL;
+    if (PyArray_SIZE(mem_arr) < MAXPHYSMEM) {
+        PyErr_SetString(PyExc_ValueError, "CPU24 memory array must contain at least 16 MiB");
+        Py_DECREF(mem_arr);
+        return NULL;
+    }
+    previous_memory = g_event_memory;
+    g_event_memory = (uint8_t *)PyArray_DATA(mem_arr);
+    while (instructions-- != 0) {
+        if (vm_events_after_instruction(&g_events))
+            (void)vm_events_service(&g_events);
+    }
+    g_event_memory = previous_memory;
+    Py_DECREF(mem_arr);
+    Py_RETURN_NONE;
+}
+
+static PyObject *c_EXGCTimingTestEnabled(PyObject *self, PyObject *args)
+{
+    int enabled;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "p", &enabled)) return NULL;
+    g_exgc_timing_enabled = enabled;
+    schedule_exgc_timing();
     Py_RETURN_NONE;
 }
 
@@ -1815,8 +2026,8 @@ static PyObject *c_EXGCRender(PyObject *self, PyObject *args)
     PyObject *mem_obj;
     PyArrayObject *mem_arr;
     unsigned int scale_x, scale_y;
-    EXGCVideoWriter writer = {0};
     int result;
+    size_t bytes = 0;
     (void)self;
     if (!PyArg_ParseTuple(args, "OII", &mem_obj, &scale_x, &scale_y)) return NULL;
     mem_arr = borrow_array(mem_obj, NPY_UINT8, "mem");
@@ -1826,15 +2037,20 @@ static PyObject *c_EXGCRender(PyObject *self, PyObject *args)
         Py_DECREF(mem_arr);
         return NULL;
     }
-    result = exgc_device_render((uint8_t *)PyArray_DATA(mem_arr) +
-                                ((uint32_t)EXGC_SEGMENT << 16),
-                                scale_x, scale_y, exgc_console_video_write, &writer);
-    Py_DECREF(mem_arr);
-    if (result != EXGC_SIXEL_OK) {
-        PyErr_SetString(PyExc_RuntimeError, "EXGC SIXEL render failed");
+    if (scale_x > UINT_MAX / EXGC_SIXEL_NATIVE_WIDTH ||
+        scale_y > UINT_MAX / EXGC_SIXEL_NATIVE_HEIGHT) {
+        PyErr_SetString(PyExc_ValueError, "EXGC scale is too large");
+        Py_DECREF(mem_arr);
         return NULL;
     }
-    return PyLong_FromSize_t(writer.bytes);
+    result = exgc_render_memory((uint8_t *)PyArray_DATA(mem_arr), scale_x, scale_y, &bytes);
+    Py_DECREF(mem_arr);
+    if (result != EXGC_SIXEL_OK) {
+        PyErr_SetString(PyExc_RuntimeError, result == -3 ?
+                        "EXGC terminal viewport is too small" : "EXGC SIXEL render failed");
+        return NULL;
+    }
+    return PyLong_FromSize_t(bytes);
 }
 
 static PyMethodDef cpuCfuncMethods[] = {
@@ -1848,6 +2064,10 @@ static PyMethodDef cpuCfuncMethods[] = {
      "Return (buffered bytes, discarded bytes) for guest CAST output"},
     {"ConsoleReset", c_ConsoleReset, METH_VARARGS,
      "Restore direct guest output and clear the bounded buffer"},
+    {"ConsoleVideoDisplayStart", c_ConsoleVideoDisplayStart, METH_VARARGS,
+     "Start normal-screen in-place VIDEO presentation at terminal home"},
+    {"ConsoleVideoDisplayStop", c_ConsoleVideoDisplayStop, METH_VARARGS,
+     "Stop in-place VIDEO presentation and restore normal cursor/output"},
     {"EventsReset", c_EventsReset, METH_VARARGS,
      "Clear native hardware-event and interrupt state"},
     {"EventsScheduleAfter", c_EventsScheduleAfter, METH_VARARGS,
@@ -1860,6 +2080,12 @@ static PyMethodDef cpuCfuncMethods[] = {
      "Return periodic-event services since EventsSetPeriodicTest"},
     {"EXGCReset", c_EXGCReset, METH_VARARGS,
      "Cold-reset the memory-backed EXGC segment in a CPU24 memory array"},
+    {"EXGCAutoRefresh", c_EXGCAutoRefresh, METH_VARARGS,
+     "Enable instruction-clocked automatic SIXEL refresh"},
+    {"EXGCTimingAdvance", c_EXGCTimingAdvance, METH_VARARGS,
+     "Advance deterministic EXGC timing for retired Python-executor instructions"},
+    {"EXGCTimingTestEnabled", c_EXGCTimingTestEnabled, METH_VARARGS,
+     "Test-only switch for measuring EXGC timing event overhead"},
     {"EXGCRender", c_EXGCRender, METH_VARARGS,
      "Render the selected EXGC framebuffer to the VIDEO console channel"},
     {NULL, NULL, 0, NULL}
@@ -1891,6 +2117,9 @@ PyMODINIT_FUNC PyInit_cpuCfunc(void) {
     import_array();
     setvbuf(stdin, NULL, _IONBF, 0);
     vm_events_init(&g_events);
+    memset(&g_exgc_timing, 0, sizeof(g_exgc_timing));
+    vm_events_set_service(&g_events, service_device_events,
+                          &g_periodic_event_test);
     vm_console_init(&g_console);
     return PyModule_Create(&cpuCfunc);
 }

@@ -9,6 +9,8 @@
 #define VM_EVENT_NONE 0u
 #define VM_EVENT_TIMER (1u << 0)
 #define VM_EVENT_DEVICE (1u << 1)
+#define VM_EVENT_EXGC_VIDEO (1u << 2)
+#define VM_EVENT_EXGC_REFRESH (1u << 3)
 #define VM_EVENT_NO_DEADLINE UINT64_MAX
 #define VM_EVENT_SCHEDULE_SLOTS 8u
 
@@ -40,6 +42,7 @@ void vm_events_set_service(VMEventState *state, VMEventServiceFn service,
                            void *service_context);
 void vm_events_schedule_after(VMEventState *state, uint64_t instructions,
                               uint32_t event_flags);
+void vm_events_cancel(VMEventState *state, uint32_t event_flags);
 void vm_events_raise(VMEventState *state, uint32_t event_flags);
 void vm_events_request_interrupt(VMEventState *state, uint32_t interrupt_flags);
 int vm_events_after_instruction(VMEventState *state);

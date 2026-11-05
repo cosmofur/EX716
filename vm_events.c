@@ -68,6 +68,18 @@ void vm_events_schedule_after(VMEventState *state, uint64_t instructions,
     vm_events_refresh_deadline(state);
 }
 
+void vm_events_cancel(VMEventState *state, uint32_t event_flags)
+{
+    unsigned int index;
+    state->pending_events &= ~event_flags;
+    for (index = 0; index < VM_EVENT_SCHEDULE_SLOTS; ++index) {
+        state->scheduled[index].events &= ~event_flags;
+        if (state->scheduled[index].events == VM_EVENT_NONE)
+            state->scheduled[index].deadline = VM_EVENT_NO_DEADLINE;
+    }
+    vm_events_refresh_deadline(state);
+}
+
 void vm_events_raise(VMEventState *state, uint32_t event_flags)
 {
     state->pending_events |= event_flags;

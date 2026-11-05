@@ -4,6 +4,9 @@
 /* Persistent, caller-owned macro landforms.  Coordinates are global km in
  * the same system used by MapSampleRegionalHeight. */
 #define WORLD_LANDSCAPE_MAX_RANGES 12U
+#define WORLD_LANDSCAPE_ROWS 64U
+#define WORLD_LANDSCAPE_COLUMNS 127U
+#define WORLD_LANDSCAPE_CELLS (WORLD_LANDSCAPE_ROWS * WORLD_LANDSCAPE_COLUMNS)
 
 typedef struct WorldMountainRange {
     long start_x;
@@ -19,6 +22,9 @@ typedef struct WorldLandscape {
     unsigned long seed;
     unsigned char range_count;
     WorldMountainRange ranges[WORLD_LANDSCAPE_MAX_RANGES];
+    /* Persistent 300 km elevation raster plus caller-owned erosion scratch. */
+    unsigned char heights[WORLD_LANDSCAPE_CELLS];
+    unsigned char scratch[WORLD_LANDSCAPE_CELLS];
 } WorldLandscape;
 
 void WorldLandscapeInitialize(WorldLandscape *landscape, unsigned long seed);

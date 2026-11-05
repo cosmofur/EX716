@@ -45,6 +45,17 @@ int main(void)
     assert(exgc_device_write_word(memory, EXGC_VIDEO_PAGE, 2) == EXGC_MMIO_HANDLED);
     assert(exgc_device_read_word(memory, EXGC_VIDEO_PAGE, &value) == EXGC_MMIO_HANDLED);
     assert(value == 3); /* current and requested page B; no pending flip. */
+    {
+        EXGCTimingState timing;
+        exgc_timing_reset(&timing, memory, EXGC_SEGMENT_BYTES);
+        timing.scanline = EXGC_TOTAL_SCANLINES - 1u;
+        timing.frame = 0xffffu;
+        exgc_timing_advance_scanline(&timing, memory, EXGC_SEGMENT_BYTES);
+        assert(timing.scanline == 0);
+        assert(timing.frame == 0);
+        assert(exgc_device_read_word(memory, EXGC_VIDEO_FRAME, &value) == EXGC_MMIO_HANDLED);
+        assert(value == 0);
+    }
     assert(exgc_device_byte_access(EXGC_VIDEO_PAGE) == EXGC_MMIO_INVALID);
     assert(exgc_device_read_word(memory, EXGC_VIDEO_PAGE + 1u, &value) == EXGC_MMIO_INVALID);
     assert(exgc_device_write_word(memory, EXGC_PALETTE_BASE, 0x801f) == EXGC_MMIO_HANDLED);

@@ -98,6 +98,11 @@ int WorldGlobeInitialize(WorldGlobe *globe, unsigned char *storage,
         return 0;
     globe->seed = worldglobe_u32(seed);
     globe->landscape = 0;
+    globe->continent_count = WORLD_CONTINENT_COUNT;
+    globe->ocean_count = WORLD_OCEAN_COUNT;
+    globe->continent_radius = 48U;
+    globe->ocean_radius = 42U;
+    globe->continent_points_ready = 0U;
     globe->cells = storage;
     globe->cell_capacity = capacity;
     globe->row_start[0] = 0;
@@ -112,6 +117,68 @@ int WorldGlobeInitialize(WorldGlobe *globe, unsigned char *storage,
     }
     globe->cell_count = globe->row_start[WORLD_GLOBE_LATITUDE_RINGS];
     return globe->cell_count <= capacity;
+}
+
+int WorldGlobeInitializeWithContinents(WorldGlobe *globe,
+                                       unsigned char *storage,
+                                       unsigned short capacity,
+                                       unsigned long seed,
+                                       unsigned char continents)
+{
+    unsigned int chosen;
+    unsigned int candidate;
+    unsigned int best_candidate;
+    int best_distance;
+    int nearest_distance;
+    int distance;
+    unsigned int candidate_row;
+    unsigned int candidate_longitude;
+
+    if (!WorldGlobeInitialize(globe, storage, capacity, seed) ||
+        continents == 0U || continents > WORLD_GLOBE_MAX_CONTINENTS)
+        return 0;
+    globe->continent_count = continents;
+    for (chosen = 0U; chosen < continents; ++chosen) {
+        best_candidate = 0U;
+        best_distance = -1;
+        for (candidate = 0U; candidate < 48U; ++candidate) {
+            candidate_row = (unsigned int)worldglobe_range(seed, 0x434e5452UL,
+                                                            candidate, 8, 55);
+            candidate_longitude = (unsigned int)worldglobe_range(seed,
+                0x434e544cUL, candidate, 0, 255);
+            nearest_distance = 32767;
+            for (distance = 0; distance < (int)chosen; ++distance) {
+                int separation;
+                separation = worldglobe_distance(globe, candidate_row,
+                    (candidate_longitude * globe->row_width[candidate_row]) / 256U,
+                    globe->continent_rows[distance],
+                    globe->continent_longitudes[distance]);
+                if (separation < nearest_distance) nearest_distance = separation;
+            }
+            if (chosen == 0U) nearest_distance = (int)candidate;
+            if (nearest_distance > best_distance) {
+                best_distance = nearest_distance;
+                best_candidate = candidate;
+            }
+        }
+        globe->continent_rows[chosen] = (unsigned char)worldglobe_range(seed,
+            0x434e5452UL, best_candidate, 8, 55);
+        globe->continent_longitudes[chosen] = (unsigned char)worldglobe_range(seed,
+            0x434e544cUL, best_candidate, 0, 255);
+    }
+    globe->continent_points_ready = 1U;
+    return 1;
+}
+
+void WorldGlobeSetFormation(WorldGlobe *globe, unsigned char continents,
+                            unsigned char oceans, unsigned char continent_radius,
+                            unsigned char ocean_radius)
+{
+    if (globe == 0 || continents == 0U || oceans == 0U) return;
+    globe->continent_count = continents;
+    globe->ocean_count = oceans;
+    globe->continent_radius = continent_radius;
+    globe->ocean_radius = ocean_radius;
 }
 
 void WorldGlobeSetLandscape(WorldGlobe *globe,
@@ -167,21 +234,26 @@ int WorldGlobeGenerate(WorldGlobe *globe)
         for (column = 0; column < globe->row_width[row]; ++column) {
             longitude = worldglobe_longitude(globe, row, column);
             continent_score = 0;
-            for (continent = 0; continent < WORLD_CONTINENT_COUNT; ++continent) {
-                distance = worldglobe_distance(globe, row, column,
-                    worldglobe_range(globe->seed, 0x434f4e54UL, continent, 8, 55),
-                    (unsigned int)worldglobe_range(globe->seed, 0x434f4e4cUL,
-                                                   continent, 0, 255));
-                influence = 48 - distance;
+            for (continent = 0; continent < globe->continent_count; ++continent) {
+                if (globe->continent_points_ready)
+                    distance = worldglobe_distance(globe, row, column,
+                        globe->continent_rows[continent],
+                        globe->continent_longitudes[continent]);
+                else
+                    distance = worldglobe_distance(globe, row, column,
+                        worldglobe_range(globe->seed, 0x434f4e54UL, continent, 8, 55),
+                        (unsigned int)worldglobe_range(globe->seed, 0x434f4e4cUL,
+                                                       continent, 0, 255));
+                influence = (int)globe->continent_radius - distance;
                 if (influence > 0)
                     continent_score += influence;
             }
-            for (ocean = 0; ocean < WORLD_OCEAN_COUNT; ++ocean) {
+            for (ocean = 0; ocean < globe->ocean_count; ++ocean) {
                 distance = worldglobe_distance(globe, row, column,
                     worldglobe_range(globe->seed, 0x4f434541UL, ocean, 2, 61),
                     (unsigned int)worldglobe_range(globe->seed, 0x4f43454cUL,
                                                    ocean, 0, 255));
-                influence = 42 - distance;
+                influence = (int)globe->ocean_radius - distance;
                 if (influence > 0)
                     continent_score -= influence;
             }

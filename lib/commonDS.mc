@@ -36,6 +36,16 @@ G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
 G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 G Var1 G Var2 G Var3 G Var4 G Var5 G Var6 G Var7 G Var8 G Var9
 ? CPU24
+# DS 0 runtime anchor.  It is deliberately declared before Var01, so the
+# compiler's Var01/Var20+ convention remains one uninterrupted DS 1 run.
+# These are fixed offsets rather than emitted data. softstackDS.ld initializes
+# the record before use. Segmented programs selecting the DS stack reserve
+# CS0:0000..00ff and place code at 0100 or above.
+G __SS_ROOT_MAGIC G __SS_ROOT_STACK_DS G __SS_ROOT_SAVED_DS G __SS_ROOT_SAVED_ES
+=__SS_ROOT_MAGIC    0x0000
+=__SS_ROOT_STACK_DS 0x0002
+=__SS_ROOT_SAVED_DS 0x0004
+=__SS_ROOT_SAVED_ES 0x0006
 ::Var01 0
 =Var1 {Var01}
 ::Var02 0
@@ -1337,6 +1347,14 @@ M SIZESINCE :NewHereMem \
 # FOR NEXT WHILE and CASE logic structures can be found in this related file.
 #
 I structureDS.ld
+
+# Opt in to the fixed-segment software stack before including commonDS.mc:
+#     M UseSoftStackDS 1
+# This keeps legacy 64 KiB programs on softstack.ld while giving segmented
+# programs one normal include path for the DS-safe replacement.
+? UseSoftStackDS
+L softstackDS.ld
+ENDBLOCK
 M SIZESINCECOMMENT commonDS.mc
 @SIZESINCE
 ENDBLOCK

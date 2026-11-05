@@ -179,7 +179,6 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
     unsigned char world_cell;
     int pond_strength;
     int grove_strength;
-    int rock_strength;
     int settlement_strength;
     int pond;
     int grove;
@@ -247,13 +246,9 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
                 grove_strength = local_feature_strength(globe, 0x47524f56UL,
                                                        physical_x, physical_y,
                                                        3400L, 4, 110);
-                rock_strength = local_feature_strength(globe, 0x524f434bUL,
-                                                      physical_x, physical_y,
-                                                      3000L, 6, 120);
             } else {
                 pond_strength = 0;
                 grove_strength = 0;
-                rock_strength = 0;
             }
             settlement_strength = local_feature_strength(globe, 0x53495445UL,
                                                         physical_x, physical_y,
@@ -263,7 +258,10 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
              * open sea. */
             pond = pond_strength > 0 && meters >= 850U && meters < 3000U;
             grove = grove_strength > 0 && meters >= 850U && meters < 3000U;
-            rocks = meters > 3600U || rock_strength > 0;
+            /* Terrain classes must agree with the encoded local elevation.
+             * Decorative rock stamps made biome and relief views contradict
+             * one another. */
+            rocks = height >= 192U;
             /* The old unconditional horizontal route and 900 m building grid
              * made ordinary wilderness visibly artificial.  Settlements now
              * grow as sparse, irregular clusters around globally stable sites. */
@@ -278,6 +276,7 @@ int MapGenerateLocalMap(Map *map, const WorldGlobe *globe,
             if (pond) terrain = TERRAIN_WATER;
             else if (building) terrain = TERRAIN_BUILDING;
             else if (route) terrain = TERRAIN_PAVEMENT | FEATURE_ROAD;
+            else if (height >= 224U) terrain = TERRAIN_SNOW;
             else if (rocks) terrain = TERRAIN_ROCK;
             else if (grove && terrain == TERRAIN_GRASS) terrain |= FEATURE_FOREST;
             map->cells[index] = MAKE_CELL(height, terrain);

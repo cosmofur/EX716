@@ -88,6 +88,18 @@ static const char *explorer_scale_name(unsigned short scale)
     }
 }
 
+/* ANSI 256-colour relief ramp: damp lowlands through upland grass and dry
+ * slopes to stone and snow.  Glyphs remain meaningful when colour is absent. */
+static const char *explorer_relief_color(unsigned int height)
+{
+    if (height >= 224U) return "\033[38;5;255m";
+    if (height >= 192U) return "\033[38;5;250m";
+    if (height >= 144U) return "\033[38;5;180m";
+    if (height >= 96U) return "\033[38;5;107m";
+    if (height >= 48U) return "\033[38;5;71m";
+    return "\033[38;5;28m";
+}
+
 static unsigned int explorer_matching_neighbours(const Map *map,
                                                  unsigned int x, unsigned int y,
                                                  unsigned int feature)
@@ -117,7 +129,7 @@ static unsigned int explorer_matching_neighbours(const Map *map,
 }
 
 static void explorer_style(const Map *map, unsigned int x, unsigned int y,
-                           char *glyph, const char **color)
+                           int show_relief, char *glyph, const char **color)
 {
     unsigned int terrain;
     unsigned int neighbours;
@@ -129,6 +141,20 @@ static void explorer_style(const Map *map, unsigned int x, unsigned int y,
     terrain = CELL_TERRAIN(cell);
     height = CELL_HEIGHT(cell);
     elevation = map->elevation_datum_meters + (long)height;
+    if (show_relief && (terrain & TERRAIN_GROUND_MASK) != TERRAIN_WATER) {
+        if (height >= 192U) {
+            *glyph = '^'; *color = explorer_relief_color(height);
+        } else if (height >= 144U) {
+            *glyph = 'A'; *color = explorer_relief_color(height);
+        } else if (height >= 96U) {
+            *glyph = ','; *color = explorer_relief_color(height);
+        } else if (height >= 48U) {
+            *glyph = ':'; *color = explorer_relief_color(height);
+        } else {
+            *glyph = '.'; *color = explorer_relief_color(height);
+        }
+        return;
+    }
     if (terrain & FEATURE_RIVER) {
         *glyph = '~';
         *color = "\033[1;34m";
@@ -174,9 +200,9 @@ static void explorer_style(const Map *map, unsigned int x, unsigned int y,
     case TERRAIN_BUILDING:
         *glyph = '#'; *color = "\033[1;35m"; break;
     default:
-        *glyph = elevation >= 1900L ? ',' : '"';
-        *color = elevation >= 3000L ? "\033[1;33m" :
-                 (elevation >= 1900L ? "\033[1;32m" : "\033[0;32m");
+        *glyph = height >= 144U ? ',' :
+                 (height >= 96U ? ':' : '"');
+        *color = explorer_relief_color(height);
         break;
     }
 }
@@ -254,8 +280,37 @@ static int explorer_find_land_start(Map *map, const WorldGlobe *globe,
     return 0;
 }
 
+static int explorer_find_range_land(const WorldGlobe *globe, long center_x,
+                                    long center_y, long *player_x,
+                                    long *player_y)
+{
+    int radius;
+    int dx;
+    int dy;
+    long candidate_x;
+    long candidate_y;
+    unsigned char cell;
+
+    for (radius = 0; radius <= 16; ++radius)
+        for (dy = -radius; dy <= radius; ++dy)
+            for (dx = -radius; dx <= radius; ++dx) {
+                if (radius != 0 && dx != -radius && dx != radius &&
+                    dy != -radius && dy != radius) continue;
+                candidate_x = center_x + (long)dx * 10000L;
+                candidate_y = center_y + (long)dy * 10000L;
+                if (MapSampleRegionalHeight(globe, candidate_x / 2000L,
+                    candidate_y / 2000L, &cell) > 31U &&
+                    (cell & WORLD_LANDFORM_MASK) > WORLD_SHALLOW_SEA) {
+                    *player_x = candidate_x;
+                    *player_y = candidate_y;
+                    return 1;
+                }
+            }
+    return 0;
+}
+
 static void explorer_draw(const Map *map, unsigned short scale,
-                          long player_x, long player_y, unsigned int scale_index)
+                          unsigned int scale_index, int show_relief)
 {
     unsigned int columns;
     unsigned int rows;
@@ -291,16 +346,15 @@ static void explorer_draw(const Map *map, unsigned short scale,
     if (first_y + visible_height > MAP_HEIGHT) first_y = MAP_HEIGHT - visible_height;
 
     printf("\033[H\033[2J\033[?25l");
-    printf("MapMaker explorer  seed=%08lX  zoom %u/11  scale=%s/cell  view=%lu km  position=(%ld,%ld) half-metres  ",
-           map->seed, scale_index + 1U, explorer_scale_name(scale),
-           ((unsigned long)MAP_WIDTH * scale) / 2000UL, player_x, player_y);
-    printf("WASD move  +/- zoom  R new world  Q quit\033[K\n");
-    printf("zoom %u/11  low grass \"  upland ,  trees t/T  shallow water .  deep water/river ~  stone ./*/^\033[K\n",
-           scale_index + 1U);
+    printf("MapMaker z%u/11 %s %lukm seed=%08lX\033[K\n",
+           scale_index + 1U, explorer_scale_name(scale),
+           ((unsigned long)MAP_WIDTH * scale) / 2000UL, map->seed);
+    printf("WASD +/-  R=new  M=range  H=%s  Q=quit\033[K\n",
+           show_relief ? "relief" : "biome");
     for (map_y = first_y; map_y < first_y + visible_height; ++map_y) {
         for (repeat_y = 0U; repeat_y < glyph_height; ++repeat_y) {
             for (map_x = first_x; map_x < first_x + visible_width; ++map_x) {
-                explorer_style(map, map_x, map_y, &glyph, &color);
+                explorer_style(map, map_x, map_y, show_relief, &glyph, &color);
                 is_player = map_x == player_map_x && map_y == player_map_y;
                 for (repeat_x = 0U; repeat_x < glyph_width; ++repeat_x) {
                     if (is_player && repeat_x == glyph_width / 2U &&
@@ -332,6 +386,8 @@ int main(void)
     unsigned int next_x;
     unsigned int next_y;
     unsigned long seed;
+    unsigned int mountain_index;
+    int show_relief;
     char key;
 
     scales[0] = MAP_LOCAL_CELL_HALF_METERS_5KM;
@@ -346,9 +402,12 @@ int main(void)
     scales[9] = MAP_LOCAL_CELL_HALF_METERS_1M;
     scales[10] = MAP_LOCAL_CELL_HALF_METERS_0_5M;
     scale_index = 7U;
+    show_relief = 0;
+    mountain_index = 0U;
     seed = 424242UL;
-    if (!WorldGlobeInitialize(&globe, globe_storage, WORLD_GLOBE_STORAGE_CELLS,
-                              seed) || !WorldGlobeGenerate(&globe)) {
+    if (!WorldGlobeInitializeWithContinents(&globe, globe_storage,
+                              WORLD_GLOBE_STORAGE_CELLS, seed, 4U) ||
+        !WorldGlobeGenerate(&globe)) {
         fprintf(stderr, "could not initialize MapMaker globe\n");
         return 1;
     }
@@ -372,8 +431,7 @@ int main(void)
         if (!explorer_generate_centered(&map, &globe, player_x, player_y,
                                         scales[scale_index]))
             break;
-        explorer_draw(&map, scales[scale_index], player_x, player_y,
-                      scale_index);
+        explorer_draw(&map, scales[scale_index], scale_index, show_relief);
         if (read(0, &key, 1U) != 1 || key == 'q' || key == 'Q')
             break;
         if (key == 'r' || key == 'R') {
@@ -385,14 +443,30 @@ int main(void)
              * backing store makes that guarantee explicit and prevents any
              * future partial generator from inheriting stale cell data. */
             memset(globe_storage, 0, sizeof(globe_storage));
-            if (!WorldGlobeInitialize(&globe, globe_storage,
-                                      WORLD_GLOBE_STORAGE_CELLS, seed) ||
+            if (!WorldGlobeInitializeWithContinents(&globe, globe_storage,
+                                      WORLD_GLOBE_STORAGE_CELLS, seed, 4U) ||
                 !WorldGlobeGenerate(&globe)) break;
             WorldLandscapeInitialize(&landscape, seed);
             if (!WorldLandscapeGenerate(&landscape)) break;
             WorldGlobeSetLandscape(&globe, &landscape);
             if (!explorer_find_land_start(&map, &globe, scales[scale_index],
                                           &player_x, &player_y)) break;
+            continue;
+        }
+        if (key == 'h' || key == 'H') {
+            show_relief = !show_relief;
+            continue;
+        }
+        if (key == 'm' || key == 'M') {
+            if (landscape.range_count != 0U) {
+                (void)explorer_find_range_land(&globe,
+                    (landscape.ranges[mountain_index].start_x +
+                     landscape.ranges[mountain_index].end_x) * 1000L,
+                    (landscape.ranges[mountain_index].start_y +
+                     landscape.ranges[mountain_index].end_y) * 1000L,
+                    &player_x, &player_y);
+                mountain_index = (mountain_index + 1U) % landscape.range_count;
+            }
             continue;
         }
         next_x = MAP_WIDTH / 2U;

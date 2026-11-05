@@ -28,6 +28,73 @@
   an observation, not a proven EXGC access penalty. Renderer performance stays
   near the standalone null-sink benchmark (solid 6×3 ~2.8 ms; noise ~27.9 ms).
 
+## EXGC Phase 2 post-integration validation (2026-11-03)
+
+- Added `tests/test_exgc_phase2_validation.py` and included it in `make test`.
+  It runs the actual `tests/exgc-phase2.asm` fixture through fast mode; the
+  fixture now performs direct CPU24 stores to both framebuffers and all palette
+  MMIO words. The validator checks Python/native segment routes, supported and
+  unsupported MMIO, byte/odd-word rejection, NumPy little-endian palette
+  backing, 12 selected-page bars/checker/diagonal SIXEL streams at 3×2 and
+  6×3, and stream structure/output count. `make -B DEBUG=0 test` passes.
+- Added `docs/exgc-phase2-validation.md` and an optional visual harness mode:
+  `CPUPATH=lib python3 tests/test_exgc_phase2_validation.py --emit --scale 3x2 --frames 3`.
+  `--cursor-home` sends only `CSI H` before each explicit frame for a manual,
+  non-alternate-screen Windows Terminal in-place-update experiment. Visual
+  appearance/cursor behavior still requires human confirmation.
+- Found a concrete VIDEO output issue: `vm_console_write` uses buffered
+  `fwrite` and `EXGCRender` never flushes. A 764-byte 3×2 solid frame produced
+  no pipe output until process exit. The harness flushes C stdio only for its
+  manual probe; no emulator behavior was changed. Recommended next work is a
+  frame-boundary console flush, with debugger-step flushing and a separately
+  configured 24–30 Hz instruction-count presentation cadence—not VBlank and
+  not automatic render—in a scoped follow-up.
+- User visually confirmed under Windows Terminal that ordinary consecutive
+  SIXEL images scroll, while the explicit `CSI H` `--cursor-home` probe updates
+  in place. Future display presentation needs explicit cursor positioning;
+  this remains host policy rather than EXGC hardware state.
+
+## EXGC normal-screen in-place SIXEL display (2026-11-03)
+
+- Added explicit host-only `ConsoleVideoDisplayStart/Stop` extension APIs and
+  `microcpu.start_exgc_display()` / `stop_exgc_display()`. Start saves the
+  current normal cursor and moves to terminal home; later `EXGCRender` calls
+  re-home before emitting SIXEL and flush once after each full frame. Stop
+  restores the saved cursor. No alternate screen, full clear, EXGC MMIO,
+  timing, page selection, or CPU semantics changed.
+- While active, native CAST uses its existing bounded 8 KiB buffer; stop
+  restores direct guest output and releases it. Diagnostics stay stderr.
+  Per-frame pixel viewport checks reject frames that a terminal explicitly
+  reports as too large; unavailable pixel dimensions are treated as unknown.
+- Extended the pty fast-console regression to verify save/home/re-home/restore,
+  deferred guest output, and too-small resize rejection. The visual harness
+  now supports `--in-place`; use it at 3×2 and 6×3 for Windows Terminal
+  confirmation. `make -B DEBUG=0 test`, `py_compile`, and diff checks passed.
+
+## EXGC Phase 3: deterministic timing and synchronized flipping (in progress, 2026-11-03)
+
+- Implemented native deterministic video timing on the existing VM scheduler:
+  one internal EXGC event every 256 retired instructions, 192 visible / 262
+  total lines, 67,072 instructions/frame, and nominal 4.02432 MHz at 60 Hz.
+  `F800 VIDEO_TIMING` reports visible line or VBlank+191; `F814 VIDEO_FRAME`
+  wraps 16-bit at line 261→0. State survives bounded/unlimited calls and is
+  explicitly reset by `EXGCReset` only. No interrupt delivery was added.
+- Defined and implemented `VIDEO_PAGE`: bit-2 clear retains immediate bit-1
+  selection and clears pending; bit-2 set makes bit-1 requested, sets bit-3,
+  and updates displayed bit-0 at the 191→192 VBlank boundary. Renderer reads
+  displayed bit-0 only.
+- Added Python execution timing forwarding, `EXGCHostRefresher` (optional
+  monotonic 12-FPS default no-queue presentation), CPU24-only
+  `tests/exgc-animation.asm`, and `tests/exgc_animation_host.py`. The demo
+  writes only guest framebuffers, requests VBlank swaps, and polls pending;
+  headless smoke produced advancing frame/page state. Visual Windows Terminal
+  review at 3×2 and 6×3 remains required before any commit.
+- Added timing regression and a timing-specific benchmark. Latest optimized
+  3-sample 50M-NOP median: 178.54M/s timing disabled vs 175.65M/s enabled
+  (one video event/256 retired instructions), 1.62% lower. Full test suite and
+  diff checks passed; docs `EXGC.md` and `docs/exgc-timing-animation.md` hold
+  the timing/page semantics and manual commands.
+
 ## EXGC SIXEL solid-colour profiling (2026-11-03)
 
 - Profiled the standalone encoder only, using a counting sink (no terminal
@@ -1319,3 +1386,139 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
   not preserve a matching runtime frame. Capture raw `@FUNCTION` boundaries
   in the source-command reader instead, then replay their command-tape span.
 - The passing banked MapMaker smoke test remains green after the groundwork.
+
+## MapMaker replacement design (2026-11-04)
+
+- User clarified that normal maps are 128x128 `MapCell` words (indices 0..127),
+  not 127x127.  This is a replacement constraint, alongside a 64-row,
+  latitude-shortened globe of approximately 128 cells at the equator and
+  roughly 300 km per overview cell.
+- Added `docs/mapmaker-redesign.md`: the appearance-first, deterministic,
+  coordinate-stable design; earth-like phase order; dead-world/city/dungeon
+  profiles; and reusable multi-scale irregular signed-shape primitive.  It
+  explicitly says to build a new API and visual harness before retiring the
+  current 127-cell plate/influence generator.
+- Added the first isolated implementation: `lib/mapmaker/worldgen.[ch]` and
+  `tests/mapmaker/test_worldgen.c`.  It establishes a 128x128 working map,
+  caller-owned latitude-aware 64-row globe (5,960 active 16-bit cells; 32
+  polar cells and 128 equatorial cells), phase 1 sea level, phase 2 stable
+  irregular continent outlines, and a reusable signed irregular-field API.
+  `make -C tests/mapmaker test` and `git diff --check` pass.  Relief,
+  drainage/biomes, and settlements are deliberately not yet implemented.
+- Completed phase 3 in the replacement `WorldGenGlobeGenerateRelief`: each
+  continent receives one or two seeded, bent mountain spines; narrow peaks
+  weather into asymmetric highland shoulders and surrounding plains without
+  radial mountain stamps.  Surface classes now distinguish ocean, plain,
+  highland, and mountain.  `tests/mapmaker/worldgen_explorer.c` is the new
+  ANSI globe viewer, built by `make -C tests/mapmaker worldgen-explorer` and
+  run as `./worldgen-explorer [seed]`.  Visual review of seed `0x12345678`
+  found the initial chains too broad; narrowed ranges leave 526 plains, 801
+  highland cells, and 247 mountain cells out of the 5,960-cell overview.
+  `make -C tests/mapmaker test-worldgen`, viewer build, and `git diff --check`
+  pass.  Phase 4 drainage, lakes, and biomes remains next.
+- Added hierarchy API constants and `WorldGenGenerateTile`/`WorldGenMapGetCell`.
+  `WorldGenMapInitialize` now has practical region (5 km), world-tile (1 km),
+  site (10 m), local (1 m), and caller-selected scale use through the shared
+  physical-origin contract.  Tile generation samples the matching globe and
+  adds global-coordinate detail, so repeated maps and independently made
+  same-location maps agree.  Tests now exercise world-tile and site calls.
+  It intentionally does not yet synthesize rivers, lakes, biomes, or sites.
+
+## Segmented memory-management review (2026-11-04)
+
+- Read-only audit requested for `softstack.ld`/`heapmgr.ld` against the
+  CPU24 data-segment model and `tests/flightsim.asm`; no library source was
+  changed.  The original flight-simulator startup defines a heap at
+  `ENDOFCode..0xff00` then carves out an 0x800-byte soft stack, so that
+  *bootstrap policy* assumes code/data share a 64 KiB address space.
+- The libraries themselves are already implicitly DS-local: `::` puts the
+  three software-stack control words in the selected DS, all soft-stack
+  indirect loads/stores use DS, and heap IDs/object IDs/links are 16-bit
+  offsets dereferenced through DS.  The existing CPU24 heap smoke proves
+  this works inside DS 1 but never changes DS after initialization.
+- Therefore switching DS makes the saved stack metadata, stack contents,
+  heap metadata, and all near object pointers name a different bank.  Do not
+  try to make one heap span banks.  Recommended design is: preserve legacy
+  `softstack.ld`/`heapmgr.ld`; designate DS as a pinned data-context ABI and
+  use ES/far pointers for incidental cross-bank data; add a separate explicit
+  far-heap/context API for true DS context switching.  A far heap descriptor
+  must carry bank, base, limit, and first-object offset, return far object
+  handles, and never cross a 64 KiB bank; a context must carry DS plus its
+  stack descriptor and be entered/restored only at ABI boundaries.  Add
+  tests for DS switch-away/switch-back, ES preservation, wrong-bank rejection,
+  and no cross-bank heap object access before implementation.
+- Added and ran `tests/cpu24-segment-memory.asm` with Python regression
+  `tests/test_cpu24_segment_memory.py`, included in root `make test`.  It
+  initializes independent legacy contexts in DS 1 and DS 2, verifies their
+  values are `1111`/`2222` after switching back and forth, and verifies a
+  `farptr.ld` write/read of `bead` through ES bank 2 preserves caller ES=3.
+  `make test` and `git diff --check` pass.
+- Added `docs/segmented-memory-plan.md`: retain the legacy DS-pinned ABI;
+  add DS-relative stack contexts only at explicit execution boundaries; add
+  a separate single-bank `FarHeapDescriptor`/`FarObject` allocator that uses
+  ES; prohibit cross-bank allocations/near-pointer reuse; and stage the
+  required guard/overflow/context-switch tests before implementation.
+- Implemented the first two new, non-conflicting DS-local libraries:
+  `lib/softstackDS.ld` has macro-only `DSSInitAB`/`DSSInitAS`, DS-local
+  push/pop/return and scoped-local macros, plus `DSSRemaining`; and
+  `lib/heapmgrDS.ld` has macro-only `HeapDSInit` (reserve top-of-range DSS
+  stack, define remaining heap) plus near single-bank define/allocate/free/
+  size/available operations.  They must not be mixed with legacy softstack/
+  heap APIs and pointers are intentionally invalid across DS changes.
+- Added `tests/cpu24-ds-runtime.asm` and `tests/test_cpu24_ds_runtime.py`,
+  now in root `make test`.  It verifies 4 KiB default DSS availability,
+  allocation, first-fit reuse after delete, and two independent DS contexts.
+  Added `docs/ds-runtime.md` usage/limitations.  `make test` and
+  `git diff --check` pass.  Explicit ES-backed far heap/context gateway work
+  remains a later layer, as planned.
+- Follow-up compatibility decision: `softstackDS.ld` is now selected *instead
+  of* `softstack.ld` and supplies the ordinary `@PUSHRETURN`, `@POPRETURN`,
+  `@PUSHHW`, `@POPHW`, `@Locals`, `@Local`, `@Local32`, `@EndLocals`,
+  `@LocalVar`, `@RestoreVar`, and `SetSSStack` interfaces.  `DSS*` remains an
+  optional explicit spelling.  The DS-runtime smoke uses the ordinary function
+  header/macros and returns `COMMON=6`, so existing assembly function bodies
+  do not need a broad rewrite.  Docs updated; full `make test` still passes.
+- Reworked the DSS design so the software stack is in one fixed stack segment
+  rather than tied to the active application DS. `commonDS.mc` declares an
+  un-emitted DS0 root at `fff0..fff6` before `Var01`; this avoids an early-CS0
+  code collision while retaining LCC's uninterrupted Var sequence.
+  `softstackDS.ld` saves caller DS/ES through that anchor, selects the fixed
+  stack segment for every stack operation, and restores both on return.
+  `HeapDSInitS` initializes that shared stack once. `M UseSoftStackDS 1`
+  before `I commonDS.mc` now auto-loads it, while legacy programs remain on
+  `softstack.ld` by default. The DS runtime test now initializes stack DS3,
+  switches application DS1→DS2 without stack reinitialization, verifies
+  ordinary locals return `COMMON2=8`, and verifies `AFTER DS=2`. Full
+  `make test` and `git diff --check` pass. C addressable frame support in
+  `clocals.ld` still assumes an active-DS stack and must be ported before
+  making this mode the unconditional commonDS default.
+- Corrected the DSS root layout after review: all `commonDS` fixed runtime
+  offsets are now below `0x100`. The DS0 root is `0000..0006`; the existing
+  DS1 `Var01..Var20` run remains sequential immediately after DS1:0000.
+  Because CS0 and DS0 share physical low offsets, fixed-stack programs must
+  reserve CS0 `0000..00ff` and begin code at `0100` or above. Updated the DSS
+  regression and docs accordingly. `tests/exgs-animation2.asm` now follows
+  that layout, enables segmented mode before `HeapDSInitS`, and reaches its
+  long-running render loop without its prior immediate selector/stack error.
+  The focused DSS regression and `git diff --check` pass.
+- Fixed `tests/exgs-animation2.asm` framebuffer access: DS stays in the
+  application bank so `@Locals` uses DS1 Var storage; ES is set to GraphDS
+  (`fc`) once and palette/framebuffer accesses use `@ESO @PUSHS` and
+  `@ESO @POPS`. The old DS=fc approach put `NewColor`, `Index`, and the two
+  framebuffer pointers at video offsets `0,2,4,6`; clearing framebuffer A
+  overwrote them and made the loop cycle. A clear-only run now ends normally
+  after 254,912 instructions with DS banks 1/3 and ES bank fc active.
+- EXGC guest writes never intrinsically emit SIXEL. Extended
+  `tests/exgc_animation_host.py` with `--source` so
+  `tests/exgs-animation2.asm` can run under `EXGCHostRefresher`; finite guest
+  programs ending with `RC_END_PROGRAM` now render one final snapshot rather
+  than being reported as host-runner failures. Both the new fixture and the
+  prior default animation pass headless host-runner smoke checks.
+- The timetool variant initially appeared blank because the live host harness
+  executed only through native `EvalOne24`, which does not dispatch Python's
+  `POLL` callback required by `Sleep`; its GETTIME loop therefore never
+  advanced and the harness never got back to its renderer. Updated bounded
+  slices to use CPU24's Python execution path for POLL support. A headless
+  0.2-second run of `exgs-animation2.asm` now advances EXGC frame timing and
+  exits the harness cleanly. SIXEL presentation remains available in a
+  capable terminal with the runner's default `present` mode.
