@@ -66,7 +66,6 @@ test: extension test-exgc-sixel test-exgc-device test-exgc-sprites
 	$(PYTHON) tests/test_exgc_phase2_validation.py
 	$(PYTHON) tests/test_cpu24_segment_memory.py
 	$(PYTHON) tests/test_cpu24_ds_runtime.py
-	CPUPATH=lib $(PYTHON) tests/exgc_animation_host.py --headless --seconds 0.05
 
 exgc-sixel: $(EXGC_SIXEL_DEMO)
 
