@@ -3,6 +3,67 @@
 This document is the standing architectural roadmap for FuncCalc. It should be
 consulted before making major language or runtime changes in later sessions.
 
+## Current direction and decisions still needed
+
+CPU24 is the supported target; `FuncCalc.asm` forwards to `FuncCalc24.asm`.
+String concatenation is implemented. A pseudo-terminal regression starter is
+`python3 tests/test_funccalc24.py` (add `--fast` for the native engine); both
+pass arithmetic, string, INPUT, INPUTINT and WRITE checks. Cover both execution
+engines, arithmetic, string ownership, INPUT/INPUTINT, WRITE, GETKEY and TTY
+restoration, nested calls, error recovery, and repeated cleanup. The separate
+`cpu24-string-regression.asm` currently exposes a `strtok` stack underflow on
+the final token when the input has no trailing delimiter.
+
+### Ownership options
+
+1. Parent-owned arenas: each call allocates temporaries in an arena owned by
+   its caller. The caller supplies a result slot; returning a value copies it
+   into that slot. Persistent mutations allocate in the destination owner's
+   arena. Reset an arena only after all borrowers are finished.
+2. Reference-counted shared values: calls retain and release shared heap
+   objects, and returning a value transfers or retains a reference. This makes
+   sharing straightforward but needs a policy for cycles in mutable lists.
+3. Hybrid: parent-owned call temporaries and result slots, with separately
+   owned, reference-counted long-lived mutable objects. Explicitly copy or
+   promote values when they escape a call; define cycle handling before lists
+   can contain themselves.
+
+The parent-owned approach fits the intended rule, but requires an explicit
+owner for global assignments, function definitions and mutations, plus a rule
+for aliases and recursive calls. Parent-owned does not imply allocating every
+value on the hardware or software stack. Allocation failure and rollback must
+also be specified. The existing string borrowing flags and function reference
+counts are implementation details to migrate, not yet this contract.
+
+### Executable lists and functions
+
+A code list can be a typed, validated object with a magic/version header and
+an ordered sequence of statements. A function can be either (a) a distinct
+descriptor containing parameters and a reference to such a code list, or (b)
+one executable list whose header also records its parameters and calling
+convention. Both support runtime function generation if constructors validate
+the header, representation, ownership and parameter names. The descriptor
+keeps ordinary data lists separate from executable objects; the unified form
+is simpler to inspect and construct, but mutable code needs rules for active
+calls and invalid or forged headers. A magic number alone is not sufficient
+type, bounds, lifetime or integrity validation. Decide whether generated code
+contains source strings or compiled statements, and whether editing code while
+it is executing is prohibited, copied, or versioned.
+
+### Error recovery
+
+Centralize error reporting and establish a recovery checkpoint at a REPL
+command boundary. Record the software-stack position and scope/cleanup marks,
+active frames, expression temporaries, loop and return state, segment/address
+mode, and terminal mode. A handler must release or roll back owned resources
+before restoring the checkpoint, then return to a known REPL continuation.
+`SCLR` clears the hardware stack; `SRPT` reports its depth and can check a
+boundary, but neither restores prior contents or unwinds the separate software
+stack. An unconditional `SCLR` inside an ordinary call destroys return
+addresses, so a nonlocal recovery path must jump to a checkpoint rather than
+return through abandoned frames. Define how allocation failures and errors
+during cleanup behave before converting the existing error sites.
+
 ## Recommended development order
 
 1. Formalize the Value model.

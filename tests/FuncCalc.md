@@ -6,15 +6,14 @@ variables, reusable statement lists, and user-defined functions.
 
 ## Starting FuncCalc
 
-Run the same source with either the original CPU or the experimental segmented
-CPU24 runtime:
+Run FuncCalc with the segmented CPU24 runtime from the `tests` directory:
 
 ```sh
-python3 cpu.py tests/FuncCalc.asm
-python3 cpu24.py tests/FuncCalc.asm
+python3 ../cpu24.py FuncCalc24.asm
 ```
 
-FuncCalc displays an `FC>` prompt. Enter `HELP` for a short command summary and
+`FuncCalc.asm` is a compatibility entry point for the same CPU24 program; it
+requires `cpu24.py`. FuncCalc displays an `FC>` prompt. Enter `HELP` for a short command summary and
 `QUIT` or `EXIT` to leave.
 
 ## Values and identifiers
@@ -32,7 +31,7 @@ currently implemented.
 
 Names begin with a letter or underscore. Remaining characters may contain
 letters, digits, underscores, or `$`. Keep the spelling and case of user names
-consistent. Commands and built-in function names may be entered in upper- or
+consistent. Names are limited to eight characters. Commands and built-in function names may be entered in upper- or
 lowercase, although the examples use uppercase.
 
 Examples:
