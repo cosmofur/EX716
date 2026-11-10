@@ -4,16 +4,23 @@ P Loading c_runtime_stubs.ld
 
 # Load services first; rebind only names whose C contract needs adaptation.
 L string.ld
+? CPU24_SEGMENTED
+L diskosDS.ld
+.CODE 0
+.DATA 1
+ENDBLOCK
+! CPU24_SEGMENTED
 # DiskOS is filtered at this point, before per-function #USE directives inside
 # the bridges below are parsed. Request its C-facing entry points up front so
 # their transitive DiskOS dependencies are retained in the filtered library.
 #USE SetDiskHeap,FSReadHeader,file_open,DiskClose,DiskFileRead,DiskFileWrite
 D diskos.ld
+ENDBLOCK
 G malloc G free G exit G memset G putchar G __EX716_GETCHAR_RAW G __EX716_INPUT_STATUS
 G __EX716_TTY_RAW G __EX716_TTY_COOKED G __EX716_TTY_ECHO G __EX716_TTY_NOECHO
 G __EX716_DISK_INIT G __EX716_DISK_OPEN G __EX716_DISK_CLOSE
 G __EX716_DISK_READ G __EX716_DISK_WRITE G __EX716_DISK_TRUNCATE
-G __EX716_DISK_REWIND G __EX716_DISK_APPEND
+G __EX716_DISK_REWIND G __EX716_DISK_APPEND G __EX716_DISK_LAST_ERROR
 
 ? CPU24_SEGMENTED
 ::__EX716_PUTCHAR_BYTE 0
@@ -49,9 +56,151 @@ ENDBLOCK
 @RET
 @ENDFUNCTION
 
-# DiskOS uses the application's heap and requires its filesystem header to be
-# loaded before name-based opens. C calls this lazily after generated startup
-# has initialized __EX716_HEAP_ID.
+? CPU24_SEGMENTED
+@FUNCTION __EX716_DISK_INIT
+:__EX716_DISK_INIT
+@PUSHRETURN
+   @PUSH 0
+   @FCALL {DiskDDS} DiskOSInit
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_OPEN
+:__EX716_DISK_OPEN
+@PUSHRETURN
+   @Locals
+   @Local FileName
+   @Local Mode
+   @Local OpenFlags
+   @POPI Mode
+   @POPI FileName
+   @MA2V 0 OpenFlags
+   @PUSHI Mode @IF_EQ_A MODE_RO
+      @POPNULL @MA2V DISKOS_OPEN_READ OpenFlags @JMP DiskOpenCall
+   @ENDIF @POPNULL
+   @PUSHI Mode @IF_EQ_A MODE_RW
+      @POPNULL @MA2V 3 OpenFlags @JMP DiskOpenCall
+   @ENDIF @POPNULL
+   @PUSHI Mode @IF_EQ_A MODE_WO
+      @POPNULL @MA2V 6 OpenFlags @JMP DiskOpenCall
+   @ENDIF @POPNULL
+   @PUSHI Mode @IF_EQ_A MODE_WP
+      @POPNULL @MA2V 7 OpenFlags @JMP DiskOpenCall
+   @ENDIF @POPNULL
+   @PUSHI Mode @IF_EQ_A MODE_AP
+      @POPNULL @MA2V 0x17 OpenFlags @JMP DiskOpenCall
+   @ENDIF @POPNULL
+:DiskOpenCall
+   @PUSHI FileName
+   @PUSHI OpenFlags
+   @FCALL {DiskDDS} DiskOSOpen
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_CLOSE
+:__EX716_DISK_CLOSE
+@PUSHRETURN
+   @Locals
+   @Local Handle
+   @POPI Handle
+   @PUSHI Handle
+   @FCALL {DiskDDS} DiskOSClose
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_READ
+:__EX716_DISK_READ
+@PUSHRETURN
+   @Locals
+   @Local Handle
+   @Local Buffer
+   @Local Count
+   @POPI Count
+   @POPI Buffer
+   @POPI Handle
+   @PUSHI Handle
+   @PUSHI Buffer
+   @PUSHI Count
+   @FCALL {DiskDDS} DiskOSRead
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_WRITE
+:__EX716_DISK_WRITE
+@PUSHRETURN
+   @Locals
+   @Local Handle
+   @Local Buffer
+   @Local Count
+   @POPI Count
+   @POPI Buffer
+   @POPI Handle
+   @PUSHI Handle
+   @PUSHI Buffer
+   @PUSHI Count
+   @FCALL {DiskDDS} DiskOSWrite
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_TRUNCATE
+:__EX716_DISK_TRUNCATE
+@PUSHRETURN
+   @Locals
+   @Local Handle
+   @POPI Handle
+   @PUSHI Handle
+   @PUSH 0
+   @PUSH 0
+   @FCALL {DiskDDS} DiskOSTruncate
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_REWIND
+:__EX716_DISK_REWIND
+@PUSHRETURN
+   @Locals
+   @Local Handle
+   @POPI Handle
+   @PUSH 1
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_APPEND
+:__EX716_DISK_APPEND
+@PUSHRETURN
+   @Locals
+   @Local Handle
+   @POPI Handle
+   @PUSH 1
+   @EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+@FUNCTION __EX716_DISK_LAST_ERROR
+:__EX716_DISK_LAST_ERROR
+@PUSHRETURN
+   @FCALL {DiskDDS} DiskOSLastError
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+ENDBLOCK
+! CPU24_SEGMENTED
+# Legacy compatibility bridge for non-segmented CPU programs.
 @FUNCTION __EX716_DISK_INIT
 :__EX716_DISK_INIT
 @PUSHRETURN
@@ -184,6 +333,14 @@ ENDBLOCK
 @POPRETURN
 @RET
 @ENDFUNCTION
+@FUNCTION __EX716_DISK_LAST_ERROR
+:__EX716_DISK_LAST_ERROR
+@PUSHRETURN
+   @PUSH 0
+@POPRETURN
+@RET
+@ENDFUNCTION
+ENDBLOCK
 
 # Small C-callable bridge for the EX716 termios compatibility layer.
 @FUNCTION __EX716_TTY_RAW

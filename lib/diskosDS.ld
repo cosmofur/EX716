@@ -1,8 +1,7 @@
-# CPU24 DiskOSDS experimental service core.
-# Requires commonDS.mc and a caller-initialized softstackDS stack.
+# CPU24 DiskOSDS application service core.
+# Requires commonDS.mc. DiskOSDS owns its DS-local software stack in DDS.
 # DDS is reserved at HIGH_BANK+1. This v0 core provides the external
-# DiskOSInit, OpenGateway, CloseGateway, ReadGateway, WriteGateway and
-# ErrorGateway entry points exercised by the DiskOSDS probes.
+# DiskOSInit, DiskOSOpen/Close/Read/Write and the metadata services.
 
 MF DiskDDS %EVAL {HIGH_BANK}+1
 G DiskOSInit G DiskOSOpen G DiskOSClose G DiskOSRead G DiskOSWrite
@@ -39,6 +38,7 @@ L heapmgrDS.ld
 =HeapNewObject HeapDSNewObject
 =HeapDeleteObject HeapDSDeleteObject
 L string.ld
+M SIZESINCE
 L diskos.ld
 ::SavedCS 0
 ::SavedPC 0
@@ -132,6 +132,19 @@ M ResolveHandle `\
    @MA2V 10 DiskLastError
    @JMP InitReturn
 @ENDIF
+# Install the private DDS stack without using a soft-stack macro here: the
+# library may be included from a nested C runtime library scope.
+@PUSH 0 @SSET SegES
+@PUSH {DiskDDS} @PUSH __SS_ROOT_STACK_DS @ESO @POPS
+@PUSH {DiskDDS} @PUSH __SS_ROOT_SAVED_DS @ESO @POPS
+@PUSHI SavedES @PUSH __SS_ROOT_SAVED_ES @ESO @POPS
+@PUSH 0x4453 @PUSH __SS_ROOT_MAGIC @ESO @POPS
+@PUSH {DiskDDS} @SSET SegDS
+@PUSH 0xeffe @POPI __DSS_TOP
+@PUSH 0xf000 @POPI __DSS_SP
+@PUSH 0xe000 @POPI __DSS_BOTTOM
+@PUSH 0x4453 @POPI __DSS_MAGIC
+@PUSHI SavedES @SSET SegES
 @PUSH 0x9000 @PUSH 0x5000 @CALL HeapDSDefineMemory @POPI Heap
 @PUSHI Heap @IF_ULT_A 100
    @POPNULL @MA2V 6 DiskLastError @JMP InitReturn
@@ -255,11 +268,7 @@ M ResolveHandle `\
    @ENDIF
 @ENDIF
 @IF_NEQ_AV 0 Result
-   @PUSHI AppendFlag @IF_ZERO
-      @POPNULL @FILL_AT_A Result FPTR_CURSOR 0 @FILL_AT_A Result FPTR_CURSOR+2 0
-   @ELSE
-      @POPNULL
-   @ENDIF
+   @FILL_AT_A Result FPTR_CURSOR 0 @FILL_AT_A Result FPTR_CURSOR+2 0
    @PUSHI TruncateFlag @IF_NOTZERO
       @POPNULL @FILL_AT_A Result FPTR_FILESIZE 0 @FILL_AT_A Result FPTR_FILESIZE+2 0
       @FILL_AT_A Result FPTR_CURSOR 0 @FILL_AT_A Result FPTR_CURSOR+2 0
@@ -372,6 +381,16 @@ M ResolveHandle `\
 @PUSHI IOPtr @ADDI IOCount @SUB 1
 @IF_UGT_A 0xfffe @POPNULL @MA2V DISKOS_E_RANGE DiskLastError @JMP IOFinish @ENDIF @POPNULL
 :WriteNext
+@PUSHI IOFilePtr @ADD FPTR_MODE @PUSHS @AND FP_OPEN_APPEND
+@IF_NOTZERO
+   @POPNULL
+   @PUSHI IOFilePtr @ADD FPTR_FILESIZE @PUSHS
+   @PUSHI IOFilePtr @ADD FPTR_CURSOR @POPS
+   @PUSHI IOFilePtr @ADD FPTR_FILESIZE+2 @PUSHS
+   @PUSHI IOFilePtr @ADD FPTR_CURSOR+2 @POPS
+@ELSE
+   @POPNULL
+@ENDIF
 @PUSHI SavedDS @SSET SegES
 @PUSHI IOPtr @ESO @PUSHS @AND 0xff @POPI IOBuffer
 @Call(VAA) DiskFileWrite IOFilePtr IOBuffer 1

@@ -482,6 +482,7 @@ extern unsigned int __EX716_DISK_WRITE(void *file, const void *buffer,
 extern int __EX716_DISK_TRUNCATE(void *file);
 extern int __EX716_DISK_REWIND(void *file);
 extern int __EX716_DISK_APPEND(void *file);
+extern int __EX716_DISK_LAST_ERROR(void);
 static int __ex716_disk_ready;
 
 extern int __EX716_GETCHAR_RAW(void);
@@ -507,7 +508,10 @@ int fgetc(FILE *stream) {
         }
         if (stream->kind == __EX716_STREAM_DISK) {
                 if (__EX716_DISK_READ(stream->disk_file, &byte, 1) != 1) {
-                        stream->eof = 1;
+                        if (__EX716_DISK_LAST_ERROR())
+                                stream->error = 1;
+                        else
+                                stream->eof = 1;
                         return EOF;
                 }
                 return byte;
@@ -760,8 +764,12 @@ size_t fread(void *destination, size_t size, size_t count, FILE *stream) {
         if (actual < requested)
                 actual += (unsigned int)__EX716_DISK_READ(
                         stream->disk_file, bytes + actual, requested - actual);
-        if (actual < requested)
-                stream->eof = 1;
+        if (actual < requested) {
+                if (__EX716_DISK_LAST_ERROR())
+                        stream->error = 1;
+                else
+                        stream->eof = 1;
+        }
         return actual / size;
 }
 

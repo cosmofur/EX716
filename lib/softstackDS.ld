@@ -24,6 +24,8 @@ G __DSS_StackError
 ::__DSS_BOTTOM 0xff00
 ::__DSS_SP 0xfff2
 ::__DSS_MAGIC DSS_MAGIC_VALUE
+::DSSInitDS 0
+::DSSInitES 0
 ENDBLOCK
 ! CPU24_SEGMENTED
 :__DSS_TOP 0xfff0
@@ -183,12 +185,19 @@ M EndLocals @DSSEndLocals
 @RET
 @ENDFUNCTION
 
-# Legacy initialization routine.  It intentionally uses only the hardware
-# stack, so it can replace the active DSS range without invalidating its own
-# frame.  Use DSSInitAB/AS for a fresh data-bank context.
+# Legacy initialization entry used by existing callers. On its first call it
+# binds the software stack root to the current DS; later calls can update the
+# range without depending on an already initialized DS stack.
 @FUNCTION SetSSStack
 :SetSSStack
-@DSSEnterStackSegment
+@SGET SegES @POPI DSSInitES
+@SGET SegDS @POPI DSSInitDS
+@PUSH 0 @SSET SegES
+@PUSHI DSSInitDS @PUSH __SS_ROOT_STACK_DS @ESO @POPS
+@PUSHI DSSInitDS @PUSH __SS_ROOT_SAVED_DS @ESO @POPS
+@PUSHI DSSInitES @PUSH __SS_ROOT_SAVED_ES @ESO @POPS
+@PUSH DSS_MAGIC_VALUE @PUSH __SS_ROOT_MAGIC @ESO @POPS
+@PUSHI DSSInitDS @SSET SegDS
 @SWP
 @POPI __DSS_BOTTOM
 @SWP
@@ -198,7 +207,7 @@ M EndLocals @DSSEndLocals
 @INC2I __DSS_SP
 @PUSH DSS_MAGIC_VALUE
 @POPI __DSS_MAGIC
-@DSSLeaveStackSegment
+@PUSHI DSSInitES @SSET SegES
 @RET
 @ENDFUNCTION
 

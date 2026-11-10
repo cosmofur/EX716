@@ -1,7 +1,12 @@
 ! __LIB_CLOCALS_LOADED
 M __LIB_CLOCALS_LOADED 1
 P Loading clocals.ld
+? CPU24_SEGMENTED
+L softstackDS.ld
+ENDBLOCK
+! CPU24_SEGMENTED
 L softstack.ld
+ENDBLOCK
 L heapmgr.ld
 L c_runtime_stubs.ld
 
