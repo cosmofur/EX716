@@ -36,16 +36,17 @@ G Var01 G Var02 G Var03 G Var04 G Var05 G Var06 G Var07 G Var08 G Var09 G Var10
 G Var11 G Var12 G Var13 G Var14 G Var15 G Var16 G Var17 G Var18 G Var19 G Var20
 G Var1 G Var2 G Var3 G Var4 G Var5 G Var6 G Var7 G Var8 G Var9
 ? CPU24
-# DS 0 runtime anchor.  It is deliberately declared before Var01, so the
-# compiler's Var01/Var20+ convention remains one uninterrupted DS 1 run.
-# These are fixed offsets rather than emitted data. softstackDS.ld initializes
-# the record before use. Segmented programs selecting the DS stack reserve
-# CS0:0000..00ff and place code at 0100 or above.
+# Stack root fields use normal data declarations so their storage follows the
+# active data/code insertion pointer and cannot collide with Var01..Var20.
 G __SS_ROOT_MAGIC G __SS_ROOT_STACK_DS G __SS_ROOT_SAVED_DS G __SS_ROOT_SAVED_ES
-=__SS_ROOT_MAGIC    0x0000
-=__SS_ROOT_STACK_DS 0x0002
-=__SS_ROOT_SAVED_DS 0x0004
-=__SS_ROOT_SAVED_ES 0x0006
+G __SS_ROOT_FAR_SP G __SS_ROOT_FAR_ES
+=SS_ROOT_BANK {CURRENT_DATA_BANK}
+::__SS_ROOT_MAGIC 0
+::__SS_ROOT_STACK_DS 0
+::__SS_ROOT_SAVED_DS 0
+::__SS_ROOT_SAVED_ES 0
+::__SS_ROOT_FAR_SP 0
+::__SS_ROOT_FAR_ES 0
 ::Var01 0
 =Var1 {Var01}
 ::Var02 0
@@ -572,8 +573,28 @@ M FCALL @SGET SegCS @PUSH $_%0A @PUSH %1 @PUSH %2 @FJMPS :_%0A
 # Far wrappers temporarily keep their two-word return pair on the software
 # stack so an ordinary local implementation can return values on the hardware
 # stack without obscuring the far return address.
-M FENTER @DEC2I __SS_SP @POPII __SS_SP @DEC2I __SS_SP @POPII __SS_SP
-M FRET @PUSHII __SS_SP @INC2I __SS_SP @PUSHII __SS_SP @INC2I __SS_SP @FJMPS
+M FENTER `\
+ @SGET SegDS ; @SGET SegES ; \
+ @PUSH SS_ROOT_BANK ; @SSET SegES ; \
+ @PUSH __SS_ROOT_SAVED_ES ; @ESO @POPS ; \
+ @PUSH __SS_ROOT_SAVED_DS ; @ESO @POPS ; \
+ @PUSH SS_ROOT_BANK ; @SSET SegDS ; \
+ @DEC2I __SS_ROOT_FAR_SP ; @POPII __SS_ROOT_FAR_SP ; \
+ @DEC2I __SS_ROOT_FAR_SP ; @POPII __SS_ROOT_FAR_SP ; \
+ @PUSHI __SS_ROOT_SAVED_ES ; @PUSHI __SS_ROOT_SAVED_DS ; \
+ @SSET SegDS ; @SSET SegES \
+`
+M FRET `\
+ @SGET SegDS ; @SGET SegES ; \
+ @PUSH SS_ROOT_BANK ; @SSET SegES ; \
+ @PUSH __SS_ROOT_SAVED_ES ; @ESO @POPS ; \
+ @PUSH __SS_ROOT_SAVED_DS ; @ESO @POPS ; \
+ @PUSH SS_ROOT_BANK ; @SSET SegDS ; \
+ @PUSHII __SS_ROOT_FAR_SP ; @INC2I __SS_ROOT_FAR_SP ; \
+ @PUSHII __SS_ROOT_FAR_SP ; @INC2I __SS_ROOT_FAR_SP ; \
+ @PUSHI __SS_ROOT_SAVED_ES ; @PUSHI __SS_ROOT_SAVED_DS ; \
+ @SSET SegDS ; @SSET SegES ; @FJMPS \
+`
 
 # Defines a public far entry named %1 followed by a near-call implementation
 # named LOC_%1. The caller supplies the implementation body and ordinary RET.

@@ -35,11 +35,11 @@ ENDBLOCK
 ENDBLOCK
 :__DSS_DATA_END
 
-# The root record is addressed through ES=0 while application DS remains
-# untouched.  On entry these macros preserve both caller DS and ES; between
-# them DS is the configured stack bank and ES remains 0 for root access.
+# The root record is addressed through ES=SS_ROOT_BANK while application DS
+# remains untouched. On entry these macros preserve caller DS and ES; between
+# them DS is the configured stack bank and ES addresses the allocated root.
 M DSSSaveCallerToRoot `\
-  @SGET SegES ; @PUSH 0 ; @SSET SegES ; \
+  @SGET SegES ; @PUSH SS_ROOT_BANK ; @SSET SegES ; \
   @PUSH __SS_ROOT_SAVED_ES ; @ESO @POPS ; \
   @SGET SegDS ; @PUSH __SS_ROOT_SAVED_DS ; @ESO @POPS \
 `
@@ -56,6 +56,7 @@ M DSSLeaveStackSegment `\
 # the empty-stack sentinel, matching the original softstack convention.
 M DSSInitABS `\
   @DSSSaveCallerToRoot ; \
+  @PUSH 0x00fe ; @PUSH __SS_ROOT_FAR_SP ; @ESO @POPS ; \
   @PUSH %1 ; @PUSH __SS_ROOT_STACK_DS ; @ESO @POPS ; \
   @PUSH DSS_MAGIC_VALUE ; @PUSH __SS_ROOT_MAGIC ; @ESO @POPS ; \
   @PUSH %1 ; @SSET SegDS ; \
@@ -69,9 +70,10 @@ M DSSInitAB `\
   @DSSInitABS 1 %1 %2 \
 `
 M DSSInitAS @DSSInitAB %1+%2 %1
-# Quick programs: reserve CS0:0000..00ff with .ORG 0x0100 and use .DATA 1.
-# Call once at entry; bank 1 offsets ff00..ffef are reserved for the stack.
-M DSSInitQuick @PUSH 1 @SSET SegDS @PUSH 1 @ADM @DSSInitAB 0xfff0 0xff00
+# Quick programs: use the active data bank for both application data and the
+# stack. With no .DATA directive, this keeps DS at the default bank 0.
+# Call once at entry; offsets ff00..ffef in that bank are reserved for stack.
+M DSSInitQuick @PUSH {CURRENT_DATA_BANK} @SSET SegDS @PUSH 1 @ADM @DSSInitABS {CURRENT_DATA_BANK} 0xfff0 0xff00
 M DSSInitASS @DSSInitABS %1 %2+%3 %2
 
 M DSSInitLegacy `\
@@ -192,7 +194,7 @@ M EndLocals @DSSEndLocals
 :SetSSStack
 @SGET SegES @POPI DSSInitES
 @SGET SegDS @POPI DSSInitDS
-@PUSH 0 @SSET SegES
+@PUSH SS_ROOT_BANK @SSET SegES
 @PUSHI DSSInitDS @PUSH __SS_ROOT_STACK_DS @ESO @POPS
 @PUSHI DSSInitDS @PUSH __SS_ROOT_SAVED_DS @ESO @POPS
 @PUSHI DSSInitES @PUSH __SS_ROOT_SAVED_ES @ESO @POPS

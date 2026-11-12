@@ -393,8 +393,16 @@ class AssemblerContext:
         # whenever a segment directive selects a higher bank, so sources can
         # request the next free high bank with `.CODE HIGH_BANK+1`.
         self.HighBank = 0
-        self.MacroData = {"HIGH_BANK": "0"}
-        self.MacroPCount = {"HIGH_BANK": 0}
+        self.MacroData = {
+            "HIGH_BANK": "0",
+            "CURRENT_CODE_BANK": "0",
+            "CURRENT_DATA_BANK": "0",
+        }
+        self.MacroPCount = {
+            "HIGH_BANK": 0,
+            "CURRENT_CODE_BANK": 0,
+            "CURRENT_DATA_BANK": 0,
+        }
         self.MacroVars = ['0'] * 64
         self.MacroBlockStack = []
         self.CurrentMacroID = None        
@@ -5716,6 +5724,8 @@ def execute_assembler_command(cmd, CPU, context):
                 f"{filename}:{context.FileLineNum}"
             )
         context.DataSegment = value
+        context.MacroData["CURRENT_DATA_BANK"] = str(value)
+        context.MacroPCount["CURRENT_DATA_BANK"] = 0
         context.DataSegments.add(value)
         context.note_bank(value)
         context.InitialDS = value
