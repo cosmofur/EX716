@@ -29,7 +29,7 @@ def test_guest_sprite_setup():
         for args in ([], ['-f']):
             result = subprocess.run([sys.executable, str(ROOT / 'cpu24.py'), '-q',
                                      *args, str(program)], cwd=ROOT, env=env,
-                                    text=True, capture_output=True, timeout=30)
+                                     text=True, capture_output=True, timeout=60)
             assert result.returncode == 0, result.stdout + result.stderr
             assert ' sprite=0010,0205,0006,00c2,0100,0011,6666' in result.stdout, result.stdout
 

@@ -2,7 +2,6 @@
 # Requires common.mc
 ! __LIB_DIV_LOADED
 M __LIB_DIV_LOADED 1
-P Load div.ld
 I div.ref
 G DIVU G DIV
 # Function DIVU unsigned Divide.

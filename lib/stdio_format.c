@@ -450,7 +450,9 @@ struct __ex716_FILE {
         int readable;
         int writable;
         int append;
-        void *disk_file;
+        /* DiskOSDS returns an opaque 16-bit handle. It is not a near pointer
+           into the caller's data segment (the old DiskOS API did that). */
+        unsigned int disk_handle;
 };
 
 #define __EX716_STREAM_INPUT  0
@@ -473,15 +475,15 @@ FILE *stderr = &__ex716_stderr_object;
 
 extern int __EX716_INPUT_STATUS;
 extern int __EX716_DISK_INIT(void);
-extern void *__EX716_DISK_OPEN(const char *name, int mode);
-extern int __EX716_DISK_CLOSE(void *file);
-extern unsigned int __EX716_DISK_READ(void *file, void *buffer,
+extern unsigned int __EX716_DISK_OPEN(const char *name, int mode);
+extern int __EX716_DISK_CLOSE(unsigned int handle);
+extern unsigned int __EX716_DISK_READ(unsigned int handle, void *buffer,
                                       unsigned int count);
-extern unsigned int __EX716_DISK_WRITE(void *file, const void *buffer,
+extern unsigned int __EX716_DISK_WRITE(unsigned int handle, const void *buffer,
                                        unsigned int count);
-extern int __EX716_DISK_TRUNCATE(void *file);
-extern int __EX716_DISK_REWIND(void *file);
-extern int __EX716_DISK_APPEND(void *file);
+extern int __EX716_DISK_TRUNCATE(unsigned int handle);
+extern int __EX716_DISK_REWIND(unsigned int handle);
+extern int __EX716_DISK_APPEND(unsigned int handle);
 extern int __EX716_DISK_LAST_ERROR(void);
 static int __ex716_disk_ready;
 
@@ -507,7 +509,7 @@ int fgetc(FILE *stream) {
                 return character;
         }
         if (stream->kind == __EX716_STREAM_DISK) {
-                if (__EX716_DISK_READ(stream->disk_file, &byte, 1) != 1) {
+                if (__EX716_DISK_READ(stream->disk_handle, &byte, 1) != 1) {
                         if (__EX716_DISK_LAST_ERROR())
                                 stream->error = 1;
                         else
@@ -537,8 +539,8 @@ int fputc(int character, FILE *stream) {
                 }
                 byte = (unsigned char)character;
                 if (stream->append)
-                        __EX716_DISK_APPEND(stream->disk_file);
-                if (__EX716_DISK_WRITE(stream->disk_file, &byte, 1) != 1) {
+                        __EX716_DISK_APPEND(stream->disk_handle);
+                if (__EX716_DISK_WRITE(stream->disk_handle, &byte, 1) != 1) {
                         stream->error = 1;
                         return EOF;
                 }
@@ -681,7 +683,7 @@ static int __ex716_mode(const char *mode, int *disk_mode,
 
 FILE *fopen(const char *filename, const char *mode) {
         FILE *stream;
-        void *disk_file;
+        unsigned int disk_handle;
         int disk_mode;
         int readable;
         int writable;
@@ -696,24 +698,24 @@ FILE *fopen(const char *filename, const char *mode) {
                         return NULL;
                 __ex716_disk_ready = 1;
         }
-        disk_file = __EX716_DISK_OPEN(filename, disk_mode);
-        if (!disk_file)
+        disk_handle = __EX716_DISK_OPEN(filename, disk_mode);
+        if (!disk_handle)
                 return NULL;
         if (truncate) {
-                if (__EX716_DISK_TRUNCATE(disk_file) != 1) {
-                        __EX716_DISK_CLOSE(disk_file);
+                if (__EX716_DISK_TRUNCATE(disk_handle) != 1) {
+                        __EX716_DISK_CLOSE(disk_handle);
                         return NULL;
                 }
         } else if (append && readable) {
                 /* C a+ starts reading at the beginning but appends writes. */
-                if (__EX716_DISK_REWIND(disk_file) != 1) {
-                        __EX716_DISK_CLOSE(disk_file);
+                if (__EX716_DISK_REWIND(disk_handle) != 1) {
+                        __EX716_DISK_CLOSE(disk_handle);
                         return NULL;
                 }
         }
         stream = (FILE *)malloc(sizeof(*stream));
         if (!stream) {
-                __EX716_DISK_CLOSE(disk_file);
+                __EX716_DISK_CLOSE(disk_handle);
                 return NULL;
         }
         stream->kind = __EX716_STREAM_DISK;
@@ -723,7 +725,7 @@ FILE *fopen(const char *filename, const char *mode) {
         stream->readable = readable;
         stream->writable = writable;
         stream->append = append;
-        stream->disk_file = disk_file;
+        stream->disk_handle = disk_handle;
         return stream;
 }
 
@@ -732,8 +734,8 @@ int fclose(FILE *stream) {
 
         if (!stream || stream->kind != __EX716_STREAM_DISK)
                 return EOF;
-        result = __EX716_DISK_CLOSE(stream->disk_file);
-        stream->disk_file = NULL;
+        result = __EX716_DISK_CLOSE(stream->disk_handle);
+        stream->disk_handle = 0;
         free(stream);
         return result == 1 ? 0 : EOF;
 }
@@ -763,7 +765,7 @@ size_t fread(void *destination, size_t size, size_t count, FILE *stream) {
         }
         if (actual < requested)
                 actual += (unsigned int)__EX716_DISK_READ(
-                        stream->disk_file, bytes + actual, requested - actual);
+                        stream->disk_handle, bytes + actual, requested - actual);
         if (actual < requested) {
                 if (__EX716_DISK_LAST_ERROR())
                         stream->error = 1;
@@ -790,9 +792,9 @@ size_t fwrite(const void *source, size_t size, size_t count, FILE *stream) {
         }
         requested = size * count;
         if (stream->append)
-                __EX716_DISK_APPEND(stream->disk_file);
+                __EX716_DISK_APPEND(stream->disk_handle);
         actual = (unsigned int)__EX716_DISK_WRITE(
-                stream->disk_file, source, requested);
+                stream->disk_handle, source, requested);
         if (actual < requested)
                 stream->error = 1;
         return actual / size;

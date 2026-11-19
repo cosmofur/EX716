@@ -101,6 +101,38 @@ int WorldGenIrregularField(unsigned long seed, unsigned long domain,
     return (int)radius - distance + edge;
 }
 
+/* Terrain detail lives in fixed world-space bands.  A band fades in while
+ * the map approaches half its wavelength, so zooming adds visible detail
+ * without changing the noise that formed the broader land shapes. */
+static int worldgen_terrain_detail(unsigned long seed, long world_x,
+                                   long world_y,
+                                   unsigned int cell_size_half_meters)
+{
+    static const unsigned int periods[6] = {
+        600000U, 60000U, 6000U, 600U, 60U, 6U
+    };
+    static const int amplitudes[6] = { 20, 16, 12, 8, 5, 3 };
+    unsigned int octave;
+    unsigned int period;
+    unsigned int fade;
+    int detail;
+    int sample;
+
+    detail = 0;
+    for (octave = 0U; octave < 6U; ++octave) {
+        period = periods[octave];
+        if (cell_size_half_meters >= period) continue;
+        if (cell_size_half_meters * 2U <= period)
+            fade = 1000U;
+        else
+            fade = (period - cell_size_half_meters) * 2000U / period;
+        sample = worldgen_smooth_noise(seed, 0x54455252UL + octave * 2UL,
+                                       world_x, world_y, period);
+        detail += sample * amplitudes[octave] * (int)fade / 128000;
+    }
+    return detail;
+}
+
 static unsigned int worldgen_index(const WorldGenGlobe *globe,
                                    unsigned int row, unsigned int column)
 {
@@ -218,8 +250,38 @@ int WorldGenMapInitialize(WorldGenMap *map, unsigned long seed,
     map->profile = profile;
     map->level = level;
     map->meters_per_cell = meters_per_cell;
+    map->cell_size_half_meters = (unsigned int)meters_per_cell * 2U;
     map->origin_x_meters = origin_x_meters;
     map->origin_y_meters = origin_y_meters;
+    map->origin_x_half_meters = origin_x_meters * 2L;
+    map->origin_y_half_meters = origin_y_meters * 2L;
+    for (index = 0U; index < WORLDGEN_MAP_CELLS; ++index)
+        map->cells[index] = WORLDGEN_SURFACE_NONE;
+    return 1;
+}
+
+int WorldGenMapInitializeHalfMeter(WorldGenMap *map, unsigned long seed,
+                                   unsigned short profile,
+                                   unsigned short level,
+                                   unsigned int cell_size_half_meters,
+                                   long origin_x_half_meters,
+                                   long origin_y_half_meters)
+{
+    unsigned int index;
+
+    if (map == 0 || cell_size_half_meters == 0U ||
+        (profile != WORLDGEN_PROFILE_EARTHLIKE &&
+         profile != WORLDGEN_PROFILE_DEAD))
+        return 0;
+    map->seed = seed;
+    map->profile = profile;
+    map->level = level;
+    map->cell_size_half_meters = cell_size_half_meters;
+    map->meters_per_cell = (unsigned short)((cell_size_half_meters + 1U) / 2U);
+    map->origin_x_half_meters = origin_x_half_meters;
+    map->origin_y_half_meters = origin_y_half_meters;
+    map->origin_x_meters = origin_x_half_meters / 2L;
+    map->origin_y_meters = origin_y_half_meters / 2L;
     for (index = 0U; index < WORLDGEN_MAP_CELLS; ++index)
         map->cells[index] = WORLDGEN_SURFACE_NONE;
     return 1;
@@ -235,14 +297,300 @@ static int worldgen_sample_globe(const WorldGenGlobe *globe, long world_x,
     long longitude;
     unsigned int column;
 
-    row = worldgen_floor_divide(world_y, 300000L) + 32L;
+    row = worldgen_floor_divide(world_y, 600000L) + 32L;
     if (row < 0L) row = 0L;
     if (row >= (long)WORLDGEN_GLOBE_ROWS) row = WORLDGEN_GLOBE_ROWS - 1L;
-    longitude = worldgen_floor_divide(world_x, 150000L) % 256L;
+    longitude = worldgen_floor_divide(world_x, 300000L) % 256L;
     if (longitude < 0L) longitude += 256L;
     column = (unsigned int)(longitude * globe->row_width[(unsigned int)row] /
                             256L);
     return WorldGenGlobeGetCell(globe, (unsigned int)row, column, cell);
+}
+
+#define WORLDGEN_RIVER_STEP_HALF_METERS 60000L
+#define WORLDGEN_RIVER_MAX_STEPS 512U
+#define WORLDGEN_WORLD_WIDTH_HALF_METERS 76800000L
+#define WORLDGEN_WORLD_HEIGHT_HALF_METERS 19200000L
+#define WORLDGEN_RIVER_SOURCE_DOMAIN 0x52495653UL
+
+static long worldgen_abs_long(long value)
+{
+    return value < 0L ? -value : value;
+}
+
+static long worldgen_longitude_distance(long first, long second)
+{
+    long distance;
+    distance = worldgen_abs_long(first - second) %
+               WORLDGEN_WORLD_WIDTH_HALF_METERS;
+    if (distance > WORLDGEN_WORLD_WIDTH_HALF_METERS / 2L)
+        distance = WORLDGEN_WORLD_WIDTH_HALF_METERS - distance;
+    return distance;
+}
+
+static int worldgen_sample_terrain(const WorldGenGlobe *globe, long x,
+                                   long y, int *height,
+                                   unsigned int *surface)
+{
+    WorldGenCell parent;
+    int detail;
+
+    if (!worldgen_sample_globe(globe, x, y, &parent)) return 0;
+    *surface = parent & WORLDGEN_CELL_SURFACE_MASK;
+    if (*surface == WORLDGEN_SURFACE_OCEAN) {
+        *height = 0;
+        return 1;
+    }
+    detail = worldgen_terrain_detail(globe->seed, x, y,
+                                     (unsigned int)WORLDGEN_RIVER_STEP_HALF_METERS);
+    *height = worldgen_clamp((int)(parent & WORLDGEN_CELL_VALUE_MASK) +
+                             detail, 0, 255);
+    return 1;
+}
+
+static int worldgen_river_near_existing(const WorldGenHydrology *hydrology,
+                                        unsigned int first_point,
+                                        long x, long y)
+{
+    unsigned int point;
+    long dx;
+    long dy;
+
+    for (point = 0U; point < first_point; ++point) {
+        dx = worldgen_longitude_distance(
+            hydrology->points[point].x_half_meters, x);
+        dy = worldgen_abs_long(hydrology->points[point].y_half_meters - y);
+        if (dx + dy <= WORLDGEN_RIVER_STEP_HALF_METERS / 4L)
+            return 1;
+    }
+    return 0;
+}
+
+static int worldgen_trace_river(WorldGenHydrology *hydrology,
+                                const WorldGenGlobe *globe,
+                                unsigned int source_row,
+                                unsigned int source_column)
+{
+    static const int direction_x[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+    static const int direction_y[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
+    long x, y, next_x, next_y, step_x, step_y, cell_width;
+    long dx, dy, latitude_row;
+    unsigned long key;
+    unsigned int first_point, step, direction, preferred, candidate;
+    unsigned int selected, surface, next_surface;
+    unsigned int row_angle, cosine, point_index;
+    int height, next_height, previous_height, drop, best_score, score;
+    int maximum_drop, minimum_height, found, repeated;
+    unsigned int terminal;
+    WorldGenRiver *river;
+
+    if (hydrology->river_count >= hydrology->river_capacity ||
+        hydrology->point_count >= hydrology->point_capacity)
+        return 0;
+    first_point = hydrology->point_count;
+    key = worldgen_hash(globe->seed, WORLDGEN_RIVER_SOURCE_DOMAIN,
+                        (long)source_row, (long)source_column);
+    cell_width = WORLDGEN_WORLD_WIDTH_HALF_METERS /
+                 WorldGenGlobeRowWidth(globe, source_row);
+    x = (long)source_column * cell_width + cell_width / 2L;
+    y = ((long)source_row - 32L) * 600000L + 300000L;
+    direction = (unsigned int)(key & 7UL);
+    previous_height = -1;
+    selected = 0U;
+    terminal = WORLDGEN_RIVER_END_LIMIT;
+    step_y = WORLDGEN_RIVER_STEP_HALF_METERS;
+
+    for (step = 0U; step < WORLDGEN_RIVER_MAX_STEPS; ++step) {
+        if (!worldgen_sample_terrain(globe, x, y, &height, &surface))
+            return 0;
+        if (hydrology->point_count >= hydrology->point_capacity) break;
+        point_index = hydrology->point_count++;
+        hydrology->points[point_index].x_half_meters = x;
+        hydrology->points[point_index].y_half_meters = y;
+        hydrology->points[point_index].flags = WORLDGEN_FEATURE_RIVER;
+        if (height <= 55 && previous_height >= 0 &&
+            worldgen_abs(height - previous_height) <= 2)
+            hydrology->points[point_index].flags |= WORLDGEN_FEATURE_SWAMP;
+        if (surface == WORLDGEN_SURFACE_OCEAN) {
+            terminal = WORLDGEN_RIVER_END_SEA;
+            break;
+        }
+        if (step != 0U && worldgen_river_near_existing(hydrology,
+                                                       first_point, x, y)) {
+            terminal = WORLDGEN_RIVER_END_TRIBUTARY;
+            break;
+        }
+
+        latitude_row = worldgen_floor_divide(y, 600000L) + 32L;
+        row_angle = (unsigned int)(worldgen_abs((int)latitude_row * 2 -
+                                                63) * 64 / 63);
+        if (row_angle > 64U) row_angle = 64U;
+        cosine = (unsigned int)MapMathCos(row_angle);
+        if (cosine < (MAPMATH_TRIG_SCALE / 3U))
+            step_x = step_y * 3L;
+        else
+            step_x = step_y * MAPMATH_TRIG_SCALE / (long)cosine;
+
+        maximum_drop = -32768;
+        minimum_height = 32767;
+        selected = 0U;
+        best_score = -32768;
+        found = 0;
+        for (candidate = 0U; candidate < 8U; ++candidate) {
+            next_x = x + (long)direction_x[candidate] * step_x;
+            next_y = y + (long)direction_y[candidate] * step_y;
+            if (next_y < -WORLDGEN_WORLD_HEIGHT_HALF_METERS ||
+                next_y > WORLDGEN_WORLD_HEIGHT_HALF_METERS)
+                continue;
+            if (!worldgen_sample_terrain(globe, next_x, next_y,
+                                         &next_height, &next_surface))
+                continue;
+            if (next_height < minimum_height) minimum_height = next_height;
+            drop = height - next_height;
+            if (drop > maximum_drop) maximum_drop = drop;
+            if (drop > 1 || next_surface == WORLDGEN_SURFACE_OCEAN) {
+                score = drop * 8 + (candidate == direction ? 20 :
+                        (candidate + 1U) % 8U == direction ||
+                        (direction + 1U) % 8U == candidate ? 8 : 0) +
+                        (int)(worldgen_hash(globe->seed, key,
+                                            (long)step, (long)candidate) & 7UL);
+                repeated = 0;
+                for (point_index = first_point;
+                     point_index < hydrology->point_count; ++point_index) {
+                    dx = worldgen_longitude_distance(
+                        hydrology->points[point_index].x_half_meters, next_x);
+                    dy = worldgen_abs_long(hydrology->points[point_index].y_half_meters -
+                                           next_y);
+                    if (dx + dy < WORLDGEN_RIVER_STEP_HALF_METERS / 3L) {
+                        repeated = 1;
+                        break;
+                    }
+                }
+                if (!repeated && score > best_score) {
+                    best_score = score;
+                    selected = candidate;
+                    found = 1;
+                }
+            }
+        }
+        if (!found) {
+            if (minimum_height > height + 2 || maximum_drop < 0) {
+                terminal = WORLDGEN_RIVER_END_POND;
+                break;
+            }
+            preferred = direction;
+            key = worldgen_hash(globe->seed, key, (long)step, 0x464c4154L);
+            if (key % 100UL < 15UL)
+                preferred = (direction + ((key & 0x100UL) ? 1U : 7U)) & 7U;
+            best_score = -32768;
+            found = 0;
+            for (candidate = 0U; candidate < 8U; ++candidate) {
+                next_x = x + (long)direction_x[candidate] * step_x;
+                next_y = y + (long)direction_y[candidate] * step_y;
+                if (next_y < -WORLDGEN_WORLD_HEIGHT_HALF_METERS ||
+                    next_y > WORLDGEN_WORLD_HEIGHT_HALF_METERS ||
+                    !worldgen_sample_terrain(globe, next_x, next_y,
+                                             &next_height, &next_surface) ||
+                    next_height > height + 1)
+                    continue;
+                score = (candidate == preferred ? 100 : 0) -
+                        (int)worldgen_abs_long((long)height - next_height) * 4 +
+                        (int)(worldgen_hash(globe->seed, key,
+                                            (long)step, (long)candidate) & 3UL);
+                repeated = 0;
+                for (point_index = first_point;
+                     point_index < hydrology->point_count; ++point_index) {
+                    dx = worldgen_longitude_distance(
+                        hydrology->points[point_index].x_half_meters, next_x);
+                    dy = worldgen_abs_long(hydrology->points[point_index].y_half_meters -
+                                           next_y);
+                    if (dx + dy < WORLDGEN_RIVER_STEP_HALF_METERS / 3L) {
+                        repeated = 1;
+                        break;
+                    }
+                }
+                if (!repeated && score > best_score) {
+                    best_score = score;
+                    selected = candidate;
+                    found = 1;
+                }
+            }
+            if (!found) {
+                terminal = WORLDGEN_RIVER_END_POND;
+                break;
+            }
+        }
+        previous_height = height;
+        direction = selected;
+        x += (long)direction_x[direction] * step_x;
+        y += (long)direction_y[direction] * step_y;
+    }
+
+    if (hydrology->point_count == first_point) return 0;
+    river = &hydrology->rivers[hydrology->river_count++];
+    river->id = worldgen_hash(globe->seed, WORLDGEN_RIVER_SOURCE_DOMAIN,
+                              (long)source_row, (long)source_column);
+    river->first_point = first_point;
+    river->point_count = hydrology->point_count - first_point;
+    river->terminal = terminal;
+    river->mouth_x_half_meters = hydrology->points[hydrology->point_count - 1U].x_half_meters;
+    river->mouth_y_half_meters = hydrology->points[hydrology->point_count - 1U].y_half_meters;
+    river->width_half_meters = 2U + river->point_count / 32U;
+    if (river->width_half_meters > 12U) river->width_half_meters = 12U;
+    river->pond_radius_half_meters = terminal == WORLDGEN_RIVER_END_POND ?
+        100U + (unsigned int)(key % 900UL) : 0U;
+    return 1;
+}
+
+int WorldGenHydrologyInitialize(WorldGenHydrology *hydrology,
+                                WorldGenRiver *rivers,
+                                unsigned int river_capacity,
+                                WorldGenRiverPoint *points,
+                                unsigned int point_capacity)
+{
+    if (hydrology == 0 || rivers == 0 || points == 0 ||
+        river_capacity == 0U || point_capacity == 0U)
+        return 0;
+    hydrology->rivers = rivers;
+    hydrology->river_capacity = river_capacity;
+    hydrology->river_count = 0U;
+    hydrology->points = points;
+    hydrology->point_capacity = point_capacity;
+    hydrology->point_count = 0U;
+    return 1;
+}
+
+int WorldGenGenerateHydrology(WorldGenHydrology *hydrology,
+                              const WorldGenGlobe *globe)
+{
+    unsigned int row, column;
+    unsigned long key;
+    WorldGenCell cell;
+
+    if (hydrology == 0 || globe == 0 || globe->cells == 0 ||
+        hydrology->rivers == 0 || hydrology->points == 0)
+        return 0;
+    hydrology->river_count = 0U;
+    hydrology->point_count = 0U;
+    for (row = 8U; row + 8U < WORLDGEN_GLOBE_ROWS; ++row) {
+        for (column = 0U; column < WorldGenGlobeRowWidth(globe, row);
+             ++column) {
+            if (!WorldGenGlobeGetCell(globe, row, column, &cell)) return 0;
+            key = worldgen_hash(globe->seed, WORLDGEN_RIVER_SOURCE_DOMAIN,
+                                (long)row, (long)column);
+            if ((cell & WORLDGEN_CELL_SURFACE_MASK) == WORLDGEN_SURFACE_MOUNTAIN) {
+                if (key % 5UL != 0UL) continue;
+            } else if ((cell & WORLDGEN_CELL_SURFACE_MASK) ==
+                       WORLDGEN_SURFACE_HIGHLAND) {
+                if (key % 47UL != 0UL) continue;
+            } else continue;
+            if (!worldgen_trace_river(hydrology, globe, row, column) &&
+                (hydrology->river_count >= hydrology->river_capacity ||
+                 hydrology->point_count >= hydrology->point_capacity))
+                return 1;
+        }
+    }
+    return 1;
 }
 
 int WorldGenGenerateTile(WorldGenMap *map, const WorldGenGlobe *globe)
@@ -250,29 +598,26 @@ int WorldGenGenerateTile(WorldGenMap *map, const WorldGenGlobe *globe)
     unsigned int x;
     unsigned int y;
     unsigned int index;
-    long world_x;
-    long world_y;
+    long world_x_half;
+    long world_y_half;
     int parent_height;
     int detail;
     int height;
-    unsigned int detail_period;
     WorldGenCell parent;
     WorldGenCell surface;
 
     if (map == 0 || globe == 0 || globe->cells == 0 ||
         map->seed != globe->seed || map->profile != globe->profile ||
-        map->meters_per_cell == 0U)
+        map->cell_size_half_meters == 0U)
         return 0;
-    detail_period = (unsigned int)((unsigned long)map->meters_per_cell * 9UL +
-                                   37UL);
-    if (detail_period > 65535U) detail_period = 65535U;
     for (y = 0U; y < WORLDGEN_MAP_HEIGHT; ++y) {
-        world_y = map->origin_y_meters +
-                  (long)y * (long)map->meters_per_cell;
+        world_y_half = map->origin_y_half_meters +
+                  (long)y * (long)map->cell_size_half_meters;
         for (x = 0U; x < WORLDGEN_MAP_WIDTH; ++x) {
-            world_x = map->origin_x_meters +
-                      (long)x * (long)map->meters_per_cell;
-            if (!worldgen_sample_globe(globe, world_x, world_y, &parent))
+            world_x_half = map->origin_x_half_meters +
+                      (long)x * (long)map->cell_size_half_meters;
+            if (!worldgen_sample_globe(globe, world_x_half,
+                                       world_y_half, &parent))
                 return 0;
             index = y * WORLDGEN_MAP_WIDTH + x;
             surface = parent & WORLDGEN_CELL_SURFACE_MASK;
@@ -284,15 +629,10 @@ int WorldGenGenerateTile(WorldGenMap *map, const WorldGenGlobe *globe)
             /* Detail is evaluated from physical coordinates.  It therefore
              * agrees on a shared edge even when adjacent tiles are generated
              * at different times or held by different programs. */
-            detail = worldgen_smooth_noise(map->seed, 0x54494c45UL,
-                world_x, world_y, detail_period) / 5;
+            detail = worldgen_terrain_detail(map->seed, world_x_half,
+                                             world_y_half,
+                                             map->cell_size_half_meters);
             height = worldgen_clamp(parent_height + detail, 0, 255);
-            if (surface == WORLDGEN_SURFACE_MOUNTAIN || height >= 102)
-                surface = WORLDGEN_SURFACE_MOUNTAIN;
-            else if (surface == WORLDGEN_SURFACE_HIGHLAND || height >= 66)
-                surface = WORLDGEN_SURFACE_HIGHLAND;
-            else
-                surface = WORLDGEN_SURFACE_LAND;
             map->cells[index] = (WorldGenCell)(surface | (unsigned int)height);
         }
     }

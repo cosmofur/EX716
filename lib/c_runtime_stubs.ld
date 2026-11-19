@@ -3,11 +3,14 @@ M __LIB_C_RUNTIME_STUBS_LOADED 1
 P Loading c_runtime_stubs.ld
 
 # Load services first; rebind only names whose C contract needs adaptation.
+? CPU24_SEGMENTED
+MF CUDS {CURRENT_DATA_BANK}
+ENDBLOCK
 L string.ld
 ? CPU24_SEGMENTED
 L diskosDS.ld
 .CODE 0
-.DATA 1
+.DATA {CUDS}
 ENDBLOCK
 ! CPU24_SEGMENTED
 # DiskOS is filtered at this point, before per-function #USE directives inside
@@ -582,7 +585,12 @@ ENDBLOCK
    @PUSHI __EX716_HEAP_ID
    @PUSHI Count
    @ADD 7
+? CPU24_SEGMENTED
+   @CALL HeapDSNewObject
+ENDBLOCK
+! CPU24_SEGMENTED
    @CALL HeapNewObject
+ENDBLOCK
    @IF_ULT_A 100
       @POPNULL
       @PUSH 0
@@ -626,7 +634,12 @@ ENDBLOCK
    @POPI ObjectID
    @PUSHI __EX716_HEAP_ID
    @PUSHI ObjectID
+? CPU24_SEGMENTED
+   @CALL HeapDSDeleteObject
+ENDBLOCK
+! CPU24_SEGMENTED
    @CALL HeapDeleteObject
+ENDBLOCK
    @POPNULL
 :__EX716_FREE_DONE
    @EndLocals

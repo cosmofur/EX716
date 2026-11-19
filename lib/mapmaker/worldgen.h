@@ -31,8 +31,14 @@ typedef unsigned short WorldGenCell;
 #define WORLDGEN_SURFACE_MOUNTAIN 0x0400U
 #define WORLDGEN_FEATURE_RIVER  0x1000U
 #define WORLDGEN_FEATURE_LAKE   0x2000U
+#define WORLDGEN_FEATURE_SWAMP  0x4000U
 #define WORLDGEN_FEATURE_FOREST 0x4000U
 #define WORLDGEN_FEATURE_SITE   0x8000U
+
+#define WORLDGEN_RIVER_END_SEA  1U
+#define WORLDGEN_RIVER_END_POND 2U
+#define WORLDGEN_RIVER_END_LIMIT 3U
+#define WORLDGEN_RIVER_END_TRIBUTARY 4U
 
 #define WORLDGEN_PROFILE_EARTHLIKE 1U
 #define WORLDGEN_PROFILE_DEAD      2U
@@ -54,8 +60,11 @@ typedef struct WorldGenMap {
     unsigned short profile;
     unsigned short level;
     unsigned short meters_per_cell;
+    unsigned int cell_size_half_meters;
     long origin_x_meters;
     long origin_y_meters;
+    long origin_x_half_meters;
+    long origin_y_half_meters;
     WorldGenCell cells[WORLDGEN_MAP_CELLS];
 } WorldGenMap;
 
@@ -71,11 +80,50 @@ typedef struct WorldGenGlobe {
     WorldGenCell *cells;
 } WorldGenGlobe;
 
+/* River geometry is stored in stable half-metre world coordinates.  Callers
+ * own both arrays so the host viewer can build a network once and reuse it
+ * while regenerating map tiles at different scales. */
+typedef struct WorldGenRiverPoint {
+    long x_half_meters;
+    long y_half_meters;
+    unsigned short flags;
+} WorldGenRiverPoint;
+
+typedef struct WorldGenRiver {
+    unsigned long id;
+    unsigned int first_point;
+    unsigned int point_count;
+    unsigned int terminal;
+    long mouth_x_half_meters;
+    long mouth_y_half_meters;
+    unsigned int width_half_meters;
+    unsigned int pond_radius_half_meters;
+} WorldGenRiver;
+
+typedef struct WorldGenHydrology {
+    WorldGenRiver *rivers;
+    unsigned int river_capacity;
+    unsigned int river_count;
+    WorldGenRiverPoint *points;
+    unsigned int point_capacity;
+    unsigned int point_count;
+} WorldGenHydrology;
+
 /* Set up a normal working tile.  Generation phases populate its cells later. */
 int WorldGenMapInitialize(WorldGenMap *map, unsigned long seed,
                           unsigned short profile, unsigned short level,
                           unsigned short meters_per_cell,
                           long origin_x_meters, long origin_y_meters);
+
+/* Initialize at half-metre coordinate precision.  Cell size and origins are
+ * expressed in 0.5 m units (1 unit = 0.5 m); this supports sprite-scale maps
+ * without floating point. */
+int WorldGenMapInitializeHalfMeter(WorldGenMap *map, unsigned long seed,
+                                   unsigned short profile,
+                                   unsigned short level,
+                                   unsigned int cell_size_half_meters,
+                                   long origin_x_half_meters,
+                                   long origin_y_half_meters);
 
 /* Set up a 64-row globe.  `storage` is caller-owned and must have room for
  * WORLDGEN_GLOBE_MIN_STORAGE_CELLS active cells. */
@@ -94,6 +142,14 @@ int WorldGenGlobeGenerateContinents(WorldGenGlobe *globe,
 /* Phase 3.  Lay one or two seeded, wandering mountain spines across each
  * continent and spread their uplift through irregular weathered foothills. */
 int WorldGenGlobeGenerateRelief(WorldGenGlobe *globe);
+
+int WorldGenHydrologyInitialize(WorldGenHydrology *hydrology,
+                                WorldGenRiver *rivers,
+                                unsigned int river_capacity,
+                                WorldGenRiverPoint *points,
+                                unsigned int point_capacity);
+int WorldGenGenerateHydrology(WorldGenHydrology *hydrology,
+                              const WorldGenGlobe *globe);
 
 /* Generate a 128 by 128 view at the map's physical origin and scale.  The
  * same seed/globe/profile/origin/scale always recreates the same tile.  The

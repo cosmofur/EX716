@@ -2,12 +2,19 @@
 M __LIB_CLOCALS_LOADED 1
 P Loading clocals.ld
 ? CPU24_SEGMENTED
+MF HeapDSCodeBank {CURRENT_CODE_BANK}
 L softstackDS.ld
 ENDBLOCK
 ! CPU24_SEGMENTED
 L softstack.ld
 ENDBLOCK
+? CPU24_SEGMENTED
+#USE HeapDSDefineMemory,HeapDSNewObject,HeapDSDeleteObject
+L heapmgrDS.ld
+ENDBLOCK
+! CPU24_SEGMENTED
 L heapmgr.ld
+ENDBLOCK
 L c_runtime_stubs.ld
 
 # Addressable stack frames for C-generated functions.

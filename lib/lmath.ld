@@ -1,12 +1,8 @@
 ! __LIB_LMATH_LOADED
 M __LIB_LMATH_LOADED 1
-P Loading lmath.ld
 I lmath.ref
-P Past Red
 L shift16.ld
-P Past Shift16
 L string.ld
-P Past string.ld load in lmath
 M SIZESINCECOMMENT lmath.ld
 
 ########################
@@ -151,6 +147,12 @@ M Call32(PV) @PUSHII %2 @PUSHI %2 @ADD 2 @PUSHS @PUSHI %3 @PUSHI %3+2 @CALL %1
 # Call32(VP) When first is variable and second is pointer
 M Call32(VP) @PUSHI %2 @PUSHI %2+2 @PUSHII %3 @PUSHI %3 @ADD 2 @PUSHS @CALL %1
 #
+# Here sopme macros for mixes 16 and 32 calls, most common being a 32 bit variable with 16 bit second argument.
+M Call32(VA16) @PUSHI %2 @PUSHI %2+2 @PUSH %3 @CALL %1
+M Call32(VV16) @PUSHI %2 @PUSHI %2+2 @PUSHI %3 @CALL %1
+M Call32(V16V) @PUSHI %2 @PUSHI %3 @PUSHI %3+2 @CALL %1
+M Call32(V16A) @Insert32(A) V2_%0 %3 @PUSHI %2 @PUSHI V2_%0 @PUSHI V2_%0+2 @CALL %1
+#
 # Call32(A) For sigle parameter 32 bit immediate $$$ value function calls
 M Call32(A) @Insert32(A) V1_%0 %2 @Call(VV) %1 V1_%0 V1_%0+2
 #
@@ -163,7 +165,6 @@ M Call32(P) @PUSHII %2 @PUSHI %2 @ADD 2 @PUSHS @CALL %1
 # Now the POP versions for simpifying POPing 2 word results into 32 bit variables
 #
 # POP32I(V) Pops right into a simple 32 bit variable stack High val on top
-P Defining POP32I
 M POP32I(V) @PUSH %1+2 @POPS @POPI %1
 M POP32I(VV) @PUSH %1+2 @POPS @POPI %1 @PUSH %2+2 @POPS @POPI %2
 #M POP32I(VVV) @PUSH %1+2 @POPS @POPI %1 @PUSH %2+2 @POPS @POPI %2 @PUSH %3+2 @POPS @POPI %3
@@ -190,60 +191,81 @@ M M16VTO32V @PUSHI %1 @POPI %2 @PUSH 0 @POPI %2+2
 M PRT32HEXI @PRTHEXI %1+2 @PRTHEXI %1
 M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 
-
 # ===========================================================
 # Function : ADD32_BASE
 # Purpose  : 32-bit binary addition (no flag semantics)
 # Inputs   : [ ... A32_Low A32_High B32_Low B32_High ]
 # Outputs  : [ ... R32_Low R32_High CarryOut ]
-# Notes    : Performs 32-bit addition with carry detection.
+# Notes    : CarryOut is the carry out of bit 31, not bit 15.
 # ===========================================================
 @FUNCTION ADD32_BASE
 :ADD32_BASE
   @PUSHRETURN
   @Locals
   @Local SumLow
-  @Local CarryAmt
+  @Local CarryLow
+  @Local Carry32
   @Local A32_Low
   @Local A32_High
   @Local B32_Low
   @Local B32_High
-  @Local R32_Low
-  @Local R32_High  
-  
+  @Local R32_High
 
     @POP32I(V) B32_Low
     @POP32I(V) A32_Low
 
-    # --- Add low words ---
+    # --- Add low 16-bit words ---
     @PUSHI A32_Low
     @ADDI B32_Low
     @POPI SumLow
 
-    # Compute carry = (A32_Low + B32_Low) - SumLow
-
+    # CarryLow = (SumLow < A32_Low), unsigned
     @PUSHI SumLow
     @IF_ULT_V A32_Low
-       @MA2V 1 CarryAmt
+       @MA2V 1 CarryLow
     @ELSE
-       @MA2V 0 CarryAmt
+       @MA2V 0 CarryLow
     @ENDIF
     @POPNULL
 
-    # --- Add high words + carry ---
+    # --- Add high 16-bit words and incoming carry ---
     @PUSHI A32_High
     @ADDI B32_High
-    @ADDI CarryAmt
+    @ADDI CarryLow
     @POPI R32_High
 
-    # Return R32_Low, R32_High, CarryAmt
+    # Final carry:
+    #   Carry32 = (R32_High < A32_High)
+    #          OR (CarryLow == 1 AND R32_High == A32_High)
+    #
+    # The equality case handles high-word wraparound caused
+    # specifically by the incoming low-word carry.
+
+    @MA2V 0 Carry32
+
+    @PUSHI R32_High
+    @IF_ULT_V A32_High
+       @MA2V 1 Carry32
+    @ELSE
+       @IF_EQ_V A32_High
+          @PUSHI CarryLow
+          @IF_NOTZERO
+             @MA2V 1 Carry32
+          @ENDIF
+          @POPNULL
+       @ENDIF
+    @ENDIF
+    @POPNULL
+
+    # --- Return result and final 32-bit carry ---
     @PUSHI SumLow
     @PUSHI R32_High
-    @PUSHI CarryAmt
+    @PUSHI Carry32
+
   @EndLocals
   @POPRETURN
   @RET
-  @ENDFUNCTION
+@ENDFUNCTION
 
 @FUNCTION ADD32
 :ADD32
@@ -293,33 +315,64 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
 @POPRETURN
 @RET
 @ENDFUNCTION
+
 # ===========================================================
 # Function : ADD32S
 # Purpose  : Signed 32-bit addition with signed overflow flag
+# Inputs   : [ ... A_Low A_High B_Low B_High ]
+# Outputs  : [ ... Result_Low Result_High ]
+# Flags    : C32Flag, N32Flag, Z32Flag, O32Flag
 # ===========================================================
 @FUNCTION ADD32S
 :ADD32S
   @PUSHRETURN
   @Locals
+  @Local32 AValue
+  @Local32 BValue
   @Local SumLow
   @Local R32_High
   @Local CarryAmt
   @Local OverFlow
+
 #USE ADD32_BASE,SetFlags32
+
+    # --- Save original operands ---
+    # ADD32_BASE consumes the operands, so preserve them
+    # locally for the signed overflow calculation.
+
+    @POP32I(V) BValue
+    @POP32I(V) AValue
+
+    # --- Perform 32-bit addition ---
+    @PUSH32I(V) AValue
+    @PUSH32I(V) BValue
     @CALL ADD32_BASE
+
+    # ADD32_BASE returns:
+    # [ ... SumLow SumHigh CarryAmt ]
+
     @POPI CarryAmt
     @POPI R32_High
     @POPI SumLow
 
     # --- Compute signed overflow ---
+    # Overflow occurs when both operands have the same sign
+    # but the result has the opposite sign.
+    #
+    # O = ((A ^ Result) & (B ^ Result) & 0x8000) != 0
+
     @MA2V 0 OverFlow
-    @PUSHI A32_High
+
+    @PUSHI AValue+2
     @XORI R32_High
-    @PUSHI B32_High
+
+    @PUSHI BValue+2
     @XORI R32_High
+
     @ANDS
     @PUSH 0x8000
     @ANDS
+
     @IF_NOTZERO
         @INCI OverFlow
     @ENDIF
@@ -328,11 +381,11 @@ M PRT32HEXS @PRTHEXTOP @SWP @PRTHEXTOP @SWP
     # --- Set flags (signed mode = 1) ---
     @PUSHI SumLow
     @PUSHI R32_High
-    @PUSH 1                # Mode: 1 = ADD
+    @PUSH 1
     @PUSHI CarryAmt
     @PUSHI OverFlow
     @CALL SetFlags32
-    
+
     # --- Push result ---
     @PUSHI SumLow
     @PUSHI R32_High
@@ -574,9 +627,15 @@ JMP SUB32S
     @ENDIF
     @FCLR
 
-    # --- Compute final carry (unsigned borrow) ---
-    @PUSHI LowBorrowTmp
-    @ORI   HighBorrowTmp
+    # Determine the full 32-bit unsigned borrow.
+    # CMP32U sets C32Flag when A < B.
+    # Save that result before CMP32S composes its own flags.
+    #USE CMP32U
+
+    @Call32(VV) CMP32U AVar BVar
+
+    @PUSHI Flags32
+    @AND C32Flag
     @IF_NOTZERO
         @MA2V 1 BorrowTmp
     @ELSE
@@ -974,7 +1033,7 @@ JMP SUB32S
 
     # ---- Negative flag ----
     @PUSHI RHigh
-    @PUSHI 0x8000
+    @PUSH 0x8000
     @ANDS
     @IF_NOTZERO
         @PUSHI Flags32 @OR N32Flag @POPI Flags32    
@@ -1546,12 +1605,11 @@ JMP SUB32S
 @Locals
     @Local Low
     @Local High
-#USE SHL32
 
     @POP32I(V) Low   # Pop Low and High from stack
     @PUSH32I(V) Low
     @PUSH 1
-    @CALL SHL32
+    @CALL SHR32
 
 @EndLocals
 

@@ -66,6 +66,8 @@ test: extension test-exgc-sixel test-exgc-device test-exgc-sprites
 	$(PYTHON) tests/test_exgc_phase2_validation.py
 	$(PYTHON) tests/test_cpu24_segment_memory.py
 	$(PYTHON) tests/test_cpu24_ds_runtime.py
+	$(PYTHON) tests/test_cpu24_entry.py
+	$(PYTHON) tests/test_cpu_profiles.py
 
 exgc-sixel: $(EXGC_SIXEL_DEMO)
 

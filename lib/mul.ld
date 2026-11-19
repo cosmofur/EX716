@@ -1,6 +1,5 @@
 ! __LIB_MUL_LOADED
 M __LIB_MUL_LOADED 1
-:NewHereMem P Load mul.ld Curr Address {NewHereMem}
 I mul.ref
 # ============================================================
 # mul.ld  -  Software Multiply Library for EX716
@@ -38,7 +37,6 @@ M SIZESINCECOMMENT mul.ld
 # Flags:
 #   Overflow flag set if high word of result ≠ 0
 # ============================================================
-:NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @FUNCTION MULU
 :MULU
 @PUSHRETURN
@@ -178,7 +176,6 @@ M SIZESINCECOMMENT mul.ld
 # Flags:
 #   Overflow flag set if high word not equal to sign extension
 # ============================================================
-:NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @FUNCTION MUL
 :MUL
 @PUSHRETURN
@@ -253,6 +250,5 @@ M SIZESINCECOMMENT mul.ld
 @POPRETURN
 @RET
 @ENDFUNCTION
-:NewHereMem P Load mul.ld Curr Address {NewHereMem}
 @SIZESINCE
 ENDBLOCK

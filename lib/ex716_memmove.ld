@@ -1,6 +1,5 @@
 ! __LIB_EX716_MEMMOVE_LOADED
 M __LIB_EX716_MEMMOVE_LOADED 1
-P Loading ex716_memmove.ld
 
 # Explicit-label overlap-safe byte copy for compiler-generated aggregates.
 # Arguments are destination, source, and byte count, in that order.

@@ -1,9 +1,15 @@
 # String Functions Generation two
 ! __LIB_STRING_LOADED
 M __LIB_STRING_LOADED 1
-P Load string.ld
 I string.ref
+? CPU24_SEGMENTED
+L heapmgrDS.ld
+=HeapNewObject HeapDSNewObject
+=HeapDeleteObject HeapDSDeleteObject
+ENDBLOCK
+! CPU24_SEGMENTED
 L heapmgr.ld
+ENDBLOCK
 L mul.ld
 L div.ld
 L ex716_memmove.ld
@@ -1051,8 +1057,9 @@ ENDBLOCK
                   @POPNULL    # Pops off DelimCurse, but leaves Instring[x]
                   @PUSHII InString @AND 0xff00
                   @POPII InString
-                  @PUSH 0
                   @MA2V 1 FoundFlag
+                  @PUSH 0       # Inner loop exit value; leave input character below it.
+                  @WHILEBREAK
                @ELSE
                   @POPNULL
                   @INCI DelimCurse
@@ -1072,7 +1079,6 @@ ENDBLOCK
            @ENDIF
       @ENDWHILE
       @POPNULL   # Pops off zero that ended while.
-      @POPNULL
       @PUSHI TolkenHead    # We return the TolkenHead
       @MV2V InString int_sptr   # Save for future calls with InString of NULL
    @ENDIF

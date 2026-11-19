@@ -3,7 +3,14 @@
 # DDS is reserved at HIGH_BANK+1. This v0 core provides the external
 # DiskOSInit, DiskOSOpen/Close/Read/Write and the metadata services.
 
+? __LIB_HEAPMGR_DS_LOADED
+MF DiskOSHeapWasLoaded 1
+MF DiskOSHeapCodeBank {CURRENT_CODE_BANK}
+ENDBLOCK
 MF DiskDDS %EVAL {HIGH_BANK}+1
+! __LIB_HEAPMGR_DS_LOADED
+MF DiskOSHeapCodeBank {DiskDDS}
+ENDBLOCK
 G DiskOSInit G DiskOSOpen G DiskOSClose G DiskOSRead G DiskOSWrite
 G DiskOSTell G DiskOSSize G DiskOSTruncate G DiskOSFind G DiskOSGetInfo G DiskOSLastError
 G DISKOS_OPEN_READ G DISKOS_OPEN_WRITE G DISKOS_OPEN_CREATE G DISKOS_OPEN_TRUNCATE G DISKOS_OPEN_APPEND
@@ -33,12 +40,9 @@ G DISKOS_E_IO G DISKOS_E_CORRUPT G DISKOS_E_ALREADY_INITIALIZED G DISKOS_E_TOO_M
 ::Reserved $$0 * 256
 L softstackDS.ld
 L heapmgrDS.ld
-# DiskOS currently names the legacy heap API; its allocation and deletion
-# calls have the same argument order and success conventions as these DS APIs.
-=HeapNewObject HeapDSNewObject
-=HeapDeleteObject HeapDSDeleteObject
 L string.ld
 M SIZESINCE
+#USE HeapDSDefineMemoryFar,HeapDSNewObjectFar,HeapDSDeleteObjectFar
 L diskos.ld
 ::SavedCS 0
 ::SavedPC 0
@@ -132,20 +136,14 @@ M ResolveHandle `\
    @MA2V 10 DiskLastError
    @JMP InitReturn
 @ENDIF
-# Install the private DDS stack without using a soft-stack macro here: the
-# library may be included from a nested C runtime library scope.
-@PUSH 0 @SSET SegES
-@PUSH {DiskDDS} @PUSH __SS_ROOT_STACK_DS @ESO @POPS
-@PUSH {DiskDDS} @PUSH __SS_ROOT_SAVED_DS @ESO @POPS
-@PUSHI SavedES @PUSH __SS_ROOT_SAVED_ES @ESO @POPS
-@PUSH 0x4453 @PUSH __SS_ROOT_MAGIC @ESO @POPS
-@PUSH {DiskDDS} @SSET SegDS
-@PUSH 0xeffe @POPI __DSS_TOP
-@PUSH 0xf000 @POPI __DSS_SP
-@PUSH 0xe000 @POPI __DSS_BOTTOM
-@PUSH 0x4453 @POPI __DSS_MAGIC
-@PUSHI SavedES @SSET SegES
-@PUSH 0x9000 @PUSH 0x5000 @CALL HeapDSDefineMemory @POPI Heap
+# The caller initializes the fixed-segment DS stack. DiskOSDS shares that
+# stack and must not replace its root or reset its live frames during init.
+@SGET SegCS @PRTHEXTOP @POPNULL
+@PUSH {DiskDDS} @PRTHEXTOP @POPNULL
+@PUSH {DiskOSHeapCodeBank} @PRTHEXTOP @POPNULL
+@PUSH 0x9000 @PUSH 0x5000
+@FCALL {DiskOSHeapCodeBank} HeapDSDefineMemoryFar
+@POPI Heap
 @PUSHI Heap @IF_ULT_A 100
    @POPNULL @MA2V 6 DiskLastError @JMP InitReturn
 @ENDIF

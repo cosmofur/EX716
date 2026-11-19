@@ -1,5 +1,6 @@
 /* One translation unit makes the CPU24 smoke test independent of linking
    while still compiling the production library implementation. */
+#include <stdio.h>
 #include "../../lib/mapmaker/mapmaker.c"
 
 int main(void)
@@ -20,5 +21,8 @@ int main(void)
     if (!MapInitialize(&map, 12345UL, 7)) return 5;
     if (first != MapRandom(&map)) return 6;
     if (MapRandomBelow(&map, 17) >= 17U) return 7;
+    putchar('O');
+    putchar('K');
+    putchar('\n');
     return 0;
 }

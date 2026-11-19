@@ -826,7 +826,7 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
             if (fseek(g_disk, g_disk_ptr, SEEK_SET) != 0) {
                 return RC_DISK_SEEK_FAIL;
             }
-            if (fwrite(&mem[src], 1, BLOCK_SIZE, g_disk) != BLOCK_SIZE) {
+            if (fwrite(&mem[vm_data_address(src)], 1, BLOCK_SIZE, g_disk) != BLOCK_SIZE) {
                 return RC_DEVICE_WRITE_FAIL;
             }
             g_disk_ptr += BLOCK_SIZE;
@@ -923,13 +923,29 @@ static int handle_cast(uint8_t *mem, uint16_t *stack, int *sp, int *flags, uint1
         case CastDebugToggle:
             return RC_DEBUG_TOGGLE;
         case CastStackDump: {
+            int z = (*flags & FL_Z) != 0;
+            int n = (*flags & FL_N) != 0;
+            int c = (*flags & FL_C) != 0;
+            int o = (*flags & FL_O) != 0;
+            unsigned cs = g_vm24 ? g_vm24->cs : 0;
+            unsigned ds = g_vm24 ? g_vm24->ds : 0;
+            unsigned es = g_vm24 ? g_vm24->es : 0;
+            if (*sp == 0) {
+                vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
+                                  " %02x:%04x:Stack:(empty) DS:%02x "
+                                  "ES:%02x Z%d N%d C%d O%d [---,---]\n",
+                                  cs, (unsigned)pc, ds, es, z, n, c, o);
+                break;
+            }
             vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
-                              " %04x:Stack:(%d)", (unsigned)pc, *sp);
+                              " %02x:%04x:Stack:(%d) DS:%02x ES:%02x "
+                              "Z%d N%d C%d O%d [",
+                              cs, (unsigned)pc, *sp, ds, es, z, n, c, o);
             for (int i = 0; i < *sp; ++i) {
                 vm_console_printf(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC,
                                   " %04x", (unsigned)stack[i]);
             }
-            vm_console_write(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC, "\n", 1);
+            vm_console_write(&g_console, VM_CONSOLE_HOST_DIAGNOSTIC, " ]\n", 3);
             break;
         }
         default:
@@ -1054,7 +1070,7 @@ static int handle_poll(uint8_t *mem, uint16_t *stack, int *sp, uint16_t arg) {
             if (fseek(g_disk, g_disk_ptr, SEEK_SET) != 0) {
                 return RC_DISK_SEEK_FAIL;
             }
-            if (fread(&mem[dst], 1, BLOCK_SIZE, g_disk) != BLOCK_SIZE) {
+            if (fread(&mem[vm_data_address(dst)], 1, BLOCK_SIZE, g_disk) != BLOCK_SIZE) {
                 return RC_DEVICE_READ_FAIL;
             }
             g_disk_ptr += BLOCK_SIZE;

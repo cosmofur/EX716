@@ -2,6 +2,16 @@
 M __LIB_DISKOS_LOADED 1
 I diskos.ref
 =REFCOUNT 0
+? CPU24_SEGMENTED
+M DiskOSHeapNew(VA) `@PUSHI %1 ; @PUSH %2 ; @FCALL {DiskOSHeapCodeBank} HeapDSNewObjectFar`
+M DiskOSHeapNew(VV) `@PUSHI %1 ; @PUSHI %2 ; @FCALL {DiskOSHeapCodeBank} HeapDSNewObjectFar`
+M DiskOSHeapDelete(VV) `@PUSHI %1 ; @PUSHI %2 ; @FCALL {DiskOSHeapCodeBank} HeapDSDeleteObjectFar`
+ENDBLOCK
+! CPU24_SEGMENTED
+M DiskOSHeapNew(VA) `@PUSHI %1 ; @PUSH %2 ; @CALL HeapNewObject`
+M DiskOSHeapNew(VV) `@PUSHI %1 ; @PUSHI %2 ; @CALL HeapNewObject`
+M DiskOSHeapDelete(VV) `@PUSHI %1 ; @PUSHI %2 ; @CALL HeapDeleteObject`
+ENDBLOCK
 # USE DebugFP
 # ================================================================
 # diskos.asm
@@ -650,6 +660,7 @@ G LINE_EOF
    @POPI DirEntry
 
    @Call(VVA) memcpy ArgTable DirEntry DIR_AT_SIZE
+   @POPNULL
 
 @EndLocals
 @POPRETURN
@@ -670,6 +681,7 @@ G LINE_EOF
    @POPI DirEntry
 
    @Call(VVA) memcpy DirEntry ArgTable DIR_AT_SIZE
+   @POPNULL
 
 @EndLocals
 @POPRETURN
@@ -776,7 +788,7 @@ G LINE_EOF
       @PRTS MEMERRMSG
       @PUSH 0
    @ELSE
-      @Call(VA) HeapNewObject DiskHeap ARGTABLE_SIZE
+      @DiskOSHeapNew(VA) DiskHeap ARGTABLE_SIZE
       @IF_ULT_A 100
          @PRTS MEMERRMSG
          @POPNULL
@@ -809,7 +821,7 @@ G LINE_EOF
       # Heap Must be defined before it can be used.
       @PRTS MEMERRMSG
    @ELSE
-      @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
+      @DiskOSHeapNew(VA) DiskHeap SECTOR_SIZE
       @IF_ULT_A 100
          @PRTS MEMERRMSG
          @POPNULL
@@ -948,6 +960,8 @@ G LINE_EOF
 
         @PUSHI ByteCount
     @ENDWHILE
+    # WHILE leaves its final zero test value on the hardware stack.
+    @POPNULL
 :DWBExit
     @PUSHI OrigCount
     @SUBI ByteCount
@@ -1062,6 +1076,7 @@ G LINE_EOF
     @Local FirstBlock
 
 
+
     @POPI Mode
     @POPI FileNum
 
@@ -1089,7 +1104,8 @@ G LINE_EOF
         @POPNULL
         
     @ENDIF
-    @CALL DirNewArgTable @IF_ZERO
+    @CALL DirNewArgTable
+    @IF_ZERO
                    @PRTS MEMERRMSG
                    @POPNULL
                    @JMP Do_Op_EXIT
@@ -1157,7 +1173,7 @@ G LINE_EOF
     @ENDIF
     # Create new File Pointer structure.
 
-    @Call(VA) HeapNewObject DiskHeap FILEPTR_SIZE
+    @DiskOSHeapNew(VA) DiskHeap FILEPTR_SIZE
     @IF_ULT_A 100
           @PRTS MEMERRMSG
           @POPNULL
@@ -1213,14 +1229,14 @@ G LINE_EOF
 :Do_Op_EXIT
     # If we get here then Diskbuff needs to be destroyed.
     @IF_NEQ_AV 0 Diskbuff    
-       @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+       @DiskOSHeapDelete(VV) DiskHeap Diskbuff
        @IF_NOTZERO
           @PRTS MEMERRMSG
        @ENDIF
        @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 ArgTable
-       @Call(VV) HeapDeleteObject DiskHeap ArgTable
+       @DiskOSHeapDelete(VV) DiskHeap ArgTable
        @IF_NOTZERO
           @PRTS MEMERRMSG
        @ENDIF
@@ -1242,7 +1258,7 @@ G LINE_EOF
 :DiskFindFreeBlock
 @PUSHRETURN
 @Locals
-#USE HeapNewObject,HeapDeleteObject,DiskNewBuffer,DirNewArgTable,DirReadEntry
+#USE HeapNewObject,HeapDeleteObject,DiskNewBuffer,DirNewArgTable,DirReadEntry,FSNextUsedFile
     @Local Map
     @Local WorkArg
     @Local Diskbuff
@@ -1259,7 +1275,7 @@ G LINE_EOF
     @MA2V 0 WorkArg
     @MA2V 0 Diskbuff
     @MA2V 0 Result
-    @Call(VA) HeapNewObject DiskHeap 1024
+    @DiskOSHeapNew(VA) DiskHeap 1024
     @IF_ULT_A 100
         @POPNULL
         @JMP DFFB_CLEANUP
@@ -1298,12 +1314,11 @@ G LINE_EOF
     # Mark every block referenced by a live directory entry.
     @MA2V 1 EntryNum
 :DFFB_SCAN
-    @PUSHI EntryNum
-    @IF_UGE_A DIREntryCount
-        @POPNULL
+    @Call(V) FSNextUsedFile EntryNum
+    @POPI EntryNum
+    @IF_EQ_AV 0 EntryNum
         @JMP DFFB_FIND
     @ENDIF
-    @POPNULL
     @Call(VVV) DirReadEntry EntryNum WorkArg Diskbuff
     @IF_ZERO
         @POPNULL
@@ -1390,15 +1405,15 @@ G LINE_EOF
 
 :DFFB_CLEANUP
     @IF_NEQ_AV 0 Diskbuff
-        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @DiskOSHeapDelete(VV) DiskHeap Diskbuff
         @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 WorkArg
-        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @DiskOSHeapDelete(VV) DiskHeap WorkArg
         @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 Map
-        @Call(VV) HeapDeleteObject DiskHeap Map
+        @DiskOSHeapDelete(VV) DiskHeap Map
         @POPNULL
     @ENDIF
     @PUSHI Result
@@ -1503,7 +1518,7 @@ G LINE_EOF
 
 :DAE_CLEANUP
     @IF_NEQ_AV 0 NewArg
-        @Call(VV) HeapDeleteObject DiskHeap NewArg
+        @DiskOSHeapDelete(VV) DiskHeap NewArg
         @POPNULL
     @ENDIF
     @PUSHI Result
@@ -1844,11 +1859,11 @@ G LINE_EOF
 
 :DFW_CLEANUP
     @IF_NEQ_AV 0 Diskbuff
-        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @DiskOSHeapDelete(VV) DiskHeap Diskbuff
         @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 WorkArg
-        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @DiskOSHeapDelete(VV) DiskHeap WorkArg
         @POPNULL
     @ENDIF
     @PUSHI WriteTotal
@@ -2073,7 +2088,7 @@ G LINE_EOF
 
 :DTE_CLEANUP
     @IF_NEQ_AV 0 WorkArg
-        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @DiskOSHeapDelete(VV) DiskHeap WorkArg
         @POPNULL
     @ENDIF
     @PUSHI Result
@@ -2168,17 +2183,17 @@ G LINE_EOF
 
 :DC_CLEANUP
     @IF_NEQ_AV 0 Diskbuff
-        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @DiskOSHeapDelete(VV) DiskHeap Diskbuff
         @POPNULL
     @ENDIF
 
     @IF_NEQ_AV 0 ArgTable
-        @Call(VV) HeapDeleteObject DiskHeap ArgTable
+        @DiskOSHeapDelete(VV) DiskHeap ArgTable
         @POPNULL
     @ENDIF
 
     @IF_NEQ_AV 0 FilePtr
-        @Call(VV) HeapDeleteObject DiskHeap FilePtr
+        @DiskOSHeapDelete(VV) DiskHeap FilePtr
         @POPNULL
     @ENDIF
 
@@ -2297,8 +2312,9 @@ G LINE_EOF
             @JMP DFR_CLEANUP
         @ENDIF
         @POPNULL
+    @ELSE
+        @POPNULL
     @ENDIF
-    @POPNULL
 
     #-------------------------------------------------
     # Clamp this word-sized request to the remaining 32-bit file length.
@@ -2524,11 +2540,11 @@ G LINE_EOF
 
 :DFR_CLEANUP
     @IF_NEQ_AV 0 Diskbuff
-        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @DiskOSHeapDelete(VV) DiskHeap Diskbuff
         @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 WorkArg
-        @Call(VV) HeapDeleteObject DiskHeap WorkArg
+        @DiskOSHeapDelete(VV) DiskHeap WorkArg
         @POPNULL
     @ENDIF
     @IF_EQ_AV 1 CursorLoaded
@@ -2962,6 +2978,7 @@ G LINE_EOF
 
     # Copy filename characters, not the terminator.
     @Call(VVV) memcpy DestPtr StrPtr Len
+    @POPNULL
 
     # Always terminate, including Len == 0.
     @PUSHI DestPtr
@@ -3016,14 +3033,14 @@ G LINE_EOF
     @ADD 1      # For null space
     @POPI MaxLen
     
-    @Call(VV) HeapNewObject DiskHeap MaxLen
+    @DiskOSHeapNew(VV) DiskHeap MaxLen
     @IF_ULT_A 100
        @PRTS MEMERRMSG
        @POPNULL
        @JMP DGFN_EXIT
     @ENDIF
     @POPI OutString
-    @Call(VVV) memcpy OutString FPString MaxLen                    
+    @Call(VVV) memcpy OutString FPString MaxLen
     @PUSHI OutString
     @ADDI Len
     @POPI NullPtr
@@ -3188,7 +3205,7 @@ G LINE_EOF
    @ENDIF
    @PUSHI FSHeadValidStore
    # Always delete Diskbuff
-   @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO @POPNULL  @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
+   @DiskOSHeapDelete(VV) DiskHeap Diskbuff @IF_NOTZERO @POPNULL  @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
    :FSRH_Exit
 @EndLocals
 @POPRETURN
@@ -3265,7 +3282,7 @@ G LINE_EOF
       @PUSH 0   # Failed tests
     @ENDIF
     # Always delete Diskbuff
-    @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO  @POPNULL @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
+    @DiskOSHeapDelete(VV) DiskHeap Diskbuff @IF_NOTZERO  @POPNULL @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
 
     :FSW_Return
 @EndLocals
@@ -3490,7 +3507,7 @@ G LINE_EOF
 
     @DISKSELI DiskNum
     # Setup Storage
-    @Call(VA) HeapNewObject DiskHeap SECTOR_SIZE
+    @DiskOSHeapNew(VA) DiskHeap SECTOR_SIZE
     @POPI Diskbuff
     #
     @Call(AV) DiskReadSector 0 Diskbuff
@@ -3532,7 +3549,7 @@ G LINE_EOF
     # Now save the Diskbuff Back
     @Call(AV) DiskWriteSector 0 Diskbuff
     # Always cleanup Diskbuff
-    @Call(VV) HeapDeleteObject DiskHeap Diskbuff @IF_NOTZERO  @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
+    @DiskOSHeapDelete(VV) DiskHeap Diskbuff @IF_NOTZERO  @PRTS MEMERRMSG @END @ELSE @POPNULL @ENDIF
     #
 @EndLocals
 @POPRETURN
@@ -3613,6 +3630,7 @@ G LINE_EOF
     @Local Diskbuff
     @Local ArgTable
 
+
     @POPI StartPoint
     @POPI Pattern
 
@@ -3682,11 +3700,11 @@ G LINE_EOF
 :FSFF_Exit
     # Cleanup
     @IF_NEQ_AV 0 Diskbuff
-        @Call(VV) HeapDeleteObject DiskHeap Diskbuff
+        @DiskOSHeapDelete(VV) DiskHeap Diskbuff
         @POPNULL
     @ENDIF
     @IF_NEQ_AV 0 ArgTable
-        @Call(VV) HeapDeleteObject DiskHeap ArgTable
+        @DiskOSHeapDelete(VV) DiskHeap ArgTable
         @POPNULL
     @ENDIF
 

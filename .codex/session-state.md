@@ -1522,3 +1522,382 @@ libraries, runtime libraries, and DiskOS. The requested refresh is complete.
   0.2-second run of `exgs-animation2.asm` now advances EXGC frame timing and
   exits the harness cleanly. SIXEL presentation remains available in a
   capable terminal with the runner's default `present` mode.
+
+## MapMaker EXGC viewer (2026-11-05)
+
+- Added `tests/mapmaker/worldgen_exgc.c/.h` to draw the replacement WorldGen
+  globe and 128x128 world tile into the EXGC framebuffer with a relief palette.
+- Added `worldgen-exgc` native host SIXEL viewer and `--asm` export for a
+  preloaded CPU24 EXGC guest image; seed, tile, and tile origin are selectable.
+  Generation currently runs on the host; the guest only displays the result.
+- `make -C tests/mapmaker test` passes, including terrain/framebuffer tests.
+  Generated globe and tile guest images run in CPU24 fast mode; a nonzero guest
+  framebuffer word was checked against the generated image. User visual
+  feedback and interactive/CPU24-native generation remain future work.
+
+## Portable EXGC canvas (2026-11-05)
+
+- Added C89 `lib/exgc/exgc_canvas.c/.h`: GCC uses a host EXGC segment buffer;
+  lcc uses FC-segment `farptr.ld` operations. It supports clear, RGB555 palette,
+  pixel read/write and bounds; host SIXEL encoding remains standalone.
+- MapMaker WorldGen host rendering now uses the shared canvas; generated SIXEL
+  matches the pre-refactor output byte for byte. `make -C tests/mapmaker test`
+  passes and `make -C tests/mapmaker test-lcc` exercises the canvas on CPU24.
+- Full WorldGen rendering/generation cannot yet compile on lcc: its 128x128
+  word array plus metadata exceeds lcc's 32767-byte object limit. A segmented
+  storage or split-array design is required; do not claim CPU24-native WorldGen
+  rendering until it is implemented and tested.
+
+## ECC, large objects, and MapMaker (2026-11-05)
+
+- User requires compiling C directly with `bin/ECC` and executing its output
+  with `cpu24.py`; do not add Python scripts that drive compiler steps. The
+  earlier custom large-object Python runner was removed. MapMaker `test-lcc`
+  now uses ECC/CPU24 commands directly. `--no_auto_bank` was only a diagnostic;
+  the working MapMaker tests use ECC's default automatic banking.
+- Sibling lcc now accepts EX716 object sizes up to 65535 bytes, keeping signed
+  16-bit int; `sizeof` matches unsigned 16-bit size_t and ptrdiff_t is 32-bit
+  signed long. Rebuilt lcc and updated the EX716 overlay. Full-segment objects
+  remain unrepresentable and actual data/stack must fit the selected segment.
+- ECC-built `tests/mapmaker/worldgen_cpu24.c` links the real WorldGen and EXGC
+  canvas modules, initializes a full 128x128 map, draws it on CPU24, and
+  verifies pixels. This is a synthetic map; procedural generation has not
+  yet been demonstrated end-to-end on CPU24. Host viewer can generate maps.
+- `make -C tests/mapmaker test-lcc` runs the small MapMaker, canvas, and large
+  WorldGen drawing checks through ECC and CPU24. Large-object C fixtures in
+  sibling lcc/tests use the same direct CLI flow.
+
+## FuncCalc strtok checkpoint and repair (2026-11-06)
+
+- Checkpointed FuncCalc CPU24 support, documentation and regression fixtures in commit 115da4a. Unrelated worktree changes remain separate.
+- Fixed shared string.ld strtok delimiter-match and end-of-string stack balance; expanded tests/cpu24-string-regression.asm and updated FuncCalc design notes. These repair changes are uncommitted.
+- CPU24 Python and fast engines both passed the expanded string fixture; the FuncCalc fast interactive regression and git diff --check passed. Further work: add splitstr coverage and broader FuncCalc ownership, nested-call, error and terminal tests.
+
+## FuncCalc file commands: in progress (2026-11-06)
+
+- User specified SAVE filename[,function...] and LOAD filename[,function...] for all or selected stored function/list objects, preserving stored order on save; TYPE prints a text file with nonprintables except LF/TAB replaced by dots. DIR and DELETE operate on files; retain existing LIST syntax. Filenames accept literals and string variables. Runtime file handles are deferred.
+- Fixed speedCPU.c sector read/write to address active CPU24 data segment. tests/test_cpu24_disk_segments.py passes on Python and fast engines; make test passes. Changes uncommitted.
+- Isolated DiskOS header probe passes both engines after fix. Adding DiskOS and file routines to FuncCalc in /tmp corrupts software-stack initialization/startup; moving data segment alone does not fully solve it. Investigate combined code/data layout and DiskOS static addresses before implementing commands. Design decisions recorded in tests/FuncCalc-Design-Plan.md. No file commands implemented yet.
+
+## DiskOS private CS/DS direction (2026-11-09)
+
+- User requested a formal segmented DiskOS service: one segment contains DiskOS code, private data, and a non-overlapping local heap; applications use far-call gateways. Applications must access data through an explicit cross-segment buffer interface, not near DiskOS heap pointers.
+- Added experimental tests/cpu24-diskos-gateway-probe.asm and tests/test_cpu24_diskos_gateway.py. Both CPU24 engines pass: service runs in CS2/DS2, uses fixed software-stack segment 3, and restores caller DS1/ES4. Probe is a minimal service, not the DiskOS port and does not yet test its heap or file I/O.
+- A direct far helper call through automatic veneers failed with stack underflow; the passing experiment uses a gateway in CS0 and a leaf far service. Remaining: design real far entry/return and dependencies, private heap bounds, cross-segment buffers and handles, then implement and test diskos.ld and the FuncCalc file commands. Updated tests/FuncCalc-Design-Plan.md.
+
+## DiskOSDS checklist and UDS filename prototype (2026-11-09)
+
+- User defines DDS as DiskOS CS/DS selected dynamically from HIGH_BANK+1, and UDS as caller DS. Priority is a fully functional file_open taking a UDS filename pointer and allocating file state in DDS.
+- Added tests/DiskOSDS-Checklist.md. Extended gateway probe to capture HIGH_BANK+1 and tested prior code banks 0 and 7 in Python and fast engines. Added tests/cpu24-diskos-filename-probe.asm and tests/test_cpu24_diskos_filename.py: bounded UDS to DDS filename copy, 8/31/32 byte cases, both engines, caller DS/ES preserved.
+- These are prototypes, not file_open. They use static return slots and are not reentrant. Need DDS reservation/MMIO checks, private heap and actual diskos integration. Existing cross-CS auto veneers use the legacy stack convention and require investigation with fixed software stacks. All changes uncommitted.
+
+## DiskOSDS real-open probe (2026-11-09)
+
+- Added tests/cpu24-diskos-open-probe.asm and tests/test_cpu24_diskos_open_probe.py. DDS=HIGH_BANK+1 contains DiskOS, legacy stack/heap/string dependencies, private static data, heap 9000..e000 and stack e000..f000; a gateway copies a bounded filename from UDS and preserves DS/ES. It initializes filesystem once, opens, closes, reopens and recloses a real file. Both CPU24 engines pass existing/missing/overlong name tests using a disposable DiskOS image.
+- This is an isolated experimental executable, not a reusable DiskOSDS library: it owns all dependency symbols, disables old size diagnostics, uses fixed ranges and non-reentrant static gateway return state, only supports read-only open, and lacks a stable handle API. No FuncCalc commands implemented. Next: module/dependency isolation, safe segment/heap bounds, reentrant frames and production API, followed by create/error tests and FuncCalc integration.
+
+## DiskOSDS utility correction (2026-11-09)
+
+- User correctly requested DS utility libraries. Converted tests/cpu24-diskos-open-probe.asm from softstack.ld/heapmgr.ld to softstackDS.ld/heapmgrDS.ld. Probe maps legacy DiskOS HeapNewObject/HeapDeleteObject names to matching DS heap functions, uses HeapDSDefineMemory, and reserves CS0 low memory for the DSS root.
+- tests/test_cpu24_diskos_open_probe.py passes on Python and fast engines for existing/missing/overlong filenames; open/close/reopen/reclose succeeds and free heap after each close matches. Gateway probe and git diff --check also pass.
+- Important: DSSInitABS installs a process-global stack root; the isolated probe points it at DDS. A production service must preserve or coordinate an existing caller stack root, not overwrite it while caller frames are active. Alias mapping and hard-coded memory ranges remain prototype only; library integration, reentrancy, create modes, and error paths are unfinished.
+
+## DiskOSDS shared stack decision (2026-11-09)
+
+- User chose a single caller-initialized shared DS software stack. DiskOSDS must capture UDS/ES before entering DDS, preserve them and the selected stack root, and allow stack helpers to temporarily switch DS while restoring DDS before execution resumes.
+- Updated tests/cpu24-diskos-open-probe.asm: caller initializes fixed stack in segment 3, places a live sentinel, and DiskOS never initializes or changes its root. tests/test_cpu24_diskos_open_probe.py verifies caller DS/ES and data, stack segment, stack pointer and sentinel after open/close/reopen; existing/missing/long name cases pass Python and fast engines. Checklist updated.
+- Still an experimental executable with static non-reentrant gateway return slots, fixed DDS layout and dependency symbols. The sentinel test is not a real nested caller frame; fix/test cross-CS FENTER/FRET against fixed DS stack before production, then implement reusable API, create modes and failure cases.
+
+## DiskOSDS experimental read/write (2026-11-09)
+
+- Added ReadGateway and WriteGateway to tests/cpu24-diskos-open-probe.asm: DDS handle + UDS offset + count, byte-at-a-time through DDS buffer, restoring UDS/ES, rejecting wrapped UDS ranges and returning transferred count. Existing open probe remains read-only; IO test selects MODE_RW in a generated fixture.
+- Added tests/test_cpu24_diskos_io_probe.py. Both CPU24 engines pass binary write/close/reopen/read and external disk-image export; tests cover zero and high-bit bytes, short read/EOF, zero count, rejected range wraps, adjacent-byte sentinel, UDS/ES and shared stack preservation. Existing open and gateway tests pass.
+- Prototype still has static non-reentrant gateway state, fixed layout, unvalidated handles, no distinct error status for invalid range vs EOF, and inefficient per-byte DiskOS calls. It is not a reusable production DiskOSDS API; create modes, full errors and FuncCalc commands remain.
+
+## DiskOSDS repeated writes beyond 64 KiB (2026-11-09)
+
+- Added tests/test_cpu24_diskos_extent_probe.py. On disposable images, it imports a 65,530-byte file, opens through experimental DDS gateway in append mode, performs three independent four-byte writes across the 65,536-byte boundary, closes and reopens, and verifies the complete 65,542-byte export and filesystem check. Python and fast engines pass.
+- This proves the exercised continuation-extent crossing, not arbitrary multi-extent sizes, disk-full handling, large DDS read gateway or practical throughput. Gateways remain per-byte prototypes and production API remains unfinished.
+
+## LCC stdio handles against DiskOSDS (2026-11-10)
+
+- Updated `lib/stdio_format.c` so the `FILE` disk member and C bridge prototypes
+  describe DiskOSDS handles as opaque 16-bit values, not near `void *` file
+  pointers. Read, write, close, truncate, rewind and append bridges now receive
+  the handle value; the segmented assembly bridge already forwards it to
+  DiskOSDS services without exposing DDS pointers to C.
+- `python3 ../lcc/tests/file_roundtrip.py --ex716-root .` currently assembles
+  the non-segmented legacy branch and fails at `@FCALL` because its generated
+  harness does not define `CPU24_SEGMENTED`; it does not validate the updated
+  DiskOSDS branch. The DiskOSDS I/O probe also hits an existing expectation
+  mismatch (`stackbank=0003` expected, `0002` produced) before its fast-engine
+  leg. These harness/configuration mismatches need reconciliation before a
+  meaningful end-to-end lcc+DiskOSDS stdio check.
+- Next: add/enable a segmented lcc test harness using `commonDS.mc` and the
+  caller-initialized shared stack, then verify C stdio open/read/write/close
+  across DS changes. Keep the legacy same-segment bridge for non-segmented
+  builds; its near-pointer layout remains private to that compatibility path.
+
+## lcc runner switched to DS libraries (2026-11-10)
+
+- Updated the sibling lcc `tests/file_roundtrip.py` harness and its overlay
+  patch to use `commonDS.mc`, `softstackDS.ld`, and `heapmgrDS.ld`, initialize
+  a caller-owned stack in segment 3, select UDS=1/ES=4, and enter/leave Ring 1.
+- Updated EX716 `clocals.ld` and `string.ld` to select DS stack/heap libraries
+  under `CPU24_SEGMENTED`; segmented C malloc/free call DS heap routines.
+  LCC-generated segmented `main` now initializes its DS heap only and keeps
+  the caller's stack/root. Non-segmented startup retains its old heap-backed
+  C stack path. These lcc changes and the test runner are included in the
+  cumulative sibling overlay patch.
+- Corrected `DiskOSInit` so it shares rather than replaces the caller's DS
+  stack root. Existing DiskOSDS open and binary I/O probes pass after this
+  correction.
+- The lcc runner now resolves all symbols but fails on the first DiskOSDS
+  private-heap setup: execution reaches `CS2:1001`, which contains DDS data,
+  where executable heap helper code is expected. Likely cause: the caller's
+  earlier `heapmgrDS.ld` load suppresses the service-local copy through the
+  global load guard. Removing that guard creates duplicate utility definitions
+  and is not a valid fix. Need segment-aware utility instances or another
+  explicit code-bank linkage design before the round-trip can pass.
+
+## lcc DS heap far-call investigation (2026-11-10)
+
+- Added a heap code-bank marker in segmented `clocals.ld`; DiskOSDS selects the
+  caller's DS heap implementation when it was already loaded, otherwise its
+  own DDS copy. Split public near heap entry points, far entry points, and
+  `*Local` implementations. Far entries now follow the requested
+  `FENTER; CALL Local; FRET` structure; DiskOS heap allocation and free use
+  those far entries. DiskOSDS heap initialization uses the selected
+  `DiskOSHeapCodeBank`.
+- The lcc runner assembles and resolves all symbols, but execution still
+  fails at `CS0:0000` (invalid opcode `0x53`) during first startup. The far
+  return still does not land at the caller. Next: preserve runner artifacts
+  and inspect the generated entry/return pair and active `__SS_SP` bank around
+  `HeapDSDefineMemoryFar`; verify `@FENTER/@FRET` against the shared DS stack
+  setup before claiming the lcc file round-trip works.
+- Added temporary trace prints at the heap public/local entries and DiskOS
+  heap initialization to show CS, DS, DDS, selected heap code bank, and heap
+  initialization arguments. The runner originally showed CS=1/DS=1. Changing
+  runner UDS/data to bank 4 made it show CS=4/DS=4, so the program's current
+  code bank follows the selected data bank; this change alone does not separate
+  them. The trace reaches and returns from the app heap's local implementation
+  (printed heap ID `fe00`, size `a72c`) then crashes at CS0:0000 before the
+  DiskOS heap-init trace, so the failing first path is still C startup rather
+  than a DiskOSDS call. `diskosDS.ld` includes `diskos.ld` for shared core
+  algorithms, with DS heap calls macro-routed; this reuse needs review as part
+  of the DS-only library audit. Runner change is in sibling `lcc/tests` and
+  has not yet been copied into its overlay patch.
+- Architecture decision: keep separate C and DiskOS heaps, each initialized
+  and used only while its owning UDS or DDS is active. The DS heap manager can
+  remain generic code; its metadata and returned near pointers are local to the
+  active DS. C malloc/free use the application's UDS heap ID. DiskOS uses a
+  private DDS heap ID and opaque file handles, never returning DDS object
+  pointers to the application. Long-term direction is bank-plus-offset far
+  pointers/handles, with an optimization for small objects; this is a planned
+  API evolution, not part of the current repair.
+- Added `@StackDump` snapshots before the C heap call, at the public entry, and
+  after the local function saved its return. Exact startup selectors are
+  CS=`0`, DS=`4`; they are separate. Producer stack is `[FE00,0100]` top-first
+  (size, base); public entry adds its return PC; local stack after saving that
+  return is `[FE00,0100]`. The local routine now captures heap ID `0100` and
+  size `FE00`, and returns heap ID `0100` successfully. Root cause was the
+  public near wrapper using CALL Local then RET, leaving a second return PC
+  above the arguments. Changed public `HeapDSDefineMemory/NewObject/DeleteObject`
+  entries to tail-jump into their local implementations; far entries retain
+  `FENTER; CALL Local; FRET`. Runner now reaches the C test and emits result
+  `1`, rather than expected `0`; this is a real test failure at its first
+  `fopen`, not a missing runner result. Continue by tracing DiskOS init/open.
+- Added lcc startup diagnostics before the C heap call. Latest run reports
+  `__DEND=0x00fa`, documented code-end symbol `END__=0xe058`, computed heap
+  base `0x0100`, and size `0xfe00` (log prints size then base). The exact
+  startup selector print is concatenated as `00000004`: CS=`0x0000`,
+  DS=`0x0004`. The runner sets DS to bank 4 before stack initialization and
+  again before main, so code end `END__=0xe058` is in CS0 and does not overlap
+  the UDS4 heap; using `__DEND` for the heap is appropriate here. A later
+  callee stack snapshots now agree with the producer. Runner snapshots show
+  the hardware stack empty before main, `[0001,0100]` after return, and `[0100]`
+  after the result is consumed; expected is `[0000]` after main and empty after
+  consumption. The C result is 1 because its first `fopen` fails. The `0100`
+  residual likely comes from startup return/heap bootstrap stack handling and
+  should be traced separately. The attempted `__END` alias was removed;
+  diagnostics use documented `END__`.
+
+## StackDump CPU state display (2026-11-10)
+
+- Extended Python and native `@StackDump` output with CS:PC in the leading
+  address position, followed by stack depth, source line, DS/ES and Z/N/C/O
+  flag bits; stack values remain listed afterward. This keeps the code bank
+  visible in the same address style as disassembly while retaining the full
+  selector and flag context needed by the DiskOS runner trace.
+- Not verified in this update; the native CAST format string and Python
+  formatter were reviewed together. Existing runner traces are the intended
+  next verification when continuing the DiskOS file-open diagnosis.
+
+## DiskOS file-open stack overflow trace (2026-11-10)
+
+- Targeted the shared `diskos.ld` core reached through `diskosDS.ld` (the DS
+  library includes that core). Stack snapshots showed `file_open` locals and
+  `FSFindFile` return correctly; the overflow occurred later in
+  `DiskFindFreeBlock`, which called `DirReadEntry` for all 512 directory slots.
+  The growth was not recursion. Each `DirReadEntry` calls `DirEntryToArgTable`,
+  which calls `memcpy`; the latter executes from CS0 while the DiskOS core is
+  in CS5. Traces show the memcpy loops/branches return to their pre-cleanup
+  stack depth, but the cross-bank call returns with an extra code-looking word
+  on the hardware stack. This is the likely source of one-word-per-entry
+  growth, pending a fix to the cross-bank return path.
+- Changed `DiskFindFreeBlock` to walk allocated entries using
+  `FSNextUsedFile`, then inspect only those entries. Removed noisy per-local
+  and per-iteration traces; retained snapshots at file-open call boundaries,
+  DiskOpen’s key calls, and the `DiskFindFreeBlock` scan/call boundaries.
+- Changed the scan to walk allocated entries using `FSNextUsedFile`, avoiding
+  repeated reads of empty directory slots. Runner no longer overflows and
+  reaches DiskOpen completion, but this only limits the number of leaked words;
+  the cross-bank return imbalance remains to fix.
+- Inspected `DirReadEntry`, `DirEntryToArgTable`, and `memcpy` stack snapshots.
+  `DirLocate`’s two results are consumed, `DiskReadSector` is void, and
+  `DirEntryToArgTable`/`memcpy` are void. No missing `@POPNULL` was found in
+  those paths. The memcpy loop/branch stack is balanced before local restore;
+  its DS software-stack pointer returns to the pre-local depth. Preserved the
+  generated assembly and auto-bank veneers under `/tmp/ex716-lcc-autobank` and
+  `/tmp/cpu24-auto-veneers-p5bdutc6.asm`. Veneer tracing confirms `FENTER`
+  consumes the caller PC and CS; the extra word `9007` is present at the far
+  return after the target body has run, despite memcpy’s hardware stack being
+  at baseline before `@POPRETURN`. This narrows the remaining imbalance to the
+  target return/call ABI around the auto-bank entry; it is still unresolved.
+  Runner still exits with result 1 at C `fopen("ROUNDTRIP.BIN", "wb")`, and
+  the lcc fixture still contains temporary direct bridge calls.
+
+## Next-session DiskOS root-cause runbook
+
+- Do not stop at a single trace or treat the first plausible explanation as the diagnosis. Continue from evidence through a minimal fix and a rerun of the complete file-roundtrip runner; the task is complete only when the first `fopen` succeeds and the runner returns its expected result (or a new independently demonstrated blocker is found).
+- Reconfirm the worktree and this note first. The lcc checkout is a sibling directory and the fixture currently has temporary direct bridge calls; do not reset or overwrite those changes. The preserved runner wrapper is `/tmp/ex716_keep_runner.py`. Run `python3 /tmp/ex716_keep_runner.py > /tmp/ex716-lcc-autobank-run.log 2>&1` from this repository. It recreates `/tmp/ex716-lcc-autobank` and preserves assembled source there. Keep the full output and generated assembly for each run.
+- Settle the alleged stack leak. At the cross-bank `memcpy` call, record caller stack depth and top-first words before argument pushes, after pushes, at the CS0 target entry, before target `@POPRETURN/@RET`, at the CS0 veneer return label, after `@FRET`, and at the caller's first instruction after cleanup. Record hardware stack and DS software-stack pointer. Use generated assembly to identify the actual cleanup instruction and source/C call site. `9007` is the destination argument in this run; its presence alone does not prove a leak. Compare depth against the pre-call baseline and check each return consumes only its own return record. If a delta first appears, reduce tracing to that one call and inspect macro expansion/ABI before editing.
+- Follow the first `fopen("ROUNDTRIP.BIN", "wb")` through the C stub, DiskOpen public/local entries, `file_open`, lookup, free-block selection, and disk write/allocation. At every boundary dump arguments, return/status values, CS/DS/ES, and stack. Identify the exact failing branch and reason; check temporary disk image and directory state before/after. Do not infer the cause from the final C result alone.
+- Keep the `FSNextUsedFile` scan change as overflow mitigation, but do not count it as the stack fix. Revisit `@POPNULL` only if a specific branch has an unmatched stack-producing conditional/loop result; audit taken/untaken paths and early jumps through cleanup.
+- After each evidence-backed change, rerun the full runner and compare the same checkpoints. Continue until expected `FILE_ROUNDTRIP_RESULT=0`, or until a distinct external blocker is demonstrated. Then remove only obsolete debug output, retain useful file-open snapshots, run `git diff --check`, and report the demonstrated cause, repair, and result.
+- Correction to the prior trace note: `9007` at far return is a live destination argument and may be expected under caller-cleanup. Its value was established; that it leaked was not. Auto-bank return imbalance remains a hypothesis until caller cleanup and pre-call baseline are compared. No scoped-local conversion of `memcpy` was applied; source still uses `@LocalVar/@RestoreVar`.
+
+## Continued DiskOS/lcc investigation (2026-11-11)
+
+- Confirmed the saved `/tmp/ex716_keep_runner.py` wrapper runs to completion and
+  preserves generated assembly in `/tmp/ex716-lcc-autobank/file_roundtrip.asm`.
+  It reports `Unresolved symbols: 0`, then `FILE_ROUNDTRIP_RESULT=1`; there is
+  no stack overflow or invalid opcode in this run.
+- DiskOS initialization succeeds, and the one traced `DiskOSOpen` call completes
+  `file_open` (including create and final DiskOpen). The temporary C fixture
+  first performs a direct `__EX716_DISK_OPEN` probe and close; the subsequent
+  `fopen("ROUNDTRIP.BIN", "wb")` fails before a second `__EX716_DISK_OPEN`
+  bridge call. Therefore the immediate failure is before the DiskOS gateway,
+  and the suspected cross-bank stack imbalance is not established as the cause.
+- Generated `fopen` assembly calls the mode parser first and branches to NULL
+  if it returns zero. Next trace the actual `wb` pointer/bytes and mode-parser
+  return in the generated execution, then verify the stdio readiness and open
+  bridge path. Runner artifacts remain in `/tmp`; sibling lcc files have not
+  been edited in this continuation.
+
+- Stack follow-up: the broad `PUSHRETURN`/`POPRETURN` trace was narrowed with
+  temporary dumps around DiskWriteBlock calls. Each call enters with the caller
+  baseline restored after its five arguments are consumed, but exits with two
+  words where its contract provides one result. After the caller consumes the
+  result, hardware depth is still one word higher. The calls happen repeatedly
+  inside DiskFileWrite's write loop, so this is a returning function with a
+  per-call stack leak, not a recursive path that never reaches cleanup. Removed
+  the temporary dump statements. Added `tests/diskos_lcc_main_calls.csv` with
+  main-path function contracts and the observed DiskWriteBlock return count.
+  Next isolate which DiskWriteBlock branch/loop contributes the extra word and
+  verify the complete round-trip stack is empty.
+
+- Follow-up: restoring the caller data bank after loading DiskOS services fixes
+  the mode-parser/data access failure. The runner now reports
+  `FILE_ROUNDTRIP_RESULT=0`, but exits with a 40-word hardware stack. Temporarily
+  instrumented `PUSHRETURN`/`POPRETURN` with `@StackDump` on both sides, then
+  reverted the instrumentation. The helper moves each alter hardware depth by
+  one as expected, and many core calls return to their incoming depth. This
+  broad trace has not isolated the first unmatched cleanup; its extra output
+  also breaks the harness parser. Next use targeted snapshots at the first
+  depth increase in the nested write/close path.
+
+- Root cause for DiskWriteBlock is now demonstrated: its outer
+  `@WHILE_UGT_A 0` pushes the final zero condition before exiting, and unlike
+  the inner loop it had no following `@POPNULL`. Added the missing pop after
+  the outer `@ENDWHILE`. The file-roundtrip still reports result 0; final
+  hardware stack dropped from 40 to 28, a reduction of one word for each of
+  the 12 DiskWriteBlock calls. Updated the CSV's observed return count to one.
+  The remaining 28-word residue comes from other paths and is still under
+  investigation; do not mark the overall issue complete yet.
+# DiskOSDS/lcc file round-trip stack accounting (2026-11-11)
+
+- Regenerated `tests/diskos_lcc_main_calls.csv` from a complete instrumented
+  file-roundtrip execution. It records the six requested contract/observed
+  counts for 32 functions reached in the test. Stack observations are the
+  hardware-stack delta across function entry/return, so leaked child values
+  are included in the caller's observed return count.
+- The clean, non-instrumented rerun executes `FILE_ROUNDTRIP_RESULT=0` and
+  ends at stack depth 28. The runner's output checker still says it could not
+  parse the C result (`got []`), despite the result marker being in output.
+  Thus the disk workload reaches its success result, but the runner's final
+  assertion remains unresolved and stack residue remains.
+- The CSV highlights large observed return counts for `fwrite`/`DiskOSWrite`
+  (13), `fopen` (3), `fclose`/`DiskOSClose` (3), `SetDiskHeap` (7), and `main`
+  (28). These are diagnostic stack deltas, not evidence that the functions
+  intentionally return that many values.
+- Restored temporary StackDump instrumentation in `lib/softstackDS.ld` and
+  `lib/commonDS.mc`; retained the `DiskWriteBlock` loop-condition cleanup in
+  `lib/diskos.ld`. Next: isolate the remaining stack deltas and repair the
+  runner output assertion, then regenerate the CSV from the corrected run.
+
+## DiskOS stack analyzer repair (2026-11-11)
+
+- Added `tests/build_diskos_call_csv.py`, using executing CS:PC/code-bank
+  evidence and strict LIFO pairing instead of same-name backward matching.
+  It writes the function summary, per-invocation tree, and diagnostics CSVs.
+- Confirmed the apparent 2,255 `SetDiskHeap` calls were shared autobank
+  helper snapshots inheriting `diskos.ld:528/530` source metadata. The actual
+  SetDiskHeap invocation is one call, one argument, zero return words.
+- Current reports contain 56 functions and 705 paired invocations, with no
+  unmatched/non-LIFO events. There are 66 function-boundary deltas outside
+  declared normal/error returns, including 39 `memcpy` deltas. These are
+  boundary observations; parent deltas include child stack contamination.
+- The raw run has no pre-argument-push snapshot, so actual supplied argument
+  counts are blank in the CSV instead of being copied from the contracts.
+  Contract-derived baselines still qualify observed return deltas. Full
+  independent input-count proof needs more instrumentation metadata.
+- Follow-up source audit found duplicate `memcpy` definitions: the C shim
+  (`c_runtime_stubs.ld::memcpy`) correctly returns `Dst`; the internal copy
+  implementation (`string.ld::memcpy`) correctly returns zero. The shim is
+  called by 3 void assembly routines (34 + 4 + 1 executions) that do not
+  discard its pointer, producing 39 parent-boundary excess words. Qualified
+  these names and contracts in the report; no runtime source changed.
+- Corrected `HeapDSDefineMemoryFar` arity to 2 and `FSFindFile` result count
+  to 1. Also corrected no-argument `DirNewArgTable`, `DiskNewBuffer`,
+  `FSFindFreeFile`, and `FSWriteHeader`, plus one-word pointer/status
+  contracts. Regenerated reports now show 57 function identities, 705
+  invocations, 112 boundary deltas, and zero pairing diagnostics. Several
+  source-proven caller cleanup issues remain; continue investigating before
+  proposing runtime edits.
+
+## CPU24 `.ENTRY` investigation (2026-11-12)
+
+- Confirmed `.ENTRY` dispatch and entry-bank/offset tracking work for primary
+  and imported source. In `tests/fptest.asm`, `lib/fpmath.ld` opened two
+  automatic-bank function bodies without `@ENDFUNCTION`, so `loadfile` kept
+  capturing the remainder of the primary source and never dispatched its
+  `.Entry Main`. Added the two missing function terminators and removed a
+  temporary diagnostic print from `cpu24.py`.
+- Added `tests/test_cpu24_entry.py` for separate-line/same-line mixed-case
+  directives, CS0/nonzero CS, imported entry, malformed arguments, and legacy
+  `.ORG`; wired it into `make test`. `make test` passed.
+- After the entry fix, `fptest.asm` reaches `Main` and no longer warns about
+  missing `.ENTRY`, but later fails with CPU error 240 (hardware stack
+  overflow) during the FP test. No veneer-reservation failure appeared in
+  that run. Follow up separately on the FP test/stack startup behavior.
+
+## Assembler macro error source locations (2026-11-16)
+
+- Traced the `@POP32I2` diagnostic to `lib/fpmath.ld:619`; the macro is
+  undefined. `raiseerror()` was reporting the mutable file-reader cursor,
+  which can be unrelated to the queued command being expanded. Changed it to
+  prefer the current source command's file/line, and install that location
+  before macro expansion. Nested `loadfile()` calls now restore the caller's
+  source context. No verification run yet; inspect the diagnostic on the
+  original failing assembly next.

@@ -1,6 +1,5 @@
 ! __LIB_SOFTSTACK_DS_LOADED
 M __LIB_SOFTSTACK_DS_LOADED 1
-P Loading softstackDS.ld
 I softstackDS.ref
 
 # DS-local software stack for CPU24 segmented programs.

@@ -5,14 +5,45 @@ consulted before making major language or runtime changes in later sessions.
 
 ## Current direction and decisions still needed
 
+### Prompt file commands (planned)
+
+Use DiskOS files and accept a string literal or string variable as the
+filename. `SAVE filename[,name...]` saves the named function/list objects, or
+all such objects in stored order when no names are supplied. `LOAD
+filename[,name...]` restores all objects in the file, or only the named ones.
+`TYPE filename` prints file bytes, preserving newline and tab and replacing
+other non-printable bytes with `.`. `DIR` lists files and `DELETE filename`
+removes a file. Existing `LIST name=...` remains the statement-list command.
+Runtime file functions are a later milestone.
+
+Implementation requires a round-trippable representation for function
+parameters and compiled statement text, explicit failure/overwrite behavior,
+and tests using disposable disk images. A DiskOS integration probe currently
+corrupts FuncCalc's software-stack initialization; investigate the combined
+CPU24 code/data layout before connecting these commands.
+
+The intended DiskOS port gives the service a dedicated memory segment shared
+by its code (CS), private state, and heap (DS). Code, state, and heap occupy
+non-overlapping ranges within that 64 KiB segment; the unused space remains
+available to the private heap. Application calls cross a far-call gateway,
+which captures the caller's DS before selecting the DiskOS DS and restores
+caller segment registers on return. Applications pass near pointers in their
+active DS; DiskOS uses the captured caller segment for bounded transfers
+between those pointers and private buffers. DiskOS near pointers and heap
+identifiers stay private. The gateway must check ranges and retain the caller
+segment throughout each operation. The experimental gateway in
+`cpu24-diskos-gateway-probe.asm` exercises two-way word transfers and a fixed
+shared software stack, but is not a DiskOS implementation. Its static return
+storage is not reentrant.
+
 CPU24 is the supported target; `FuncCalc.asm` forwards to `FuncCalc24.asm`.
 String concatenation is implemented. A pseudo-terminal regression starter is
 `python3 tests/test_funccalc24.py` (add `--fast` for the native engine); both
 pass arithmetic, string, INPUT, INPUTINT and WRITE checks. Cover both execution
 engines, arithmetic, string ownership, INPUT/INPUTINT, WRITE, GETKEY and TTY
 restoration, nested calls, error recovery, and repeated cleanup. The separate
-`cpu24-string-regression.asm` currently exposes a `strtok` stack underflow on
-the final token when the input has no trailing delimiter.
+`cpu24-string-regression.asm` covers `strtok` termination with and without a
+trailing delimiter, among other string cases.
 
 ### Ownership options
 

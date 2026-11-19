@@ -1,6 +1,5 @@
 ! __LIB_HEAPMGR_DS_LOADED
 M __LIB_HEAPMGR_DS_LOADED 1
-P Loading heapmgrDS.ld
 I heapmgrDS.ref
 L softstackDS.ld
 
@@ -9,6 +8,7 @@ L softstackDS.ld
 
 G HeapDSDefineMemory G HeapDSNewObject G HeapDSDeleteObject
 G HeapDSObjectSize G HeapDSAvailable
+G HeapDSDefineMemoryFar G HeapDSNewObjectFar G HeapDSDeleteObjectFar
 
 =HDS_FIRST_OBJECT 0
 =HDS_LIMIT          2
@@ -42,6 +42,18 @@ M HeapDSInitS `\
 
 @FUNCTION HeapDSDefineMemory
 :HeapDSDefineMemory
+@JMP HeapDSDefineMemoryLocal
+@ENDFUNCTION
+
+@FUNCTION HeapDSDefineMemoryFar
+:HeapDSDefineMemoryFar
+@FENTER
+@CALL HeapDSDefineMemoryLocal
+@FRET
+@ENDFUNCTION
+
+@FUNCTION HeapDSDefineMemoryLocal
+:HeapDSDefineMemoryLocal
 @DSSPushReturn
 @DSSLocals
    @DSSLocal HeapID
@@ -125,6 +137,18 @@ M HeapDSInitS `\
 
 @FUNCTION HeapDSNewObject
 :HeapDSNewObject
+@JMP HeapDSNewObjectLocal
+@ENDFUNCTION
+
+@FUNCTION HeapDSNewObjectFar
+:HeapDSNewObjectFar
+@FENTER
+@CALL HeapDSNewObjectLocal
+@FRET
+@ENDFUNCTION
+
+@FUNCTION HeapDSNewObjectLocal
+:HeapDSNewObjectLocal
 @DSSPushReturn
 @DSSLocals
    @DSSLocal HeapID
@@ -202,6 +226,18 @@ M HeapDSInitS `\
 
 @FUNCTION HeapDSDeleteObject
 :HeapDSDeleteObject
+@JMP HeapDSDeleteObjectLocal
+@ENDFUNCTION
+
+@FUNCTION HeapDSDeleteObjectFar
+:HeapDSDeleteObjectFar
+@FENTER
+@CALL HeapDSDeleteObjectLocal
+@FRET
+@ENDFUNCTION
+
+@FUNCTION HeapDSDeleteObjectLocal
+:HeapDSDeleteObjectLocal
 @DSSPushReturn
 @DSSLocals
    @DSSLocal HeapID
