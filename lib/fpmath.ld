@@ -10,17 +10,52 @@ G FP32_NORMALIZE
 G FP_ADD
 G FP_SUB
 G FP_MUL
+G FP_DIV
+G FP_CMP
 
 G MUL24X24U
 G FP32_EXTRACT_PRODUCT
-G FP_CMP
+G FP2S_NORMALIZE_DECIMAL
 
 = FP_INVALID     0x0001
 = FP_DIVZERO     0x0002
 = FP_OVERFLOW    0x0004
 = FP_UNDERFLOW   0x0008
 = FP_INEXACT     0x0010
+= ERROR_NAN_CODE -3
+= ERROR_INVALID_VALUE -2
+= ERROR_INVALID_SIZE -1
+= SPECIAL_VALUE 0xfffe
 
+
+:FP32_CONST_0      # Constant floating point 0
+0 0
+:FP32_CONST_TENTH  # Constant Floating point 0.1
+0xcccd 0x3dcc
+:FP32_CONST_1      # Constant floating point 1
+0 0x3f80
+:FP32_CONST_NEG1   # Constant floating point -1
+0 0xbf80
+:FP32_CONST_2      #  Constant floating point 2
+0 0x4000
+:FP32_CONST_HALF   #  Constant floating point 0.5
+0 0x3f00
+:FP32_CONST_10     # Constant floating point 10 
+0 0x4120
+:FP32_CONST_100    # Constant floating point 100
+0 0x42c8
+:FP32_CONST_10K    # Constant floating point 10,000
+0x4000 0x461c
+:FP32_CONST_POW8   # Constant floating point 10^8
+0xbc20 0x4cb3
+:FP32_CONST_POW16  # Constant floating point 10^16
+0x1bca 0x5a0e
+:FP32_CONST_POW32  # Constant floating point 10^32
+0xc5ae 0x749d
+
+G FP32_CONST_0 G FP32_CONST_TENTH G FP32_CONST_1 G FP32_CONST_2
+G FP32_CONST_HALF G FP32_CONST_10 G FP32_CONST_100 G FP32_CONST_10K
+G FP32_CONST_POW8 G FP32_CONST_POW8 G FP32_CONST_POW16 G FP32_CONST_POW32
 :FP_Status 0
 G FP_Status
 
@@ -158,8 +193,7 @@ G FP_Status
    @IF_EQ_AV 0 MantLow
       @IF_EQ_AV 0 MantHigh
          @MA2V 0 BiasedExponent
-         @MA2V 0 MantLow
-         @MA2V 0 MantHigh
+         @M32A2V $$$0 Result
          @JMP FP32_NORMALIZE_EXIT
       @ENDIF
    @ENDIF
@@ -617,6 +651,7 @@ G FP_Status
    @POP32I(V) BVal
    @POP32I(V) AVal
 
+   # Unpack operands
    @Call32(V) FP32_UNPACK AVal
    @POP32I(V) MantA
    @POPI2 ExpA SignA
@@ -624,12 +659,12 @@ G FP_Status
    @POP32I(V) MantB
    @POPI2 ExpB SignB
 
-   # Result Sign
+   # Calculate Result Sign
    @PUSHI SignA
    @XORI SignB
    @POPI SignR
 
-   # Zero Operands
+   # Handle Zero Operands
 
    @IF_EQ_AV 0 MantA
       @IF_EQ_AV 0 MantA+2
@@ -642,9 +677,20 @@ G FP_Status
       @ENDIF
    @ENDIF
 
-   # Expondent to unbiaded form.
+   # Calculate unbiased exponents
    @IF_EQ_AV 0 ExpA
       @MA2V -126 UnbiasedA
+      @WHEN
+        @PUSHI MantA+2  @AND 0x0080
+        @CMP 0 @POPNULL
+        @IF_ZFLAG @PUSH 1  @ELSE  @PUSH 0 @ENDIF
+     @DO_NOTZERO
+        @POPNULL
+        @Call32(V) SHL32_1 MantA
+        @POP32I(V) MantA
+        @DECI UnbiasedA        
+     @ENDWHEN
+     @POPNULL
    @ELSE
       @PUSHI ExpA
       @SUB 127
@@ -652,6 +698,17 @@ G FP_Status
    @ENDIF
    @IF_EQ_AV 0 ExpB
       @MA2V -126 UnbiasedB
+      @WHEN
+         @PUSHI MantB+2 @AND 0x0080
+         @CMP 0 @POPNULL
+         @IF_ZFLAG @PUSH 1 @ELSE @PUSH 0 @ENDIF
+      @DO_NOTZERO
+         @POPNULL
+         @Call32(V) SHL32_1 MantB
+         @POP32I(V) MantB
+         @DECI UnbiasedB
+      @ENDWHEN
+      @POPNULL
    @ELSE
       @PUSHI ExpB
       @SUB 127
@@ -973,12 +1030,6 @@ G FP_Status
    @PUSHI BVal+2
    @AND 0x7fff
    @POPI BVal+2
-@PRT " SignA="
-@PRTHEXI Neg_A
-@PRT " SignB="
-@PRTHEXI Neg_B
-@PRTNL
-
    #
    @IF_NEQ_VV Neg_A Neg_B
       # Opposite signs.
@@ -1020,6 +1071,561 @@ G FP_Status
 @EndLocals
 @POPRETURN
 @RET
+@ENDFUNCTION
+
+# ==========================================================
+# FP_DIV - IEEE 754 binary32 division
+#
+# Input:  A_Low A_High B_Low B_High
+# Output: Result_Low Result_High
+#
+# Computes A / B
+#
+# Initial implementation:
+#   - Finite normalized operands
+#   - Zero numerator
+#   - Zero divisor handled separately
+#   - Subnormal and NaN/Infinity support to follow
+# ==========================================================
+@FUNCTION FP_DIV
+:FP_DIV
+@PUSHRETURN
+@Locals
+   @Local32 AVal
+   @Local32 BVal
+
+   @Local SignA
+   @Local ExpA
+   @Local32 MantA
+
+   @Local SignB
+   @Local ExpB
+   @Local32 MantB
+
+   @Local SignR
+   @Local ExpR
+   @Local32 MantR
+
+   @Local UnbiasedA
+   @Local UnbiasedB
+   @Local ExpAdjust
+
+   # Retrieve operands in reverse stack order.
+   @POP32I(V) BVal
+   @POP32I(V) AVal
+
+   # Unpack numerator.
+   @Call32(V) FP32_UNPACK AVal
+   @POP32I(V) MantA
+   @POPI2 ExpA SignA
+
+   # Unpack denominator.
+   @Call32(V) FP32_UNPACK BVal
+   @POP32I(V) MantB
+   @POPI2 ExpB SignB
+
+   # Result sign = SignA XOR SignB.
+   @PUSHI SignA
+   @XORI SignB
+   @POPI SignR
+
+   # Check for zero numerator.
+   @IF_EQ_AV 0 MantA
+      @IF_EQ_AV 0 MantA+2
+         @JMP FP32_DIV_ZERO_NUMERATOR
+      @ENDIF
+   @ENDIF
+
+   # Check for zero denominator.
+   @IF_EQ_AV 0 MantB
+      @IF_EQ_AV 0 MantB+2
+         @JMP FP32_DIV_ZERO_DENOMINATOR
+      @ENDIF
+   @ENDIF
+
+   # Convert exponents to unbiased form.
+   @IF_EQ_AV 0 ExpA
+      @MA2V -126 UnbiasedA
+   @ELSE
+      @PUSHI ExpA
+      @SUB 127
+      @POPI UnbiasedA
+   @ENDIF
+
+   @IF_EQ_AV 0 ExpB
+      @MA2V -126 UnbiasedB
+   @ELSE
+      @PUSHI ExpB
+      @SUB 127
+      @POPI UnbiasedB
+   @ENDIF
+
+   # Division exponent = ExpA - ExpB.
+   @PUSHI UnbiasedA
+   @SUBI UnbiasedB
+   @POPI ExpR
+
+   # Divide 24-bit significands.
+   @Call32(VV) DIV24X24U MantA MantB
+
+   # Helper returns:
+   #   ExpAdjust (16-bit)
+   #   Quotient  (32-bit)
+   #
+   # Stack: ExpAdjust, Quotient_Low, Quotient_High
+
+   @POP32I(V) MantR
+   @POPI ExpAdjust
+
+   # Apply quotient normalization adjustment.
+   @PUSHI ExpR
+   @ADDI ExpAdjust
+   @POPI ExpR
+
+   # Normalize and round.
+   @PUSHI SignR
+   @PUSHI ExpR
+   @PUSH32I(V) MantR
+   @CALL FP32_NORMALIZE
+
+   @JMP FP32_DIV_RETURN
+
+# ----------------------------------------------------------
+# Special case: numerator is zero
+# ----------------------------------------------------------
+:FP32_DIV_ZERO_NUMERATOR
+
+   # Produce signed zero.
+   @PUSHI SignR
+   @PUSH 0
+   @PUSH 0
+   @PUSH 0
+   @JMP FP32_DIV_RETURN
+
+# ----------------------------------------------------------
+# Special case: denominator is zero
+# ----------------------------------------------------------
+:FP32_DIV_ZERO_DENOMINATOR
+
+   # Temporary behavior: signed infinity.
+   # This is correct for finite nonzero / zero,
+   # but 0/0 requires NaN handling.
+   @PUSHI SignR
+   @PUSH 255
+   @PUSH 0
+   @PUSH 0
+   @JMP FP32_DIV_RETURN
+
+# ----------------------------------------------------------
+# Pack result, set flags, return.
+# ----------------------------------------------------------
+:FP32_DIV_RETURN
+
+   @CALL FP32_PACK
+
+   # Preserve packed result while setting flags.
+   @POP32I(V) MantR
+   @PUSH32I(V) MantR
+   @CALL FP_SET_RESULT_FLAGS
+
+   # Restore the result for the caller.
+   @PUSH32I(V) MantR
+
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+# ================================
+# Support: DIV24X24U
+# Input: MantA, MantB
+# Output: ExpAdjust Quotient
+# ================================
+@FUNCTION DIV24X24U
+:DIV24X24U
+@PUSHRETURN
+@Locals
+   @Local32 Dividend
+   @Local32 Divisor
+   @Local32 Quotient
+   @Local32 Remainder
+   @Local Bit
+   @Local ExpAdjust
+   @Local Index
+
+   @POP32I(V) Divisor
+   @POP32I(V) Dividend
+
+   @Call32(VV) CMP32U Dividend Divisor
+
+   @IF32_ULT
+      @Call32(V) SHL32_1 Dividend
+      @POP32I(V) Remainder
+      @MA2V -1 ExpAdjust
+   @ELSE
+      @M32V2V Dividend Remainder
+      @MA2V 0 ExpAdjust
+   @ENDIF
+
+   @M32A2V $$$0 Quotient
+
+   @ForIA2B Index 0 27
+      @Call32(V) SHL32_1 Quotient
+      @POP32I(V) Quotient
+      @Call32(VV) CMP32U Remainder Divisor
+      @IF32_UGE
+         @Call32(VV) SUB32U Remainder Divisor
+         @POP32I(V) Remainder
+         @Call32(VA) OR32 Quotient $$$1
+         @POP32I(V) Quotient
+      @ENDIF
+      @IF_NEQ_AV 26 Index
+         @Call32(V) SHL32_1 Remainder
+         @POP32I(V) Remainder
+      @ENDIF
+   @Next Index
+
+   @Call32(VA) CMP32U Remainder $$$0
+   @IF32_NE
+      @Call32(VA) OR32 Quotient $$$1
+      @POP32I(V) Quotient
+   @ENDIF
+
+   @PUSHI ExpAdjust
+   @PUSH32I(V) Quotient
+@EndLocals
+@POPRETURN
+@RET
+@ENDFUNCTION
+
+# ===================================
+# FP2S: (FP32, StrPtr, MaxLength)
+# Return: >=0 number of characters in generated strng
+#         -1 Insufficent buffer size, -2 Invalid buffer
+# ===================================
+
+# This is the workspace structure
+:FPWorkSpace
+=FPW_Digits 0
+"012345678"   # Max 9 significate decimal digits
+:Here
+=FPW_DigitCount Here-FPWorkSpace
+0
+:Here
+=FPW_Exponent10 Here-FPWorkSpace
+0
+:Here
+=FPW_GuardDigit Here-FPWorkSpace
+0
+:Here
+=FPW_Sticky Here-FPWorkSpace
+0
+
+
+
+
+@FUNCTION FP2S
+:FP2S
+@PUSHRETURN
+@Locals
+    @Local32 FPIn
+    @Local String
+    @Local MaxStrSize
+    @Local ReturnCode
+    @Local Sign
+    @Local Exponent
+    @Local32 Fraction
+    @Local32 Mantissa
+    @Local OutputLength
+    @Local StrPtr
+    @Local BinaryExponent
+
+    @POPI MaxStrSize
+    @POPI String
+    @MV2V String StrPtr
+    @POP32I(V) FPIn
+
+    @MA2V ERROR_INVALID_VALUE ReturnCode
+
+    @IF_EQ_AV 0 MaxStrSize       
+       @JMP FP2S_EXIT
+    @ENDIF
+    @PUSH 0
+    @STOREBI String
+
+    # Sign = FPIn.bit[31]
+    @PUSHI FPIn+2
+    @AND 0x8000
+    @IF_ZERO
+       @MA2V 0 Sign
+    @ELSE
+       @MA2V 1 Sign
+    @ENDIF
+
+    # exponent = FPIn.bit[23:30]
+    @PUSHI FPIn+2
+    @SHRN 7    
+    @AND 0xff
+    @POPI Exponent
+    #
+    # fraction FPIn.bit[0:22]
+    # all of FPIn Low word and 6 bits of FPIN High
+    @MV2V FPIn Fraction
+    @PUSHI FPIn+2
+    @AND 0x7f
+    @POPI Fraction+2
+    #
+    @IF_EQ_AV 255 Exponent
+        @PUSHI Fraction
+        @ORI Fraction+2
+        @IF_NOTZERO
+           @MA2V ERROR_NAN_CODE ReturnCode
+        @ELSE
+           @MA2V ERROR_NAN_CODE ReturnCode
+        @POPNULL
+        @JMP FP2S_EXIT
+     @ENDIF
+     # Zero
+     @IF_EQ_AV 0 Exponent
+        @PUSHI Fraction
+        @ORI Fraction+2
+        @IF_ZERO
+           @POPNULL
+           @IF_NEQ_AV 0 Sign
+              @MA2V 2 OutputLength    # -0
+           @ELSE
+              @MA2V 1 OutputLength     # 0
+           @ENDIF
+           @PUSHI OutputLength
+           @ADD 1
+           @IF_GT_V MaxStrSize
+              @MA2V ERROR_INVALID_SIZE ReturnCode
+              @JMP FP2S_EXIT
+           @ENDIF
+           #
+           @MV2V String StrPtr
+           #
+           @IF_NEQ_AV 0 Sign
+               @PUSH "-\0"
+               @STOREBI StrPtr
+               @INCI StrPtr
+           @ENDIF
+           @PUSH "0\0"
+           @STOREBI StrPtr
+           @INCI StrPtr
+           @PUSH 0
+           @STOREBI StrPtr
+           @MV2V OutputLength ReturnCode
+           @JMP FP2S_EXIT
+        @ELSE
+           @POPNULL
+        @ENDIF
+     @ENDIF
+     #
+     # Normal or subnormal numbers
+     @IF_EQ_AV 0 Exponent
+         @M32V2V Fraction Mantissa
+         @MA2V -149 BinaryExponent
+     @ELSE
+         @MA2V 0 Mantissa        # low word is always zero
+         @PUSHI Fraction+2
+         @AND 0x80
+         @POPI Mantissa+2        # High word just top bit of first byte in fraction
+         @PUSHI Exponent
+         @SUB 150
+         @POPI BinaryExponent
+     @ENDIF
+
+     # Workhorse function
+     @PUSH32I(V) Mantissa @PUSHI BinaryExponent
+:FP2S_EXIT
+@ENDFUNCTION
+
+
+
+
+# ==========================================
+# FP2S_CLEAR_WORKSPACE
+#
+# Clears all 17 bytes of FPWorkspace.
+#
+# Arguments: None
+# Returns:   0 (16-bit)
+#
+# Workspace:
+#   FPW_Digits       9 bytes
+#   FPW_DigitCount   2 bytes
+#   FPW_Exponent10   2 bytes
+#   FPW_GuardDigit   2 bytes
+#   FPW_Sticky       2 bytes
+# ==========================================
+
+@FUNCTION FP2S_CLEAR_WORKSPACE
+:FP2S_CLEAR_WORKSPACE
+@PUSHRETURN
+@Locals
+    @Local Ptr
+    @Local Count
+
+    @MA2V FPWorkSpace Ptr
+    @ForIA2B Count 0 17
+        @PUSH 0
+        @STOREBI Ptr
+        @INCI Ptr
+    @Next Count
+
+    @EndLocals
+    @POPRETURN
+    @PUSH 0
+    @RET
+@ENDFUNCTION
+# ============================================================
+# FP2S_MANTISSA_TO_DECIMAL
+#
+# Input:  [ Mantissa(32) ]
+# Output: FPW_Digits     numeric digits 0..9
+#         FPW_DigitCount number of digits
+# Return: 0
+#
+# Mantissa must be in range 0..0x00FFFFFF.
+# ============================================================
+
+@FUNCTION FP2S_MANTISSA_TO_DECIMAL
+:FP2S_MANTISSA_TO_DECIMAL
+@PUSHRETURN
+@Locals
+    @Local32 Mantissa
+    @Local Ptr
+    @Local Count
+    @Local Digit
+
+    @POP32I(V) Mantissa
+
+    # Convert mantissa to ASCII in the digit workspace.
+    @PUSH FPWorkSpace+FPW_Digits
+    @PUSH32I(V) Mantissa
+    @PUSH 10
+    @CALL i32tos
+
+    # Convert ASCII digits to numeric digits in place.
+    @MA2V FPWorkSpace+FPW_Digits Ptr
+    @MA2V 0 Count
+
+    @PUSHII Ptr
+    @AND 0xff
+    @WHILE_NOTZERO
+        @POPNULL
+
+        @PUSHII Ptr
+        @AND 0xff
+        @SUB 0x30
+        @POPI Digit
+
+        @PUSHI Digit
+        @STOREBI Ptr
+
+        @INCI Ptr
+        @INCI Count
+
+        @PUSHII Ptr
+        @AND 0xff
+    @ENDWHILE
+    @POPNULL
+
+    @MV2V Count FPWorkSpace+FPW_DigitCount
+
+    @EndLocals
+    @POPRETURN
+    @PUSH 0
+    @RET
+@ENDFUNCTION
+
+# ====================================
+# FP2S_NORMALIZE_DECIMAL(floatIn):(floatOut, DecExponent)
+# Normaly a FP number based on base 10, return normalized mantissa and exponent
+# Return:
+#   FloatOut: FP32 in range [1.0, 10.0)
+#   DecExp: signe 16 bit integer
+# ====================================
+# Get32OffSet(TableEntryAddress, Offset_Constant):(Stack:Low,High)
+M Get32OffSet @PUSHI %1 @ADD %2 @PUSHS @PUSHI %1 @ADD %2+2 @PUSHS
+M GetOffset @PUSHI %1 @ADD %2 @PUSHS
+@FUNCTION FP2S_NORMALIZE_DECIMAL
+:FP2S_NORMALIZE_DECIMAL
+@PUSHRETURN
+@Locals
+    @Local32 FloatOut
+    @Local32 Power
+    @Local32 InversePower
+    @Local Step
+    @Local TblPtr
+    @Local DecExp
+    @Local Index
+
+    @POP32I(V) FloatOut
+    @MA2V 0 DecExp
+
+    @MA2V PowerStepTable TblPtr
+
+    @ForIA2B Index 0 6
+        @Get32OffSet TblPtr 0
+        @POP32I(V) Power
+        @Get32OffSet TblPtr 4
+        @POP32I(V) InversePower
+        @GetOffset TblPtr 8
+        @POPI Step
+        @PUSHI TblPtr
+        @ADD 10
+        @POPI TblPtr
+
+        @Call32(VV) FP_CMP FloatOut Power
+        @IF32_GE
+           @Call32(VV) FP_DIV FloatOut Power
+           @POP32I(V) FloatOut
+           @PUSHI DecExp
+           @ADDI Step
+           @POPI DecExp
+        @ELSE
+           @Call32(VV) FP_CMP FloatOut InversePower
+           @IF32_LE
+              @Call32(VV) FP_MUL FloatOut Power
+              @POP32I(V) FloatOut
+              @PUSHI DecExp
+              @SUBI Step
+              @POPI DecExp
+           @ENDIF
+        @ENDIF
+    @Next Index
+    # Final boundry condition
+    @Call32(VV) FP_CMP FloatOut FP32_CONST_1
+    @IF32_LT
+        @Call32(VV) FP_MUL FloatOut FP32_CONST_10
+        @POP32I(V) FloatOut
+        @DECI DecExp
+    @ENDIF
+
+    @Call32(VV) FP_CMP FloatOut FP32_CONST_10
+    @IF32_GE
+        @Call32(VV) FP_DIV FloatOut FP32_CONST_10
+        @POP32I(V) FloatOut
+        @INCI DecExp
+    @ENDIF
+    @PUSH32I(V) FloatOut
+    @PUSHI DecExp
+
+@EndLocals
+@POPRETURN
+
+@RET
+
+:PowerStepTable
+# Positive Power  Inverse Power   Step
+0xC5AE 0x749D     0xB11F 0x0A4F   32
+0x1BCA 0x5A0E     0x9595 0x24E6   16
+0xBC20 0x4CBE     0xCC77 0x322B    8
+0x4000 0x461C     0xB717 0x38D1    4
+0x0000 0x42C8     0xD70A 0x3C23    2
+0x0000 0x4120     0xCCCD 0x3DCC    1
+
 @ENDFUNCTION
 
 ENDBLOCK

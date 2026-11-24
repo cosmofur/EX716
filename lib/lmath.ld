@@ -176,7 +176,7 @@ M POP32II(V) @PUSHI %1 @ADD 2 @POPS @PUSHI %1 @POPS
 # PUSH32I(V) Pushing 32 bit word by passing name of lower word. LOW, High push
 M PUSH32I(V) @PUSHI %1 @PUSHI %1+2
 # Push 32 value based on ptr to word rather than address of word.
-M PUSH32II(V) PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS
+M PUSH32II(V) @PUSHII %1 @PUSHI %1 @ADD 2 @PUSHS
 ? CPU24_SEGMENTED
 M PUSH32(A) @JMP _%0_Skip :_%0_Val %1 :_%0_Skip @CSO @PUSHI _%0_Val @CSO @PUSHI _%0_Val+2
 ENDBLOCK

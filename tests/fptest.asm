@@ -39,6 +39,61 @@ M PRTPUSH48 \
       
 @PRTLN "Start of test:"
 
+
+# =========================================================
+# FP2S_NORMALIZE_DECIMAL(FloatIn):(FloatOut,DecExponent)
+#
+=FPInput Register32A
+=FPOutput Register32B
+=DecExpFound RegisterA
+=DecExpExpt RegisterB
+
+    @MA2V NormalizeDecTable Index
+
+    @PUSHII Index
+    @WHILE_NEQ_A 9999
+       @POPNULL
+
+       # Read FP32 input (4 bytes)
+       @PUSH32II(V) Index
+       @POP32I(V) FPInput
+
+       @INC2I Index
+       @INC2I Index
+
+       # Read expected decimal exponent (2 bytes)
+       @PUSHII Index
+       @POPI DecExpExpt
+       @INC2I Index
+
+       @PRT "Input: "
+       @PRTHEXI FPInput+2
+       @PRTHEXI FPInput
+
+       @PRT " Expected DecExp: "
+       @PRTHEXI DecExpExpt
+
+       # Normalize FP32
+       @Call32(V) FP2S_NORMALIZE_DECIMAL FPInput
+       @POPI DecExpFound
+       @POP32I(V) FPOutput
+
+       @PRT " Output: "
+       @PRTHEXI FPOutput+2
+       @PRTHEXI FPOutput
+
+       @PRT " DecExp: "
+       @PRTHEXI DecExpFound
+       @PRTNL
+
+       @PUSHII Index
+    @ENDWHILE
+    @POPNULL
+       
+       
+        
+        
+
 # ==========================================================
 # FP_CMP Tests
 #
@@ -206,6 +261,126 @@ M PRTPUSH48 \
    @ENDWHILE
    @POPNULL
 
+# ==========================================================
+# FP_DIV Tests
+#
+# Test record:
+#    Dividend (32-bit)
+#    Divisor  (32-bit)
+#    Expected (32-bit)
+# ==========================================================
+
+=FP1          Register32A
+=FPExpected   Register32B
+=DivFailed    RegisterA
+=DivTests     RegisterC
+=DivFailures  RegisterD
+
+   @PRTLN "--------------------------------------------"
+   @PRTLN "=== FP_DIV Tests ==="
+
+   @MA2V 0 DivTests
+   @MA2V 0 DivFailures
+   @MA2V FPDivTable Index
+
+   @PUSHII Index
+   @WHILE_NEQ_A 9999
+      @POPNULL
+
+      @INCI DivTests
+      @MA2V 0 DivFailed
+
+      # Dividend
+      @PRT "FP_DIV: "
+      @PRTPUSH32 Index
+
+      @PRT " / "
+
+      # Advance to divisor.
+      @PUSHI Index
+      @ADD 4
+      @POPI Index
+
+      # Divisor
+      @PRTPUSH32 Index
+
+      # Stack: Dividend_Low Dividend_High
+      #        Divisor_Low Divisor_High
+      @CALL FP_DIV
+
+      # Retrieve result.
+      @POP32I(V) FP1
+
+      @PRT " = "
+      @PRTHEXI FP1+2
+      @PRTHEXI FP1
+
+      # Advance to expected result.
+      @PUSHI Index
+      @ADD 4
+      @POPI Index
+
+      # Read expected 32-bit value.
+      @PUSHII Index
+      @POPI FPExpected
+
+      @PUSHI Index
+      @ADD 2
+      @PUSHS
+      @POPI FPExpected+2
+
+      @PRT " expect: "
+      @PRTHEXI FPExpected+2
+      @PRTHEXI FPExpected
+
+      # Compare low word.
+      @PUSHI FP1
+      @IF_NEQ_V FPExpected
+         @MA2V 1 DivFailed
+      @ENDIF
+      @POPNULL
+
+      # Compare high word.
+      @PUSHI FP1+2
+      @IF_NEQ_V FPExpected+2
+         @MA2V 1 DivFailed
+      @ENDIF
+      @POPNULL
+
+      @PRT " "
+      @PUSHI DivFailed
+      @IF_EQ_A 0
+         @PRT "Pass"
+      @ELSE
+         @PRT "FAIL"
+         @INCI DivFailures
+      @ENDIF
+      @POPNULL
+
+      @PRTNL
+
+      # Advance past expected result.
+      @PUSHI Index
+      @ADD 4
+      @POPI Index
+
+      # Fetch next record.
+      @PUSHII Index
+   @ENDWHILE
+   @POPNULL
+
+   @PRTLN "--------------------------------------------"
+   @PRTLN "FP_DIV Summary:"
+   @PRT "Tests: "
+   @PRTHEXI DivTests
+   @PRT " Failures: "
+   @PRTHEXI DivFailures
+   @PRTNL
+
+   @PRT "Check Stack after FP_DIV Tests: "
+   @StackDump
+   @PRTNL
+
 =FP1           Register32B
 =ExpAdjust     RegisterB
 
@@ -302,7 +477,9 @@ M PRTPUSH48 \
       @PUSHI Index @ADD 6 @POPI Index
       @PUSHII Index
    @ENDWHILE
-      
+   @POPNULL
+   @PRT "After MUL24X24U" @StackDump
+
 
    @PRTLN "Addition Test"
 
@@ -356,6 +533,7 @@ M PRTPUSH48 \
        @PUSHII Index
    @ENDWHILE
    @POPNULL
+   @PRT "After Addition " @StackDump
    @PRTLN "--------------------------------------------"
    @PRTLN "Subtraction Test"
 
@@ -403,6 +581,7 @@ M PRTPUSH48 \
        @PUSHII Index
    @ENDWHILE
    @POPNULL
+   @PRT "After Subtraction" @StackDump
        
 
    @PRTLN "Testing SHIFT_RIGHT_JAM32"
@@ -561,6 +740,8 @@ M PRTPUSH48 \
    @ENDWHILE
    @POPNULL
 
+   @PRT "After FP32_NORMALIZE" @StackDump
+
    @PRTLN "FP32_NORMALIZE summary:"
    @PRT "Tests: " @PRTHEXI NormTests
    @PRT " Word mismatches: " @PRTHEXI NormFailures
@@ -657,7 +838,8 @@ M PRTPUSH48 \
          @PUSH 1
       @ENDIF
    @ENDWHILE
-   @PRTLN "End of run."
+   @POPNULL
+   @PRTLN "End of run." @StackDump
 @END
 
 :DetailPrint
@@ -1044,6 +1226,20 @@ $$$0x00800000 $$$0x3F000000 $$$0x00400000 # Normal -> subnormal
 $$$0x00000001 $$$0x3F800000 $$$0x00000001 # Smallest subnormal * 1
 $$$0x007FFFFF $$$0x40000000 $$$0x00FFFFFE # Largest subnormal * 2
 $$$0x00800000 $$$0x00800000 $$$0x00000000 # Underflow to zero
+# Smallest subnormal * 1E32
+0x0001 0x0000  0xC5AE 0x749D  0xC5AE 0x2A1D
+
+# 1E32 * Smallest subnormal
+0xC5AE 0x749D  0x0001 0x0000  0xC5AE 0x2A1D
+
+# Smallest subnormal * Smallest subnormal
+0x0001 0x0000  0x0001 0x0000  0x0000 0x0000
+
+# Smallest subnormal * 0.5 (round to even)
+0x0001 0x0000  0x0000 0x3F00  0x0000 0x0000
+
+# Three times smallest subnormal * 0.5 (round to even)
+0x0003 0x0000  0x0000 0x3F00  0x0002 0x0000
 9999
 
 
@@ -1151,4 +1347,76 @@ $$$0x00800000 $$$0x00800000 $$$0x00000000 # Underflow to zero
 
    # End of table
    9999 9999 9999
+# ==========================================================
+# FP_DIV Test Vectors
+#
+# Dividend     Divisor      Expected
+# ==========================================================
+:FPDivTable
 
+# Basic division
+$$$0x3F800000 $$$0x3F800000 $$$0x3F800000 # 1 / 1 = 1
+$$$0x40C00000 $$$0x40400000 $$$0x40000000 # 6 / 3 = 2
+$$$0x40400000 $$$0x40000000 $$$0x3FC00000 # 3 / 2 = 1.5
+$$$0x41200000 $$$0x40800000 $$$0x40200000 # 10 / 4 = 2.5
+$$$0x40E00000 $$$0x40000000 $$$0x40600000 # 7 / 2 = 3.5
+
+# Powers of two
+$$$0x3F800000 $$$0x40000000 $$$0x3F000000 # 1 / 2 = 0.5
+$$$0x3F800000 $$$0x40800000 $$$0x3E800000 # 1 / 4 = 0.25
+$$$0x40800000 $$$0x3F800000 $$$0x40800000 # 4 / 1 = 4
+$$$0x40000000 $$$0x3F000000 $$$0x40800000 # 2 / 0.5 = 4
+
+# Quotient normalization
+$$$0x3F800000 $$$0x3FC00000 $$$0x3F2AAAAB # 1 / 1.5
+$$$0x3FC00000 $$$0x3F800000 $$$0x3FC00000 # 1.5 / 1
+$$$0x3FC00000 $$$0x3FC00000 $$$0x3F800000 # 1.5 / 1.5
+$$$0x3F000000 $$$0x3F800000 $$$0x3F000000 # 0.5 / 1
+
+# Repeating binary fractions and rounding
+$$$0x3F800000 $$$0x40400000 $$$0x3EAAAAAB # 1 / 3
+$$$0x40000000 $$$0x40400000 $$$0x3F2AAAAB # 2 / 3
+$$$0x40400000 $$$0x40A00000 $$$0x3F19999A # 3 / 5
+$$$0x3F800000 $$$0x40A00000 $$$0x3E4CCCCD # 1 / 5
+
+# Signed operands
+$$$0xC0C00000 $$$0x40400000 $$$0xC0000000 # -6 / 3 = -2
+$$$0x40C00000 $$$0xC0400000 $$$0xC0000000 # 6 / -3 = -2
+$$$0xC0C00000 $$$0xC0400000 $$$0x40000000 # -6 / -3 = 2
+$$$0xBF800000 $$$0x3F800000 $$$0xBF800000 # -1 / 1 = -1
+
+# Zero numerator
+$$$0x00000000 $$$0x40400000 $$$0x00000000 # +0 / 3 = +0
+$$$0x80000000 $$$0x40400000 $$$0x80000000 # -0 / 3 = -0
+$$$0x00000000 $$$0xC0400000 $$$0x80000000 # +0 / -3 = -0
+
+# Division by zero (signed infinity)
+$$$0x3F800000 $$$0x00000000 $$$0x7F800000 # 1 / +0 = +Inf
+$$$0xBF800000 $$$0x00000000 $$$0xFF800000 # -1 / +0 = -Inf
+$$$0x3F800000 $$$0x80000000 $$$0xFF800000 # 1 / -0 = -Inf
+
+# Exponent boundaries
+$$$0x00800000 $$$0x3F800000 $$$0x00800000 # Min normal / 1
+$$$0x7F7FFFFF $$$0x3F800000 $$$0x7F7FFFFF # Max finite / 1
+$$$0x7F7FFFFF $$$0x3F000000 $$$0x7F800000 # Overflow
+
+# End of table
+9999
+
+:NormalizeDecTable
+# Low    High    Expected decimal exponent
+0x0000 0x3F80     0     # 1.0
+0x0000 0x4120     1     # 10.0
+0x0000 0x42C8     2     # 100.0
+0xCCCD 0x3DCC    -1     # 0.1
+0x0000 0x3F00    -1     # 0.5
+0x0FDB 0x4049     0     # Pi
+0xE400 0x4640     4     # 12345.0
+0xBC20 0x4CBE     8     # 1E8
+0xFFFF 0x3F7F    -1     # Just below 1
+0x0001 0x4120     1     # Just above 10
+0x0000 0x0080   -38     # Smallest normal
+0xFFFF 0x007F   -38     # Largest subnormal
+0x0001 0x0000   -45     # Smallest subnormal
+0xFFFF 0x7F7F    38     # Largest finite FP32
+9999
